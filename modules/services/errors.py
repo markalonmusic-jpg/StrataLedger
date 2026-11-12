@@ -21,6 +21,13 @@ class PostingError(ServiceError):
     """A ledger posting was refused (unbalanced, not postable, already posted...)."""
 
 
+class KeyUnavailableError(PostingError):
+    """The ledger chain key cannot be had on this computer, so nothing can be posted (decision K3).
+
+    The message names at most a key id, never key material.
+    """
+
+
 class PermissionDeniedError(ServiceError):
     """The acting user lacks the permission for this action."""
 

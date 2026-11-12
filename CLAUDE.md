@@ -663,8 +663,10 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     Build order: step 1 (done), step 2 (done), **step 1b** (done: chain schema and the pure `ledger_chain.py`,
     docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
     transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key
-    is available), **step 1c** (keystore: installation and company keys, DPAPI, recovery-code wrap, the
-    `cryptography` decision K2), then steps 4-7. Step 1c must land before any screen can post and before 2.5
+    is available; done), **step 3b** (the verify service: incremental and full verification, checkpoints,
+    the `ledger_integrity` close check, end-to-end tamper tests on real files; before step 4), **step 1c**
+    (keystore: installation and company keys, DPAPI, recovery-code wrap, the `cryptography` decision K2), then
+    steps 4-7. Step 1c must land before any screen can post and before 2.5
     is declared done.
   - **2.6 Customer and vendor codes (done):** `customer_number` and
     `vendor_number`, `contact.customer_code` / `vendor_code` (unique, CHECKed,
@@ -942,6 +944,16 @@ Planned schema work, in build order (names only):
   the key: `modules/services/ledger_chain.py` (pure: canonical form, `seal`, `fingerprint`, `new_key`,
   `verify_chain`, column classification) does, with hand-written golden vectors in
   `tests/data/ledger_chain_vectors.json`. Test helpers seal every post with a fixed test key. Decisions K11, K12.
+- 2026-11-12: Phase 2.5 step 3 (posting). `ledger.post_journal_entry`: `je.post`, `confirm=True` for Human origin
+  (R2), stored lines and period checked again, balance and two lines, date warnings for Human posts
+  (`DateWarningsError`, `acknowledge_date_warnings`), controlled accounts (flag `is_control_override` before
+  sealing, refuse when the control is off, AR/AP lines name the customer/vendor; R10), then in one transaction:
+  lock, read and increment the counter, seal with the company's chain key, one UPDATE. Fails closed until step 4
+  for anything needing approval and refuses reversals and automatic reversals until step 5 (R11).
+  `modules/services/keys.py`: `KeyProvider`, `NullKeyProvider` (the default: no posting), `FixedKeyProvider`
+  (tests only, `STRATALEDGER_ALLOW_TEST_KEYS`), `SecretKey`. `periods.entry_date_warnings`; close check
+  `control_overrides` built and `ledger_integrity` registered (runs from step 3b). Decisions R10-R14. Until step
+  1c the app has no real key provider, so nothing can be posted outside the tests.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

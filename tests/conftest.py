@@ -1,3 +1,4 @@
+import os
 import shutil
 
 import pytest
@@ -5,6 +6,9 @@ import pytest
 import modules.database as database
 
 # The tests never open real database files; every database is built in tmp_path.
+
+# keys.FixedKeyProvider (a constant chain key) refuses to load unless this is set; only the tests set it.
+os.environ["STRATALEDGER_ALLOW_TEST_KEYS"] = "1"
 
 
 @pytest.fixture

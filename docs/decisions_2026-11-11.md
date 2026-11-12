@@ -628,6 +628,23 @@ Answers to the 2.5 plan's questions. Integrity unless marked control.
   `control_overrides` period-close check (warning by default, can be a block, L2). `reversal_note` is required
   and non-blank for Void and Correction, not for an Accrual reversal.
 
+Added with Phase 2.5 step 3 (posting), 2026-11-12:
+- R10 Every account with a `control_type` is a controlled account for A5. A manual line to an AR account
+  must name a customer (a contact with `is_customer`), and to an AP account a vendor (`is_vendor`); the
+  other controlled types need no contact. Naming the purchase order on a PO-linked account (GRNI) cannot be
+  built until the PO table exists (v1.1).
+- R11 Until step 4 builds approvals, posting fails closed with "This entry needs the approval step, which is
+  not available yet." for: Agent- or Import-origin entries (and Import contexts); manual entries that qualify
+  for manual-entry approval (R5); entries whose document source (Bill, Payment, Import, Payroll) has
+  "requires approval" on. Reversal drafts are posted only by the reverse and void actions, and an entry with
+  an automatic reversal date is refused, both until step 5.
+- R12 Date warnings (L6) apply to Human-origin posts only, for dates far ahead or behind; they are not raised
+  for an entry in adjustment period 13 or 14, which is always dated the year end.
+- R13 Posting checks the provider's chain key against the fingerprint of the company's active
+  `ledger_chain_key`; no active key, no provider key or a mismatch refuses the post (K3).
+- R14 Posting needs `je.post` only; the date check it runs internally (`periods.entry_date_warnings`) does not
+  need `period.view`.
+
 ## K. Audit readiness (decided 2026-11-12)
 
 Design: docs/audit_readiness_design.md. Build order: 2.5 Step 1b (chain schema), then Step 3 (posting seals

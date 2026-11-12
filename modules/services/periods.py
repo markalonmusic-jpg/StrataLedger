@@ -20,7 +20,8 @@ from modules.services.authz import authorize
 from modules.services.errors import NotFoundError, ValidationError
 from modules.services.tx import read_connection, write_transaction
 
-CHECK_CODES = ("draft_entries", "earlier_period_open", "pending_approvals")
+# ledger_integrity is registered (its mode can be set) but runs only from step 3b, with the verify service.
+CHECK_CODES = ("draft_entries", "earlier_period_open", "pending_approvals", "control_overrides", "ledger_integrity")
 CHECK_MODES = ("warn", "block")
 BASES = {"pre_adjustment": 12, "gaap": 13, "tax": 14}
 CREATE_AHEAD_DAYS = 60
@@ -225,15 +226,21 @@ def check_entry_date(context, entry_date):
     A date in a closed period is an error (ValidationError), not a warning.
     """
     authorize(context, "period.view", record_type="fiscal_period")
-    day = _parse_date(entry_date, "entry date")
-    today = date.fromisoformat(context.today)
     conn = read_connection(context.company_db_path)
     try:
-        settings = _settings(conn)
-        period = conn.execute("SELECT name, is_closed FROM fiscal_period WHERE is_adjustment_period = 0 "
-                              "AND ? BETWEEN start_date AND end_date", (day.isoformat(),)).fetchone()
+        return entry_date_warnings(conn, entry_date, context.today)
     finally:
         conn.close()
+
+
+def entry_date_warnings(conn, entry_date, today):
+    """check_entry_date without the permission check, for services that already authorized (the ledger's
+    posting). Inside the caller's connection; `today` is the company-local ISO date from the context."""
+    day = _parse_date(entry_date, "entry date")
+    today = date.fromisoformat(today)
+    settings = _settings(conn)
+    period = conn.execute("SELECT name, is_closed FROM fiscal_period WHERE is_adjustment_period = 0 "
+                          "AND ? BETWEEN start_date AND end_date", (day.isoformat(),)).fetchone()
     if period is not None and period["is_closed"]:
         raise ValidationError(f"{period['name']} is closed; choose a date in an open period")
     future_days = settings["warn_future_days"] if settings else 30
@@ -274,8 +281,16 @@ def _run_checks(conn, period):
         "SELECT COUNT(*) FROM approval_request AS r JOIN journal_entry AS e "
         "ON r.record_type = 'journal_entry' AND r.record_id = e.entry_id "
         "WHERE r.status = 'Pending' AND e.period_id = ?", (period["period_id"],)).fetchone()[0]
+    overrides = [r[0] for r in conn.execute(
+        "SELECT DISTINCT e.entry_number FROM journal_line AS l JOIN journal_entry AS e ON e.entry_id = l.entry_id "
+        "WHERE e.period_id = ? AND e.is_posted = 1 AND l.is_control_override = 1 ORDER BY e.entry_number",
+        (period["period_id"],))]
+    shown = ", ".join(f"JE-{n:06d}" for n in overrides[:10]) + (f" and {len(overrides) - 10} more"
+                                                                 if len(overrides) > 10 else "")
     results = [
         ("draft_entries", drafts == 0, f"{drafts} draft entr{'y is' if drafts == 1 else 'ies are'} dated in this period"),
+        ("control_overrides", not overrides,
+         f"Manual entries posted to controlled accounts (review them): {shown}"),
         ("earlier_period_open", not earlier, "Earlier periods are still open: " + ", ".join(sorted(earlier))),
         ("pending_approvals", pending == 0, f"{pending} entr{'y is' if pending == 1 else 'ies are'} waiting for approval"),
     ]

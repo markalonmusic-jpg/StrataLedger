@@ -1,4 +1,4 @@
-"""The general ledger service: draft journal entries (Phase 2.5, step 2).
+"""The general ledger service: draft journal entries (step 2) and posting (step 3) of Phase 2.5.
 
 This is the only module that writes `journal_entry`, `journal_line` and the entry counter (CLAUDE.md rule 7; a
 static test fails if any other file does). Step 2 covers drafts only: create, update, delete and read, with every
@@ -16,18 +16,34 @@ later steps and call the same functions.
 * `is_control_override` and `is_rounding_adjustment` are set by the posting code, never by a caller.
 * Manual sources only (none, Manual, Adjustment) for Human and Agent origin: a person cannot label a draft with a
   document source to escape the manual-entry rules. Import and System origin may use the others.
-* Drafts record the context's origin, so an Agent draft stays an Agent entry through posting. Nothing here stores
-  or assumes anything about hashing: columns are always named in SQL, never positional, and rows are read by name.
+* Drafts record the context's origin, so an Agent draft stays an Agent entry through posting. Columns are always
+  named in SQL, never positional, and rows are read by name.
+
+Posting (`post_journal_entry`, step 3) runs every check again on the stored draft, then, in ONE write transaction:
+sets the control-override flags, locks the entry counter row, reads it, increments it, seals the entry with the
+company's chain key (docs/audit_readiness_design.md 2.5) and writes is_posted, the number, who and when and the
+four chain columns in ONE update. Any failure rolls the whole transaction back, so numbers stay gapless and the
+chain has no hole. Until step 4 builds approvals, posting FAILS CLOSED for anything that would need one: Agent
+and Import entries, manual entries over the approval threshold, documents whose type requires approval.
+Reversals (step 5) and automatic reversals are refused here.
 """
 import sqlite3
 from datetime import date
 
-from modules.services import periods
+from modules.services import keys, ledger_chain, periods
 from modules.services.authz import authorize
-from modules.services.errors import NotFoundError, PeriodClosedError, PostingError, ValidationError
+from modules.services.errors import (
+    KeyUnavailableError, NotFoundError, PeriodClosedError, PostingError, ValidationError,
+)
 from modules.services.tx import read_connection, write_transaction
 
 CREATE = "je.create"
+POST = "je.post"
+APPROVAL_STEP_MESSAGE = "This entry needs the approval step, which is not available yet."
+# Document sources whose document type has its own "requires approval" switch (decision 1.6).
+DOCUMENT_APPROVAL_TYPES = {"Bill": "Bill", "Payment": "Payment", "Import": "Import batch", "Payroll": "Import batch"}
+# A manual line to these controlled accounts must name the contact (A5): (contact flag, word).
+CONTACT_RULES = {"AR": ("is_customer", "customer"), "AP": ("is_vendor", "vendor")}
 VIEW = "ledger.view"
 MANUAL_SOURCES = (None, "Manual", "Adjustment")
 OTHER_SOURCES = ("Invoice", "Bill", "Payment", "Payroll", "Import", "Deferral", "Completion", "Conversion")
@@ -274,3 +290,182 @@ def list_entries(context, *, state=None):
         return [dict(r) for r in conn.execute(sql + " ORDER BY entry_id")]
     finally:
         conn.close()
+
+
+# --- Posting (step 3) ------------------------------------------------------------------------------------------
+
+class DateWarningsError(ValidationError):
+    """The entry date is far ahead or behind (L6); post again with acknowledge_date_warnings=True.
+
+    `warnings` is the list from periods.entry_date_warnings: [{'code', 'message'}].
+    """
+
+    def __init__(self, message, warnings):
+        super().__init__(message)
+        self.warnings = warnings
+
+
+def _money(cents):
+    sign = "-" if cents < 0 else ""
+    cents = abs(cents)
+    return f"{sign}{cents // 100:,}.{cents % 100:02d}"
+
+
+def _company_code(context):
+    conn = read_connection(context.master_db_path)
+    try:
+        row = conn.execute("SELECT company_code FROM company_registry WHERE company_id = ?",
+                           (context.company_id,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise NotFoundError("This company is not registered on this computer")
+    return row["company_code"]
+
+
+def _settings(conn):
+    return conn.execute("SELECT * FROM company_settings WHERE id = 1").fetchone()
+
+
+def _fail_closed_on_approvals(conn, entry, settings, manual, debits):
+    """Until step 4 there is no approval step, so anything that would need one is refused (fail closed)."""
+    if entry["origin"] in ("Agent", "Import"):
+        raise PostingError(APPROVAL_STEP_MESSAGE)
+    if manual and settings is not None and settings["manual_entry_approval"]:
+        threshold = settings["manual_entry_approval_threshold_cents"]
+        if threshold is None or debits > threshold:          # R5: strictly over; none means every manual entry
+            raise PostingError(APPROVAL_STEP_MESSAGE)
+    document_type = DOCUMENT_APPROVAL_TYPES.get(entry["source"])
+    if document_type:
+        row = conn.execute("SELECT requires_approval FROM document_approval_setting WHERE document_type = ?",
+                           (document_type,)).fetchone()
+        if row is not None and row["requires_approval"]:
+            raise PostingError(APPROVAL_STEP_MESSAGE)
+
+
+def _control_overrides(conn, rows, settings):
+    """The manual lines that post to controlled accounts (A5). Refused when the control is off; a manual AR or
+    AP line must name its customer or vendor. Returns the line ids to flag is_control_override."""
+    allowed = settings["allow_manual_control_je"] if settings is not None else 1
+    flagged = []
+    for number, row in enumerate(rows, start=1):
+        account = conn.execute("SELECT code, name, control_type FROM account WHERE account_id = ?",
+                               (row["account_id"],)).fetchone()
+        if account["control_type"] is None:
+            continue
+        label = f"{account['code']} {account['name']}"
+        if not allowed:
+            raise PostingError(f"Line {number}: {label} is a controlled account ({account['control_type']}) and "
+                               "manual entries to it are turned off in Settings > Controls; use the document that "
+                               "posts to it instead")
+        rule = CONTACT_RULES.get(account["control_type"])
+        if rule:
+            flag, word = rule
+            contact = None
+            if row["contact_id"] is not None:
+                contact = conn.execute(f"SELECT {flag} FROM contact WHERE contact_id = ?",
+                                       (row["contact_id"],)).fetchone()
+            if contact is None or not contact[flag]:
+                raise PostingError(f"Line {number}: a manual line to {label} must name the {word}")
+        flagged.append(row["line_id"])
+    return flagged
+
+
+def _active_key(conn, context):
+    """The company's active chain key from the key provider, checked against the fingerprint in the file."""
+    row = conn.execute("SELECT key_id, fingerprint FROM ledger_chain_key WHERE is_active = 1").fetchone()
+    if row is None:
+        raise KeyUnavailableError(keys.NO_KEY_MESSAGE)
+    key = keys.get_provider().chain_key(context.company_id, row["key_id"])
+    if ledger_chain.fingerprint(key.use_for_hmac()) != row["fingerprint"]:
+        raise KeyUnavailableError(f"The ledger key on this computer does not match this company's key "
+                                  f"(key {row['key_id']}); nothing was posted.")
+    return row["key_id"], key
+
+
+def _next_entry_number(conn):
+    """Lock the counter row, read, increment (L4). SQLite: BEGIN IMMEDIATE (write_transaction) already holds the
+    write lock. PostgreSQL: SELECT ... FOR UPDATE on this row. A rollback returns the number."""
+    last = conn.execute("SELECT last_number FROM entry_number_sequence WHERE id = 1").fetchone()["last_number"]
+    conn.execute("UPDATE entry_number_sequence SET last_number = ? WHERE id = 1", (last + 1,))
+    return last + 1
+
+
+def _chain_head(conn):
+    row = conn.execute("SELECT chain_hash FROM journal_entry WHERE is_posted = 1 "
+                       "ORDER BY entry_number DESC LIMIT 1").fetchone()
+    return row["chain_hash"] if row is not None else ledger_chain.GENESIS
+
+
+def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_warnings=False):
+    """Post a draft: check it again, number it, seal it. Returns {'entry_id', 'entry_number', 'warnings'}.
+
+    A Human-origin post needs confirm=True (R2). Date warnings (L6, Human origin only) raise DateWarningsError
+    until acknowledge_date_warnings=True; they never block an open period.
+    """
+    authorize(context, POST, record_type="journal_entry", record_id=entry_id)
+    if context.origin == "Human" and confirm is not True:
+        raise ValidationError("Confirm the posting first; a posted entry can only be corrected by reversing it")
+    if context.origin in ("Agent", "Import"):
+        raise PostingError(APPROVAL_STEP_MESSAGE)
+    company_code = _company_code(context)
+    with write_transaction(context.company_db_path, context) as conn:
+        entry = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+        if entry is None:
+            raise NotFoundError("That journal entry does not exist")
+        if entry["is_posted"]:
+            raise PostingError("This entry is already posted")
+        if entry["reverses_entry_id"] is not None:
+            raise PostingError("A reversal is posted by the reverse or void action, not here")
+        if entry["auto_reverse_date"] is not None:
+            raise PostingError("This entry has an automatic reversal date, which is not available yet; "
+                               "clear the date to post it")
+        period_id = periods.resolve_entry_period(conn, entry["entry_date"], entry["period_id"])
+        period = conn.execute("SELECT name, is_closed, is_adjustment_period FROM fiscal_period WHERE period_id = ?",
+                              (period_id,)).fetchone()
+        if period["is_closed"]:
+            raise PeriodClosedError(f"{period['name']} is closed; reopen it or date the entry in an open period")
+        check_entry_lines(conn, entry_id)
+        rows = conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,)).fetchall()
+        if len(rows) < 2:
+            raise PostingError("A journal entry needs at least two lines to post")
+        debits = sum(r["debit_cents"] or 0 for r in rows)
+        credits = sum(r["credit_cents"] or 0 for r in rows)
+        if debits != credits or debits <= 0:
+            raise PostingError(f"This entry does not balance: debits {_money(debits)}, credits {_money(credits)}")
+        settings = _settings(conn)
+        manual = entry["source"] in MANUAL_SOURCES
+        _fail_closed_on_approvals(conn, entry, settings, manual, debits)
+        overrides = _control_overrides(conn, rows, settings) if manual else []
+        warnings = []
+        if context.origin == "Human" and not period["is_adjustment_period"]:
+            warnings = [w for w in periods.entry_date_warnings(conn, entry["entry_date"], context.today)
+                        if w["code"] in ("future", "past")]
+            if warnings and not acknowledge_date_warnings:
+                raise DateWarningsError("Check the date before posting: " + " ".join(w["message"] for w in warnings),
+                                        warnings)
+        key_id, key = _active_key(conn, context)
+        if overrides:                  # before sealing: the flag is part of the seal
+            conn.execute(f"UPDATE journal_line SET is_control_override = 1 WHERE line_id IN "
+                         f"({', '.join('?' * len(overrides))})", overrides)
+        number = _next_entry_number(conn)
+        prev_hash = _chain_head(conn)
+        header = dict(entry)
+        header.update(entry_number=number, posted_by=context.user_id, posted_at=context.now,
+                      chain_version=ledger_chain.CHAIN_VERSION, chain_key_id=key_id)
+        sealed_lines = [dict(r) for r in conn.execute(
+            "SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
+        dimensions = [dict(r) for r in conn.execute(
+            "SELECT d.* FROM journal_line_dimension AS d JOIN journal_line AS l ON l.line_id = d.line_id "
+            "WHERE l.entry_id = ?", (entry_id,))]
+        chain_hash = ledger_chain.seal(key.use_for_hmac(), company_code, prev_hash,
+                                       ledger_chain.canonical_entry(header, sealed_lines, dimensions))
+        try:
+            conn.execute(
+                "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
+                "chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, chain_hash = ? WHERE entry_id = ?",
+                (number, context.user_id, context.now, ledger_chain.CHAIN_VERSION, key_id, prev_hash, chain_hash,
+                 entry_id))
+        except sqlite3.IntegrityError as exc:
+            raise PostingError(f"The entry could not be posted: {exc}") from None
+    return {"entry_id": entry_id, "entry_number": number, "warnings": warnings}
