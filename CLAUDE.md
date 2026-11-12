@@ -1035,6 +1035,14 @@ Planned schema work, in build order (names only):
   or `git add .`: the planning chat writes files into this folder, and a blanket
   add would commit them by accident. Check `git status` and `git diff --cached`
   before every commit.
+- Before reporting a step: run step-reviewer; for auth, keys, recovery,
+  backups, email or feeds also run secrets-auditor; run mutation-tester on the
+  committed step. View-only screens may be delegated to screen-builder; the
+  main session reviews and commits its work. Run one agent that edits files at
+  a time. Copilot, when used, works only in its own worktree
+  (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`)
+  per .github/copilot-instructions.md, and copilot-reviewer reviews its
+  commits before merge.
 - Finish every task with a summary: files changed, tests run, anything
   uncertain.
 - Planning and review happen in the Claude chat; this tool performs the tasks

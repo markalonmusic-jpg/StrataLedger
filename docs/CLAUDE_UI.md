@@ -30,6 +30,10 @@ to copy. Where a mockup and an accounting rule conflict, the rule wins.
 8. Long operations never block the UI thread.
 9. Anything the AI Copilot suggests is shown as a suggestion that a person must
    accept. The UI never labels an AI action as done unless a person approved it.
+10. Every screen declares a stable page key, lowercase snake_case in the form
+    `<area>.<screen_or_action>` (for example `setup.first_run`,
+    `banking.reconcile`, `customers.create`). Page keys are unique across all
+    views.
 
 ---
 
