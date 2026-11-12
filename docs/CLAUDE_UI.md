@@ -2,7 +2,8 @@
 
 Read this before creating or changing any view in `modules/`. It applies to
 every screen. The root CLAUDE.md still governs: if this file and the root
-CLAUDE.md disagree, the root CLAUDE.md wins.
+CLAUDE.md disagree, the root CLAUDE.md wins. docs/design.md is a DRAFT with
+more visual detail; where it and this file disagree, this file wins.
 
 Source: three mockups (Command Center, Customer Intake Form, New Transaction
 Posting). The mockups are the VISUAL DIRECTION only. They contain mock data
@@ -25,8 +26,11 @@ to copy. Where a mockup and an accounting rule conflict, the rule wins.
    them and shows a dialog (section 8). Never navigate away after a failed save.
 6. Money is always shown formatted (`$1,500.00`), never as raw cents. Input is
    parsed with `Decimal` and converted to integer cents by one shared helper.
+   (That helper does not exist yet. The first screen that needs it adds it,
+   with tests, to a no-Tk module; no view writes its own.)
 7. Dates follow the company date format (`company_settings.date_format`) for
-   display and entry; storage is strict ISO. Use the shared formatter.
+   display and entry; storage is strict ISO. Use the shared formatter (today
+   `new_company_model.format_date`; it moves to the shared module with rule 6).
 8. Long operations never block the UI thread.
 9. Anything the AI Copilot suggests is shown as a suggestion that a person must
    accept. The UI never labels an AI action as done unless a person approved it.
@@ -66,22 +70,28 @@ When no company is open, show the "No Company Open" launcher, not the shell.
 ## 3. Visual language
 
 Dark theme by default; a light theme is a planned option (PROPOSED), so every
-color is a token, never a literal. Approximate values from the mockups; put the
-exact ones in `Theme` once:
+color is a token, never a literal. The tokens are the attributes of
+`config.Theme`; the values live only in `config.py`. Use these names (a name
+that is not in `config.py` does not exist: add it there first, once):
 
-| Token | Approx. value | Use |
-|---|---|---|
-| bg_app | #0B0F19 | window background |
-| bg_panel | #111827 | sidebar, drawer, top bar |
-| bg_card | #151B2B | cards and form sections |
-| border | #1F2937 | card and input borders |
-| text_primary | #F3F4F6 | headings, values |
-| text_secondary | #9CA3AF | labels, captions |
-| accent | #2563EB | primary buttons, active nav, links |
-| success | #22C55E | won, posted, paid |
-| warning | #F59E0B | stalled, due soon, needs review |
-| danger | #EF4444 | errors, void, overdue |
-| neutral | #6B7280 | draft, inactive (decoration only, never for text) |
+| Use | `Theme` token |
+|---|---|
+| window background | `bg_color` |
+| sidebar, drawer, top bar | `sidebar_bg` |
+| cards and form sections | `glass_panel` |
+| card and input borders | `glass_border` |
+| input fill | `input_bg` |
+| headings, values | `text_primary` |
+| labels, captions | `text_secondary` |
+| low-emphasis text (check its contrast, section 9) | `text_muted` |
+| primary buttons, active marks | `accent` (as text: `accent_text`) |
+| won, posted, paid | `success_glow` |
+| stalled, due soon, needs review | `warning_glow` |
+| errors, void, overdue | `error_glow` |
+| draft, inactive (decoration only, never for text) | `neutral` |
+
+Where this file says "danger", "success" or "warning" it means `error_glow`,
+`success_glow` and `warning_glow`.
 
 - **Typography:** one sans family. Page title large and bold; section titles
   small, bold, uppercase, letter-spaced, accent colored; field labels small
@@ -271,11 +281,14 @@ exact ones in `Theme` once:
 - The mockups were drawn for the web: glow effects, blur, gradients and
   semi-transparent layers are NOT available. Approximate them with flat tinted
   fills, borders and the `Theme` tokens. Do not add image assets for effects.
-- Build screens from small reusable widgets kept in one shared file
-  (`modules/ui_components.py`, PROPOSED): StepSection, KpiCard, AlertRow,
-  QuickActionCard, DataTable, MoneyEntry, DateEntry, SegmentedControl,
-  SummaryBar, Banner, ConfirmDialog, ErrorDialog, EmptyState. A view assembles
-  them; it does not restyle them.
+- Build screens from small reusable widgets kept in one shared file,
+  `modules/ui_components.py`. Built: `StrataModal`, the dialogs `show_info`,
+  `show_success`, `show_warning`, `show_error` and `ask_confirm`, `Banner`,
+  `PageHeader`, `StepSection`, `KpiCard`, `EmptyState`, `SummaryBar` and
+  `DataTable` (not usable until `Theme.create_scrollbar` exists). Not built:
+  AlertRow, QuickActionCard, MoneyEntry, DateEntry, SegmentedControl. A
+  missing widget is added to that file, with a test, never inside a view. A
+  view assembles them; it does not restyle them.
 - Destroy or reuse widgets when navigating; do not leak frames or bindings.
 - Run queries and imports off the UI thread; update widgets only on the UI
   thread.
