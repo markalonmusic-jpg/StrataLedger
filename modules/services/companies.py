@@ -10,7 +10,7 @@ import unicodedata
 import uuid
 
 import modules.database as database
-from modules.services import accounts, auth, authz, chart_templates, clock, company_settings, storage
+from modules.services import accounts, auth, authz, chart_templates, clock, company_settings, role_templates, storage
 from modules.services.context import ServiceContext
 from modules.services.errors import NotFoundError, ValidationError
 from modules.services.paths import resolve_company_path
@@ -142,6 +142,7 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
         raise ValidationError("Choose a chart template or give your own chart")
     else:
         rows = chart_templates.load_template("construction" if template is _DEFAULT else template)
+    chart_key = template if isinstance(template, str) else "construction"
     if (isinstance(first_fiscal_year, bool) or not isinstance(first_fiscal_year, int)
             or not 1900 <= first_fiscal_year <= 2200):
         raise ValidationError("Enter the first fiscal year to record, such as 2027")
@@ -186,7 +187,8 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
     try:
         os.makedirs(os.path.dirname(temp), exist_ok=True)
         database.ensure_company_database(temp)
-        with write_transaction(temp, auth._Actor(session.user_id)) as conn:
+        actor = auth._Actor(session.user_id)
+        with write_transaction(temp, actor) as conn:
             values = {"company_name": (display_name or "").strip() or legal_name,
                       "tax_id": (tax_id or "").strip() or None,
                       "fiscal_year_start": f"{fiscal_year_start_month:02d}-01", "base_currency": defaults["currency"],
@@ -213,6 +215,8 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
                 raise ValidationError("The chart has no account for: " + ", ".join(missing))
             if copying:
                 _copy_roles_policies_controls(conn, parent_path)
+            else:
+                role_templates.seed_starter_roles(conn, chart_key, actor.now)
         with write_transaction(session.master_db_path, auth._Actor(session.user_id)) as conn:
             if conn.execute("SELECT 1 FROM company_registry WHERE company_code = ?", (code,)).fetchone():
                 raise ValidationError(f"The company code {code} is already used")

@@ -223,9 +223,25 @@ def test_new_company_opens_through_the_normal_path_and_is_audited(world, master)
     assert cs.missing_required_roles(context) == []
 
 
-def test_only_admin_role_is_seeded(world, master):
+def test_starter_roles_are_seeded_from_the_approved_table(world, master):
+    from modules.services import role_templates as rt
     create(master)
-    assert rows_in(file_of(world, "ACME"), "SELECT role_code FROM role") == [{"role_code": "Admin"}]
+    path = file_of(world, "ACME")
+    roles = {r["role_code"]: r["project_scope"] for r in rows_in(path, "SELECT role_code, project_scope FROM role")}
+    assert set(roles) == {"Admin"} | set(rt.ROLES)
+    assert roles["Project Manager"] == "Assigned" and roles["Controller"] == "All"
+    for role in rt.ROLES:
+        granted = {r["permission_code"] for r in rows_in(
+            path, "SELECT permission_code FROM role_permission WHERE role_code = ?", (role,))}
+        assert granted == rt.permissions_for(role), role
+    assert rows_in(path, "SELECT COUNT(*) AS n FROM approval_limit") == [{"n": 0}]
+
+
+def test_general_template_omits_the_construction_roles(world, master):
+    create(master, template="general")
+    roles = {r["role_code"] for r in rows_in(file_of(world, "ACME"), "SELECT role_code FROM role")}
+    assert not roles & {"Project Manager", "General Manager", "Warehouse", "Foreman"}
+    assert {"Controller", "Viewer", "Sales"} <= roles
 
 
 # --- All or nothing --------------------------------------------------------------------------------
@@ -371,7 +387,8 @@ def test_subsidiary_copies_chart_pointers_roles_policies_and_controls(world, mas
     assert s["company_name"] == "Child Works" and s["tax_id"] is None
     assert rows_in(cpath, "SELECT a.code FROM company_settings s JOIN account a ON a.account_id = s.ar_acct_id") == \
         [{"code": "1110"}]
-    assert {r["role_code"] for r in rows_in(cpath, "SELECT role_code FROM role")} == {"Admin", "BOOKKEEPER"}
+    assert {r["role_code"] for r in rows_in(cpath, "SELECT role_code FROM role")} ==         {r["role_code"] for r in rows_in(ppath, "SELECT role_code FROM role")}
+    assert "BOOKKEEPER" in {r["role_code"] for r in rows_in(cpath, "SELECT role_code FROM role")}
     assert {r["permission_code"] for r in rows_in(
         cpath, "SELECT permission_code FROM role_permission WHERE role_code = 'BOOKKEEPER'")} == {"ledger.view", "je.create"}
     assert rows_in(cpath, "SELECT requires_approval FROM document_approval_setting WHERE document_type = 'Bill'") == \
@@ -455,3 +472,26 @@ def test_list_companies_for_a_regular_user_shows_only_granted_companies(world, m
     assert [c["company_id"] for c in listed] == [one["company_id"]]
     assert {"company_code", "legal_name", "parent_company_id", "is_archived"} <= set(listed[0])
     assert two["company_id"] in [c["company_id"] for c in companies.list_companies(master)]
+
+
+# --- Time zone data is required (H2; no silent fallback) ---------------------------------------------
+
+def test_open_company_refuses_when_time_zone_data_is_missing(world, master, monkeypatch):
+    import zoneinfo
+    from modules.services.errors import InstallationError
+    created = create(master)
+
+    def missing(name):
+        raise zoneinfo.ZoneInfoNotFoundError(name)
+    monkeypatch.setattr(zoneinfo, "ZoneInfo", missing)
+    with pytest.raises(InstallationError) as caught:
+        companies.open_company(master, created["company_id"])
+    assert "reinstall" in str(caught.value).lower()
+
+
+def test_open_company_gives_the_company_local_date(world, master):
+    import dataclasses  # noqa: F401
+    created = create(master, country="PH")
+    context = companies.open_company(master, created["company_id"])
+    from modules.services import clock
+    assert context.today == clock.local_today(context.now, "Asia/Manila")

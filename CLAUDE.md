@@ -121,8 +121,9 @@ in code (`tests/test_config_paths.py` fails on one).
 - `templates/coa/` - the approved chart-of-accounts templates (`construction.csv`, `general.csv`, decision I1)
   and their README. Read through `modules/services/storage.py` and `chart_templates.py`; "Import my own CSV"
   uses the same parser (`csv_table.py`).
-- `requirements.txt` - runtime packages (`customtkinter`, `tzdata`; the installed app bundles `tzdata` so company
-  time zones work on Windows).
+- `requirements.txt` - runtime packages (`customtkinter`, `tzdata`). `tzdata` is a hard requirement: if a
+  company's time zone cannot be loaded, `open_company` raises `InstallationError` ("reinstall"); there is no
+  fallback to the UTC date. The test environment installs it too, and the time-zone tests never skip.
 - `migrations/` - the baseline schema, one file per database kind
   (`001_company.sql`, `001_master.sql`), which `database.py` runs to build
   databases at runtime. Until the first release these files are edited
@@ -605,8 +606,10 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
       `archive_company` / `restore_company` / `export_company` / `list_companies` (S9), `accounts.py` (C1-C3),
       `company_settings.py` (Controls page, per-document "requires approval" default off, system accounts),
       `bank_accounts.py` (C4, masked), `storage.py`, `csv_table.py`, `chart_templates.py`, `sequences.py`
-      (voucher numbers), `ServiceContext.now` / `today`, and the H2 / H5 follow-through. The 11 starter roles are
-      drafted in docs/role_templates_draft.md; only Admin is seeded until the owner approves it.
+      (voucher numbers), `ServiceContext.now` / `today`, and the H2 / H5 follow-through. The 11 starter roles
+      (docs/role_templates.md, approved; code in `role_templates.py`, checked against the doc by a test) are
+      seeded in every company built from a template or CSV; a copied subsidiary gets its parent's roles. No
+      approval limits are seeded.
     - **2.4b:** fiscal years and periods (12 plus 13 and 14, hidden unless the Adjustment periods control is on),
       period close with warnings or blocks, reopen with reason, "books closed through", year close.
   - **2.5 Ledger services:** the controls-audit rules; every test in
@@ -827,14 +830,14 @@ Planned schema work, in build order (names only):
   `require_separate_approver = 1`); master `company_registry.is_archived` and an immutable company code.
   Decision C3 changed one old rule: an account number may change after posting (logged, Admin); type, parent,
   control type and normal balance still lock. Next: 2.4b, then 2.5.
+- 2026-11-12: `tzdata` made a hard requirement (no UTC fallback); starter roles seeded from the approved
+  docs/role_templates.md; decision L7 amended (`year.reopen` for Admin and Controller, typed year name).
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
   purpose until the auth functions take `now` as an argument, because throttle and recovery run before any
   context exists. `auth.login`, `companies.open_company` and `ServiceContext.__post_init__` are context builders
   and are exempt.
-- `tzdata` is not installed in this development environment, so the company-local `today` falls back to the UTC
-  date with a logged warning and three time-zone tests are skipped. `pip install -r requirements.txt` fixes both.
 - `modules/views_wizard.py` inserts contacts with raw SQL and `is_customer = 1`
   but no `customer_code`, so the 2.6 CHECK rejects it. Phase 3 rewrites that
   screen to call `contacts.create_contact` (allow-listed under rule 11 until

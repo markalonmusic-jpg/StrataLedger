@@ -54,3 +54,7 @@ class DuplicateContactError(ValidationError):
     def __init__(self, message, matches):
         super().__init__(message)
         self.matches = matches
+
+
+class InstallationError(ServiceError):
+    """Something the installation must provide is missing or damaged (for example time zone data)."""

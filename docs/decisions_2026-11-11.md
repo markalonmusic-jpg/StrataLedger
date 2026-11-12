@@ -538,3 +538,8 @@ next touched. Paths use the real package name `modules/services/`.
   the definition says the company figure is entered separately. Reports can
   then show ratios by department or profit center (for example revenue per
   head by profit center), matching the GL's dimension tags.
+- L7 amended (2026-11-11): year.reopen is seeded to Admin and
+  Controller. Reopening a closed year needs two confirmations in the UI
+  (1: a warning of the impact, Continue/Cancel; 2: type the year name,
+  e.g. FY2027, plus a reason). The service reopen_year requires reason and
+  confirm_year_name matching the year's name, so no caller can skip it.

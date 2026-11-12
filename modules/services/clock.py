@@ -6,6 +6,8 @@ company's local date); contexts are built by the context builders, which call ut
 import logging
 from datetime import datetime, timezone
 
+from modules.services.errors import InstallationError
+
 _logger = logging.getLogger("strataledger.clock")
 
 
@@ -18,15 +20,18 @@ def local_today(now_iso, tz_name):
     """The company-local ISO date for a UTC instant.
 
     An entry made at 6 pm in California must not default to tomorrow's date, so `today` follows
-    company_settings.timezone, not UTC. If the zone is unknown, or the tzdata package is not
-    installed, the UTC date is used and a warning is logged.
+    company_settings.timezone, not UTC. A company with no time zone set (built before 2.4a) uses UTC.
+    If the zone cannot be loaded (the tzdata package is missing or damaged) this raises
+    InstallationError: there is no silent fallback to the UTC date.
     """
     instant = datetime.fromisoformat(now_iso)
     if not tz_name or tz_name == "UTC":
         return instant.astimezone(timezone.utc).date().isoformat()
     try:
         from zoneinfo import ZoneInfo
-        return instant.astimezone(ZoneInfo(tz_name)).date().isoformat()
+        zone = ZoneInfo(tz_name)
     except Exception as error:  # noqa: BLE001  (ZoneInfoNotFoundError, ValueError, missing tzdata)
-        _logger.warning("time zone %r is not available (%s); using the UTC date", tz_name, error)
-        return instant.astimezone(timezone.utc).date().isoformat()
+        _logger.error("time zone %r could not be loaded: %s", tz_name, error)
+        raise InstallationError(
+            f"Time zone data is missing for {tz_name}; reinstall StrataLedger.") from None
+    return instant.astimezone(zone).date().isoformat()
