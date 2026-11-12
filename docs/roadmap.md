@@ -170,6 +170,9 @@ See docs/crm_pm_design.md section 11.
     screen that starts a full verification (Ledger integrity, period and year close, Books closed through,
     backups) runs it in the background with progress and a responsive window (docs/audit_readiness_design.md 2.6).
 15. Review draft/ui-mockups (design-chat mockups plus unreviewed Theme/ui_components changes) at the start of Phase 3.
+16. With the backup step (Phase 5): the passphrase-protected company key bundle (Master only, K8), so an exported
+    or backed-up company can be verified on another computer; then drop the `EXPORT_NOT_VERIFIABLE` warning
+    (KS11). Every company backup also backs up `system_master.db` (KS10).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned

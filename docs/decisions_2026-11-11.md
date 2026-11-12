@@ -728,3 +728,31 @@ comes in v1.1, and passwords are never emailed. All of these are integrity rules
   administrator made these backup codes, so they have seen them. Make your own set now?" with "Make new codes"
   and "Later". "Later" lets the user in; the prompt returns at every sign-in until the current set is one the
   user issued. The test is the set's `issued_by` (not the user), so no extra flag is stored.
+
+## KS. Key store, Phase 2.5 step 1c (decided 2026-11-12)
+
+The step 1c plan was approved with these answers (design: docs/audit_readiness_design.md 2.7).
+- KS1 Add `cryptography` (pinned in requirements.txt) for AES-256-GCM. PyInstaller is a developer tool, kept out of
+  the runtime requirements.
+- KS2 The recovery-code key-encryption key comes from `hashlib.scrypt` (N=2^15, r=8, p=1, its own salt, never the
+  login hash's), not from `cryptography`'s scrypt. The recovery code holds 160 random bits.
+- KS3 `KeyProvider.get_key(company_id, key_id)` keeps its signature; the local provider matches the master's
+  wrapped key to the company's `ledger_chain_key` row by fingerprint.
+- KS4 `SecretKey` gets a second accessor, `use_for_aead()`, for AES-GCM, so every use of the bytes stays named.
+- KS5 If the recovery code is valid but the installation key cannot be unwrapped with it (a damaged wrap), the
+  Master's password is still reset and the result says "the ledger key could not be restored", so the key-lost
+  path can follow.
+- KS6 Creating a company is refused while the installation key is locked (DPAPI failed and no recovery yet):
+  "Ask the Master to restore the ledger key with the recovery code first."
+- KS7 `create_company` takes a key-store hook so the test suite can use its fixed test key. The hook works only
+  when STRATALEDGER_ALLOW_TEST_KEYS is "1", like `FixedKeyProvider`, and a test proves it refuses otherwise.
+- KS8 The key-lost epoch (new key, old retired as `Key lost`, a checkpoint) is a service in step 1c; its screen
+  is Phase 3.
+- KS9 The master key tables carry no audit triggers (like `master_recovery`), so wrapped blobs never reach
+  `audit_log`; each change writes an `auth_event` without the blob.
+- KS10 `system_master.db` holds every company's wrapped chain keys. Losing it makes every company's ledger
+  unverifiable (the data stays readable). The backup design (Phase 5) must back up the master with every company
+  backup.
+- KS11 Until the passphrase-protected key bundle exists (K8), `export_company` returns a warning that the exported
+  file cannot be verified on another computer, and the export screen shows it. The bundle (Master only) is on the
+  backlog for the backup step.

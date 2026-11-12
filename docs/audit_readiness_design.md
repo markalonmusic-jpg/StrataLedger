@@ -217,7 +217,11 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
 * **Export with a company** (K8): the company's chain keys travel only inside the passphrase-protected
   company bundle (AES-GCM; the key comes from a passphrase the Master types). Only the Master can export or
   import one. A plain `export_company` copy carries no keys: it can still be read, but its chain can be
-  verified only on the source installation.
+  verified only on the source installation. Until the bundle is built, `export_company` returns the warning
+  `EXPORT_NOT_VERIFIABLE` with its path, and the export screen must show it (KS11).
+* **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
+  so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
+  must therefore also back up the master (section 9).
 * **Rotation:** "Rotate ledger key" (Master) creates a new key, retires the old one (`Rotation`) and writes
   a checkpoint. The next entry is sealed with the new key and chains to the old key's last hash. Old keys
   are kept, wrapped, forever, because verification needs them.
@@ -436,6 +440,8 @@ is:
   checklist until reviewed.
 * **Logged as sensitive:** every backup, restore, refusal and override is written to `backup_event` and the
   audit trail.
+* **The master travels with every backup** (KS10): it holds the wrapped chain keys of every company, so a
+  company backup without a matching master backup cannot be verified after the master is lost.
 
 ---
 
