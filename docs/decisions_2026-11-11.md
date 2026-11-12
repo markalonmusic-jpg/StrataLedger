@@ -513,3 +513,28 @@ next touched. Paths use the real package name `modules/services/`.
 - All visual values (colors, type scale, spacing, radii) live in
   config.Theme; views contain no literal styling. This also makes the
   deferred light theme a token change only.
+
+### I. Management report layouts and KPIs (decided 2026-11-11)
+- I1 Chart of accounts templates in docs/coa_draft/ are APPROVED by the
+  owner; 2.4 copies them to templates/coa/.
+- I2 Report layouts: named, company-defined groupings of accounts into
+  lines and subtotals for management reporting, separate from the chart
+  hierarchy; several per company; each account maps to at most one line per
+  layout; unmapped accounts show in an "Unmapped" line so totals tie to the
+  GL. Used by report presets (G) and the Management basis (A1). Built in the
+  v1.0 reports step.
+- I3 KPIs: kpi_definition (name, unit count/money cents/percent, rollup sum
+  or point-in-time, manual or calculated) and one kpi_value per KPI per
+  period (entered_by, note). Values lock with the period close; corrections
+  need a reopen with a logged reason. "KPIs entered" is a period-close check
+  (warning by default, can be a block). Reports can use KPIs in ratios.
+  v1.0: manual KPIs plus calculated revenue and gross margin; CRM KPIs
+  (leads, conversion) in v1.1.
+- I4 KPIs can be split by dimension: a kpi_definition lists which
+  dimension types it is recorded by (for example Department or Profit
+  Center), and each kpi_value can carry a dimension_value_id (NULL = whole
+  company). Company totals roll up from the dimension values for "sum"
+  KPIs; "point-in-time" KPIs (headcount) also sum across dimensions unless
+  the definition says the company figure is entered separately. Reports can
+  then show ratios by department or profit center (for example revenue per
+  head by profit center), matching the GL's dimension tags.
