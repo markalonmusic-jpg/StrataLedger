@@ -205,6 +205,9 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   saved in the company file but not the master says so (`CHECKPOINT_PARTLY_SAVED`). `tests/test_page_keys.py` now
   runs the app's real router on a stand-in window and reads off which view module each sidebar key opens and
   which row it marks active, instead of a hand-written table.
+- 2026-11-12: Mutation check of the close checkpoints (44 mutants, 36 killed); tests for the five real gaps
+  (fbbabe2). A verification or close that signs no checkpoint now always says why in `no_checkpoint_reason` (no
+  ledger key on this computer, no active key in the company, or the write failed); it is never silent.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

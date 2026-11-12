@@ -318,12 +318,14 @@ def _verify_and_record(context, mode):
 CLOSE_KINDS = {"Period close": "fiscal_period", "Year close": "fiscal_year"}
 CHECKPOINT_NOT_SAVED = ("The close is done, but its ledger checkpoint could not be saved. Run a ledger check to "
                         "record one.")
-
-
 CHECKPOINT_PARTLY_SAVED = ("The close is done and its ledger checkpoint is saved in the company file, but not in "
                            "this computer's copy. Run a ledger check to record one.")
 _CLOSED_SQL = {"Period close": "SELECT is_closed AS closed FROM fiscal_period WHERE period_id = ?",
                "Year close": "SELECT is_year_closed AS closed FROM fiscal_year WHERE year_id = ?"}
+# Why no checkpoint was signed: every result whose recorded_in is empty carries one of these, never nothing.
+NO_CHECKPOINT_KEY_UNAVAILABLE = ("No ledger checkpoint was signed: the ledger key is not available on this "
+                                 "computer.")
+NO_CHECKPOINT_NO_KEY = "No ledger checkpoint was signed: this company has no active ledger key yet."
 
 
 def record_close_checkpoint(context, verification, *, kind, ref_id):
@@ -333,8 +335,8 @@ def record_close_checkpoint(context, verification, *, kind, ref_id):
     Unavailable records nothing (K16). Before signing it confirms the period or year is closed and the verified
     hash is the one stored in the ledger. The close already stands, so nothing here raises after the commit: a
     refused permission, a failed confirmation or a failed write is logged and reported in 'checkpoint_error'
-    (CHECKPOINT_PARTLY_SAVED when the company row was written but the master copy was not). Only periods.py calls
-    it (a static test checks)."""
+    (CHECKPOINT_PARTLY_SAVED when the company row was written but the master copy was not). A result that recorded
+    nothing always says why in 'no_checkpoint_reason'. Only periods.py calls it (a static test checks)."""
     if kind not in CLOSE_KINDS:
         raise ValidationError("Unknown close checkpoint")
     result = {**verification, "checkpoint_id": None, "recorded_in": []}
@@ -346,6 +348,8 @@ def record_close_checkpoint(context, verification, *, kind, ref_id):
     except Exception:                       # noqa: BLE001  (logged and reported; the close has committed)
         _logger.exception("The %s checkpoint could not be written (company_id=%s)", kind.lower(), context.company_id)
         result["checkpoint_error"] = CHECKPOINT_PARTLY_SAVED if result["recorded_in"] else CHECKPOINT_NOT_SAVED
+        if not result["recorded_in"]:
+            result["no_checkpoint_reason"] = CHECKPOINT_NOT_SAVED
     return result
 
 
@@ -371,8 +375,10 @@ def _confirm_close(context, verification, kind, ref_id):
 def _record(context, result, *, kind, ref_type=None, ref_id=None):
     """Write a verification result as a signed checkpoint row (company file unless read-only) and its master
     mirror. Fills in result['checkpoint_id'] and result['recorded_in'] as each write commits, so a caller that
-    catches a failure knows what was saved. Returns the result."""
+    catches a failure knows what was saved. When it signs nothing it says why in result['no_checkpoint_reason'].
+    Returns the result."""
     if result["status"] == UNAVAILABLE:
+        result["no_checkpoint_reason"] = NO_CHECKPOINT_KEY_UNAVAILABLE
         return result
     company_code = _company_code(context)
     key_for = _key_for(context)
@@ -382,6 +388,7 @@ def _record(context, result, *, kind, ref_type=None, ref_id=None):
     finally:
         conn.close()
     if active is None:
+        result["no_checkpoint_reason"] = NO_CHECKPOINT_NO_KEY
         return result
     checkpoint = {
         "created_at": context.now, "created_by": context.user_id, "kind": kind,
@@ -394,6 +401,7 @@ def _record(context, result, *, kind, ref_type=None, ref_id=None):
     try:
         checkpoint["mac"] = ledger_chain.checkpoint_mac(key_for(active["key_id"]), company_code, checkpoint)
     except KeyUnavailableError:
+        result["no_checkpoint_reason"] = NO_CHECKPOINT_KEY_UNAVAILABLE
         return result
     columns = ", ".join(checkpoint)
     marks = ", ".join("?" * len(checkpoint))

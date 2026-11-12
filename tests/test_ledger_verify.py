@@ -820,16 +820,17 @@ def test_a_close_on_an_empty_ledger_signs_a_checkpoint_through_zero(env, ctx):
     _assert_signed_and_mirrored(env, checkpoint)
 
 
-def test_a_close_with_no_active_key_signs_nothing_and_reports_no_error(env, ctx):
+def test_a_close_with_no_active_key_says_why_no_checkpoint_was_signed(env, ctx):
     _close_earlier_months(env)
     _retire_the_key(env)
     result = periods.close_period(ctx, march(env))
     assert rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["is_closed"] == 1
     assert "checkpoint_error" not in result and result["recorded_in"] == []
+    assert result["no_checkpoint_reason"] == ledger_verify.NO_CHECKPOINT_NO_KEY
     assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
 
 
-def test_a_close_whose_key_goes_missing_before_signing_signs_nothing_quietly(env, ctx, four, monkeypatch):
+def test_a_close_whose_key_goes_missing_before_signing_says_why(env, ctx, four, monkeypatch):
     _close_earlier_months(env)
     real_key_for = ledger_verify._key_for
     calls = []
@@ -841,7 +842,40 @@ def test_a_close_whose_key_goes_missing_before_signing_signs_nothing_quietly(env
     monkeypatch.setattr(ledger_verify, "_key_for", key_for_then_gone)
     result = periods.close_period(ctx, march(env))
     assert result["status"] == "OK" and "checkpoint_error" not in result and result["recorded_in"] == []
+    assert result["no_checkpoint_reason"] == ledger_verify.NO_CHECKPOINT_KEY_UNAVAILABLE
     assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_close_without_a_key_says_why_no_checkpoint_was_signed(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    result = periods.close_period(ctx, march(env), acknowledge_warnings=True)
+    assert result["no_checkpoint_reason"] == ledger_verify.NO_CHECKPOINT_KEY_UNAVAILABLE
+    assert "checkpoint_error" not in result
+
+
+def test_a_close_checkpoint_that_fails_says_why_in_both_fields(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    def explode(*args, **kwargs):
+        raise RuntimeError("disk gone")
+    monkeypatch.setattr(ledger_chain, "checkpoint_mac", explode)
+    result = periods.close_period(ctx, march(env))
+    assert result["no_checkpoint_reason"] == result["checkpoint_error"] == ledger_verify.CHECKPOINT_NOT_SAVED
+
+
+def test_a_recorded_close_checkpoint_has_no_reason_field(env, ctx, four):
+    _close_earlier_months(env)
+    result = periods.close_period(ctx, march(env))
+    assert result["recorded_in"] == ["company", "master"] and "no_checkpoint_reason" not in result
+
+
+def test_a_ledger_check_that_signs_nothing_says_why(env, ctx, four, monkeypatch):
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    result = ledger_verify.verify_ledger(ctx, mode="full")
+    assert result["status"] == "Unavailable" and result["recorded_in"] == []
+    assert result["no_checkpoint_reason"] == ledger_verify.NO_CHECKPOINT_KEY_UNAVAILABLE
+    monkeypatch.setattr(keys, "_provider", keys.FixedKeyProvider(lh.TEST_CHAIN_KEY))
+    assert "no_checkpoint_reason" not in ledger_verify.verify_ledger(ctx, mode="full")
 
 
 def _count_full_verifications(monkeypatch):
