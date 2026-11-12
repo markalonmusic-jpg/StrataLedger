@@ -1,0 +1,13 @@
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+Backups/
+Uploaded_Files/
+fonts/
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+*.log
+Logs/

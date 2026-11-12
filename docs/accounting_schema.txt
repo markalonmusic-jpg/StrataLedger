@@ -1,0 +1,647 @@
+==============================================================================
+ACCOUNTING LIBREBASE - FULL SCHEMA (PLANNING DRAFT)
+Date: 2026-11-09
+Target: desktop application, SQLite database, one file per company
+==============================================================================
+
+CONVENTIONS
+- Money is stored as INTEGER cents ($12.34 = 1234). Money fields end in _cents.
+- Dates are text, ISO format YYYY-MM-DD. Timestamps are YYYY-MM-DD HH:MM:SS.
+- Booleans are INTEGER 0/1. Percentages are REAL (e.g. 0.10 = 10%).
+- PK = primary key.  FK -> table.column = foreign key.  (opt) = nullable.
+- Posted records are locked. Corrections are made with reversing entries.
+- Status/type value lists shown in [brackets] are suggested allowed values.
+
+
+TABLE INDEX
+ 1. System and settings   schema_version, company_settings, app_user, audit_log
+ 2. General ledger        account_type, account, fiscal_period, journal_entry,
+                          journal_line, bank_reconciliation
+ 3. Contacts and billing  contact, tax_rate, invoice, invoice_line, payment,
+                          payment_allocation
+ 4. Imports and staging   import_source, import_batch, import_mapping,
+                          staged_transaction, staged_line, time_entry
+ 5. Deferrals             deferral, deferral_schedule_line
+ 6. Projects              cost_code, estimate, estimate_line, project,
+                          contract, contract_line, change_order,
+                          change_order_line, project_budget, poc_snapshot
+
+
+==============================================================================
+1. SYSTEM AND SETTINGS
+==============================================================================
+
+TABLE schema_version                  (single row; used for app updates)
+  version                    INTEGER
+
+TABLE company_settings                (single row, id = 1)
+  id                         INTEGER   PK
+  company_name               TEXT
+  fiscal_year_start          TEXT      MM-DD
+  base_currency              TEXT
+  tax_id                     TEXT
+  next_invoice_number        INTEGER
+  contract_revenue_acct_id   INTEGER   FK -> account.account_id
+  contract_cost_acct_id      INTEGER   FK -> account.account_id
+  underbilled_acct_id        INTEGER   FK -> account.account_id
+                                       (costs in excess of billings, asset)
+  overbilled_acct_id         INTEGER   FK -> account.account_id
+                                       (billings in excess of costs, liability)
+  payroll_clearing_acct_id   INTEGER   FK -> account.account_id
+
+TABLE app_user
+  user_id                    INTEGER   PK
+  username                   TEXT
+  role                       TEXT      [Admin, Accountant, Project manager,
+                                        Viewer]
+  is_active                  BOOL
+
+TABLE audit_log
+  log_id                     INTEGER   PK
+  logged_at                  DATETIME
+  user_id                    INTEGER   FK -> app_user.user_id
+  table_name                 TEXT
+  record_id                  INTEGER   (not a FK: points into many tables)
+  action                     TEXT      [Insert, Update, Delete, Post, Approve,
+                                        Void]
+  old_value                  TEXT
+  new_value                  TEXT
+  NOTE (migration 003): append-only (UPDATE and DELETE are rejected) and
+  written by triggers with full before/after rows as JSON, for
+  journal_entry (lines included on Post), fiscal_period, account, invoice,
+  payment, payment_allocation and company_settings. user_id is the
+  system_master user_id (plain integer), taken from the one-row
+  audit_context table that the service layer sets in each write
+  transaction. [schema]
+
+
+==============================================================================
+2. GENERAL LEDGER
+==============================================================================
+
+TABLE account_type
+  type_id                    INTEGER   PK
+  name                       TEXT      [Asset, Liability, Equity, Revenue,
+                                        Expense]
+  normal_balance             TEXT      [D, C]
+
+TABLE account                         (chart of accounts)
+  account_id                 INTEGER   PK
+  code                       TEXT      unique
+  name                       TEXT
+  type_id                    INTEGER   FK -> account_type.type_id
+  parent_id                  INTEGER   FK -> account.account_id   (opt)
+  is_postable                BOOL      (false for header accounts)
+  is_active                  BOOL
+  is_deferral_account        BOOL      (prepaid asset or deferred revenue
+                                        liability; triggers deferral setup)
+
+TABLE fiscal_period
+  period_id                  INTEGER   PK
+  name                       TEXT      unique
+  start_date                 DATE
+  end_date                   DATE
+  is_closed                  BOOL
+
+TABLE journal_entry                   (header)
+  entry_id                   INTEGER   PK
+  entry_date                 DATE
+  period_id                  INTEGER   FK -> fiscal_period.period_id
+  reference                  TEXT
+  description                TEXT
+  source                     TEXT      [Manual, Invoice, Bill, Payment,
+                                        Adjustment, Payroll, Import,
+                                        Deferral, Completion]
+  is_posted                  BOOL
+  is_void                    BOOL
+  reverses_entry_id          INTEGER   FK -> journal_entry.entry_id (opt)
+  created_by                 INTEGER   FK -> app_user.user_id       (opt)
+  created_at                 DATETIME
+
+TABLE journal_line                    (detail)
+  line_id                    INTEGER   PK
+  entry_id                   INTEGER   FK -> journal_entry.entry_id
+  account_id                 INTEGER   FK -> account.account_id
+  debit_cents                INTEGER   >= 0
+  credit_cents               INTEGER   >= 0  (one of debit/credit must be 0)
+  memo                       TEXT
+  contact_id                 INTEGER   FK -> contact.contact_id          (opt)
+  recon_id                   INTEGER   FK -> bank_reconciliation.recon_id (opt)
+  project_id                 INTEGER   FK -> project.project_id           (opt)
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id       (opt)
+  deferral_id                INTEGER   FK -> deferral.deferral_id         (opt)
+  batch_id                   INTEGER   FK -> import_batch.batch_id        (opt)
+  external_ref               TEXT      (opt; source system line ID)
+
+TABLE bank_reconciliation
+  recon_id                   INTEGER   PK
+  account_id                 INTEGER   FK -> account.account_id
+  statement_date             DATE
+  statement_balance_cents    INTEGER
+  is_complete                BOOL
+
+
+==============================================================================
+3. CONTACTS AND BILLING
+==============================================================================
+
+TABLE contact                         (customers, vendors, employees)
+  contact_id                 INTEGER   PK
+  name                       TEXT
+  is_customer                BOOL
+  is_vendor                  BOOL
+  is_employee                BOOL
+  payroll_employee_id        TEXT      (ID used by the payroll system) (opt)
+  email                      TEXT
+  phone                      TEXT
+  address                    TEXT
+  tax_id                     TEXT
+  is_active                  BOOL
+
+TABLE tax_rate
+  tax_rate_id                INTEGER   PK
+  name                       TEXT
+  rate                       REAL
+  tax_account_id             INTEGER   FK -> account.account_id
+
+TABLE invoice                         (customer invoices, vendor bills,
+                                       credit memos)
+  invoice_id                 INTEGER   PK
+  invoice_type               TEXT      [Invoice, Bill, Credit Memo]
+  NOTE (migration 003): amounts are stored positive; the sign comes from
+  the document type (modules/ledger_rules.py). An invoice is locked once it
+  leaves Draft or has a journal entry; only its status moves, along
+  Draft -> Sent -> Paid / Void (Paid -> Sent allowed; Void needs the entry
+  voided first; Draft/Sent -> Covered by advance). Only Drafts without an
+  entry can be deleted. Payments lock once they have a journal entry.
+  [schema]
+  NOTE (migration 004): ledger_side [Sales, Purchase] (Invoice = Sales,
+  Bill = Purchase, Credit Memo chosen explicitly). Invoices are created as
+  plain Drafts. On leaving Draft: contact required, subtotal_cents must
+  equal the lines, and sales documents take the next number of an active
+  invoice_series (prefix + 6 digits, inside the registered range, before
+  valid_until); the number never changes and a void keeps it. Purchase
+  documents keep manual numbers, unique per vendor. One journal entry
+  belongs to one source document. No FX before Phase 4 (currency NULL =
+  base currency, exchange_rate 1). [schema]
+  contact_id                 INTEGER   FK -> contact.contact_id
+  project_id                 INTEGER   FK -> project.project_id    (opt)
+  invoice_number             TEXT
+  issue_date                 DATE
+  due_date                   DATE
+  status                     TEXT      [Draft, Sent, Paid, Void,
+                                        Covered by advance]
+  subtotal_cents             INTEGER
+  tax_cents                  INTEGER
+  total_cents                INTEGER
+  retainage_cents            INTEGER
+  entry_id                   INTEGER   FK -> journal_entry.entry_id (opt)
+  batch_id                   INTEGER   FK -> import_batch.batch_id  (opt)
+  external_ref               TEXT      (opt)
+
+TABLE invoice_line
+  line_id                    INTEGER   PK
+  invoice_id                 INTEGER   FK -> invoice.invoice_id
+  description                TEXT
+  quantity                   REAL
+  unit_price_cents           INTEGER
+  account_id                 INTEGER   FK -> account.account_id
+  tax_rate_id                INTEGER   FK -> tax_rate.tax_rate_id   (opt)
+  service_start_date         DATE      (opt; drives automatic deferral)
+  service_end_date           DATE      (opt)
+
+TABLE payment
+  payment_id                 INTEGER   PK
+  direction                  TEXT      [Received, Made]
+  contact_id                 INTEGER   FK -> contact.contact_id
+  payment_date               DATE
+  amount_cents               INTEGER
+  method                     TEXT
+  bank_account_id            INTEGER   FK -> account.account_id
+  entry_id                   INTEGER   FK -> journal_entry.entry_id (opt)
+
+TABLE payment_allocation
+  allocation_id              INTEGER   PK
+  payment_id                 INTEGER   FK -> payment.payment_id
+  invoice_id                 INTEGER   FK -> invoice.invoice_id     (opt)
+  deferral_id                INTEGER   FK -> deferral.deferral_id   (opt)
+  amount_applied_cents       INTEGER
+  RULE: exactly one of invoice_id / deferral_id must be filled.
+        (Enforced in service layer.)
+  Unapplied customer payments (deposits) remain as a credit until applied.
+
+
+==============================================================================
+4. IMPORTS AND STAGING
+   (Gusto, Rippling payroll files; Ramp card, bill and reimbursement files)
+==============================================================================
+
+TABLE import_source
+  source_id                  INTEGER   PK
+  name                       TEXT      [Gusto, Rippling, Ramp]
+  source_type                TEXT      [Payroll, Spend]
+
+TABLE import_batch                    (one row per file imported)
+  batch_id                   INTEGER   PK
+  source_id                  INTEGER   FK -> import_source.source_id
+  batch_type                 TEXT      [Payroll run, Card transactions, Bills,
+                                        Reimbursements, Statement payment]
+  file_name                  TEXT
+  period_start               DATE
+  period_end                 DATE
+  imported_at                DATETIME
+  total_cents                INTEGER   (control total, checked against source)
+  status                     TEXT      [Imported, In review, Approved, Posted,
+                                        Voided]
+  entry_id                   INTEGER   FK -> journal_entry.entry_id (opt;
+                                        used when a batch posts as one entry)
+
+TABLE import_mapping                  (set up once per customer)
+  mapping_id                 INTEGER   PK
+  source_id                  INTEGER   FK -> import_source.source_id
+  external_kind              TEXT      [Category, Department, Job/Project,
+                                        Employee, Vendor]
+  external_value             TEXT
+  account_id                 INTEGER   FK -> account.account_id      (opt)
+  project_id                 INTEGER   FK -> project.project_id      (opt)
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id  (opt)
+  contact_id                 INTEGER   FK -> contact.contact_id      (opt)
+
+TABLE staged_transaction              (holding area; NOT part of the ledger)
+  stage_id                   INTEGER   PK
+  batch_id                   INTEGER   FK -> import_batch.batch_id
+  external_ref               TEXT      unique per source (blocks duplicates)
+  related_external_ref       TEXT      (e.g. the bill a payment settles) (opt)
+  txn_type                   TEXT      [Card purchase, Bill, Bill payment,
+                                        Reimbursement, Statement payment,
+                                        Refund]
+  txn_date                   DATE
+  vendor_name                TEXT
+  description                TEXT
+  amount_cents               INTEGER
+  contact_id                 INTEGER   FK -> contact.contact_id      (opt)
+  matched_invoice_id         INTEGER   FK -> invoice.invoice_id      (opt)
+  status                     TEXT      [New, Coded, Matched, Approved, Posted,
+                                        Rejected]
+  approved_by                INTEGER   FK -> app_user.user_id        (opt)
+  approved_at                DATETIME  (opt)
+  invoice_id                 INTEGER   FK -> invoice.invoice_id (result) (opt)
+  payment_id                 INTEGER   FK -> payment.payment_id (result) (opt)
+  entry_id                   INTEGER   FK -> journal_entry.entry_id (result)
+                                       (opt)
+
+TABLE staged_line                     (coding / splits for a staged row)
+  stage_line_id              INTEGER   PK
+  stage_id                   INTEGER   FK -> staged_transaction.stage_id
+  account_id                 INTEGER   FK -> account.account_id
+  project_id                 INTEGER   FK -> project.project_id      (opt)
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id  (opt)
+  amount_cents               INTEGER
+  memo                       TEXT
+
+TABLE time_entry                      (hours imported from payroll)
+  time_id                    INTEGER   PK
+  batch_id                   INTEGER   FK -> import_batch.batch_id
+  external_ref               TEXT      unique per source (blocks duplicates)
+  contact_id                 INTEGER   FK -> contact.contact_id
+  project_id                 INTEGER   FK -> project.project_id      (opt)
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id  (opt)
+  work_date                  DATE
+  hours                      REAL
+  wage_cents                 INTEGER
+  burden_cents               INTEGER   (employer taxes/benefits allocation)
+  bill_rate_cents            INTEGER   (opt; for time-and-materials billing)
+  NOTE: project and cost code are optional so non-project time still imports.
+
+
+==============================================================================
+5. DEFERRALS  (one subledger for deferred expenses AND deferred revenue)
+==============================================================================
+
+TABLE deferral
+  deferral_id                INTEGER   PK
+  kind                       TEXT      [Expense, Revenue]
+  advance_type               TEXT      [Billed in advance, Paid in advance]
+  description                TEXT
+  contact_id                 INTEGER   FK -> contact.contact_id  (vendor or
+                                        customer)
+  invoice_id                 INTEGER   FK -> invoice.invoice_id       (opt)
+  invoice_line_id            INTEGER   FK -> invoice_line.line_id     (opt)
+  payment_id                 INTEGER   FK -> payment.payment_id       (opt)
+  original_amount_cents      INTEGER
+  start_date                 DATE
+  end_date                   DATE
+  method                     TEXT      [Straight-line, Manual]
+  proration                  TEXT      [Full month, Half month, Daily]
+  deferral_account_id        INTEGER   FK -> account.account_id
+                                       (prepaid asset or deferred revenue)
+  recognition_account_id     INTEGER   FK -> account.account_id
+                                       (expense or revenue)
+  project_id                 INTEGER   FK -> project.project_id       (opt)
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id   (opt)
+  supersedes_id              INTEGER   FK -> deferral.deferral_id     (opt)
+  status                     TEXT      [Draft, Active, Fully amortized,
+                                        Cancelled]
+  cancelled_date             DATE      (opt)
+  memo                       TEXT
+
+TABLE deferral_schedule_line          (one row per period)
+  schedule_id                INTEGER   PK
+  deferral_id                INTEGER   FK -> deferral.deferral_id
+  period_id                  INTEGER   FK -> fiscal_period.period_id
+  amort_date                 DATE
+  amount_cents               INTEGER   (last period takes rounding remainder)
+  status                     TEXT      [Scheduled, Posted, Skipped]
+  entry_id                   INTEGER   FK -> journal_entry.entry_id   (opt)
+  UNIQUE (deferral_id, period_id)
+
+
+==============================================================================
+6. PROJECTS, ESTIMATES, CONTRACTS, CHANGE ORDERS
+==============================================================================
+
+TABLE cost_code
+  cost_code_id               INTEGER   PK
+  code                       TEXT
+  name                       TEXT
+  category                   TEXT      [Labor, Material, Subcontractor,
+                                        Equipment, Other]
+  account_id                 INTEGER   FK -> account.account_id (default
+                                        expense account)
+  counts_toward_progress     BOOL      (false for stored materials, prepaid
+                                        items, etc. so they do not move the
+                                        percent complete)
+
+TABLE estimate                        (one row per bid version)
+  estimate_id                INTEGER   PK
+  estimate_number            TEXT
+  version                    INTEGER
+  name                       TEXT
+  contact_id                 INTEGER   FK -> contact.contact_id
+  project_id                 INTEGER   FK -> project.project_id (opt; empty
+                                        until the bid is won)
+  supersedes_id              INTEGER   FK -> estimate.estimate_id     (opt)
+  status                     TEXT      [Draft, Submitted, Won, Lost,
+                                        Superseded]
+  estimate_date              DATE
+  valid_until                DATE
+  overhead_pct               REAL
+  profit_pct                 REAL
+  contingency_pct            REAL
+  total_cost_cents           INTEGER
+  total_price_cents          INTEGER
+  notes                      TEXT
+
+TABLE estimate_line
+  estimate_line_id           INTEGER   PK
+  estimate_id                INTEGER   FK -> estimate.estimate_id
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id
+  description                TEXT
+  quantity                   REAL
+  unit                       TEXT
+  unit_cost_cents            INTEGER
+  extended_cost_cents        INTEGER
+  markup_pct                 REAL
+  sort_order                 INTEGER
+
+TABLE project
+  project_id                 INTEGER   PK
+  project_code               TEXT
+  name                       TEXT
+  contact_id                 INTEGER   FK -> contact.contact_id (customer)
+  estimate_id                INTEGER   FK -> estimate.estimate_id (awarded)
+                                       (opt)
+  status                     TEXT      [Bid, Active, Complete, Closed]
+  start_date                 DATE
+  end_date                   DATE
+  poc_method                 TEXT      [Cost-to-cost, Manual percent,
+                                        Completed contract]
+  NOTE: contract type, contract amount and retainage % now live on contract.
+
+TABLE contract
+  contract_id                INTEGER   PK
+  project_id                 INTEGER   FK -> project.project_id
+  contact_id                 INTEGER   FK -> contact.contact_id
+  contract_number            TEXT
+  contract_type              TEXT      [Fixed price, Cost-plus,
+                                        Time and materials, Unit price]
+  contract_date              DATE
+  start_date                 DATE
+  completion_date            DATE
+  original_amount_cents      INTEGER
+  retainage_pct              REAL
+  payment_terms              TEXT
+  status                     TEXT      [Draft, Executed, Complete, Terminated]
+  document_ref               TEXT      (path or link to the signed document)
+  notes                      TEXT
+
+TABLE contract_line                   (schedule of values)
+  sov_line_id                INTEGER   PK
+  contract_id                INTEGER   FK -> contract.contract_id
+  line_number                TEXT
+  description                TEXT
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id   (opt)
+  scheduled_value_cents      INTEGER
+  sort_order                 INTEGER
+  change_order_id            INTEGER   FK -> change_order.co_id (opt; set when
+                                        a change order adds this line)
+
+TABLE change_order
+  co_id                      INTEGER   PK
+  project_id                 INTEGER   FK -> project.project_id
+  contract_id                INTEGER   FK -> contract.contract_id
+  co_number                  TEXT
+  description                TEXT
+  status                     TEXT      [Draft, Submitted, Approved, Rejected,
+                                        Void]
+  submitted_date             DATE      (opt)
+  approved_date              DATE      (opt)
+  effective_date             DATE      (opt; period that picks up the change)
+  approved_by_name           TEXT      (customer signer) (opt)
+  approval_ref               TEXT      (reference to signed document) (opt)
+  days_added                 INTEGER
+  NOTE: revenue and cost totals are summed from change_order_line.
+
+TABLE change_order_line
+  co_line_id                 INTEGER   PK
+  co_id                      INTEGER   FK -> change_order.co_id
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id
+  sov_line_id                INTEGER   FK -> contract_line.sov_line_id (opt)
+  description                TEXT
+  revenue_change_cents       INTEGER
+  cost_change_cents          INTEGER
+
+TABLE project_budget
+  budget_id                  INTEGER   PK
+  project_id                 INTEGER   FK -> project.project_id
+  cost_code_id               INTEGER   FK -> cost_code.cost_code_id
+  estimate_line_id           INTEGER   FK -> estimate_line.estimate_line_id
+                                       (opt; trace back to the bid)
+  co_line_id                 INTEGER   FK -> change_order_line.co_line_id
+                                       (opt; empty = original budget)
+  budget_cents               INTEGER
+
+TABLE poc_snapshot                    (one row per project per period)
+  poc_id                     INTEGER   PK
+  project_id                 INTEGER   FK -> project.project_id
+  period_id                  INTEGER   FK -> fiscal_period.period_id
+  as_of_date                 DATE
+  cost_to_date_cents         INTEGER   (only costs that count toward progress)
+  excluded_cost_cents        INTEGER   (costs left out of the progress measure)
+  est_cost_to_complete_cents INTEGER   (entered by the project manager)
+  revised_contract_cents     INTEGER   (original contracts + approved COs)
+  pct_complete               REAL
+  earned_revenue_to_date_cents INTEGER
+  revenue_this_period_cents  INTEGER
+  billed_to_date_cents       INTEGER
+  over_under_billing_cents   INTEGER   (positive = overbilled)
+  est_gross_profit_cents     INTEGER
+  entry_id                   INTEGER   FK -> journal_entry.entry_id   (opt)
+  UNIQUE (project_id, period_id)
+
+
+==============================================================================
+KEY RULES AND CONSTRAINTS
+==============================================================================
+Where each rule is enforced (updated 2026-11-10, migration 002):
+  [schema]        enforced by a CHECK, UNIQUE or trigger in migrations/*.sql
+  [service layer] enforced later in the service layer (CLAUDE.md Phase 2),
+                  when the feature is built; not by schema triggers
+  [not enforced]  open gap, see docs/schema_audit.md
+
+LEDGER
+ 1. An entry can be posted only if it has 2+ lines, total debits equal total
+    credits, and its fiscal period is open.
+    [schema] trigger journal_entry_require_balance_on_post: 2+ lines, each
+    with exactly one non-zero side, total debits > 0 and equal to credits,
+    period not closed (by period_id or by entry_date).
+ 2. Posted entries are locked: no editing, adding or deleting lines.
+    Corrections use a reversing entry (reverses_entry_id).
+    [schema] triggers journal_entry_lock_posted / _lock_delete_posted and
+    journal_line_lock_*. A posted entry cannot be unposted, edited or
+    deleted.
+    Void = reversing entry (migration 003). A reversal sets
+    reverses_entry_id (unique: one reversal per entry) and reversal_reason
+    [Void, Accrual reversal, Correction]. It posts only if the original is
+    posted and unvoided, it mirrors the original exactly (same accounts and
+    tags, debits and credits swapped), and it is in an open period. Posting
+    a Void reversal sets is_void = 1 on the original in the same statement;
+    is_void cannot be set any other way. is_void is only a marker: reports
+    never filter on it, because the reversal nets the original to zero.
+    A void therefore never changes a closed period. [schema]
+ Lines need an account (account_id NOT NULL). Entry and period dates are
+ strict ISO YYYY-MM-DD (CHECK (col IS date(col))). [schema]
+ 3. Only postable, active accounts can receive journal lines.
+    [service layer] (Phase 2; test marked expected-failure until then).
+    Manual entries to controlled accounts (account.control_type) are also
+    blocked in the service layer (decision 5).
+ 4. Closed periods block new postings.
+    [schema] see rule 1.
+ Migration 004 [schema]:
+ - Every entry carries period_id (NOT NULL), the period that contains its
+   entry_date; the service sets it. Periods are contiguous with no overlap;
+   only the outer edges of the range move, and only while unused. Closing
+   records closed_at/closed_by; reopening needs a logged reason [service
+   layer].
+ - Posting records created_by, posted_by and posted_at, and takes a gapless
+   entry_number from entry_number_sequence. approved_by cannot be the
+   creator; when approval is required (company setting, threshold; agent
+   and import entries always) is decided by the service layer (decision 6).
+ - An account with posted entries keeps its code, type, parent and
+   control type. Every account has a type (five types are seeded).
+ - journal_line tags (contact, project, cost code, deferral, batch,
+   reconciliation) are real foreign keys. recon_id may change on a posted
+   line only while its reconciliation is open; a completed reconciliation
+   is locked. Dimensions on journal lines: journal_line_dimension.
+ - Reports and v_gl_detail never filter on is_void (decision 1).
+ Money: every *_cents column has CHECK (typeof(col) = 'integer') [schema].
+ User references (created_by, approved_by, ...) in a company file hold the
+ system_master app_user.user_id as a plain integer with no FK; SQLite cannot
+ enforce keys across database files. app_user lives only in system_master.db.
+
+IMPORTS AND STAGING
+ Rules 5-10: [service layer].
+ 5. external_ref is unique per source, so re-importing a file cannot create
+    duplicates.
+ 6. Staged lines must add up to the staged transaction amount.
+ 7. A batch posts only when every row is Approved and every bill payment is
+    matched. Posting order: bills first, then payments.
+ 8. A payment cannot be approved until its matched bill is approved.
+ 9. Rejected rows stay in staging for the record and never post.
+10. Staging rows never appear in ledger reports.
+
+DEFERRALS
+ Rules 11-14 and the payment_allocation "exactly one of" rule: [service
+ layer], except UNIQUE (deferral_id, period_id) [schema].
+11. Posted schedule lines lock. One schedule line per deferral per period.
+12. Billed in advance: bill records debit prepaid / credit payable (expense)
+    or debit receivable / credit deferred revenue (revenue).
+    Paid in advance: the payment records the deferral; attaching the bill
+    later creates NO new ledger entry (status "Covered by advance").
+13. Sales tax is never deferred; only the revenue portion is.
+14. Invoice lines on projects using percentage-of-completion or completed
+    contract do NOT create deferrals.
+
+PROJECTS
+ Rules 15-20 (change order approval locks, snapshot locks, construction
+ approvals): [service layer], except UNIQUE (project_id, period_id) on
+ poc_snapshot [schema].
+15. Revised contract value = sum of contract original amounts + approved
+    change order revenue. Revised budget = original budget lines + approved
+    change order cost lines.
+16. Approved change orders lock. Fixes are made with a new change order.
+    Change orders post nothing to the ledger by themselves.
+17. A change order approved with an effective date in a closed period is moved
+    to the first open period.
+18. Percent complete = cost to date / (cost to date + est. cost to complete).
+    Earned revenue = percent complete x revised contract value.
+    Snapshots are cumulative, so mid-job changes are a catch-up in the period
+    they take effect. Posted snapshots lock.
+19. If estimated total cost exceeds revised contract value, the full expected
+    loss is recognized immediately.
+20. Progress invoices post to contract revenue; the period-end snapshot
+    adjusts revenue to the earned amount, with the offset to the
+    underbilled / overbilled accounts.
+
+
+==============================================================================
+VIEWS AND REPORTS (planned)
+==============================================================================
+- v_trial_balance
+- v_unbalanced_entries
+- v_staging_exceptions (uncoded, unmatched or mismatched staged rows)
+- Account ledger with running balance
+- Income statement and balance sheet (from the trial balance)
+- AR and AP aging
+- Deferral tie-out (remaining balances vs. general ledger balances)
+- Deferred expense schedule by vendor; deferred revenue rollforward
+  (beginning + billings - recognized = ending); future recognition by period
+- Job cost report (budget vs. actual by cost code)
+- Estimate vs. budget vs. actual by cost code
+- WIP schedule (contract, cost to date, % complete, earned, billed, over/under)
+- Project contract summary (original, approved COs, revised contract/budget)
+- Pending change order exposure (revenue and cost shown separately)
+- Project profitability
+
+
+==============================================================================
+OPEN DECISIONS (not yet confirmed)
+==============================================================================
+ 1. Payroll: import the payroll system's own journal entry as the cost source
+    (recommended, with time_entry as hours only) vs. reclassing from a payroll
+    clearing account.
+ 2. Whether payroll imports also go through the hold-and-approve step used
+    for Ramp.
+ 3. Period-end accrual for labor worked but not yet in a payroll run.
+ 4. Merged deferral table (as shown) vs. separate deferred expense and
+    deferred revenue tables. Merge is recommended.
+ 5. Bill amount differs from advance payment: flag for review (current) vs.
+    post the difference to a variance account after approval.
+ 6. Pending change orders: default is to exclude pending revenue from
+    percentage of completion and leave pending costs to the project
+    manager's estimate to complete.
+ 7. NOT YET DESIGNED: pay applications (progress billing against the schedule
+    of values, stored materials, retainage held and released) and
+    subcontracts / purchase orders (committed cost).
+ 8. Revenue recognition and cost-to-progress rules should be reviewed by a CPA
+    before defaults are shipped to customers.

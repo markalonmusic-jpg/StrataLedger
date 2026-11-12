@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="accounting_librebase.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="6080"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><table title="account" custom_title="0" dock_id="1" table="4,7:mainaccount"/><dock_state state="000000ff00000000fd00000001000000020000000000000000fc0100000001fb000000160064006f0063006b00420072006f00770073006500310100000000ffffffff0000011300ffffff000000000000000000000004000000040000000800000008fc00000000"/><default_encoding codec=""/><browse_table_settings/></tab_browse><tab_sql><sql name="SQL 1*">-- 1. Main Invoice Table (Header Metadata)
+CREATE TABLE IF NOT EXISTS invoice (
+    invoice_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_type    TEXT CHECK (invoice_type IN ('Invoice', 'Bill', 'Credit Memo')) NOT NULL,
+    contact_id      INTEGER NOT NULL REFERENCES contact(contact_id),
+    project_id      INTEGER REFERENCES project(project_id),
+    invoice_number  TEXT NOT NULL UNIQUE,
+    issue_date      TEXT NOT NULL, -- YYYY-MM-DD
+    due_date        TEXT NOT NULL,  -- YYYY-MM-DD
+    terms           TEXT CHECK (terms IN ('Due on Receipt', 'Net 15', 'Net 30', 'Net 60')) DEFAULT 'Net 30',
+    status          TEXT CHECK (status IN ('Draft', 'Sent', 'Paid', 'Void')) DEFAULT 'Draft',
+    total_cents     INTEGER DEFAULT 0,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Invoice Line Items Table (Granular Matrix Rows)
+CREATE TABLE IF NOT EXISTS invoice_line (
+    line_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id         INTEGER NOT NULL REFERENCES invoice(invoice_id) ON DELETE CASCADE,
+    account_id         INTEGER NOT NULL REFERENCES chart_of_accounts(account_id),
+    description        TEXT,
+    quantity           REAL DEFAULT 1.0,
+    unit_price_cents   INTEGER DEFAULT 0,
+    amount_cents       INTEGER NOT NULL, -- (Quantity * unit_price_cents)
+    sort_order         INTEGER DEFAULT 0
+);
+</sql><current_tab id="0"/></tab_sql></sqlb_project>
