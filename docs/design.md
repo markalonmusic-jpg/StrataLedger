@@ -2,7 +2,8 @@
 
 **Status:** DRAFT - to be reconciled with docs/CLAUDE_UI.md in Phase 3; CLAUDE_UI.md wins on conflicts  
 **Applies To:** `app_strata.pyw`, `config.py`, `modules/ui_components.py`, and all `modules/views_*.py` screens.  
-**Rulebook Alignment:** Enforces `docs/CLAUDE_UI.md` (zero raw hex codes in views, zero `tkinter.messagebox`, zero `ttk.Scrollbar`, and strict separation between UI widgets and `services/*.py`).
+**Rulebook Alignment:** Enforces `docs/CLAUDE_UI.md` (zero raw hex codes in views, zero `tkinter.messagebox`, zero `ttk.Scrollbar`, and strict separation between UI widgets and `services/*.py`).  
+**Related Docs:** `docs/help_system_design.md` (the built-in help panel, `?` / F1, and the `page_key` every screen declares).
 
 ---
 

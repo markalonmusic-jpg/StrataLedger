@@ -167,6 +167,9 @@ in code (`tests/test_config_paths.py` fails on one).
 - `docs/roles_permissions_design.md` - design draft for roles (per company,
   customizable), permissions, approval limits, separation of duties, project
   scope, and the Master / Admin model. NOT BUILT.
+- `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
+  articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
+  every screen). Content is deferred to the end of v1.0. NOT BUILT.
 - Design docs are read before touching their areas. Where a design doc's
   PROPOSED migration numbers differ from section 7, section 7 wins.
 - `modules/` - UI views and database helpers:
@@ -568,6 +571,9 @@ before building; the database wins on naming.
 v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 - **v1.0:** core accounting (Phases 2 to 5 below), plus fixed assets, loans and
   vendor refunds. Report presets with offline keyword matching (section 6).
+  Final v1.0 task: **Help content.** Write the `help/*.md` guide set per
+  docs/help_system_design.md sections 4-5, after all v1.0 modules are finalized
+  and tested and before the installer build.
 - **v1.1:** construction (decisions section D, pay applications, projects,
   POC, T&M billing), plus POs and PO-to-AP matching and all inventory
   (construction-optimized).
@@ -653,6 +659,9 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   Roles: the role checklist editor (by module, with quick settings), the
   role and permission pickers in user provisioning, masked sensitive fields
   (wages, tax IDs, bank details), and bulk "assign to clients".
+  Rule for every screen built or changed in this phase: it declares a stable
+  `page_key` (docs/help_system_design.md section 3), and a screen is not
+  finished without one.
 - **Phase 4 - Double-entry posting:** posting an invoice with status `'Sent'`
   generates balanced `journal_entry` and `journal_line` rows in the same
   transaction (`invoice.entry_id`).
@@ -908,6 +917,10 @@ Planned schema work, in build order (names only):
 - Back up `.db` files before any schema change; git does not track them.
 - Only one tool edits the files at a time (Claude Code or GitHub Copilot).
   Commit and push between handoffs, and pull before starting.
+- Stage files by explicit path (`git add path/to/file ...`), never `git add -A`
+  or `git add .`: the planning chat writes files into this folder, and a blanket
+  add would commit them by accident. Check `git status` and `git diff --cached`
+  before every commit.
 - Finish every task with a summary: files changed, tests run, anything
   uncertain.
 - Planning and review happen in the Claude chat; this tool performs the tasks
