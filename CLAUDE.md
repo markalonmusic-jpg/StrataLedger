@@ -177,6 +177,10 @@ in code (`tests/test_config_paths.py` fails on one).
   posted entries, checkpoints, keys (KeyProvider, DPAPI, recovery-code wrap), encryption at rest (after v1),
   the Auditor role, audit trail reports, Audit-ready mode, backup checksums, and the Step 1b prompt.
   NOT BUILT (decisions K1-K10, P5).
+- `docs/password_recovery_design.md` - design for password recovery: Admin/Master reset with a generated
+  temporary password (72 h, forced change), personal backup codes for regular users, the Master's recovery
+  code for every change (re-wraps the installation key, Step 1c), abuse limits, session end after a reset,
+  optional email (last), TOTP hook (v1.1). NOT BUILT; open questions at its end.
 - `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
   articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
   every screen). Content is deferred to the end of v1.0. NOT BUILT.
@@ -753,7 +757,8 @@ See docs/crm_pm_design.md section 11.
     password, replaces the recovery code and shows the new one once. The first-run screen asks for confirmation if
     the window is closed before the first code is saved, but a code lost later cannot be recovered without this.
     Once the keystore exists (2.5 step 1c) this action must also re-wrap the installation key with the new code
-    (docs/audit_readiness_design.md section 2.7).
+    (docs/audit_readiness_design.md section 2.7). Designed in docs/password_recovery_design.md section 3 (the
+    recovery code is required for every Master password change and a new one is issued each time).
 12. Wire a `page_key` into the New Company screen (`views_new_company.py`), as the first-run screen already
     has (`setup.first_run`); see docs/help_system_design.md section 3.
 13. Chain `audit_log` like the ledger (decision K6; docs/audit_readiness_design.md).
@@ -973,6 +978,9 @@ Planned schema work, in build order (names only):
 - 2026-11-12: 3b follow-up: `ledger_verify.checkpoint_on_close` signs a checkpoint (file and master) when a company
   is closed (logout) and at app exit (`App.close_company_ledger`, `App.on_app_exit` on WM_DELETE_WINDOW). Decision
   K18.
+- 2026-11-12: Password recovery design (`docs/password_recovery_design.md`, docs only): v1.0 Admin/Master reset and
+  personal backup codes, the Master path after step 1c, email last, TOTP v1.1. Proposed build step "2.8 Password
+  recovery" after 2.5; screens in Phase 3.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
