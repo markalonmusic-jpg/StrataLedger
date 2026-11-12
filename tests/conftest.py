@@ -11,6 +11,21 @@ import modules.database as database
 os.environ["STRATALEDGER_ALLOW_TEST_KEYS"] = "1"
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "live_clipboard: uses the real Windows clipboard; runs only when "
+                                       "STRATALEDGER_LIVE_CLIPBOARD=1")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Live-clipboard tests are deselected (not skipped) unless STRATALEDGER_LIVE_CLIPBOARD=1."""
+    if os.environ.get("STRATALEDGER_LIVE_CLIPBOARD") == "1":
+        return
+    live = [item for item in items if item.get_closest_marker("live_clipboard")]
+    if live:
+        config.hook.pytest_deselected(items=live)
+        items[:] = [item for item in items if not item.get_closest_marker("live_clipboard")]
+
+
 @pytest.fixture
 def backup_dir(tmp_path, monkeypatch):
     path = tmp_path / "Backups"

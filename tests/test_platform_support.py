@@ -9,6 +9,7 @@ import logging
 import re
 import struct
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,11 @@ import pytest
 from modules import platform_support
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="the Windows clipboard formats only exist on Windows")
+# The tests that use the REAL Windows clipboard run only on demand (set STRATALEDGER_LIVE_CLIPBOARD=1; see
+# tests/conftest.py). Another program (clipboard history, the user copying) can change the clipboard between two
+# steps of a test, which no retry can prevent, and they wipe the user's clipboard. The default suite keeps every
+# test that does not touch the real clipboard (the fallbacks and the static checks below).
+live_clipboard = pytest.mark.live_clipboard
 SECRET = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567"
 
 
@@ -61,11 +67,20 @@ def _win():
     return ctypes, u32, k32
 
 
+def _open(u32):
+    """Another program may hold the clipboard for a moment: retry for up to a second."""
+    for _attempt in range(20):
+        if u32.OpenClipboard(None):
+            return
+        time.sleep(0.05)
+    raise AssertionError("could not open the clipboard")
+
+
 def read_clipboard(format_names=()):
     """(text or None, {format name: DWORD}, list of every format id on the clipboard)."""
     ctypes, u32, k32 = _win()
     ids = {name: u32.RegisterClipboardFormatW(name) for name in format_names}
-    assert u32.OpenClipboard(None), "could not open the clipboard"
+    _open(u32)
     try:
         def raw(fmt):
             handle = u32.GetClipboardData(fmt)
@@ -93,7 +108,7 @@ def read_clipboard(format_names=()):
 
 def empty_clipboard():
     ctypes, u32, _k32 = _win()
-    assert u32.OpenClipboard(None)
+    _open(u32)
     try:
         u32.EmptyClipboard()
     finally:
@@ -119,6 +134,7 @@ def test_the_format_names_are_the_documented_ones():
 
 
 @windows_only
+@live_clipboard
 def test_windows_copy_writes_the_text_and_the_three_formats(clean_clipboard):
     method = platform_support.copy_secret_text(FakeWidget(), SECRET)
     assert method == "windows"
@@ -131,6 +147,7 @@ def test_windows_copy_writes_the_text_and_the_three_formats(clean_clipboard):
 
 
 @windows_only
+@live_clipboard
 def test_windows_copy_replaces_what_was_there(clean_clipboard):
     platform_support.copy_secret_text(FakeWidget(), "first")
     platform_support.copy_secret_text(FakeWidget(), SECRET)
@@ -138,6 +155,7 @@ def test_windows_copy_replaces_what_was_there(clean_clipboard):
 
 
 @windows_only
+@live_clipboard
 def test_windows_copy_only_releases_the_tk_clipboard_and_never_hands_it_the_text(clean_clipboard):
     widget = FakeWidget()
     platform_support.copy_secret_text(widget, SECRET)
@@ -145,6 +163,7 @@ def test_windows_copy_only_releases_the_tk_clipboard_and_never_hands_it_the_text
 
 
 @windows_only
+@live_clipboard
 def test_windows_read_returns_what_was_copied_and_empty_when_empty(tk_app, clean_clipboard):
     platform_support.copy_secret_text(tk_app, SECRET)
     assert platform_support.read_clipboard_text(tk_app) == SECRET
@@ -153,6 +172,7 @@ def test_windows_read_returns_what_was_copied_and_empty_when_empty(tk_app, clean
 
 
 @windows_only
+@live_clipboard
 def test_windows_read_is_not_fooled_by_tk_having_owned_the_clipboard_earlier(tk_app, clean_clipboard):
     tk_app.clipboard_clear()
     tk_app.clipboard_append("text Tk put there earlier")
@@ -163,6 +183,7 @@ def test_windows_read_is_not_fooled_by_tk_having_owned_the_clipboard_earlier(tk_
 
 
 @windows_only
+@live_clipboard
 def test_windows_clear_empties_the_clipboard(tk_app, clean_clipboard):
     platform_support.copy_secret_text(tk_app, SECRET)
     platform_support.clear_clipboard(tk_app)
@@ -171,6 +192,7 @@ def test_windows_clear_empties_the_clipboard(tk_app, clean_clipboard):
 
 
 @windows_only
+@live_clipboard
 def test_windows_copy_works_for_a_long_text_and_unicode(clean_clipboard):
     platform_support.copy_secret_text(FakeWidget(), SECRET * 40 + " é€")
     assert read_clipboard()[0] == SECRET * 40 + " é€"
@@ -267,3 +289,13 @@ def test_windows_specific_calls_stay_in_the_platform_module():
             if path.name not in WINDOWS_CALLS_ALLOWED and pattern.search(path.read_text(encoding="utf-8")):
                 offenders.append(str(path.relative_to(root)))
     assert offenders == []
+
+
+def test_every_test_that_uses_the_real_clipboard_runs_only_on_demand():
+    import inspect
+    module = sys.modules[__name__]
+    live = [(name, function) for name, function in inspect.getmembers(module, inspect.isfunction)
+            if name.startswith("test_") and "clean_clipboard" in inspect.signature(function).parameters]
+    assert len(live) == 7
+    for name, function in live:
+        assert "live_clipboard" in {m.name for m in getattr(function, "pytestmark", [])}, name
