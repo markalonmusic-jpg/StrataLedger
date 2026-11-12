@@ -792,6 +792,80 @@ def test_a_close_that_records_its_checkpoint_reports_no_error(env, ctx, four):
     assert "checkpoint_error" not in periods.close_period(ctx, march(env))
 
 
+def _retire_the_key(env):
+    with env._company("PARENT") as c:
+        c.execute("UPDATE ledger_chain_key SET is_active = 0, retired_at = ?, retire_reason = 'Rotation'", (NOW,))
+
+
+def _march_closed_by_hand(env):
+    with env._company("PARENT") as c:
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 "
+                  "WHERE start_date <= '2026-03-01' AND fiscal_year_id IS NOT NULL", (NOW,))
+
+
+@pytest.mark.parametrize("kind", ["Verify", "Bogus", None])
+def test_an_unknown_close_kind_is_refused(env, ctx, four, kind):
+    _march_closed_by_hand(env)
+    with pytest.raises(ValidationError):
+        ledger_verify.record_close_checkpoint(ctx, _verification(env), kind=kind, ref_id=march(env))
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_close_on_an_empty_ledger_signs_a_checkpoint_through_zero(env, ctx):
+    _close_earlier_months(env)
+    result = periods.close_period(ctx, march(env))
+    assert "checkpoint_error" not in result and "no_checkpoint_reason" not in result
+    [checkpoint] = _close_rows(env, "Period close")
+    assert (checkpoint["result"], checkpoint["through_entry_number"], checkpoint["chain_hash"]) == ("OK", 0, None)
+    _assert_signed_and_mirrored(env, checkpoint)
+
+
+def test_a_close_with_no_active_key_signs_nothing_and_reports_no_error(env, ctx):
+    _close_earlier_months(env)
+    _retire_the_key(env)
+    result = periods.close_period(ctx, march(env))
+    assert rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["is_closed"] == 1
+    assert "checkpoint_error" not in result and result["recorded_in"] == []
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_close_whose_key_goes_missing_before_signing_signs_nothing_quietly(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    real_key_for = ledger_verify._key_for
+    calls = []
+    def key_for_then_gone(context):
+        calls.append(1)
+        if len(calls) == 1:                                    # the close's own verification
+            return real_key_for(context)
+        return lambda key_id: keys.NullKeyProvider().get_key(context.company_id, key_id)
+    monkeypatch.setattr(ledger_verify, "_key_for", key_for_then_gone)
+    result = periods.close_period(ctx, march(env))
+    assert result["status"] == "OK" and "checkpoint_error" not in result and result["recorded_in"] == []
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def _count_full_verifications(monkeypatch):
+    modes = []
+    original = ledger_verify.verify_connection
+    monkeypatch.setattr(ledger_verify, "verify_connection",
+                        lambda *a, **k: modes.append(k.get("mode")) or original(*a, **k))
+    return modes
+
+
+def test_a_year_close_verifies_the_ledger_only_once(env, ctx, four, monkeypatch):
+    year = _fy2026(env)
+    _close_months_of(env, year)
+    modes = _count_full_verifications(monkeypatch)
+    periods.close_year(ctx, year, acknowledge_warnings=True)
+    assert modes == ["full"]
+
+
+def test_books_closed_through_several_months_verifies_the_ledger_only_once(env, ctx, four, monkeypatch):
+    modes = _count_full_verifications(monkeypatch)
+    result = periods.set_books_closed_through(ctx, "2026-03-31", acknowledge_warnings=True)
+    assert len(result["closed"]) >= 3 and modes == ["full"]
+
+
 def test_the_next_incremental_check_starts_from_the_close_checkpoint(env, ctx, four, monkeypatch):
     _close_earlier_months(env)
     periods.close_period(ctx, march(env))
