@@ -904,6 +904,13 @@ Planned schema work, in build order (names only):
   `is_rounding_adjustment` (0/1, default 0). Both locks and the journal audit triggers cover the new columns.
   `payment_allocation` names exactly one of invoice or deferral (CHECK). New close check `control_overrides`
   (warning). No services yet.
+- 2026-11-12: Phase 2.5 step 2 (ledger core): `modules/services/ledger.py` with `create_entry`, `update_entry`,
+  `delete_entry`, `get_entry`, `list_entries` for DRAFT entries, the single line check `check_lines` (and
+  `check_entry_lines` for posting to re-run on stored lines), and the entry period taken from
+  `periods.resolve_entry_period`. A draft in a closed period is refused. Human and Agent drafts may only use the
+  manual sources (none, Manual, Adjustment); Import and System origin may use the others. `ledger.py` is the only
+  file allowed to write `journal_entry`, `journal_line` or `entry_number_sequence` (static test). Posting, numbering,
+  approvals, reversal and rounding are steps 3-6.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
