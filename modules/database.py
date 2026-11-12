@@ -30,6 +30,11 @@ def get_connection(db_path):
     return conn
 
 
+def check_master_database(db_path):
+    """Raise SchemaUpgradeBlockedError if the master file was not built from the current baseline. Never writes."""
+    _check_baseline(os.fspath(db_path), MASTER_MIGRATIONS)
+
+
 def set_busy_timeout(conn, milliseconds):
     """How long this connection waits for a lock held by another writer (H5: PRAGMAs live here only)."""
     conn.execute(f"PRAGMA busy_timeout = {int(milliseconds)}")

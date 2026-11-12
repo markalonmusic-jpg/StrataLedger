@@ -186,6 +186,11 @@ in code (`tests/test_config_paths.py` fails on one).
     `companies.create_company`; no SQL. Its defaults, checks and error wording are in
     `new_company_model.py` (no Tk, unit tested). It asks for a sign-in first (the launcher has no user);
     only the Master, or an Admin creating a subsidiary, gets past it.
+  - `views_first_run.py` - the first-run setup screen (decision S10), shown instead of the login when
+    `system_master.db` is missing or has no users: Welcome form, create the Master, the one-time recovery code
+    (Copy button, required "I have saved this code" box), sign in, then offer "Create your first company" or
+    "Later". Routing, form checks and wording are in `first_run_model.py` (no Tk, unit tested); the state check is
+    `auth.inspect_master`. Page key `setup.first_run`.
   - `views_new_user.py` and `views_user_profile.py` - global user provisioning
     and profile management.
   - `ai_agent.py` - planned (Phase 6), provider adapter (Gemini first); see
@@ -571,6 +576,8 @@ before building; the database wins on naming.
 v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 - **v1.0:** core accounting (Phases 2 to 5 below), plus fixed assets, loans and
   vendor refunds. Report presets with offline keyword matching (section 6).
+  Required before v1.0: an action that issues the Master a new recovery code (after re-entering the password),
+  because a code that was lost or never saved cannot be recovered today (backlog item 11).
   Final v1.0 task: **Help content.** Write the `help/*.md` guide set per
   docs/help_system_design.md sections 4-5, after all v1.0 modules are finalized
   and tested and before the installer build.
@@ -709,6 +716,9 @@ See docs/crm_pm_design.md section 11.
 10. Philippines tax module (VAT, withholding, certificates, filing tracker,
     e-invoicing) as the `ph_tax` add-on, a separate add-on after v1.0: designed, not built. Needs a
     Philippine tax professional's review before it ships.
+11. Issue a new Master recovery code (REQUIRED BEFORE v1.0): a service that, after the Master re-enters the
+    password, replaces the recovery code and shows the new one once. The first-run screen asks for confirmation if
+    the window is closed before the first code is saved, but a code lost later cannot be recovered without this.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
@@ -862,6 +872,13 @@ Planned schema work, in build order (names only):
   (`views_new_company.py` + `new_company_model.py`) calls `companies.create_company` (with the
   new `companies.creation_options` and `check_company_code`); `company_profile` dropped; `create_fresh_databases.py --sample-company CODE`; `Theme.radius_lg` and `Theme.warning_glow` added.
   Next: 2.5 (ledger services).
+- 2026-11-12: First-run setup (decision S10). At startup `first_run_model.startup_check` routes: missing or no users
+  -> the Welcome screen (nothing is built before the user presses Create Master), ready -> the launcher, unreadable
+  (not a database, older baseline, damaged) -> an error dialog that names the file and closes the app without
+  touching it. Invalid input builds no file; if the file is built but the Master cannot be created, the next launch
+  shows setup again. Password and recovery code are held only until the sign-in and the screen then drops its
+  references to them (it does not overwrite the memory); neither is ever logged; Continue clears the clipboard if
+  it still holds the code. `create_fresh_databases.py` is unchanged (a developer tool).
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

@@ -22,7 +22,9 @@ test by name.
 """
 import logging
 import math
+import os
 import re
+import sqlite3
 from collections import namedtuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -87,6 +89,34 @@ def check_person(first_name, last_name, email):
     email = str(email or "").strip()
     if "@" not in email or " " in email or email.startswith("@") or email.endswith("@"):
         raise ValidationError("Enter a valid email address")
+
+
+# --- First run: is there a Master yet? (decision S10) -------------------------------------------
+
+def inspect_master(master_db_path):
+    """Look at the master file without changing it: (state, error type or None).
+
+    'missing' (no file, or an empty one), 'no_users' (a valid master with nobody in it: setup is needed),
+    'ready' (at least one user), or 'unreadable' (not a database, from an older or different baseline,
+    or damaged). The error type is the exception class name for 'unreadable', never its text.
+    """
+    path = os.fspath(master_db_path)
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        return "missing", None
+    try:
+        database.check_master_database(path)
+        conn = database.get_readonly_connection(path)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0]
+        finally:
+            conn.close()
+    except (database.SchemaUpgradeBlockedError, sqlite3.Error) as error:
+        return "unreadable", type(error).__name__
+    return ("ready" if count else "no_users"), None
+
+
+def master_setup_state(master_db_path):
+    return inspect_master(master_db_path)[0]
 
 
 # --- First Master and recovery ---------------------------------------------------------------

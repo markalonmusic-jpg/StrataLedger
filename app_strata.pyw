@@ -11,6 +11,8 @@ from modules.database import (
     ensure_company_database as initialize_company_database,
     ensure_master_database as initialize_master_database,
 )
+from modules import first_run_model
+from modules.views_first_run import render_first_run, show_unreadable_master
 from modules.views_new_company import render_create_company_form
 from modules.views_new_user import render_new_user_form
 from modules.views_payroll import render_payroll_view, save_payroll_record as persist_payroll_record
@@ -55,6 +57,7 @@ class App(ctk.CTk):
         self.current_role = "Guest"
         self.user_first_name = ""
         self.master_db_path = MASTER_DB_PATH
+        self.startup_failed = False   # set when the master file cannot be used and the app closes at once
         self.upload_dir = UPLOAD_DIR
         self.logo_file_path = ""
         self.session = None   # auth.Session after login
@@ -71,8 +74,16 @@ class App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
 
-        self.ensure_master_database()
-        self.show_no_company_open_screen()
+        # Decide BEFORE building anything (decision S10): no master or no users -> first-run setup; a master
+        # that cannot be used -> an error dialog and exit (the file is never touched); otherwise the launcher.
+        route, error_type = first_run_model.startup_check(self.master_db_path)
+        if route == "first_run":
+            render_first_run(self, self)
+        elif route == "error":
+            show_unreadable_master(self, self.master_db_path, error_type)
+        else:
+            self.ensure_master_database()
+            self.show_no_company_open_screen()
 
     def ensure_master_database(self):
         initialize_master_database(self.master_db_path)
@@ -701,4 +712,5 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     app = App()
-    app.mainloop()
+    if not app.startup_failed:
+        app.mainloop()
