@@ -554,3 +554,36 @@ next touched. Paths use the real package name `modules/services/`.
   and archive/restore also need the name typed. Services require an
   explicit confirm for reopen, year reopen, archive/restore and backup
   restore, so no screen can skip it.
+
+### J. Budgets, forecasts and FP&A (decided 2026-11-11)
+- J1 KPIs keep the I3/I4 design (kpi_definition, kpi_value with optional
+  dimension_value_id). Additions: kpi_definition.calc_mode Manual or Auto
+  (Auto computed from posted data, time_entry, projects or subscriptions);
+  kpi_definition.require_at_close: when 1, the period-close check "KPIs
+  entered" covers that KPI (warning by default, block if the company sets
+  it, per L2). KPI values hold actuals only; forecasts live in J2-J3.
+- J2 Budgets (v1.0): budget_version (name, fiscal year, type Annual budget,
+  status Draft/Approved/Locked) and budget_line (version, account, period,
+  optional dimension_value_id, amount_cents). A locked version never
+  changes; edits make a new version. Budget-vs-actual reports by account,
+  layout (I2) and dimension. Budget approval uses the approval engine when
+  approvals are on.
+- J3 Rolling forecasts (FP&A release, after v1.1 construction): forecast
+  versions (3+9, 6+6, 9+3) built from the latest locked budget plus closed
+  actuals; driver rules (KPI x rate, % of revenue or labor, job
+  cost_forecast backlog burn); "Roll forward" replaces closed periods with
+  actuals and recalculates open periods. Rates may be decimals; every stored
+  amount is integer cents, rounded half-up per line, with the rounding
+  difference on the last period. Service: modules/services/fpa.py.
+- J4 Excel FP&A export (FP&A release): StrataLedger writes its own
+  workbook (Rolling Forecast with ACTUAL/FORECAST headers and live
+  formulas, KPIs and Drivers, Job and Dept Detail, and a flat
+  _STRATA_ACTUALS table). Refreshing actuals rewrites only StrataLedger's
+  own export file or a separate actuals file; it never opens or saves a
+  user's own model (the Excel library would drop their charts and pivots).
+  Analysts link their models to the actuals file with Excel's Power Query
+  refresh.
+- J5 AI reforecast skill (AI release): the AI may analyse actual-vs-budget
+  and KPI trends and propose a draft forecast version for human review; it
+  never approves, locks or saves a version, and all amounts are computed by
+  the fpa service, not by the AI.

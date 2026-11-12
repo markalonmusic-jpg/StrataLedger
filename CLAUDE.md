@@ -179,8 +179,10 @@ in code (`tests/test_config_paths.py` fails on one).
   - `views_billing.py` - multi-line Invoice/Bill/Credit Memo form with project
     links and dynamic dimensions.
   - `views_payroll.py` - workforce HR and time-entry logging (`time_entry`).
-  - `views_new_company.py` - company creation wizard (spawns an isolated `.db`
-    and links it to `system_master.db`).
+  - `views_new_company.py` - the four-step New Company wizard (decision S5) over
+    `companies.create_company`; no SQL. Its defaults, checks and error wording are in
+    `new_company_model.py` (no Tk, unit tested). It asks for a sign-in first (the launcher has no user);
+    only the Master, or an Admin creating a subsidiary, gets past it.
   - `views_new_user.py` and `views_user_profile.py` - global user provisioning
     and profile management.
   - `ai_agent.py` - planned (Phase 6), provider adapter (Gemini first); see
@@ -466,8 +468,7 @@ before building; the database wins on naming.
   approval tables (`approval_policy`, `approval_step`, `approval_request`,
   `approval_action`, in the baseline; docs/roles_permissions_design.md
   section 5A) and were removed in the same cleanups.
-- company_profile stays until the Phase 2.4 company creation service replaces
-  views_new_company.py:178; then it is removed from the baseline.
+- company_profile was removed from the baseline in 2.4 Part 2 (the New Company screen no longer writes it).
 - `app_user.role` stays until Phase 3 rewrites its readers (login, `NAV_ITEMS`,
   `views_user_profile.py`, `views_new_user.py`); then it is removed from the
   baseline together with the `role = 'Master'` half of the one-Master
@@ -847,6 +848,11 @@ Planned schema work, in build order (names only):
   be dated the year end, the posting trigger judges an entry in 13 or 14 by its own period, and a period of a
   closed year cannot be reopened. Warehouse gained `receiving.stock` and Project Manager `project.manage`.
   Next: 2.5 (ledger services).
+- 2026-11-12: 2.4b fixes (moving Books closed through back reopens only the months between the two dates;
+  year close runs the close checks on periods 13 and 14). Phase 2.4 Part 2: the New Company screen
+  (`views_new_company.py` + `new_company_model.py`) calls `companies.create_company` (with the
+  new `companies.creation_options` and `check_company_code`); `company_profile` dropped; `create_fresh_databases.py --sample-company CODE`; `Theme.radius_lg` and `Theme.warning_glow` added.
+  Next: 2.5 (ledger services).
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
@@ -859,9 +865,16 @@ Planned schema work, in build order (names only):
   then).
 - A fresh `system_master.db` has no users and no company_registry rows: the
   first Master is created by `scripts/create_fresh_databases.py --apply` (asked
-  in the terminal) and companies are registered again through the New Company
-  screen (today, raw SQL in `views_new_company.py`) or the 2.4 company creation
-  service.
+  in the terminal) and companies are created again through the New Company
+  screen or `scripts/create_fresh_databases.py --sample-company CODE --apply` (a
+  construction-template test company made with the existing Master; it does not
+  rebuild the master).
+- `modules/ui_components.py` was never imported by the app before 2.4 Part 2 and had two missing tokens
+  (`Theme.warning_glow` and `Theme.radius_lg`, now added) plus `Theme.create_scrollbar`, which still does not
+  exist (used by `DataTable`), and hardcoded hex colours in the modal's badge styles. Phase 3 fixes them when the
+  other screens adopt the shared components.
+- The tests share one hidden Tk window (`tk_app` in `tests/conftest.py`): several Tk roots in one process
+  intermittently fail on Windows.
 - `users.create_user` copies the role code into the legacy free-text
   `app_user.role`, which only the sidebar reads; `app_user.role` and the
   `role = 'Master'` half of the one-Master triggers are removed from the

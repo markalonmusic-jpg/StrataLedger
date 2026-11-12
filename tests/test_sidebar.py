@@ -19,19 +19,6 @@ ITEMS = (
 )
 
 
-@pytest.fixture(scope="session")
-def tk_app():
-    # One Tk instance per test session: creating several Tk() roots in one
-    # process intermittently fails on Windows to find tk.tcl / init.tcl.
-    try:
-        app = ctk.CTk()
-    except tk.TclError as error:  # genuinely no display available
-        pytest.skip(f"no display: {error}")
-    app.withdraw()
-    yield app
-    app.destroy()
-
-
 @pytest.fixture
 def root(tk_app):
     window = ctk.CTkToplevel(tk_app)

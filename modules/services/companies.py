@@ -6,6 +6,7 @@ under a temporary name, then renamed and registered in one master transaction; a
 import dataclasses
 import os
 import re
+import sqlite3
 import unicodedata
 import uuid
 
@@ -13,7 +14,7 @@ import modules.database as database
 from modules.services import (accounts, auth, authz, chart_templates, clock, company_settings, periods,
                               role_templates, storage)
 from modules.services.context import ServiceContext
-from modules.services.errors import NotFoundError, ValidationError
+from modules.services.errors import NotFoundError, ServiceError, ValidationError
 from modules.services.paths import resolve_company_path
 from modules.services.tx import read_connection, write_transaction
 
@@ -86,6 +87,11 @@ def company_code_from_name(name):
             break
     code = code[:10]
     return code + "X" * max(0, 3 - len(code))
+
+
+def check_company_code(code):
+    """The uppercased code if it is a valid company code (3-10 capital letters or digits), else ValidationError."""
+    return _check_code(code)
 
 
 def _check_code(code):
@@ -396,6 +402,41 @@ def export_company(session, company_id):
     auth._auth_write(session.master_db_path, lambda c: auth._insert_event(
         c, "Company exported", username=user["username"], user_id=session.user_id, actor_user_id=session.user_id))
     return relative
+
+
+def creation_options(session):
+    """What the New Company screen may offer this user (decisions S5, S8).
+
+    {'top_level': True} only for the Master. 'parents' lists the active companies in which the user may create a
+    subsidiary: the Master gets every active company; anyone else gets those where they hold company.create
+    (an Admin of a parent also holds it in the parent's subsidiaries). Nothing is logged or written.
+    """
+    user = auth.active_user(session)
+    visible = list_companies(session)
+    conn = read_connection(session.master_db_path)
+    try:
+        paths = {r["company_id"]: r["database_file_path"] for r in conn.execute(
+            "SELECT company_id, database_file_path FROM company_registry")}
+    finally:
+        conn.close()
+    if user["is_master"] == 1:
+        return {"top_level": True, "parents": [_parent_row(c) for c in visible]}
+    parents = []
+    for company in visible:
+        try:
+            path = resolve_company_path(paths[company["company_id"]])
+            context = ServiceContext(user_id=session.user_id, company_id=company["company_id"], origin="Human",
+                                     company_db_path=path, master_db_path=session.master_db_path)
+            if os.path.isfile(path) and authz.is_allowed(context, "company.create"):
+                parents.append(_parent_row(company))
+        except (ServiceError, sqlite3.Error, OSError):
+            continue
+    return {"top_level": False, "parents": parents}
+
+
+def _parent_row(company):
+    return {"company_id": company["company_id"], "company_code": company["company_code"],
+            "legal_name": company["legal_name"]}
 
 
 def list_companies(session, include_archived=False):

@@ -84,6 +84,7 @@ class Theme:
     accent_glow = "#2563EB"
     success_glow = "#34D399"
     error_glow = "#F87171"
+    warning_glow = "#FBBF24"      # warning dialogs and banners
 
     btn_primary = "#2563EB"
     btn_primary_hover = "#1D4ED8"
@@ -128,6 +129,7 @@ class Theme:
     active_bar_width = 3
     radius_sm = 6
     radius = 8
+    radius_lg = 12                # dialogs and large cards (the shared modal needs it)
     focus_ring_width = 2
     pad_xs = 2
     pad_sm = 6

@@ -511,3 +511,48 @@ def test_open_company_gives_the_company_local_date(world, master):
     context = companies.open_company(master, created["company_id"])
     from modules.services import clock
     assert context.today == clock.local_today(context.now, "Asia/Manila")
+
+
+# --- Who may open the New Company screen (creation_options) ------------------------------------------
+
+def test_master_may_create_top_level_and_under_any_active_company(world, master):
+    one = create(master, name="One Co")
+    two = create(master, name="Two Co")
+    companies.archive_company(master, two["company_id"], confirm_company_code=two["company_code"])
+    options = companies.creation_options(master)
+    assert options["top_level"] is True
+    offered = {p["company_id"] for p in options["parents"]}
+    assert one["company_id"] in offered and two["company_id"] not in offered
+    assert {"company_id", "company_code", "legal_name"} <= set(options["parents"][0])
+
+
+def test_parent_admin_may_only_create_subsidiaries(world, master):
+    boss = world.user("boss")
+    parent = create(master, name="Parent Co", code="PARENTCO", admin_user_id=boss)
+    child = create(master, name="Child Co", code="CHILDCO", parent_company_id=parent["company_id"])
+    create(master, name="Other Co", code="OTHERCO")                       # boss has no access here
+    options = companies.creation_options(world.session(boss))
+    assert options["top_level"] is False
+    assert sorted(p["company_id"] for p in options["parents"]) == sorted([parent["company_id"], child["company_id"]])
+
+
+def test_user_without_company_create_gets_nothing(world, master):
+    parent = create(master, name="Parent Co", code="PARENTCO")
+    add_role(file_of(world, "PARENTCO"), "CLERK", ["ledger.view"])
+    clerk = world.user("clerk")
+    grant_access(world, clerk, parent["company_id"], "CLERK")
+    assert companies.creation_options(world.session(clerk)) == {"top_level": False, "parents": []}
+    assert companies.creation_options(world.session(world.user("stranger"))) == {"top_level": False, "parents": []}
+
+
+def test_archived_company_is_not_offered_as_a_parent(world, master):
+    boss = world.user("boss")
+    parent = create(master, name="Parent Co", code="PARENTCO", admin_user_id=boss)
+    companies.archive_company(master, parent["company_id"], confirm_company_code="PARENTCO")
+    assert companies.creation_options(world.session(boss))["parents"] == []
+
+
+def test_check_company_code_is_public_and_uppercases():
+    assert companies.check_company_code("acme1") == "ACME1"
+    with pytest.raises(ValidationError):
+        companies.check_company_code("ab")

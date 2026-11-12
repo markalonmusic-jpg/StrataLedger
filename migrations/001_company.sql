@@ -27,14 +27,6 @@ CREATE TABLE account_type (
 
 );
 
-CREATE TABLE company_profile (
-                company_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                legal_name TEXT,
-                company_code TEXT,
-                fiscal_year_end TEXT,
-                currency TEXT DEFAULT 'USD'
-            );
-
 CREATE TABLE cost_code (
 
     cost_code_id     INTEGER PRIMARY KEY AUTOINCREMENT,

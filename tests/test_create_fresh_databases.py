@@ -159,3 +159,98 @@ def test_non_interactive_apply_skips_the_prompt(script, layout, monkeypatch, cap
     monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("prompted without a terminal"))
     assert run(script, layout, "--apply") == 0
     assert "first Master" in capsys.readouterr().out
+
+
+# --- --sample-company CODE ------------------------------------------------------------------------------
+
+@pytest.fixture
+def sample_layout(tmp_path, backup_dir, monkeypatch):
+    """A real fresh master with one Master user, and the data folder pointed at tmp_path."""
+    import config
+    from modules.services import auth
+    monkeypatch.setattr(config, "BASE_PROJECT_DIR", str(tmp_path))
+    master = tmp_path / "system_master.db"
+    database.ensure_master_database(master)
+    auth.create_first_master(str(master), "root", "correct horse battery", "Root", "User", "r@x.test")
+    return {"master": master, "root": tmp_path, "backups": tmp_path / "Backups"}
+
+
+def run_sample(script, layout, *extra):
+    return script.main(["--master-path", str(layout["master"]), "--backup-dir", str(layout["backups"]), *extra])
+
+
+def registry_codes(master):
+    conn = sqlite3.connect(master)
+    try:
+        return [r[0] for r in conn.execute("SELECT company_code FROM company_registry")]
+    finally:
+        conn.close()
+
+
+def test_sample_company_dry_run_writes_nothing(script, sample_layout, capsys):
+    before = snapshot(sample_layout["root"])
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO") == 0
+    assert snapshot(sample_layout["root"]) == before
+    out = capsys.readouterr().out
+    assert "TESTCO" in out and "root" in out and "Dry run" in out
+
+
+def test_sample_company_is_built_from_the_construction_template(script, sample_layout, capsys, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *a: pytest.fail("the sample step must not ask questions"))
+    monkeypatch.setattr("getpass.getpass", lambda *a: pytest.fail("the sample step must not ask for a password"))
+    master_before = sample_layout["master"].read_bytes()
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply") == 0
+    assert registry_codes(sample_layout["master"]) == ["TESTCO"]
+    company = sample_layout["root"] / "Companies" / "TESTCO.db"
+    conn = sqlite3.connect(company)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM account").fetchone()[0] == 88
+        assert conn.execute("SELECT COUNT(*) FROM fiscal_year").fetchone()[0] == 2
+        assert conn.execute("SELECT ar_acct_id IS NOT NULL FROM company_settings").fetchone()[0] == 1
+    finally:
+        conn.close()
+    assert not sample_layout["backups"].exists()                       # the Master file was not rebuilt or moved
+    assert sample_layout["master"].read_bytes() != master_before         # only the registry row was added
+    assert "TESTCO" in capsys.readouterr().out
+
+
+def test_sample_company_uses_the_existing_master_and_opens(script, sample_layout):
+    from modules.services import auth, companies
+    run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply")
+    # The Master's password is unchanged and the company opens for them.
+    session = auth.login(str(sample_layout["master"]), "root", "correct horse battery")
+    company_id = companies.list_companies(session)[0]["company_id"]
+    assert companies.open_company(session, company_id).company_id == company_id
+
+
+@pytest.mark.parametrize("code", ["ab", "AB CD", "CON", "TOOLONGCODE1", ""])
+def test_sample_company_refuses_a_bad_code(script, sample_layout, code, capsys):
+    assert run_sample(script, sample_layout, "--sample-company", code, "--apply") == script.EXIT_FAILED
+    assert registry_codes(sample_layout["master"]) == []
+    assert "code" in capsys.readouterr().out.lower()
+
+
+def test_sample_company_refuses_a_code_already_used(script, sample_layout, capsys):
+    run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply")
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply") == script.EXIT_FAILED
+    assert registry_codes(sample_layout["master"]) == ["TESTCO"]
+    assert "already" in capsys.readouterr().out.lower()
+
+
+def test_sample_company_needs_an_existing_master_user(script, tmp_path, backup_dir, monkeypatch, capsys):
+    import config
+    monkeypatch.setattr(config, "BASE_PROJECT_DIR", str(tmp_path))
+    master = tmp_path / "system_master.db"
+    database.ensure_master_database(master)                              # fresh, no users
+    layout = {"master": master, "backups": tmp_path / "Backups"}
+    assert run_sample(script, layout, "--sample-company", "TESTCO", "--apply") == script.EXIT_FAILED
+    assert "Master" in capsys.readouterr().out
+    missing = {"master": tmp_path / "nope.db", "backups": tmp_path / "Backups"}
+    assert run_sample(script, missing, "--sample-company", "TESTCO", "--apply") == script.EXIT_FAILED
+    assert not (tmp_path / "nope.db").exists()
+
+
+def test_sample_company_refuses_while_the_app_is_running(script, sample_layout, monkeypatch, capsys):
+    monkeypatch.setattr(script, "app_is_running", lambda: ["pythonw app_strata.pyw"])
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply") == script.EXIT_REFUSED
+    assert registry_codes(sample_layout["master"]) == []

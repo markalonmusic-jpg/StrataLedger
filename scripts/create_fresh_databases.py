@@ -20,6 +20,13 @@ code is printed once, with a warning to store it safely; only its hash is kept.
 
 The script refuses to run (exit code 2) while the app is running or a target
 file is locked, in dry run as well as apply.
+
+--sample-company CODE is a separate, non-interactive action for testing. It does
+NOT rebuild the master: it uses the existing Master user (no password is asked,
+the services are called directly) to create one company from the construction
+template under that code, exactly as the New Company screen would. Without
+--apply it only prints what it would do. Run the normal --apply first (it
+creates the Master interactively), then --sample-company CODE --apply.
 """
 import argparse
 import getpass
@@ -35,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config  # noqa: E402
 import modules.database as database  # noqa: E402
-from modules.services import auth  # noqa: E402
+from modules.services import auth, companies  # noqa: E402
 from modules.services.errors import ServiceError  # noqa: E402
 
 APP_ENTRY = "app_strata.pyw"
@@ -199,12 +206,77 @@ def offer_first_master(master_path):
     return 0
 
 
+def find_master_user(master_path):
+    """(user_id, username, first_name) of the existing active Master, or None."""
+    if not os.path.isfile(master_path):
+        return None
+    conn = sqlite3.connect(f"{Path(master_path).resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT user_id, username, first_name FROM app_user WHERE is_master = 1 AND is_active = 1 "
+                           "ORDER BY user_id LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    return row
+
+
+def sample_company(master_path, code, apply):
+    """Create one construction-template company for testing with the existing Master. Returns an exit code."""
+    reasons = [f"the app appears to be running: {line}" for line in app_is_running()]
+    if reasons:
+        print("REFUSED:")
+        for reason in reasons:
+            print("  -", reason)
+        return EXIT_REFUSED
+    try:
+        code = companies.check_company_code(code)
+    except ServiceError as error:
+        print(f"Not created: {error}")
+        return EXIT_FAILED
+    master = find_master_user(master_path)
+    if master is None:
+        print(f"Not created: {master_path} has no Master user. Run --apply first (it creates the Master), "
+              "then run --sample-company again.")
+        return EXIT_FAILED
+    conn = sqlite3.connect(f"{Path(master_path).resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        taken = conn.execute("SELECT 1 FROM company_registry WHERE company_code = ?", (code,)).fetchone()
+    finally:
+        conn.close()
+    if taken:
+        print(f"Not created: the company code {code} is already used.")
+        return EXIT_FAILED
+    user_id, username, first_name = master
+    print(f"Sample company {code}: construction template, created by Master '{username}', "
+          f"in {Path(config.BASE_PROJECT_DIR) / 'Companies' / (code + '.db')}")
+    if not apply:
+        print("Dry run complete; nothing was written. Add --apply to create it.")
+        return 0
+    session = auth.Session(user_id=user_id, username=username, first_name=first_name, is_master=True,
+                           legacy_role="Master", must_change_password=False, master_db_path=str(master_path))
+    try:
+        created = companies.create_company(session, legal_name=f"Sample Company {code}", code=code,
+                                           first_fiscal_year=datetime.now().year, template="construction")
+    except ServiceError as error:
+        print(f"Not created: {error}")
+        return EXIT_FAILED
+    print(f"created sample company {created['company_code']} (company_id {created['company_id']}); "
+          f"sign in as '{username}' to open it")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true", help="write changes (default is a dry run)")
     parser.add_argument("--master-path", default=config.MASTER_DB_PATH)
     parser.add_argument("--backup-dir", default=config.BACKUP_DIR)
+    parser.add_argument("--sample-company", metavar="CODE",
+                        help="create one construction-template company for testing with the existing Master "
+                             "(does not rebuild the master; no questions asked)")
     args = parser.parse_args(argv)
+    if args.sample_company is not None:
+        return sample_company(args.master_path, args.sample_company, args.apply)
 
     plan = build_plan(args.master_path, args.backup_dir)
     print_plan(plan, args.apply)

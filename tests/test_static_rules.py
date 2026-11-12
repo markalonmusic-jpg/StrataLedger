@@ -21,7 +21,6 @@ CONNECT_ALLOWED_PREFIXES = ("tests/", "scripts/", "tools/")
 CONNECT_ALLOW_LIST = {
     "app_strata.pyw",
     "modules/views_billing.py",
-    "modules/views_new_company.py",
     "modules/views_payroll.py",
     "modules/views_registry.py",
     "modules/views_user_profile.py",

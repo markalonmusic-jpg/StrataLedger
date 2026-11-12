@@ -52,3 +52,9 @@ def test_purchase_order_subcontract_is_gone(conn):
     mentions = [name for name, sql in conn.execute("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL")
                 if "purchase_order_subcontract" in sql]
     assert mentions == []
+
+
+def test_company_profile_is_gone_from_the_baseline(conn):
+    # Part 2 of 2.4: the New Company screen no longer writes it and nothing reads it.
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "company_profile" not in names
