@@ -103,14 +103,21 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 
 ## 2. Directory and file structure
 
-Root directory: `C:\Users\marka\StrataLedger`. Define it once in `config.py`;
-never hardcode paths anywhere else.
+Paths are defined once in `config.py` (decision P2a); never hardcode a path
+anywhere else, and no machine path (such as a user profile folder) may appear
+in code (`tests/test_config_paths.py` fails on one).
+- `RESOURCE_DIR`: the folder the app runs from (`sys._MEIPASS` when frozen,
+  else the folder of `config.py`). Read-only: migrations, fonts, templates, help.
+- `DATA_DIR`: where the app writes (databases, `Companies/`, `Backups/`,
+  `Logs/`, `Uploaded_Files/`). `STRATALEDGER_DATA_DIR` if set; else the repo
+  folder when running from source; else `%PROGRAMDATA%\StrataLedger` when frozen.
+  `BASE_PROJECT_DIR` is kept as an alias of `DATA_DIR`.
 
 - `app_strata.pyw` - main entry point, QuickBooks-style
   "No Company Open" launcher, session state manager (`self.db` pointer), and
   master layout (Sidebar + Workspace + right-hand AI Copilot drawer).
   `Outdated/app_fast.py` is the old prototype and is not imported.
-- `config.py` - theme styling (`Theme` class) and base directory paths.
+- `config.py` - theme styling (`Theme` class), `RESOURCE_DIR` / `DATA_DIR` and the paths derived from them.
 - `migrations/` - the baseline schema, one file per database kind
   (`001_company.sql`, `001_master.sql`), which `database.py` runs to build
   databases at runtime. Until the first release these files are edited
