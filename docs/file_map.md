@@ -96,6 +96,8 @@ in code (`tests/test_config_paths.py` fails on one).
   `tx.py` (the write transaction and read connection), `context.py` (`ServiceContext`), `authz.py`
   (`authorize`), `errors.py` (typed exceptions), then one module per area (auth, users, companies, accounts,
   contacts, periods, approvals, ledger, ledger_chain, ledger_verify, keys...). Section 7 says what each step built.
+  `key_wrap.py` (Step 1c) is the only importer of `cryptography`: AES-256-GCM key wrapping bound to its row by
+  associated data, and the recovery-code key from scrypt (KS2, KS4).
 - `tests/` - pytest suite. `scripts/` and `tools/` - developer tools. `.claude/agents/` - subagents.
 - `modules/` - screens and the database layer. LEGACY screens (the files in `CONNECT_ALLOW_LIST` in
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,

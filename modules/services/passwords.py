@@ -96,13 +96,14 @@ def generate_recovery_code():
     return "-".join(raw[i:i + 4] for i in range(0, len(raw), 4))
 
 
-def _normalize_code(code):
+def normalize_recovery_code(code):
+    """The code as it is hashed and as its key is derived: letters and digits only, upper case."""
     return "".join(ch for ch in str(code or "").upper() if ch.isalnum())
 
 
 def hash_recovery_code(code):
-    return hash_password(_normalize_code(code))
+    return hash_password(normalize_recovery_code(code))
 
 
 def verify_recovery_code(code, stored):
-    return verify_password(_normalize_code(code), stored)
+    return verify_password(normalize_recovery_code(code), stored)

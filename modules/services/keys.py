@@ -8,7 +8,8 @@ Services ask `get_provider()` for a key and never touch key storage themselves, 
 * `FixedKeyProvider` holds one constant key for the test suite. It refuses to load unless the environment
   variable STRATALEDGER_ALLOW_TEST_KEYS is "1", which only tests/conftest.py sets.
 * Keys travel as `SecretKey`: its repr and str are redacted, it cannot be pickled, and its bytes are reached
-  only through `use_for_hmac()`. It is never put in a ServiceContext, and errors name at most a key id.
+  only through `use_for_hmac()` (the chain) and `use_for_aead()` (key wrapping, KS4). It is never put in a
+  ServiceContext, and errors name at most a key id.
 """
 import os
 
@@ -29,6 +30,10 @@ class SecretKey:
         self._value = value
 
     def use_for_hmac(self):
+        return self._value
+
+    def use_for_aead(self):
+        """The bytes as an AES-GCM key (key_wrap.py only, KS4)."""
         return self._value
 
     def __repr__(self):
