@@ -377,8 +377,14 @@ def restore_company(session, company_id, *, confirm_company_code=None):
         conn.execute("UPDATE company_registry SET is_archived = 0 WHERE company_id = ?", (company_id,))
 
 
+EXPORT_NOT_VERIFIABLE = ("This copy can be read anywhere, but its ledger cannot be verified on another computer, "
+                         "because the ledger key stays on this one.")
+
+
 def export_company(session, company_id):
-    """Write a consistent copy of the company file to Exports/. Returns its path relative to the data folder."""
+    """Write a consistent copy of the company file to Exports/. Returns {'path': its path relative to the data
+    folder, 'warning': EXPORT_NOT_VERIFIABLE}. The copy carries no chain keys until the passphrase-protected key
+    bundle is built (docs/audit_readiness_design.md 2.7, K8), so the export screen must show the warning."""
     user = auth.require_master(session)
     conn = read_connection(session.master_db_path)
     try:
@@ -401,7 +407,7 @@ def export_company(session, company_id):
         src.close()
     auth._auth_write(session.master_db_path, lambda c: auth._insert_event(
         c, "Company exported", username=user["username"], user_id=session.user_id, actor_user_id=session.user_id))
-    return relative
+    return {"path": relative, "warning": EXPORT_NOT_VERIFIABLE}
 
 
 def creation_options(session):

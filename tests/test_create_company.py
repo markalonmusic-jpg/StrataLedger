@@ -469,7 +469,9 @@ def test_archive_and_restore_need_the_code_typed_exactly(world, master, typed):
 
 def test_export_makes_a_consistent_copy_and_logs_it(world, master):
     created = create(master)
-    relative = companies.export_company(master, created["company_id"])
+    result = companies.export_company(master, created["company_id"])
+    assert result["warning"] == companies.EXPORT_NOT_VERIFIABLE
+    relative = result["path"]
     assert relative.replace("\\", "/").startswith("Exports/ACME-") and relative.endswith(".db")
     copy = os.path.join(config.BASE_PROJECT_DIR, relative)
     assert os.path.isfile(copy)
@@ -477,6 +479,14 @@ def test_export_makes_a_consistent_copy_and_logs_it(world, master):
     assert rows_in(copy, "PRAGMA integrity_check") == [{"integrity_check": "ok"}]
     events = world.master_rows("SELECT event_type, user_id FROM auth_event WHERE event_type = 'Company exported'")
     assert events == [{"event_type": "Company exported", "user_id": master.user_id}]
+
+
+def test_an_export_warns_that_its_ledger_cannot_be_verified_on_another_computer():
+    # Until the passphrase-protected key bundle exists (docs/audit_readiness_design.md 2.7, K8), an exported file
+    # carries no chain keys; the warning says so in one plain sentence that tells the reader what to do.
+    text = companies.EXPORT_NOT_VERIFIABLE
+    assert "another computer" in text and "cannot" in text and "verif" in text
+    assert text.count(". ") <= 1 and text.endswith(".")
 
 
 def test_list_companies_for_a_regular_user_shows_only_granted_companies(world, master):
