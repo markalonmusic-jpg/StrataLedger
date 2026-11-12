@@ -169,6 +169,7 @@ See docs/crm_pm_design.md section 11.
     stays fast as the ledger grows. Measure with `tools/benchmark_ledger_verify.py`. Whatever the speed, every
     screen that starts a full verification (Ledger integrity, period and year close, Books closed through,
     backups) runs it in the background with progress and a responsive window (docs/audit_readiness_design.md 2.6).
+15. Review draft/ui-mockups (design-chat mockups plus unreviewed Theme/ui_components changes) at the start of Phase 3.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
