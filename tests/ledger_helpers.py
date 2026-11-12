@@ -6,12 +6,18 @@ and sales documents take their number from an invoice series when they leave
 Draft. Each multi-step helper runs inside a savepoint, like a service
 transaction, so a rejected step leaves nothing half-done.
 """
+import hashlib
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+from modules.services import ledger_chain
 
 USER = 1
 APPROVER = 2
+# Step 1b: the fixed chain key and company code the helpers seal with (tests only; never a real key).
+TEST_CHAIN_KEY = hashlib.sha256(b"StrataLedger tests: fixed chain key").digest()
+TEST_COMPANY_CODE = "TEST"
 
 
 @contextmanager
@@ -135,15 +141,47 @@ def make_entry(conn, lines, *, entry_date="2026-03-15", period_id=None, created_
     return entry_id
 
 
+def ensure_test_chain_key(conn):
+    """The ledger_chain_key row for TEST_CHAIN_KEY, added (as the active key) on first use."""
+    fingerprint = ledger_chain.fingerprint(TEST_CHAIN_KEY)
+    row = conn.execute("SELECT key_id FROM ledger_chain_key WHERE fingerprint = ?", (fingerprint,)).fetchone()
+    if row:
+        return row[0]
+    return conn.execute(
+        "INSERT INTO ledger_chain_key (fingerprint, created_at, created_by) "
+        "VALUES (?, '2026-01-01T00:00:00+00:00', ?) RETURNING key_id", (fingerprint, USER)).fetchone()[0]
+
+
+def seal_columns(conn, entry_id, entry_number, posted_by, posted_at, *, key=TEST_CHAIN_KEY, key_id=None):
+    """The four chain columns for posting entry_id as entry_number, sealed like the service will (step 3)."""
+    key_id = key_id or ensure_test_chain_key(conn)
+    previous = conn.execute("SELECT chain_hash FROM journal_entry WHERE entry_number = ?",
+                            (entry_number - 1,)).fetchone()
+    prev_hash = previous[0] if previous and previous[0] else ledger_chain.GENESIS
+    header = dict(conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone())
+    header.update(entry_number=entry_number, posted_by=posted_by, posted_at=posted_at,
+                  chain_version=ledger_chain.CHAIN_VERSION, chain_key_id=key_id)
+    lines = [dict(r) for r in conn.execute("SELECT * FROM journal_line WHERE entry_id = ?", (entry_id,))]
+    dims = [dict(r) for r in conn.execute(
+        "SELECT d.* FROM journal_line_dimension AS d JOIN journal_line AS l ON l.line_id = d.line_id "
+        "WHERE l.entry_id = ?", (entry_id,))]
+    chain_hash = ledger_chain.seal(key, TEST_COMPANY_CODE, prev_hash, ledger_chain.canonical_entry(header, lines, dims))
+    return {"chain_version": ledger_chain.CHAIN_VERSION, "chain_key_id": key_id, "chain_prev_hash": prev_hash,
+            "chain_hash": chain_hash}
+
+
 def post(conn, entry_id, *, user=USER):
-    """Post like the service will: take the next entry number and stamp who and when."""
+    """Post like the service will: take the next entry number, stamp who and when, and seal the entry."""
     with atomic(conn, "post_entry"):
         conn.execute("UPDATE entry_number_sequence SET last_number = last_number + 1 WHERE id = 1")
+        number = conn.execute("SELECT last_number FROM entry_number_sequence WHERE id = 1").fetchone()[0]
+        posted_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        seal = seal_columns(conn, entry_id, number, user, posted_at)
         conn.execute(
-            "UPDATE journal_entry SET is_posted = 1, "
-            "entry_number = (SELECT last_number FROM entry_number_sequence WHERE id = 1), "
-            "posted_by = ?, posted_at = datetime('now') WHERE entry_id = ?",
-            (user, entry_id),
+            "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
+            "chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, chain_hash = ? WHERE entry_id = ?",
+            (number, user, posted_at, seal["chain_version"], seal["chain_key_id"], seal["chain_prev_hash"],
+             seal["chain_hash"], entry_id),
         )
 
 

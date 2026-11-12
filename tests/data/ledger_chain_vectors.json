@@ -1,0 +1,160 @@
+{
+  "_note": "Canonical text was written by hand (see docs/audit_readiness_design.md 2.4). Never edit: a change to the format is a new chain_version with new vectors.",
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "company_code": "ACME",
+  "fingerprint_label": "StrataLedger chain key fingerprint v1",
+  "fingerprint": "a89b985aead1a82564fb73a35699e376dbb9db782fd3561224c64d7ae0e79881",
+  "entries": [
+    {
+      "header": {
+        "entry_id": 42,
+        "entry_number": 1,
+        "entry_date": "2026-03-15",
+        "period_id": 3,
+        "reference": "R-1",
+        "description": "Rent — March",
+        "source": "Manual",
+        "origin": "Human",
+        "created_by": 5,
+        "created_at": "2026-03-15 08:00:00",
+        "posted_by": 7,
+        "posted_at": "2026-03-16T09:30:00.123456+00:00",
+        "approved_by": 7,
+        "approved_at": "2026-03-16T09:30:00+00:00",
+        "reverses_entry_id": null,
+        "reversal_reason": null,
+        "reversal_note": null,
+        "auto_reverse_date": null,
+        "chain_version": 1,
+        "chain_key_id": 1,
+        "is_posted": 1,
+        "is_void": 1,
+        "chain_prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "chain_hash": "469af028c76886dcfc67dedb8e1946d8718ccbc5ed5b59ec79913d1bffeeeda0"
+      },
+      "lines": [
+        {
+          "batch_id": null,
+          "contact_id": 3,
+          "cost_code_id": null,
+          "deferral_id": null,
+          "external_ref": "X-9",
+          "memo": null,
+          "project_id": null,
+          "is_control_override": 1,
+          "is_retainage_line": 0,
+          "is_rounding_adjustment": 0,
+          "line_id": 102,
+          "entry_id": 42,
+          "account_id": 20,
+          "debit_cents": 0,
+          "credit_cents": 125000,
+          "recon_id": null
+        },
+        {
+          "batch_id": null,
+          "contact_id": null,
+          "cost_code_id": null,
+          "deferral_id": null,
+          "external_ref": null,
+          "memo": "Office",
+          "project_id": null,
+          "is_control_override": 0,
+          "is_retainage_line": 0,
+          "is_rounding_adjustment": 0,
+          "line_id": 101,
+          "entry_id": 42,
+          "account_id": 10,
+          "debit_cents": 125000,
+          "credit_cents": 0,
+          "recon_id": 5
+        }
+      ],
+      "dimensions": [
+        {
+          "line_id": 101,
+          "dimension_type_id": 2,
+          "dimension_value_id": 9
+        },
+        {
+          "line_id": 101,
+          "dimension_type_id": 1,
+          "dimension_value_id": 4
+        }
+      ],
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "canonical": "{\"entry\":{\"approved_at\":\"2026-03-16T09:30:00Z\",\"approved_by\":7,\"auto_reverse_date\":null,\"chain_key_id\":1,\"chain_version\":1,\"created_at\":\"2026-03-15T08:00:00Z\",\"created_by\":5,\"description\":\"Rent — March\",\"entry_date\":\"2026-03-15\",\"entry_id\":42,\"entry_number\":1,\"origin\":\"Human\",\"period_id\":3,\"posted_at\":\"2026-03-16T09:30:00Z\",\"posted_by\":7,\"reference\":\"R-1\",\"reversal_note\":null,\"reversal_reason\":null,\"reverses_entry_id\":null,\"source\":\"Manual\"},\"lines\":[{\"account_id\":10,\"batch_id\":null,\"contact_id\":null,\"cost_code_id\":null,\"credit_cents\":0,\"debit_cents\":125000,\"deferral_id\":null,\"dimensions\":[[1,4],[2,9]],\"entry_id\":42,\"external_ref\":null,\"is_control_override\":0,\"is_retainage_line\":0,\"is_rounding_adjustment\":0,\"line_id\":101,\"memo\":\"Office\",\"project_id\":null},{\"account_id\":20,\"batch_id\":null,\"contact_id\":3,\"cost_code_id\":null,\"credit_cents\":125000,\"debit_cents\":0,\"deferral_id\":null,\"dimensions\":[],\"entry_id\":42,\"external_ref\":\"X-9\",\"is_control_override\":1,\"is_retainage_line\":0,\"is_rounding_adjustment\":0,\"line_id\":102,\"memo\":null,\"project_id\":null}]}",
+      "chain_hash": "469af028c76886dcfc67dedb8e1946d8718ccbc5ed5b59ec79913d1bffeeeda0"
+    },
+    {
+      "header": {
+        "entry_id": 43,
+        "entry_number": 2,
+        "entry_date": "2026-04-01",
+        "period_id": 4,
+        "reference": null,
+        "description": null,
+        "source": null,
+        "origin": "System",
+        "created_by": 5,
+        "created_at": "2026-04-01 00:00:00",
+        "posted_by": 7,
+        "posted_at": "2026-03-16 09:30:00",
+        "approved_by": null,
+        "approved_at": null,
+        "reverses_entry_id": 42,
+        "reversal_reason": "Accrual reversal",
+        "reversal_note": null,
+        "auto_reverse_date": null,
+        "chain_version": 1,
+        "chain_key_id": 1,
+        "is_posted": 1,
+        "is_void": 0,
+        "chain_prev_hash": "469af028c76886dcfc67dedb8e1946d8718ccbc5ed5b59ec79913d1bffeeeda0",
+        "chain_hash": "b4b8481355c11f992821b66a17e1b37cbcad4d6962077b599b208c6e372bd10c"
+      },
+      "lines": [
+        {
+          "batch_id": null,
+          "contact_id": null,
+          "cost_code_id": null,
+          "deferral_id": null,
+          "external_ref": null,
+          "memo": null,
+          "project_id": null,
+          "is_control_override": 0,
+          "is_retainage_line": 0,
+          "is_rounding_adjustment": 0,
+          "line_id": 103,
+          "entry_id": 43,
+          "account_id": 10,
+          "debit_cents": 0,
+          "credit_cents": 125000,
+          "recon_id": null
+        },
+        {
+          "batch_id": null,
+          "contact_id": 3,
+          "cost_code_id": null,
+          "deferral_id": null,
+          "external_ref": null,
+          "memo": null,
+          "project_id": null,
+          "is_control_override": 0,
+          "is_retainage_line": 0,
+          "is_rounding_adjustment": 0,
+          "line_id": 104,
+          "entry_id": 43,
+          "account_id": 20,
+          "debit_cents": 125000,
+          "credit_cents": 0,
+          "recon_id": null
+        }
+      ],
+      "dimensions": [],
+      "prev_hash": "469af028c76886dcfc67dedb8e1946d8718ccbc5ed5b59ec79913d1bffeeeda0",
+      "canonical": "{\"entry\":{\"approved_at\":null,\"approved_by\":null,\"auto_reverse_date\":null,\"chain_key_id\":1,\"chain_version\":1,\"created_at\":\"2026-04-01T00:00:00Z\",\"created_by\":5,\"description\":null,\"entry_date\":\"2026-04-01\",\"entry_id\":43,\"entry_number\":2,\"origin\":\"System\",\"period_id\":4,\"posted_at\":\"2026-03-16T09:30:00Z\",\"posted_by\":7,\"reference\":null,\"reversal_note\":null,\"reversal_reason\":\"Accrual reversal\",\"reverses_entry_id\":42,\"source\":null},\"lines\":[{\"account_id\":10,\"batch_id\":null,\"contact_id\":null,\"cost_code_id\":null,\"credit_cents\":125000,\"debit_cents\":0,\"deferral_id\":null,\"dimensions\":[],\"entry_id\":43,\"external_ref\":null,\"is_control_override\":0,\"is_retainage_line\":0,\"is_rounding_adjustment\":0,\"line_id\":103,\"memo\":null,\"project_id\":null},{\"account_id\":20,\"batch_id\":null,\"contact_id\":3,\"cost_code_id\":null,\"credit_cents\":0,\"debit_cents\":125000,\"deferral_id\":null,\"dimensions\":[],\"entry_id\":43,\"external_ref\":null,\"is_control_override\":0,\"is_retainage_line\":0,\"is_rounding_adjustment\":0,\"line_id\":104,\"memo\":null,\"project_id\":null}]}",
+      "chain_hash": "b4b8481355c11f992821b66a17e1b37cbcad4d6962077b599b208c6e372bd10c"
+    }
+  ]
+}

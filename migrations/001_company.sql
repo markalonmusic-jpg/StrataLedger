@@ -408,7 +408,7 @@ CREATE TABLE period_status_history (
 
 -- Period-close checks (L2): each is a warning by default and can be made a hard block in Controls.
 CREATE TABLE period_close_check (
-    check_code TEXT PRIMARY KEY CHECK (check_code IN ('draft_entries', 'earlier_period_open', 'pending_approvals', 'control_overrides')),
+    check_code TEXT PRIMARY KEY CHECK (check_code IN ('draft_entries', 'earlier_period_open', 'pending_approvals', 'control_overrides', 'ledger_integrity')),
     mode TEXT NOT NULL DEFAULT 'warn' CHECK (mode IN ('warn', 'block'))
 );
 
@@ -435,6 +435,16 @@ CREATE TABLE "journal_entry" (
     auto_reverse_date TEXT CHECK (auto_reverse_date IS date(auto_reverse_date) AND auto_reverse_date > entry_date),
     -- 2.5: why a Void or Correction was posted (reversal_reason is only the category).
     reversal_note TEXT,
+    -- 2.5 step 1b: the tamper-evident chain (docs/audit_readiness_design.md section 2). Set only when posting,
+    -- computed by the service; the schema checks shape and locks it, never the HMAC or the previous link.
+    chain_version INTEGER CHECK (chain_version IS NULL OR chain_version = 1),
+    chain_key_id INTEGER REFERENCES ledger_chain_key(key_id),
+    chain_prev_hash TEXT CHECK (chain_prev_hash IS NULL OR (length(chain_prev_hash) = 64 AND chain_prev_hash NOT GLOB '*[^0-9a-f]*')),
+    chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*')),
+    CHECK (is_posted = 1 OR (chain_version IS NULL AND chain_key_id IS NULL AND chain_prev_hash IS NULL
+                             AND chain_hash IS NULL)),
+    CHECK (is_posted = 0 OR (chain_version IS NOT NULL AND chain_key_id IS NOT NULL AND chain_prev_hash IS NOT NULL
+                             AND chain_hash IS NOT NULL)),
     CHECK ((reverses_entry_id IS NULL) = (reversal_reason IS NULL)),
     CHECK (auto_reverse_date IS NULL OR reverses_entry_id IS NULL),
     CHECK (reversal_note IS NULL OR reverses_entry_id IS NOT NULL),
@@ -466,6 +476,44 @@ CREATE TABLE "journal_line" (
     CHECK (debit_cents = 0 OR credit_cents = 0),
     CHECK (debit_cents IS NULL OR typeof(debit_cents) = 'integer'),
     CHECK (credit_cents IS NULL OR typeof(credit_cents) = 'integer')
+);
+
+-- 2.5 step 1b: chain keys. The key itself never lives in this file; only its fingerprint
+-- (HMAC of a fixed label under the key, hex). One active key; a key is retired once and kept forever, because
+-- the entries it sealed must stay verifiable.
+CREATE TABLE ledger_chain_key (
+    key_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint TEXT NOT NULL UNIQUE CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
+    created_at TEXT NOT NULL,
+    created_by INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    retired_at TEXT,
+    retire_reason TEXT CHECK (retire_reason IN ('Rotation', 'Key lost', 'Compromised')),
+    CHECK ((is_active = 1) = (retired_at IS NULL)),
+    CHECK ((retired_at IS NULL) = (retire_reason IS NULL))
+);
+
+-- 2.5 step 1b: checkpoints of the chain head (verification results, close, export, backup, restore, rotation).
+-- Append-only; `mac` is an HMAC over the row so a forged "verified through N" marker is detected.
+CREATE TABLE ledger_checkpoint (
+    checkpoint_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    created_by INTEGER,
+    kind TEXT NOT NULL CHECK (kind IN ('Verify', 'Period close', 'Year close', 'Report export', 'Backup', 'Restore',
+                                       'Key rotation', 'Manual')),
+    scope TEXT CHECK (scope IN ('Incremental', 'Full')),
+    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken')),
+    through_entry_number INTEGER NOT NULL
+        CHECK (typeof(through_entry_number) = 'integer' AND through_entry_number >= 0),
+    chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*')),
+    first_broken_entry_number INTEGER,
+    key_id INTEGER REFERENCES ledger_chain_key(key_id),
+    ref_type TEXT,
+    ref_id INTEGER,
+    mac TEXT NOT NULL CHECK (length(mac) = 64 AND mac NOT GLOB '*[^0-9a-f]*'),
+    CHECK ((kind = 'Verify') = (scope IS NOT NULL)),
+    CHECK ((result = 'Broken') = (first_broken_entry_number IS NOT NULL)),
+    CHECK ((through_entry_number = 0) = (chain_hash IS NULL))
 );
 
 CREATE TABLE journal_line_dimension (
@@ -1160,7 +1208,38 @@ CREATE TABLE voucher_sequence (
 INSERT INTO voucher_sequence (id, last_number) VALUES (1, 1000);
 
 INSERT INTO period_close_check (check_code) VALUES ('draft_entries'), ('earlier_period_open'), ('pending_approvals'),
-    ('control_overrides');
+    ('control_overrides'), ('ledger_integrity');
+
+-- 2.5 step 1b: a seal never repeats; one active chain key; keys and checkpoints are never removed.
+CREATE UNIQUE INDEX journal_entry_chain_hash_unique ON journal_entry (chain_hash) WHERE chain_hash IS NOT NULL;
+CREATE UNIQUE INDEX ledger_chain_key_one_active ON ledger_chain_key (is_active) WHERE is_active = 1;
+
+CREATE TRIGGER ledger_chain_key_no_delete
+BEFORE DELETE ON ledger_chain_key
+BEGIN
+    SELECT RAISE(ABORT, 'Ledger keys are never deleted; retired keys verify the entries they sealed');
+END;
+
+CREATE TRIGGER ledger_chain_key_retire_only
+BEFORE UPDATE ON ledger_chain_key
+WHEN NOT (OLD.is_active = 1 AND NEW.is_active = 0
+          AND NEW.key_id IS OLD.key_id AND NEW.fingerprint IS OLD.fingerprint
+          AND NEW.created_at IS OLD.created_at AND NEW.created_by IS OLD.created_by)
+BEGIN
+    SELECT RAISE(ABORT, 'A ledger key can only be retired, once; nothing else about it changes');
+END;
+
+CREATE TRIGGER ledger_checkpoint_no_update
+BEFORE UPDATE ON ledger_checkpoint
+BEGIN
+    SELECT RAISE(ABORT, 'Ledger checkpoints cannot be changed');
+END;
+
+CREATE TRIGGER ledger_checkpoint_no_delete
+BEFORE DELETE ON ledger_checkpoint
+BEGIN
+    SELECT RAISE(ABORT, 'Ledger checkpoints cannot be deleted');
+END;
 
 -- 2.5: an entry has at most one Void or Correction reversal and at most one Accrual reversal, so an accrual and
 -- its automatic reversal can be voided as a pair (decision L5).
@@ -1605,6 +1684,10 @@ BEGIN
         AND NEW.origin IS OLD.origin
         AND NEW.auto_reverse_date IS OLD.auto_reverse_date
         AND NEW.reversal_note IS OLD.reversal_note
+        AND NEW.chain_version IS OLD.chain_version
+        AND NEW.chain_key_id IS OLD.chain_key_id
+        AND NEW.chain_prev_hash IS OLD.chain_prev_hash
+        AND NEW.chain_hash IS OLD.chain_hash
     ) THEN RAISE(ABORT, 'Posted journal entries cannot be changed; void them by posting a Void reversal') END;
 END;
 
@@ -1891,7 +1974,11 @@ BEGIN
             'approved_at', NEW.approved_at,
             'origin', NEW.origin,
             'auto_reverse_date', NEW.auto_reverse_date,
-            'reversal_note', NEW.reversal_note),
+            'reversal_note', NEW.reversal_note,
+            'chain_version', NEW.chain_version,
+            'chain_key_id', NEW.chain_key_id,
+            'chain_prev_hash', NEW.chain_prev_hash,
+            'chain_hash', NEW.chain_hash),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1925,7 +2012,11 @@ BEGIN
             'approved_at', OLD.approved_at,
             'origin', OLD.origin,
             'auto_reverse_date', OLD.auto_reverse_date,
-            'reversal_note', OLD.reversal_note),
+            'reversal_note', OLD.reversal_note,
+            'chain_version', OLD.chain_version,
+            'chain_key_id', OLD.chain_key_id,
+            'chain_prev_hash', OLD.chain_prev_hash,
+            'chain_hash', OLD.chain_hash),
         CASE WHEN OLD.is_posted = 0 AND NEW.is_posted = 1 THEN json_insert(json_object(
             'entry_id', NEW.entry_id,
             'entry_date', NEW.entry_date,
@@ -1946,7 +2037,11 @@ BEGIN
             'approved_at', NEW.approved_at,
             'origin', NEW.origin,
             'auto_reverse_date', NEW.auto_reverse_date,
-            'reversal_note', NEW.reversal_note),
+            'reversal_note', NEW.reversal_note,
+            'chain_version', NEW.chain_version,
+            'chain_key_id', NEW.chain_key_id,
+            'chain_prev_hash', NEW.chain_prev_hash,
+            'chain_hash', NEW.chain_hash),
             '$.lines', json((SELECT json_group_array(json_object(
                     'line_id', l.line_id,
                     'entry_id', l.entry_id,
@@ -1985,7 +2080,11 @@ BEGIN
             'approved_at', NEW.approved_at,
             'origin', NEW.origin,
             'auto_reverse_date', NEW.auto_reverse_date,
-            'reversal_note', NEW.reversal_note) END,
+            'reversal_note', NEW.reversal_note,
+            'chain_version', NEW.chain_version,
+            'chain_key_id', NEW.chain_key_id,
+            'chain_prev_hash', NEW.chain_prev_hash,
+            'chain_hash', NEW.chain_hash) END,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2017,7 +2116,11 @@ BEGIN
             'approved_at', OLD.approved_at,
             'origin', OLD.origin,
             'auto_reverse_date', OLD.auto_reverse_date,
-            'reversal_note', OLD.reversal_note),
+            'reversal_note', OLD.reversal_note,
+            'chain_version', OLD.chain_version,
+            'chain_key_id', OLD.chain_key_id,
+            'chain_prev_hash', OLD.chain_prev_hash,
+            'chain_hash', OLD.chain_hash),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -3356,6 +3459,41 @@ BEGIN
     SELECT ctx.user_id, 'period_close_check', NEW.rowid, 'Update',
         json_object('check_code', OLD.check_code, 'mode', OLD.mode),
         json_object('check_code', NEW.check_code, 'mode', NEW.mode),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- 2.5 step 1b: audit rows for chain keys and checkpoints (a checkpoint's chain head is thereby in audit_log).
+CREATE TRIGGER audit_ledger_chain_key_insert
+AFTER INSERT ON ledger_chain_key
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'ledger_chain_key', NEW.key_id, 'Insert', NULL,
+        json_object('key_id', NEW.key_id, 'fingerprint', NEW.fingerprint, 'created_at', NEW.created_at, 'created_by', NEW.created_by, 'is_active', NEW.is_active, 'retired_at', NEW.retired_at, 'retire_reason', NEW.retire_reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_ledger_chain_key_update
+AFTER UPDATE ON ledger_chain_key
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'ledger_chain_key', NEW.key_id, 'Update',
+        json_object('key_id', OLD.key_id, 'fingerprint', OLD.fingerprint, 'created_at', OLD.created_at, 'created_by', OLD.created_by, 'is_active', OLD.is_active, 'retired_at', OLD.retired_at, 'retire_reason', OLD.retire_reason),
+        json_object('key_id', NEW.key_id, 'fingerprint', NEW.fingerprint, 'created_at', NEW.created_at, 'created_by', NEW.created_by, 'is_active', NEW.is_active, 'retired_at', NEW.retired_at, 'retire_reason', NEW.retire_reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_ledger_checkpoint_insert
+AFTER INSERT ON ledger_checkpoint
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'ledger_checkpoint', NEW.checkpoint_id, 'Insert', NULL,
+        json_object('checkpoint_id', NEW.checkpoint_id, 'created_at', NEW.created_at, 'created_by', NEW.created_by, 'kind', NEW.kind, 'scope', NEW.scope, 'result', NEW.result, 'through_entry_number', NEW.through_entry_number, 'chain_hash', NEW.chain_hash, 'first_broken_entry_number', NEW.first_broken_entry_number, 'key_id', NEW.key_id, 'ref_type', NEW.ref_type, 'ref_id', NEW.ref_id, 'mac', NEW.mac),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;

@@ -652,3 +652,8 @@ Step 1c (keystore, recovery-code wrap). Step 1c lands before any screen can post
   `ledger.verify`; it cannot post, approve or change settings.
 - K10 U5 stands: standard SQLite in v1.0; SQLCipher-type encryption at rest after v1, when the go/no-go
   checklist in the design is green.
+- K11 The Accountant does not get `ledger.verify`; they see the verification result on the period-close
+  checklist.
+- K12 Verification speed targets are benchmarks to measure and report when the verify service is built, not
+  pass/fail tests: a full check of 100k entries (3 lines each) in 10 seconds, an incremental check of 100 new
+  entries in 0.2 seconds.

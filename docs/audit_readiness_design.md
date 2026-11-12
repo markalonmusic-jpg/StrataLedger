@@ -1,7 +1,8 @@
 # Audit readiness design (DESIGN, NOT BUILT)
 
-**Date:** 2026-11-12 · **Status:** design approved with changes (decisions K1-K10 and P5 in
-`docs/decisions_2026-11-11.md`). Nothing here is built yet. Build order is in section 12.
+**Date:** 2026-11-12 · **Status:** design approved with changes (decisions K1-K12 and P5 in
+`docs/decisions_2026-11-11.md`). Built so far: Step 1b (the chain schema and the pure
+`modules/services/ledger_chain.py`). Everything else is design. Build order is in section 12.
 
 Read with: `docs/controls_audit.md`, `docs/roles_permissions_design.md`, decisions A5, L1-L8, B10, E7, H1-H5,
 P1-P5, U5, and CLAUDE.md backlog item 11 (issuing a new Master recovery code).
@@ -58,7 +59,7 @@ reversal_note, auto_reverse_date, chain_version, chain_key_id`.
 `approved_by` and `approved_at` are hashed as stamped at posting (null when the entry needed no approval).
 `chain_version` and `chain_key_id` are hashed so a seal cannot be moved to another format or key.
 
-**Every line**, ordered by `line_id`: `line_id, account_id, debit_cents, credit_cents, memo, contact_id,
+**Every line**, ordered by `line_id`: `line_id, entry_id, account_id, debit_cents, credit_cents, memo, contact_id,
 project_id, cost_code_id, deferral_id, batch_id, is_retainage_line, external_ref, is_control_override,
 is_rounding_adjustment`, plus its dimensions as a list of `[dimension_type_id, dimension_value_id]` pairs
 sorted by type id. Editing, adding, deleting or swapping a line, or changing a dimension, changes the hash.
@@ -167,9 +168,13 @@ and the current checkpoint. It has a "Verify now" button, a box to paste an audi
 compare it, and the history of checks. Running a check needs `ledger.verify` (K7).
 
 ### 2.7 Keys (owner items d and k)
-* **One chain key per company**, 32 random bytes, never stored in the company file. The company file holds
-  only `ledger_chain_key` rows: id, a public fingerprint `HMAC(key, "StrataLedger key fingerprint")` and
-  dates.
+* **One chain key per company**: 32 random bytes from the operating system's secure source
+  (`ledger_chain.new_key()`, Python `secrets`), never stored in the company file. The company file holds
+  only `ledger_chain_key` rows: id, dates, and a public **fingerprint**.
+* **The fingerprint is domain-separated:** `HMAC-SHA256(key, "StrataLedger chain key fingerprint v1")`, as 64
+  lowercase hex characters (`ledger_chain.fingerprint`). It identifies the key and reveals nothing about it.
+  Because the fixed label differs from every seal message, a fingerprint can never equal a seal or be reused
+  as one. A test fixes its format and value.
 * **Key provider interface** (`modules/services/keys.py`), the one wrapper for secrets (P5):
 
       class KeyProvider(Protocol):
@@ -463,9 +468,9 @@ be designed with that work.
     * a forged marker (MAC wrong, or the hash at N changed) forces a full check;
     * an old edit is found by the full check, not by the incremental one (documents the limit).
 12. Messages: the failure text names the entry number, date and poster, and contains no hash or key.
-13. **Speed:** full verification of 100k entries with 3 lines each finishes within a target to be set on
-    the development machine (*confirm*: proposed 10 seconds); incremental verification of 100 new entries
-    under 0.2 seconds.
+13. **Speed (benchmark, not a pass/fail test; K12):** measure and report full verification of 100k
+    entries with 3 lines each (target 10 seconds) and incremental verification of 100 new entries (target
+    0.2 seconds) on the development machine, in the step that builds the verify service.
 
 **Keys (Steps 3 and 1c):**
 14. A known key (bytes, hex and base64) never appears in log files, `audit_log`, `access_event`,
@@ -495,7 +500,7 @@ be designed with that work.
 |---|---|---|
 | **Step 1b:** chain columns, `ledger_chain_key`, `ledger_checkpoint`, locks, close check code `ledger_integrity`; pure `ledger_chain.py` (canonical form, seal, verify) with golden vectors; test helpers seal with a fixed test key | Phase 2.5, now, before Step 3 | v1.0 |
 | **Step 3:** posting seals inside the transaction through the `KeyProvider` interface (`FixedTestKeyProvider` in tests, `NullKeyProvider` otherwise, so posting is refused without a real key); the `ledger_integrity` close check; incremental verification at open | Phase 2.5 | v1.0 |
-| **Step 1c:** keystore (`keys.py` `LocalKeyProvider`, master `installation_key` and `company_key`, DPAPI in `platform_support.py`, recovery-code wrap; the `cryptography` decision K2). **Must land before any screen can post, and before 2.5 is declared done.** | Phase 2.5, after Step 3 | v1.0 |
+| **Step 1c:** keystore (`keys.py` `LocalKeyProvider`, master `installation_key` and `company_key`, DPAPI in `platform_support.py`, recovery-code wrap; the `cryptography` decision K2). **Must land before any screen can post, and before 2.5 is declared done.** The keystore must **retain every retired key** (wrapped, never deleted), so entries sealed under an old key stay verifiable; it mirrors `ledger_chain_key`, which already keeps retired rows. | Phase 2.5, after Step 3 | v1.0 |
 | Steps 4-7 (approvals, reversals, rounding, billing) seal through the same path; `create_document_entry` (section 13) lands with billing | Phase 2.5 | v1.0 |
 | Verify service, checkpoints table writes, master mirror, `ledger.verify` permission | Phase 2.5 (with Step 3 / 1c) | v1.0 |
 | Ledger integrity screen, banner at open, Audit-ready checklist screen | Phase 3 | v1.0 |
@@ -643,7 +648,7 @@ get one narrow function:
 
 ---
 
-## 15. Questions answered (recorded as decisions K1-K10)
+## 15. Questions answered (recorded as decisions K1-K12)
 These were the open questions; the owner's answers are recorded in `docs/decisions_2026-11-11.md` section K.
 
 1. DPAPI scope → **machine scope**, with the limit stated in section 1 (K1).
@@ -659,7 +664,36 @@ These were the open questions; the owner's answers are recorded in `docs/decisio
 9. Auditor → **a 12th starter role** (K9).
 10. Encryption → **keep U5, SQLCipher-type encryption after v1** (K10).
 
-Still open (small, to settle when building):
-* The verification speed targets in test 13: proposed 10 s full for 100k entries and 0.2 s incremental.
-* Whether `ledger.verify` is also granted to the Accountant. Proposed: no; they see the result on the
-  close checklist.
+11. Accountant and `ledger.verify` → **no**; the Accountant sees the result on the close checklist (K11).
+12. Speed targets → **benchmarks to measure and report** when the verify service is built, not pass/fail
+    tests (K12).
+
+---
+
+## 16. Per-dialect constructs (P5)
+P5 says the PostgreSQL version rewrites dialect-specific parts rather than porting them. This list names the
+SQLite-only constructs in the baseline that the PostgreSQL schema must rewrite. Services hold none of these
+(H5). Add to this list whenever the baseline gains a new one.
+
+| Construct | Where (company baseline) | PostgreSQL rewrite |
+|---|---|---|
+| `GLOB` (64-hex checks; account code digits) | Step 1b hex CHECKs on `journal_entry.chain_prev_hash` / `chain_hash`, `ledger_chain_key.fingerprint`, `ledger_checkpoint.chain_hash` / `mac`; `account.code` | A regular-expression CHECK (`x ~ '^[0-9a-f]{64}$'`) |
+| `typeof(x) = 'integer'` | Step 1b `ledger_checkpoint.through_entry_number`; every integer-cents and counter CHECK | Not needed: a typed `INTEGER` / `BIGINT` column refuses other types; drop the CHECK |
+| `RAISE(ABORT, ...)` triggers with `WHEN` | posted-entry and posted-line locks, `journal_entry_void_on_reversal`, Step 1b `ledger_chain_key_no_delete` / `ledger_chain_key_retire_only`, `ledger_checkpoint_no_update` / `ledger_checkpoint_no_delete` | PL/pgSQL trigger functions (`RAISE EXCEPTION`), one per lock |
+| `json_object(...)` in audit triggers | every `audit_*` trigger, including Step 1b's `audit_ledger_chain_key_*` and `audit_ledger_checkpoint_insert` | `jsonb_build_object(...)` |
+| `INTEGER PRIMARY KEY AUTOINCREMENT` | every table, including `ledger_chain_key`, `ledger_checkpoint` | `GENERATED ALWAYS AS IDENTITY` |
+| `IS` / `IS NOT` comparing values | lock triggers (`NEW.x IS OLD.x`) | `IS NOT DISTINCT FROM` |
+| Partial unique indexes (`WHERE ...`) | `journal_entry_chain_hash_unique`, `ledger_chain_key_one_active`, the reversal slots | Supported as is |
+
+The chain itself is unaffected: the canonical form (2.4) is defined on values, the golden vectors must pass
+unchanged, and posting uses the counter-row lock described in 2.5.
+
+### As built in Step 1b (differences from section 14)
+* `journal_line.entry_id` is hashed too (the line list in 2.2 now says so), so a line moved to another entry
+  breaks both entries. `journal_line_dimension.line_id` is classified as excluded because it only groups
+  dimensions under their hashed line.
+* Date fields (`entry_date`, `auto_reverse_date`) must be text; an integer date is refused.
+* The test helper that adds the fixed test key is `ensure_test_chain_key` (a `test_` name would be collected
+  by pytest).
+* SQLite's integer affinity turns the text '1' into the integer 1, so the schema tests do not treat a numeric
+  string as a wrong type.

@@ -8,7 +8,8 @@ import pytest
 import modules.database as database
 from tests.ledger_helpers import (
     APPROVER, USER, atomic, ensure_period, make_account, make_contact, make_entry, make_invoice,
-    make_period, make_reversal, make_series, post, posted_entry, rejects, send_invoice, set_period_closed,
+    make_period, make_reversal, make_series, post, posted_entry, rejects, seal_columns, send_invoice,
+    set_period_closed,
     set_user, type_id,
 )
 
@@ -177,10 +178,12 @@ def test_posting_needs_who_and_when(conn, missing):
     values = {"posted_by": USER, "posted_at": "2026-03-15 10:00:00"}
     if missing != "created_by":
         values[missing] = None
+    seal = seal_columns(conn, entry_id, 1, values["posted_by"], values["posted_at"])   # sealed, so only who/when is wrong
     assert rejects(
         conn,
-        "UPDATE journal_entry SET is_posted = 1, entry_number = 1, posted_by = ?, posted_at = ? WHERE entry_id = ?",
-        (values["posted_by"], values["posted_at"], entry_id),
+        "UPDATE journal_entry SET is_posted = 1, entry_number = 1, posted_by = ?, posted_at = ?, "
+        "chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, chain_hash = ? WHERE entry_id = ?",
+        (values["posted_by"], values["posted_at"], *seal.values(), entry_id),
     )
 
 
@@ -191,12 +194,15 @@ def test_posted_entries_get_gapless_numbers(conn):
     assert rejects(conn, "UPDATE journal_entry SET entry_number = 99 WHERE entry_id = ?", (draft,))
     conn.execute("UPDATE entry_number_sequence SET last_number = last_number + 1")
     # The number must be exactly the counter; a wrong one is rejected.
-    assert rejects(conn, "UPDATE journal_entry SET is_posted = 1, entry_number = 7, posted_by = 1, "
-                         "posted_at = '2026-03-15 10:00:00' WHERE entry_id = ?", (draft,))
+    sealed_sql = ("UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = 1, "
+                  "posted_at = '2026-03-15 10:00:00', chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
+                  "chain_hash = ? WHERE entry_id = ?")
+    wrong = seal_columns(conn, draft, 7, 1, "2026-03-15 10:00:00")
+    assert rejects(conn, sealed_sql, (7, *wrong.values(), draft))
     # The counter cannot move again while number 3 is unused.
     assert rejects(conn, "UPDATE entry_number_sequence SET last_number = last_number + 1")
-    conn.execute("UPDATE journal_entry SET is_posted = 1, entry_number = 3, posted_by = 1, "
-                 "posted_at = '2026-03-15 10:00:00' WHERE entry_id = ?", (draft,))
+    right = seal_columns(conn, draft, 3, 1, "2026-03-15 10:00:00")
+    conn.execute(sealed_sql, (3, *right.values(), draft))
 
 
 def test_entry_counter_only_moves_by_one(conn):

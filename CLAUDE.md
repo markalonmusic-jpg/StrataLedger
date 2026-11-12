@@ -133,6 +133,8 @@ in code (`tests/test_config_paths.py` fails on one).
   tag `schema-chain-v5`).
 - `archive/baseline_pre_2_5/` - the company baseline as it stood before the Phase 2.5 edits (tag
   `baseline-pre-2.5`). Historical, never applied.
+- `archive/baseline_pre_2_5_1b/` - the company baseline before 2.5 step 1b (tag `baseline-pre-2.5-1b`).
+  Historical, never applied.
 - `accounting_librebase.db` - reference snapshot of the 60-table company
   schema (see section 5). Not read at runtime.
 - `system_master.db` - global authentication and routing database
@@ -272,7 +274,9 @@ in code (`tests/test_config_paths.py` fails on one).
     H4 and H5; its allow-lists can only shrink. Hosted target is PostgreSQL, expected on Azure
     Database for PostgreSQL (P5): posted-entry locks and the void trigger are rewritten per dialect,
     numbering and the hash chain use explicit counter-row locking, and secrets sit behind one wrapper
-    (`KeyProvider`) so Azure Key Vault can replace DPAPI.
+    (`KeyProvider`) so Azure Key Vault can replace DPAPI. The SQLite-only constructs in the baseline that
+    the PostgreSQL schema rewrites (GLOB, `typeof`, RAISE triggers, `json_object`, AUTOINCREMENT, `IS`
+    comparisons) are listed in docs/audit_readiness_design.md section 16; add new ones there.
 
 ---
 
@@ -656,7 +660,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   - **2.5 Ledger services:** the controls-audit rules; every test in
     tests/test_service_rules_pending.py flips from xfail to pass (strict
     xfail means each one must be un-marked as it is implemented).
-    Build order: step 1 (done), step 2 (done), **step 1b** (chain schema and the pure `ledger_chain.py`,
+    Build order: step 1 (done), step 2 (done), **step 1b** (done: chain schema and the pure `ledger_chain.py`,
     docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
     transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key
     is available), **step 1c** (keystore: installation and company keys, DPAPI, recovery-code wrap, the
@@ -930,6 +934,14 @@ Planned schema work, in build order (names only):
 - 2026-11-12: Audit readiness design (`docs/audit_readiness_design.md`), decisions K1-K10 and P5 (hosted target
   PostgreSQL on Azure). Docs only. The 2.5 build order now runs 1b (chain schema), 3 (posting with sealing),
   1c (keystore) before steps 4-7.
+- 2026-11-12: Phase 2.5 step 1b (ledger chain schema; previous baseline in `archive/baseline_pre_2_5_1b/`).
+  `journal_entry`: `chain_version` (1), `chain_key_id` (FK), `chain_prev_hash`, `chain_hash` (64 lowercase hex),
+  all NULL on drafts and all set once posted, locked after posting, in the audit JSON; unique seal. New
+  `ledger_chain_key` (fingerprint only, one active, retire once, never deleted, audited) and `ledger_checkpoint`
+  (append-only, MAC, audited). Close check `ledger_integrity` (warning). No trigger checks the previous hash or
+  the key: `modules/services/ledger_chain.py` (pure: canonical form, `seal`, `fingerprint`, `new_key`,
+  `verify_chain`, column classification) does, with hand-written golden vectors in
+  `tests/data/ledger_chain_vectors.json`. Test helpers seal every post with a fixed test key. Decisions K11, K12.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
