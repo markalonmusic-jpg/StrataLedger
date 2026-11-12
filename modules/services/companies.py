@@ -10,7 +10,8 @@ import unicodedata
 import uuid
 
 import modules.database as database
-from modules.services import accounts, auth, authz, chart_templates, clock, company_settings, role_templates, storage
+from modules.services import (accounts, auth, authz, chart_templates, clock, company_settings, periods,
+                              role_templates, storage)
 from modules.services.context import ServiceContext
 from modules.services.errors import NotFoundError, ValidationError
 from modules.services.paths import resolve_company_path
@@ -30,6 +31,7 @@ def open_company(session, company_id):
     5. The Master's open is recorded as an 'Open company' access_event.
     6. The context's `today` is the company-local date from company_settings.timezone (decision H2).
     7. An archived company opens for the Master only (decision S9).
+    8. Fiscal years due within 60 days are created (S3).
     """
     auth.active_user(session)
     conn = read_connection(session.master_db_path)
@@ -50,7 +52,9 @@ def open_company(session, company_id):
                              company_db_path=path, master_db_path=session.master_db_path)
     authz.check_company_access(context)
     authz.record_company_open(context)
-    return dataclasses.replace(context, today=clock.local_today(context.now, _company_timezone(path)))
+    context = dataclasses.replace(context, today=clock.local_today(context.now, _company_timezone(path)))
+    periods.ensure_upcoming_years(context)
+    return context
 
 
 def _company_timezone(path):
@@ -209,6 +213,7 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
                         "WHERE id = 1", (ids[row["account_number"]],))
                 if row.get("is_active") == 0:
                     conn.execute("UPDATE account SET is_active = 0 WHERE account_id = ?", (ids[row["account_number"]],))
+            periods.seed_years(conn, fiscal_year_start_month, first_fiscal_year)
             present = {r["system_role"] for r in rows if r["system_role"]}
             missing = [r for r in chart_templates.REQUIRED_ROLES if r not in present]
             if missing:
@@ -345,18 +350,24 @@ def _registry_row(conn, company_id):
     return row
 
 
-def archive_company(session, company_id):
+def _check_typed_code(row, confirm_company_code):
+    """0b amended: archive and restore need the company code typed, so no screen can skip the confirmation."""
+    if not isinstance(confirm_company_code, str) or confirm_company_code != row["company_code"]:
+        raise ValidationError(f"Type the company code exactly as shown ({row['company_code']}) to continue")
+
+
+def archive_company(session, company_id, *, confirm_company_code=None):
     """Hide a company from the picker and make it unavailable to everyone but the Master. Its data stays."""
     auth.require_master(session)
     with write_transaction(session.master_db_path, auth._Actor(session.user_id)) as conn:
-        _registry_row(conn, company_id)
+        _check_typed_code(_registry_row(conn, company_id), confirm_company_code)
         conn.execute("UPDATE company_registry SET is_archived = 1 WHERE company_id = ?", (company_id,))
 
 
-def restore_company(session, company_id):
+def restore_company(session, company_id, *, confirm_company_code=None):
     auth.require_master(session)
     with write_transaction(session.master_db_path, auth._Actor(session.user_id)) as conn:
-        _registry_row(conn, company_id)
+        _check_typed_code(_registry_row(conn, company_id), confirm_company_code)
         conn.execute("UPDATE company_registry SET is_archived = 0 WHERE company_id = ?", (company_id,))
 
 

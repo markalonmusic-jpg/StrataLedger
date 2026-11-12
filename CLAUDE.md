@@ -610,8 +610,17 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
       (docs/role_templates.md, approved; code in `role_templates.py`, checked against the doc by a test) are
       seeded in every company built from a template or CSV; a copied subsidiary gets its parent's roles. No
       approval limits are seeded.
-    - **2.4b:** fiscal years and periods (12 plus 13 and 14, hidden unless the Adjustment periods control is on),
-      period close with warnings or blocks, reopen with reason, "books closed through", year close.
+    - **2.4b (done):** `modules/services/periods.py`. `fiscal_year` (named by end year, S2) with 12 monthly
+      periods plus 13 and 14 dated the year's last day (hidden unless the Adjustment periods control is on, S4);
+      first year and the next at creation, later years 60 days ahead from `open_company` (S3);
+      `resolve_entry_period` (ordinary entries take the month period, period 12 on the year's last day; 13/14
+      only when passed explicitly, dated the year end, with the control on) and `period_ids_for_basis`
+      (pre-adjustment 1-12, GAAP 1-13, tax 1-14); close checks as warnings or blocks (L2) with
+      `period_close_check`; `reopen_period` (confirm + reason, L7); `set_books_closed_through` (forward closes,
+      backward reopens with confirm + reason, dry run); `close_year` (B1, no closing entries) and `reopen_year`
+      (year name typed exactly); `check_entry_date` (L6); `change_fiscal_year_start` (only with no entries).
+      Every close and reopen writes the append-only `period_status_history`. Archive and restore need the
+      company code typed (0b amended). The 2.5 ledger service must call `resolve_entry_period`.
   - **2.5 Ledger services:** the controls-audit rules; every test in
     tests/test_service_rules_pending.py flips from xfail to pass (strict
     xfail means each one must be un-marked as it is implemented).
@@ -832,6 +841,12 @@ Planned schema work, in build order (names only):
   control type and normal balance still lock. Next: 2.4b, then 2.5.
 - 2026-11-12: `tzdata` made a hard requirement (no UTC fallback); starter roles seeded from the approved
   docs/role_templates.md; decision L7 amended (`year.reopen` for Admin and Controller, typed year name).
+- 2026-11-12: Phase 2.4b done (fiscal years and periods; see the roadmap entry). Baseline: `fiscal_year`,
+  `fiscal_period.fiscal_year_id` / `period_number` / `is_adjustment_period`, `period_status_history`,
+  `period_close_check`; the contiguity and delete triggers apply to month periods only, periods 13 and 14 must
+  be dated the year end, the posting trigger judges an entry in 13 or 14 by its own period, and a period of a
+  closed year cannot be reopened. Warehouse gained `receiving.stock` and Project Manager `project.manage`.
+  Next: 2.5 (ledger services).
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

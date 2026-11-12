@@ -52,6 +52,8 @@ for them when a company turns approvals on. Admin is fixed and holds all 74 code
 Exact extra codes (on top of the levels above)
 - AP Clerk: `vendor.manage`, `bill.create`, `ap.view`, `po.create`, `po.view`. Cannot approve or pay.
 - Foreman: `receiving.jobsite`.
+- Project Manager: `project.manage` (its assigned projects only, by scope).
+- Warehouse: `receiving.stock`.
 - Sales: `customer.manage`, `invoice.create` (draft invoices only: no `invoice.send` or `invoice.void`).
 
 Project scope: Project Manager and Foreman are **Assigned** (only their projects); every other role is **All**.
@@ -91,6 +93,5 @@ The General chart template omits Project Manager, General Manager, Warehouse and
 3. Payroll imports are approved by the Controller (`import.approve`); Payroll imports but does not approve.
 4. Sales creates draft invoices (`invoice.create`) but cannot send or void them.
 5. No approval limits in the templates; the Controls page asks for limits when a company turns approvals on.
-
-Noted for a later review (as approved, these roles do not hold them): Warehouse has no `receiving.stock`
-(Purchasing is View), and Project Manager has no `project.manage` (Projects is Standard).
+6. Added on 2026-11-11 after review: Warehouse gets `receiving.stock` and Project Manager gets
+   `project.manage`, as exact extra codes (section 2).

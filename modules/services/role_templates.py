@@ -86,14 +86,14 @@ ROLES = {
     "Project Manager": {
         "levels": _row(vendors_ap="View", purchasing="Standard", inventory="View", projects_crm="Standard",
                        pay_applications="Standard", time="Standard", reports="Standard"),
-        "extra": [],
+        "extra": ["project.manage"],
         "sensitive": ["bill.approve", "po.approve", "subcontract.approve", "change_order.approve", "time.approve"],
         "scope": "Assigned",
         "construction_only": True,
     },
     "Warehouse": {
         "levels": _row(purchasing="View", inventory="Standard"),
-        "extra": [],
+        "extra": ["receiving.stock"],
         "sensitive": [],
         "scope": "All",
         "construction_only": True,

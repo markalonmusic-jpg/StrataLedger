@@ -131,9 +131,12 @@ DENY_CALLS = {"authorize", "deny", "_deny", "_deny_master"}
 #    checked in the same transaction), change_password (self-service, proven
 #    by the old password), recover_master (proven by the recovery code), and
 #    _auth_write (the throttle / auth_event writer used by login and denials).
+#  * periods.ensure_upcoming_years: system upkeep run by open_company (creates the fiscal years due within
+#    60 days, decision S3); it runs as the opening user so the audit log shows who triggered it.
 RULE_10_EXCLUDED = {
     "tx.py:write_transaction", "authz.py:_write_access_event",
     "auth.py:create_first_master", "auth.py:change_password", "auth.py:recover_master", "auth.py:_auth_write",
+    "periods.py:ensure_upcoming_years",
 }
 
 

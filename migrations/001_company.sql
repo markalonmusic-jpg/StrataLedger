@@ -375,7 +375,47 @@ CREATE TABLE "fiscal_period" (
     is_closed INTEGER NOT NULL DEFAULT 0 CHECK (is_closed IN (0, 1)),
     closed_at DATETIME,
     closed_by INTEGER,
-    CHECK (start_date <= end_date)
+    -- 2.4b: the fiscal year, the period number (1-12 months, 13 audit and 14 tax adjustments, A1, S4)
+    fiscal_year_id INTEGER REFERENCES fiscal_year(year_id),
+    period_number INTEGER CHECK (period_number IS NULL OR period_number BETWEEN 1 AND 14),
+    is_adjustment_period INTEGER NOT NULL DEFAULT 0 CHECK (is_adjustment_period IN (0, 1)),
+    CHECK (start_date <= end_date),
+    CHECK ((is_adjustment_period = 1) = (COALESCE(period_number, 0) >= 13)),
+    UNIQUE (fiscal_year_id, period_number)
+);
+
+-- 2.4b: fiscal years, named by the calendar year they end in (S2: Jul 2026 - Jun 2027 = FY2027).
+-- Year-end locks the year; there are no closing entries (B1).
+CREATE TABLE fiscal_year (
+    year_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE CHECK (name GLOB 'FY[0-9][0-9][0-9][0-9]'),
+    start_date TEXT NOT NULL UNIQUE CHECK (start_date IS date(start_date)),
+    end_date TEXT NOT NULL UNIQUE CHECK (end_date IS date(end_date)),
+    is_year_closed INTEGER NOT NULL DEFAULT 0 CHECK (is_year_closed IN (0, 1)),
+    closed_at TEXT,
+    closed_by INTEGER,
+    CHECK (start_date < end_date),
+    CHECK (is_year_closed = 0 OR (closed_at IS NOT NULL AND closed_by IS NOT NULL))
+);
+
+-- Every close and reopen of a period or a year (L7). Append-only.
+CREATE TABLE period_status_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_id INTEGER REFERENCES fiscal_period(period_id),
+    year_id INTEGER REFERENCES fiscal_year(year_id),
+    action TEXT NOT NULL CHECK (action IN ('Close', 'Reopen', 'Year close', 'Year reopen')),
+    via TEXT NOT NULL CHECK (via IN ('Period close', 'Books closed through', 'Year close', 'Year reopen')),
+    reason TEXT,
+    user_id INTEGER NOT NULL,
+    acted_at TEXT NOT NULL,
+    CHECK (period_id IS NOT NULL OR year_id IS NOT NULL),
+    CHECK (action NOT IN ('Reopen', 'Year reopen') OR (reason IS NOT NULL AND length(trim(reason)) > 0))
+);
+
+-- Period-close checks (L2): each is a warning by default and can be made a hard block in Controls.
+CREATE TABLE period_close_check (
+    check_code TEXT PRIMARY KEY CHECK (check_code IN ('draft_entries', 'earlier_period_open', 'pending_approvals')),
+    mode TEXT NOT NULL DEFAULT 'warn' CHECK (mode IN ('warn', 'block'))
 );
 
 CREATE TABLE "journal_entry" (
@@ -1113,6 +1153,8 @@ CREATE TABLE voucher_sequence (
 
 INSERT INTO voucher_sequence (id, last_number) VALUES (1, 1000);
 
+INSERT INTO period_close_check (check_code) VALUES ('draft_entries'), ('earlier_period_open'), ('pending_approvals');
+
 -- Decision C4: full routing and account numbers live here only; they are shown masked without
 -- view.bank_details, never sent to the AI and never written in full to the audit log.
 CREATE TABLE bank_account (
@@ -1354,12 +1396,32 @@ END;
 
 CREATE TRIGGER fiscal_period_contiguous_insert
 BEFORE INSERT ON fiscal_period
-WHEN EXISTS (SELECT 1 FROM fiscal_period)
+WHEN NEW.is_adjustment_period = 0 AND EXISTS (SELECT 1 FROM fiscal_period WHERE is_adjustment_period = 0)
 BEGIN
     SELECT CASE WHEN NOT (
-           NEW.start_date = (SELECT date(MAX(end_date), '+1 day') FROM fiscal_period)
-        OR NEW.end_date = (SELECT date(MIN(start_date), '-1 day') FROM fiscal_period)
+           NEW.start_date = (SELECT date(MAX(end_date), '+1 day') FROM fiscal_period WHERE is_adjustment_period = 0)
+        OR NEW.end_date = (SELECT date(MIN(start_date), '-1 day') FROM fiscal_period WHERE is_adjustment_period = 0)
     ) THEN RAISE(ABORT, 'Fiscal periods must be contiguous: start the day after the last period or end the day before the first') END;
+END;
+
+-- Periods 13 and 14 are one day long: the last day of their fiscal year (A1).
+CREATE TRIGGER fiscal_period_adjustment_insert
+BEFORE INSERT ON fiscal_period
+WHEN NEW.is_adjustment_period = 1
+BEGIN
+    SELECT CASE WHEN NEW.fiscal_year_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM fiscal_year WHERE year_id = NEW.fiscal_year_id
+           AND end_date = NEW.start_date AND end_date = NEW.end_date)
+    THEN RAISE(ABORT, 'Adjustment periods 13 and 14 are dated the last day of their fiscal year') END;
+END;
+
+-- A period of a closed fiscal year cannot be reopened; reopen the year first (L7).
+CREATE TRIGGER fiscal_period_reopen_in_closed_year
+BEFORE UPDATE OF is_closed ON fiscal_period
+WHEN OLD.is_closed = 1 AND NEW.is_closed = 0
+ AND EXISTS (SELECT 1 FROM fiscal_year WHERE year_id = NEW.fiscal_year_id AND is_year_closed = 1)
+BEGIN
+    SELECT RAISE(ABORT, 'This fiscal year is closed; reopen the year first');
 END;
 
 CREATE TRIGGER fiscal_period_close_insert
@@ -1392,8 +1454,9 @@ END;
 
 CREATE TRIGGER fiscal_period_delete
 BEFORE DELETE ON fiscal_period
-WHEN EXISTS (SELECT 1 FROM fiscal_period WHERE end_date < OLD.start_date)
- AND EXISTS (SELECT 1 FROM fiscal_period WHERE start_date > OLD.end_date)
+WHEN OLD.is_adjustment_period = 0
+ AND EXISTS (SELECT 1 FROM fiscal_period WHERE is_adjustment_period = 0 AND end_date < OLD.start_date)
+ AND EXISTS (SELECT 1 FROM fiscal_period WHERE is_adjustment_period = 0 AND start_date > OLD.end_date)
 BEGIN
     SELECT RAISE(ABORT, 'Only the first or last period can be deleted');
 END;
@@ -1423,9 +1486,10 @@ BEGIN
     ) THEN RAISE(ABORT, 'Cannot post into a closed fiscal period') END;
     SELECT CASE WHEN EXISTS (
         SELECT 1 FROM fiscal_period
-        WHERE is_closed = 1
+        WHERE is_closed = 1 AND is_adjustment_period = 0
           AND NEW.entry_date BETWEEN start_date AND end_date
-    ) THEN RAISE(ABORT, 'Cannot post: the entry date falls in a closed fiscal period') END;
+    ) AND COALESCE((SELECT is_adjustment_period FROM fiscal_period WHERE period_id = NEW.period_id), 0) = 0
+    THEN RAISE(ABORT, 'Cannot post: the entry date falls in a closed fiscal period') END;
     SELECT CASE WHEN NEW.created_by IS NULL OR NEW.posted_by IS NULL
                   OR NEW.posted_at IS NULL OR datetime(NEW.posted_at) IS NULL
         THEN RAISE(ABORT, 'Posting records who created the entry, who posted it and when') END;
@@ -1944,7 +2008,10 @@ BEGIN
             'end_date', NEW.end_date,
             'is_closed', NEW.is_closed,
             'closed_at', NEW.closed_at,
-            'closed_by', NEW.closed_by),
+            'closed_by', NEW.closed_by,
+            'fiscal_year_id', NEW.fiscal_year_id,
+            'period_number', NEW.period_number,
+            'is_adjustment_period', NEW.is_adjustment_period),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1963,7 +2030,10 @@ BEGIN
             'end_date', OLD.end_date,
             'is_closed', OLD.is_closed,
             'closed_at', OLD.closed_at,
-            'closed_by', OLD.closed_by),
+            'closed_by', OLD.closed_by,
+            'fiscal_year_id', OLD.fiscal_year_id,
+            'period_number', OLD.period_number,
+            'is_adjustment_period', OLD.is_adjustment_period),
         json_object(
             'period_id', NEW.period_id,
             'name', NEW.name,
@@ -1971,7 +2041,10 @@ BEGIN
             'end_date', NEW.end_date,
             'is_closed', NEW.is_closed,
             'closed_at', NEW.closed_at,
-            'closed_by', NEW.closed_by),
+            'closed_by', NEW.closed_by,
+            'fiscal_year_id', NEW.fiscal_year_id,
+            'period_number', NEW.period_number,
+            'is_adjustment_period', NEW.is_adjustment_period),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1990,7 +2063,10 @@ BEGIN
             'end_date', OLD.end_date,
             'is_closed', OLD.is_closed,
             'closed_at', OLD.closed_at,
-            'closed_by', OLD.closed_by),
+            'closed_by', OLD.closed_by,
+            'fiscal_year_id', OLD.fiscal_year_id,
+            'period_number', OLD.period_number,
+            'is_adjustment_period', OLD.is_adjustment_period),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -3192,6 +3268,64 @@ BEGIN
         'Delete',
         json_object('account_id', OLD.account_id, 'bank_name', OLD.bank_name, 'account_last4', OLD.account_last4),
         NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- 2.4b: history is append-only; fiscal years and the close-check modes are audited.
+CREATE TRIGGER period_status_history_no_update
+BEFORE UPDATE ON period_status_history
+BEGIN SELECT RAISE(ABORT, 'Period history cannot be changed'); END;
+
+CREATE TRIGGER period_status_history_no_delete
+BEFORE DELETE ON period_status_history
+BEGIN SELECT RAISE(ABORT, 'Period history cannot be deleted'); END;
+
+CREATE TRIGGER audit_fiscal_year_insert
+AFTER INSERT ON fiscal_year
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_year', NEW.year_id, 'Insert', NULL,
+        json_object('year_id', NEW.year_id, 'name', NEW.name, 'start_date', NEW.start_date,
+                    'end_date', NEW.end_date, 'is_year_closed', NEW.is_year_closed),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_fiscal_year_update
+AFTER UPDATE ON fiscal_year
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_year', NEW.year_id, 'Update',
+        json_object('name', OLD.name, 'start_date', OLD.start_date, 'end_date', OLD.end_date,
+                    'is_year_closed', OLD.is_year_closed, 'closed_at', OLD.closed_at, 'closed_by', OLD.closed_by),
+        json_object('name', NEW.name, 'start_date', NEW.start_date, 'end_date', NEW.end_date,
+                    'is_year_closed', NEW.is_year_closed, 'closed_at', NEW.closed_at, 'closed_by', NEW.closed_by),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_fiscal_year_delete
+AFTER DELETE ON fiscal_year
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_year', OLD.year_id, 'Delete',
+        json_object('name', OLD.name, 'start_date', OLD.start_date, 'end_date', OLD.end_date), NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_period_close_check_update
+AFTER UPDATE ON period_close_check
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'period_close_check', NEW.rowid, 'Update',
+        json_object('check_code', OLD.check_code, 'mode', OLD.mode),
+        json_object('check_code', NEW.check_code, 'mode', NEW.mode),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;

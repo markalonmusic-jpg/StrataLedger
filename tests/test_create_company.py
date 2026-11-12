@@ -417,7 +417,7 @@ def test_archive_hides_the_company_and_restore_brings_it_back(world, master):
     created = create(master)
     alice = world.user("alice")
     grant_access(world, alice, created["company_id"], "Admin")
-    companies.archive_company(master, created["company_id"])
+    companies.archive_company(master, created["company_id"], confirm_company_code="ACME")
     assert registry(world, "ACME")["is_archived"] == 1
     with pytest.raises(ValidationError) as caught:
         companies.open_company(world.session(alice), created["company_id"])
@@ -426,7 +426,7 @@ def test_archive_hides_the_company_and_restore_brings_it_back(world, master):
     assert created["company_id"] not in [c["company_id"] for c in companies.list_companies(world.session(alice))]
     assert created["company_id"] not in [c["company_id"] for c in companies.list_companies(master)]
     assert created["company_id"] in [c["company_id"] for c in companies.list_companies(master, include_archived=True)]
-    companies.restore_company(master, created["company_id"])
+    companies.restore_company(master, created["company_id"], confirm_company_code="ACME")
     assert created["company_id"] in [c["company_id"] for c in companies.list_companies(world.session(alice))]
     companies.open_company(world.session(alice), created["company_id"])
     changes = world.master_rows("SELECT action, user_id FROM audit_log WHERE table_name = 'company_registry' "
@@ -439,16 +439,32 @@ def test_archive_restore_export_are_master_only(world, master):
     alice = world.user("alice")
     grant_access(world, alice, created["company_id"], "Admin")
     asession = world.session(alice)
-    for call in (companies.archive_company, companies.restore_company, companies.export_company):
+    for call in (companies.archive_company, companies.restore_company):
         with pytest.raises(PermissionDeniedError):
-            call(asession, created["company_id"])
+            call(asession, created["company_id"], confirm_company_code="ACME")
+    with pytest.raises(PermissionDeniedError):
+        companies.export_company(asession, created["company_id"])
     assert registry(world, "ACME")["is_archived"] == 0
 
 
 def test_archive_and_restore_unknown_company(world, master):
-    for call in (companies.archive_company, companies.restore_company, companies.export_company):
+    for call in (companies.archive_company, companies.restore_company):
         with pytest.raises(NotFoundError):
-            call(master, 9999)
+            call(master, 9999, confirm_company_code="ACME")
+    with pytest.raises(NotFoundError):
+        companies.export_company(master, 9999)
+
+
+@pytest.mark.parametrize("typed", [None, "", "acme", "ACME ", "ACM", "OTHER"])
+def test_archive_and_restore_need_the_code_typed_exactly(world, master, typed):
+    created = create(master)
+    with pytest.raises(ValidationError):
+        companies.archive_company(master, created["company_id"], confirm_company_code=typed)
+    assert registry(world, "ACME")["is_archived"] == 0
+    companies.archive_company(master, created["company_id"], confirm_company_code="ACME")
+    with pytest.raises(ValidationError):
+        companies.restore_company(master, created["company_id"], confirm_company_code=typed)
+    assert registry(world, "ACME")["is_archived"] == 1
 
 
 def test_export_makes_a_consistent_copy_and_logs_it(world, master):
