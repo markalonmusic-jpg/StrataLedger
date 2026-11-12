@@ -21,7 +21,6 @@ from collections import namedtuple
 
 from modules.services import authz, permissions
 from modules.services.authz import authorize, check_approval_limit
-from modules.services.clock import utc_now_iso
 from modules.services.errors import NotFoundError, ValidationError
 from modules.services.tx import read_connection, write_transaction
 
@@ -56,6 +55,28 @@ def check_separate_approver(context, created_by_user_id, *, permission_code=None
     return True
 
 
+# --- Is approval needed at all? (decision 1.6) --------------------------------------------------
+
+def is_approval_required(context, document_type):
+    """Does this kind of document need an approval before it posts? Off by default for every type.
+
+    Journal entries follow company_settings.manual_entry_approval; the other types follow their row in
+    document_approval_setting. When this is False a document posts directly and submit_for_approval is
+    not called. When it is True and no policy covers the amount, the default single-approver chain applies.
+    """
+    _check_document_type(document_type)
+    conn = read_connection(context.company_db_path)
+    try:
+        if document_type == "Journal entry":
+            row = conn.execute("SELECT manual_entry_approval AS flag FROM company_settings WHERE id = 1").fetchone()
+        else:
+            row = conn.execute("SELECT requires_approval AS flag FROM document_approval_setting "
+                               "WHERE document_type = ?", (document_type,)).fetchone()
+    finally:
+        conn.close()
+    return bool(row and row["flag"])
+
+
 # --- Requests ------------------------------------------------------------------------------
 
 def submit_for_approval(context, document_type, record_type, record_id, amount_cents, *, created_by,
@@ -77,7 +98,7 @@ def submit_for_approval(context, document_type, record_type, record_id, amount_c
                 "created_by, project_id, chain_json, status, submitted_by, submitted_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?) RETURNING request_id",
                 (document_type, record_type, record_id, amount_cents, policy_id, created_by, project_id,
-                 json.dumps(chain), context.user_id, utc_now_iso()),
+                 json.dumps(chain), context.user_id, context.now),
             ).fetchone()[0]
         except sqlite3.IntegrityError as error:
             if "approval_request.record_type" in str(error):
@@ -127,7 +148,7 @@ def cancel_on_edit(context, record_type, record_id):
     with write_transaction(context.company_db_path, context) as conn:
         cursor = conn.execute(
             "UPDATE approval_request SET status = 'Cancelled', completed_at = ? "
-            "WHERE request_id = ? AND status = 'Pending'", (utc_now_iso(), pending["request_id"]),
+            "WHERE request_id = ? AND status = 'Pending'", (context.now, pending["request_id"]),
         )
         return cursor.rowcount == 1
 
@@ -335,7 +356,7 @@ def _record(conn, context, plan, decision, reason):
         raise ValidationError("You have already acted on this approval request")
     if _open_slot(plan.chain, actions, plan.role_code, plan.privileged) != plan.slot:
         raise ValidationError("The approval request changed; try again")
-    now = utc_now_iso()
+    now = context.now
     conn.execute(
         "INSERT INTO approval_action (request_id, step_no, role_code, user_id, decision, reason, self_approved, "
         "acted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

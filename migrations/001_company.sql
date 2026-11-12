@@ -399,8 +399,7 @@ CREATE TABLE "journal_entry" (
     origin TEXT NOT NULL DEFAULT 'Human' CHECK (origin IN ('Human', 'Agent', 'Import', 'System')),
     CHECK ((reverses_entry_id IS NULL) = (reversal_reason IS NULL)),
     CHECK (is_posted = 1 OR entry_number IS NULL),
-    CHECK ((approved_by IS NULL) = (approved_at IS NULL)),
-    CHECK (approved_by IS NULL OR approved_by IS NOT created_by)
+    CHECK ((approved_by IS NULL) = (approved_at IS NULL))
 );
 
 CREATE TABLE "journal_line" (
@@ -443,10 +442,13 @@ CREATE TABLE "account" (
     is_active INTEGER DEFAULT 1 CHECK (is_active IN (0, 1)),
     is_deferral_account INTEGER DEFAULT 0 CHECK (is_deferral_account IN (0, 1)),
     control_type TEXT CHECK (control_type IN (
-        'AR', 'AP', 'Sales tax', 'Deferral', 'Retainage', 'Over/under billing',
-        'Employee advance', 'Employee material advance', 'Inventory',
-        'Fixed asset cost', 'Accumulated depreciation', 'Depreciation expense', 'Equipment cost recovery',
-        'Loan principal', 'Loan current portion'))
+        'AR', 'AP', 'Retainage receivable', 'Retainage payable', 'Sales tax payable', 'Use tax payable',
+        'Undeposited funds', 'GRNI', 'Inventory', 'Fixed assets', 'Loans',
+        'Deferral', 'Over/under billing', 'Employee advance', 'Employee material advance')),
+    -- 2.4: A3 (D or C; a contra account differs from its type) and 1.5 (tax-strategy accounts)
+    subtype TEXT,
+    normal_balance TEXT CHECK (normal_balance IS NULL OR normal_balance IN ('D', 'C')),
+    is_tax_strategy_only INTEGER NOT NULL DEFAULT 0 CHECK (is_tax_strategy_only IN (0, 1))
 );
 
 CREATE TABLE "invoice" (
@@ -602,7 +604,40 @@ CREATE TABLE "company_settings" (
         manual_entry_approval_threshold_cents IS NULL
         OR (typeof(manual_entry_approval_threshold_cents) = 'integer' AND manual_entry_approval_threshold_cents >= 0))
 , require_separate_approver INTEGER NOT NULL DEFAULT 0
-    CHECK (require_separate_approver IN (0, 1)));
+    CHECK (require_separate_approver IN (0, 1)),
+    -- 2.4: setup facts, controls and the system account pointers (A6)
+    country TEXT CHECK (country IS NULL OR country IN ('US', 'PH')),
+    timezone TEXT,
+    date_format TEXT NOT NULL DEFAULT 'MM/DD/YYYY' CHECK (date_format IN ('MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD')),
+    warn_future_days INTEGER NOT NULL DEFAULT 30 CHECK (warn_future_days >= 0),
+    warn_past_days INTEGER NOT NULL DEFAULT 90 CHECK (warn_past_days >= 0),
+    books_closed_through TEXT CHECK (books_closed_through IS date(books_closed_through)),
+    allow_manual_control_je INTEGER NOT NULL DEFAULT 1 CHECK (allow_manual_control_je IN (0, 1)),
+    adjustment_periods_enabled INTEGER NOT NULL DEFAULT 0 CHECK (adjustment_periods_enabled IN (0, 1)),
+    first_fiscal_year INTEGER CHECK (first_fiscal_year IS NULL OR first_fiscal_year BETWEEN 1900 AND 2200),
+    ar_acct_id INTEGER REFERENCES account(account_id),
+    ap_acct_id INTEGER REFERENCES account(account_id),
+    sales_tax_payable_acct_id INTEGER REFERENCES account(account_id),
+    default_bank_acct_id INTEGER REFERENCES account(account_id),
+    retained_earnings_acct_id INTEGER REFERENCES account(account_id),
+    opening_balance_equity_acct_id INTEGER REFERENCES account(account_id),
+    undeposited_funds_acct_id INTEGER REFERENCES account(account_id),
+    retainage_receivable_acct_id INTEGER REFERENCES account(account_id),
+    retainage_payable_acct_id INTEGER REFERENCES account(account_id),
+    employee_advances_acct_id INTEGER REFERENCES account(account_id),
+    prepaid_expenses_acct_id INTEGER REFERENCES account(account_id),
+    grni_acct_id INTEGER REFERENCES account(account_id),
+    credit_card_clearing_acct_id INTEGER REFERENCES account(account_id),
+    use_tax_payable_acct_id INTEGER REFERENCES account(account_id),
+    unearned_revenue_acct_id INTEGER REFERENCES account(account_id),
+    customer_deposits_acct_id INTEGER REFERENCES account(account_id),
+    equipment_recovery_acct_id INTEGER REFERENCES account(account_id),
+    inventory_adjustments_acct_id INTEGER REFERENCES account(account_id),
+    bank_charges_acct_id INTEGER REFERENCES account(account_id),
+    interest_income_acct_id INTEGER REFERENCES account(account_id),
+    gain_loss_disposal_acct_id INTEGER REFERENCES account(account_id),
+    interest_expense_acct_id INTEGER REFERENCES account(account_id),
+    rounding_variance_acct_id INTEGER REFERENCES account(account_id));
 
 CREATE TABLE "change_order" (
 	co_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -977,8 +1012,10 @@ INSERT INTO permission (permission_code, module, description, is_sensitive) VALU
     ('company.roles.manage', 'Company', 'Create and edit roles and approval limits', 0),
     ('company.backup', 'Company', 'Back up and export the company', 0),
     ('company.restore', 'Company', 'Restore the company from a backup', 1),
+    ('company.create', 'Company', 'Create a subsidiary company', 0),
     ('period.close', 'Periods', 'Close a fiscal period', 0),
     ('period.reopen', 'Periods', 'Reopen a closed fiscal period (reason required)', 1),
+    ('year.reopen', 'Periods', 'Reopen a period in a closed fiscal year (reason required)', 1),
     ('period.view', 'Periods', 'View fiscal periods', 0),
     ('je.create', 'Ledger', 'Create journal entries', 0),
     ('je.post', 'Ledger', 'Post journal entries', 0),
@@ -1050,6 +1087,42 @@ INSERT INTO role (role_code, name, is_system, is_active, project_scope, created_
 
 INSERT INTO role_permission (role_code, permission_code)
     SELECT 'Admin', permission_code FROM permission;
+
+
+-- ---------------------------------------------------------------------------
+-- 2.4: per-document approval switches, voucher numbers, bank account details
+-- ---------------------------------------------------------------------------
+
+-- Decision 1.6: approval is OFF by default for every document type. Journal entries use
+-- company_settings.manual_entry_approval as their switch, so they have no row here.
+CREATE TABLE document_approval_setting (
+    document_type TEXT PRIMARY KEY CHECK (document_type IN ('Bill', 'Payment', 'Purchase order', 'Subcontract', 'Pay application', 'Import batch', 'Asset disposal', 'Estimate', 'Change order', 'Contract')),
+    requires_approval INTEGER NOT NULL DEFAULT 0 CHECK (requires_approval IN (0, 1))
+);
+
+INSERT INTO document_approval_setting (document_type) VALUES
+    ('Bill'), ('Payment'), ('Purchase order'), ('Subcontract'), ('Pay application'),
+    ('Import batch'), ('Asset disposal'), ('Estimate'), ('Change order'), ('Contract');
+
+-- Decision 1.3: bills get a system voucher number (VCH-1001...) from their own sequence,
+-- assigned at entry; gaps are allowed when drafts are deleted.
+CREATE TABLE voucher_sequence (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_number INTEGER NOT NULL DEFAULT 1000 CHECK (typeof(last_number) = 'integer' AND last_number >= 1000)
+);
+
+INSERT INTO voucher_sequence (id, last_number) VALUES (1, 1000);
+
+-- Decision C4: full routing and account numbers live here only; they are shown masked without
+-- view.bank_details, never sent to the AI and never written in full to the audit log.
+CREATE TABLE bank_account (
+    bank_account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL UNIQUE REFERENCES account(account_id),
+    bank_name TEXT,
+    routing_number TEXT,
+    account_number TEXT,
+    account_last4 TEXT CHECK (account_last4 IS NULL OR (length(account_last4) <= 4 AND account_last4 NOT GLOB '*[^0-9]*'))
+);
 
 
 -- ---------------------------------------------------------------------------
@@ -1518,13 +1591,14 @@ WHEN EXISTS (SELECT 1 FROM journal_line AS l JOIN journal_entry AS e ON e.entry_
 BEGIN SELECT RAISE(ABORT, 'Posted journal entries cannot be changed'); END;
 
 CREATE TRIGGER account_lock_after_posting
-BEFORE UPDATE OF code, type_id, parent_id, control_type ON account
-WHEN (NEW.code IS NOT OLD.code OR NEW.type_id IS NOT OLD.type_id
-      OR NEW.parent_id IS NOT OLD.parent_id OR NEW.control_type IS NOT OLD.control_type)
+BEFORE UPDATE OF type_id, parent_id, control_type, normal_balance ON account
+WHEN (NEW.type_id IS NOT OLD.type_id
+      OR NEW.parent_id IS NOT OLD.parent_id OR NEW.control_type IS NOT OLD.control_type
+      OR NEW.normal_balance IS NOT OLD.normal_balance)
  AND EXISTS (SELECT 1 FROM journal_line AS l JOIN journal_entry AS e ON e.entry_id = l.entry_id
              WHERE l.account_id = OLD.account_id AND e.is_posted = 1)
 BEGIN
-    SELECT RAISE(ABORT, 'An account with posted entries keeps its code, type, parent and control type; it can only be renamed');
+    SELECT RAISE(ABORT, 'An account with posted entries keeps its type, parent, control type and normal balance; its name and number can still change');
 END;
 
 CREATE TRIGGER invoice_series_step
@@ -1939,7 +2013,10 @@ BEGIN
             'is_postable', NEW.is_postable,
             'is_active', NEW.is_active,
             'is_deferral_account', NEW.is_deferral_account,
-            'control_type', NEW.control_type),
+            'control_type', NEW.control_type,
+            'normal_balance', NEW.normal_balance,
+            'subtype', NEW.subtype,
+            'is_tax_strategy_only', NEW.is_tax_strategy_only),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1960,7 +2037,10 @@ BEGIN
             'is_postable', OLD.is_postable,
             'is_active', OLD.is_active,
             'is_deferral_account', OLD.is_deferral_account,
-            'control_type', OLD.control_type),
+            'control_type', OLD.control_type,
+            'normal_balance', OLD.normal_balance,
+            'subtype', OLD.subtype,
+            'is_tax_strategy_only', OLD.is_tax_strategy_only),
         json_object(
             'account_id', NEW.account_id,
             'code', NEW.code,
@@ -1970,7 +2050,10 @@ BEGIN
             'is_postable', NEW.is_postable,
             'is_active', NEW.is_active,
             'is_deferral_account', NEW.is_deferral_account,
-            'control_type', NEW.control_type),
+            'control_type', NEW.control_type,
+            'normal_balance', NEW.normal_balance,
+            'subtype', NEW.subtype,
+            'is_tax_strategy_only', NEW.is_tax_strategy_only),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1991,7 +2074,10 @@ BEGIN
             'is_postable', OLD.is_postable,
             'is_active', OLD.is_active,
             'is_deferral_account', OLD.is_deferral_account,
-            'control_type', OLD.control_type),
+            'control_type', OLD.control_type,
+            'normal_balance', OLD.normal_balance,
+            'subtype', OLD.subtype,
+            'is_tax_strategy_only', OLD.is_tax_strategy_only),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -2891,7 +2977,39 @@ BEGIN
             'payroll_clearing_acct_id', NEW.payroll_clearing_acct_id,
             'manual_entry_approval', NEW.manual_entry_approval,
             'manual_entry_approval_threshold_cents', NEW.manual_entry_approval_threshold_cents,
-            'require_separate_approver', NEW.require_separate_approver),
+            'require_separate_approver', NEW.require_separate_approver,
+            'country', NEW.country,
+            'timezone', NEW.timezone,
+            'date_format', NEW.date_format,
+            'warn_future_days', NEW.warn_future_days,
+            'warn_past_days', NEW.warn_past_days,
+            'books_closed_through', NEW.books_closed_through,
+            'allow_manual_control_je', NEW.allow_manual_control_je,
+            'adjustment_periods_enabled', NEW.adjustment_periods_enabled,
+            'first_fiscal_year', NEW.first_fiscal_year,
+            'ar_acct_id', NEW.ar_acct_id,
+            'ap_acct_id', NEW.ap_acct_id,
+            'sales_tax_payable_acct_id', NEW.sales_tax_payable_acct_id,
+            'default_bank_acct_id', NEW.default_bank_acct_id,
+            'retained_earnings_acct_id', NEW.retained_earnings_acct_id,
+            'opening_balance_equity_acct_id', NEW.opening_balance_equity_acct_id,
+            'undeposited_funds_acct_id', NEW.undeposited_funds_acct_id,
+            'retainage_receivable_acct_id', NEW.retainage_receivable_acct_id,
+            'retainage_payable_acct_id', NEW.retainage_payable_acct_id,
+            'employee_advances_acct_id', NEW.employee_advances_acct_id,
+            'prepaid_expenses_acct_id', NEW.prepaid_expenses_acct_id,
+            'grni_acct_id', NEW.grni_acct_id,
+            'credit_card_clearing_acct_id', NEW.credit_card_clearing_acct_id,
+            'use_tax_payable_acct_id', NEW.use_tax_payable_acct_id,
+            'unearned_revenue_acct_id', NEW.unearned_revenue_acct_id,
+            'customer_deposits_acct_id', NEW.customer_deposits_acct_id,
+            'equipment_recovery_acct_id', NEW.equipment_recovery_acct_id,
+            'inventory_adjustments_acct_id', NEW.inventory_adjustments_acct_id,
+            'bank_charges_acct_id', NEW.bank_charges_acct_id,
+            'interest_income_acct_id', NEW.interest_income_acct_id,
+            'gain_loss_disposal_acct_id', NEW.gain_loss_disposal_acct_id,
+            'interest_expense_acct_id', NEW.interest_expense_acct_id,
+            'rounding_variance_acct_id', NEW.rounding_variance_acct_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2920,7 +3038,39 @@ BEGIN
             'payroll_clearing_acct_id', OLD.payroll_clearing_acct_id,
             'manual_entry_approval', OLD.manual_entry_approval,
             'manual_entry_approval_threshold_cents', OLD.manual_entry_approval_threshold_cents,
-            'require_separate_approver', OLD.require_separate_approver),
+            'require_separate_approver', OLD.require_separate_approver,
+            'country', OLD.country,
+            'timezone', OLD.timezone,
+            'date_format', OLD.date_format,
+            'warn_future_days', OLD.warn_future_days,
+            'warn_past_days', OLD.warn_past_days,
+            'books_closed_through', OLD.books_closed_through,
+            'allow_manual_control_je', OLD.allow_manual_control_je,
+            'adjustment_periods_enabled', OLD.adjustment_periods_enabled,
+            'first_fiscal_year', OLD.first_fiscal_year,
+            'ar_acct_id', OLD.ar_acct_id,
+            'ap_acct_id', OLD.ap_acct_id,
+            'sales_tax_payable_acct_id', OLD.sales_tax_payable_acct_id,
+            'default_bank_acct_id', OLD.default_bank_acct_id,
+            'retained_earnings_acct_id', OLD.retained_earnings_acct_id,
+            'opening_balance_equity_acct_id', OLD.opening_balance_equity_acct_id,
+            'undeposited_funds_acct_id', OLD.undeposited_funds_acct_id,
+            'retainage_receivable_acct_id', OLD.retainage_receivable_acct_id,
+            'retainage_payable_acct_id', OLD.retainage_payable_acct_id,
+            'employee_advances_acct_id', OLD.employee_advances_acct_id,
+            'prepaid_expenses_acct_id', OLD.prepaid_expenses_acct_id,
+            'grni_acct_id', OLD.grni_acct_id,
+            'credit_card_clearing_acct_id', OLD.credit_card_clearing_acct_id,
+            'use_tax_payable_acct_id', OLD.use_tax_payable_acct_id,
+            'unearned_revenue_acct_id', OLD.unearned_revenue_acct_id,
+            'customer_deposits_acct_id', OLD.customer_deposits_acct_id,
+            'equipment_recovery_acct_id', OLD.equipment_recovery_acct_id,
+            'inventory_adjustments_acct_id', OLD.inventory_adjustments_acct_id,
+            'bank_charges_acct_id', OLD.bank_charges_acct_id,
+            'interest_income_acct_id', OLD.interest_income_acct_id,
+            'gain_loss_disposal_acct_id', OLD.gain_loss_disposal_acct_id,
+            'interest_expense_acct_id', OLD.interest_expense_acct_id,
+            'rounding_variance_acct_id', OLD.rounding_variance_acct_id),
         json_object(
             'id', NEW.id,
             'company_name', NEW.company_name,
@@ -2938,7 +3088,110 @@ BEGIN
             'payroll_clearing_acct_id', NEW.payroll_clearing_acct_id,
             'manual_entry_approval', NEW.manual_entry_approval,
             'manual_entry_approval_threshold_cents', NEW.manual_entry_approval_threshold_cents,
-            'require_separate_approver', NEW.require_separate_approver),
+            'require_separate_approver', NEW.require_separate_approver,
+            'country', NEW.country,
+            'timezone', NEW.timezone,
+            'date_format', NEW.date_format,
+            'warn_future_days', NEW.warn_future_days,
+            'warn_past_days', NEW.warn_past_days,
+            'books_closed_through', NEW.books_closed_through,
+            'allow_manual_control_je', NEW.allow_manual_control_je,
+            'adjustment_periods_enabled', NEW.adjustment_periods_enabled,
+            'first_fiscal_year', NEW.first_fiscal_year,
+            'ar_acct_id', NEW.ar_acct_id,
+            'ap_acct_id', NEW.ap_acct_id,
+            'sales_tax_payable_acct_id', NEW.sales_tax_payable_acct_id,
+            'default_bank_acct_id', NEW.default_bank_acct_id,
+            'retained_earnings_acct_id', NEW.retained_earnings_acct_id,
+            'opening_balance_equity_acct_id', NEW.opening_balance_equity_acct_id,
+            'undeposited_funds_acct_id', NEW.undeposited_funds_acct_id,
+            'retainage_receivable_acct_id', NEW.retainage_receivable_acct_id,
+            'retainage_payable_acct_id', NEW.retainage_payable_acct_id,
+            'employee_advances_acct_id', NEW.employee_advances_acct_id,
+            'prepaid_expenses_acct_id', NEW.prepaid_expenses_acct_id,
+            'grni_acct_id', NEW.grni_acct_id,
+            'credit_card_clearing_acct_id', NEW.credit_card_clearing_acct_id,
+            'use_tax_payable_acct_id', NEW.use_tax_payable_acct_id,
+            'unearned_revenue_acct_id', NEW.unearned_revenue_acct_id,
+            'customer_deposits_acct_id', NEW.customer_deposits_acct_id,
+            'equipment_recovery_acct_id', NEW.equipment_recovery_acct_id,
+            'inventory_adjustments_acct_id', NEW.inventory_adjustments_acct_id,
+            'bank_charges_acct_id', NEW.bank_charges_acct_id,
+            'interest_income_acct_id', NEW.interest_income_acct_id,
+            'gain_loss_disposal_acct_id', NEW.gain_loss_disposal_acct_id,
+            'interest_expense_acct_id', NEW.interest_expense_acct_id,
+            'rounding_variance_acct_id', NEW.rounding_variance_acct_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- Decision 1.7 / A9: a journal entry cannot be approved by its creator when the company requires a
+-- separate approver. No settings row counts as "required" (the safe default).
+CREATE TRIGGER journal_entry_separate_approver_insert
+BEFORE INSERT ON journal_entry
+WHEN NEW.approved_by IS NOT NULL AND NEW.approved_by IS NEW.created_by
+ AND COALESCE((SELECT require_separate_approver FROM company_settings WHERE id = 1), 1) = 1
+BEGIN
+    SELECT RAISE(ABORT, 'This company requires a different user to approve an entry');
+END;
+
+CREATE TRIGGER journal_entry_separate_approver_update
+BEFORE UPDATE OF approved_by, created_by ON journal_entry
+WHEN NEW.approved_by IS NOT NULL AND NEW.approved_by IS NEW.created_by
+ AND COALESCE((SELECT require_separate_approver FROM company_settings WHERE id = 1), 1) = 1
+BEGIN
+    SELECT RAISE(ABORT, 'This company requires a different user to approve an entry');
+END;
+
+CREATE TRIGGER audit_document_approval_setting_update
+AFTER UPDATE ON document_approval_setting
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'document_approval_setting', NEW.rowid,
+        'Update',
+        json_object('document_type', OLD.document_type, 'requires_approval', OLD.requires_approval),
+        json_object('document_type', NEW.document_type, 'requires_approval', NEW.requires_approval),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- Only the last four digits of a bank account number are ever written to the audit log.
+CREATE TRIGGER audit_bank_account_insert
+AFTER INSERT ON bank_account
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_account', NEW.bank_account_id,
+        'Insert',
+        NULL,
+        json_object('account_id', NEW.account_id, 'bank_name', NEW.bank_name, 'account_last4', NEW.account_last4),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_account_update
+AFTER UPDATE ON bank_account
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_account', NEW.bank_account_id,
+        'Update',
+        json_object('account_id', OLD.account_id, 'bank_name', OLD.bank_name, 'account_last4', OLD.account_last4),
+        json_object('account_id', NEW.account_id, 'bank_name', NEW.bank_name, 'account_last4', NEW.account_last4),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_account_delete
+AFTER DELETE ON bank_account
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_account', OLD.bank_account_id,
+        'Delete',
+        json_object('account_id', OLD.account_id, 'bank_name', OLD.bank_name, 'account_last4', OLD.account_last4),
+        NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;

@@ -103,7 +103,7 @@ CLOCK_FUNCTIONS = {"utc_now_iso"}
 # clock.py is the one place that reads the system clock. The context builders are where
 # a context's `now` and `today` will be set (decision H2).
 H2_EXEMPT_FILES = {"clock.py"}
-H2_EXEMPT_FUNCTIONS = {"auth.py:login", "companies.py:open_company"}
+H2_EXEMPT_FUNCTIONS = {"auth.py:login", "companies.py:open_company", "context.py:__post_init__"}
 # Today's offenders ("file:function"); each is removed when Step 2.4 adds `now` and
 # `today` to ServiceContext and these callers read them from the context.
 H2_ALLOW_LIST = {
@@ -111,11 +111,6 @@ H2_ALLOW_LIST = {
     # recovery and first-Master creation run before a company is open), so this clock
     # stays until the auth functions take `now` as an argument.
     "auth.py:_now",
-    "approvals.py:submit_for_approval",
-    "approvals.py:cancel_on_edit",
-    "approvals.py:_record",
-    "authz.py:_write_access_event",
-    "tx.py:write_transaction",
 }
 
 
@@ -177,7 +172,7 @@ def test_h2_checker_flags_clock_reads():
 
 H5_PATTERNS = [re.compile(p, re.IGNORECASE) for p in (
     r"date\s*\(\s*'now'", r"datetime\s*\(\s*'now'", r"strftime\s*\(", r"julianday\s*\(",
-    r"insert\s+or\s+replace", r"group_concat",
+    r"insert\s+or\s+replace", r"group_concat", r"\bpragma\b",
 )]
 # Entries are file names in modules/services/. Must stay empty.
 H5_ALLOW_LIST = set()

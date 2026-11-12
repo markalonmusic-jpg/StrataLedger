@@ -13,10 +13,13 @@ from tests.ledger_helpers import (
 )
 
 CONTROL_TYPES = [
-    "AR", "AP", "Sales tax", "Deferral", "Retainage", "Over/under billing",
-    "Employee advance", "Employee material advance", "Inventory",
-    "Fixed asset cost", "Accumulated depreciation", "Depreciation expense", "Equipment cost recovery",
-    "Loan principal", "Loan current portion",
+    "AR", "AP", "Retainage receivable", "Retainage payable", "Sales tax payable", "Use tax payable",
+    "Undeposited funds", "GRNI", "Inventory", "Fixed assets", "Loans",
+    "Deferral", "Over/under billing", "Employee advance", "Employee material advance",
+]
+REMOVED_CONTROL_TYPES = [
+    "Sales tax", "Retainage", "Fixed asset cost", "Accumulated depreciation", "Depreciation expense",
+    "Equipment cost recovery", "Loan principal", "Loan current portion",
 ]
 
 # Every date column in the company schema and every 0/1 flag column.
@@ -231,20 +234,25 @@ def test_control_types_accepted(conn, control_type):
     make_account(conn, "C-1", control_type=control_type)
 
 
-def test_unknown_control_type_rejected(conn):
-    assert rejects(conn, "INSERT INTO account (code, name, type_id, control_type) VALUES ('X', 'X', ?, 'Fixed assets')",
-                   (type_id(conn),))
-    make_account(conn, "N-1")  # NULL = not controlled
+@pytest.mark.parametrize("control_type", REMOVED_CONTROL_TYPES + ["Nonsense"])
+def test_unknown_or_retired_control_type_rejected(conn, control_type):
+    assert rejects(conn, "INSERT INTO account (code, name, type_id, control_type) VALUES ('X', 'X', ?, ?)",
+                   (type_id(conn), control_type))
+
+
+def test_null_control_type_means_not_controlled(conn):
+    make_account(conn, "N-1")
 
 
 def test_account_with_posted_history_is_locked(conn):
     entry_id = posted_entry(conn)
     account_id = conn.execute("SELECT account_id FROM journal_line WHERE entry_id = ? LIMIT 1", (entry_id,)).fetchone()[0]
     parent = make_account(conn, "P-1")
-    for assignment, params in (("code = 'NEW'", ()), ("type_id = ?", (type_id(conn, "Expense"),)),
-                               ("parent_id = ?", (parent,)), ("control_type = 'AR'", ())):
+    for assignment, params in (("type_id = ?", (type_id(conn, "Expense"),)), ("parent_id = ?", (parent,)),
+                               ("control_type = 'AR'", ()), ("normal_balance = 'C'", ())):
         assert rejects(conn, f"UPDATE account SET {assignment} WHERE account_id = ?", (*params, account_id))
-    conn.execute("UPDATE account SET name = 'Renamed' WHERE account_id = ?", (account_id,))
+    # Decision C3: the name and the number may still change after posting (logged).
+    conn.execute("UPDATE account SET name = 'Renamed', code = 'NEW' WHERE account_id = ?", (account_id,))
     unused = make_account(conn, "U-1")
     conn.execute("UPDATE account SET code = 'U-2', control_type = 'AP' WHERE account_id = ?", (unused,))
 

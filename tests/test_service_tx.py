@@ -179,3 +179,12 @@ def test_get_readonly_connection_is_public_and_read_only(fresh_company):
             conn.execute("DELETE FROM audit_context")
     finally:
         conn.close()
+
+
+def test_audit_context_uses_the_context_clock_not_the_system_clock(fresh_company):
+    import dataclasses
+    context = dataclasses.replace(make_context(), now="2031-02-03T04:05:06+00:00", today="2031-02-03")
+    seen = {}
+    with write_transaction(fresh_company, context) as conn:
+        seen.update(dict(conn.execute("SELECT * FROM audit_context WHERE id = 1").fetchone()))
+    assert seen["set_at"] == "2031-02-03T04:05:06+00:00"

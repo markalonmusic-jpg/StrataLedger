@@ -118,6 +118,11 @@ in code (`tests/test_config_paths.py` fails on one).
   master layout (Sidebar + Workspace + right-hand AI Copilot drawer).
   `Outdated/app_fast.py` is the old prototype and is not imported.
 - `config.py` - theme styling (`Theme` class), `RESOURCE_DIR` / `DATA_DIR` and the paths derived from them.
+- `templates/coa/` - the approved chart-of-accounts templates (`construction.csv`, `general.csv`, decision I1)
+  and their README. Read through `modules/services/storage.py` and `chart_templates.py`; "Import my own CSV"
+  uses the same parser (`csv_table.py`).
+- `requirements.txt` - runtime packages (`customtkinter`, `tzdata`; the installed app bundles `tzdata` so company
+  time zones work on Windows).
 - `migrations/` - the baseline schema, one file per database kind
   (`001_company.sql`, `001_master.sql`), which `database.py` runs to build
   databases at runtime. Until the first release these files are edited
@@ -594,10 +599,16 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   - **2.3 Auth service (done):** scrypt hash/verify/change password, first Master
     creation, remove the hardcoded token, open-company service checking
     `user_company_access`.
-  - **2.4 Company creation and periods:** company creation service (build
-    from migrations, `company_settings` row id = 1, chart of accounts
-    template, fiscal periods); period service (generate, close with
-    pre-close checks, reopen with reason and approver).
+  - **2.4 Company creation and periods**, in two commits:
+    - **2.4a (done):** `companies.create_company` (all-or-nothing build, S1-S8: code, `company_settings`,
+      chart from `templates/coa/` or the parent or the user's own CSV, system account pointers, Admin grant),
+      `archive_company` / `restore_company` / `export_company` / `list_companies` (S9), `accounts.py` (C1-C3),
+      `company_settings.py` (Controls page, per-document "requires approval" default off, system accounts),
+      `bank_accounts.py` (C4, masked), `storage.py`, `csv_table.py`, `chart_templates.py`, `sequences.py`
+      (voucher numbers), `ServiceContext.now` / `today`, and the H2 / H5 follow-through. The 11 starter roles are
+      drafted in docs/role_templates_draft.md; only Admin is seeded until the owner approves it.
+    - **2.4b:** fiscal years and periods (12 plus 13 and 14, hidden unless the Adjustment periods control is on),
+      period close with warnings or blocks, reopen with reason, "books closed through", year close.
   - **2.5 Ledger services:** the controls-audit rules; every test in
     tests/test_service_rules_pending.py flips from xfail to pass (strict
     xfail means each one must be un-marked as it is implemented).
@@ -709,6 +720,11 @@ Planned schema work, in build order (names only):
   `account.control_type`: `Retainage` is split into `Retainage receivable`
   and `Retainage payable` in the CHECK (no data mapping before release); a
   test checks that every foreign key into `account` survives.
+  (Done in 2.4a: the CHECK is now AR, AP, Retainage receivable, Retainage payable, Sales tax payable, Use tax
+  payable, Undeposited funds, GRNI, Inventory, Fixed assets, Loans, Deferral, Over/under billing, Employee advance,
+  Employee material advance. The old Fixed asset cost / Accumulated depreciation / Depreciation expense / Equipment
+  cost recovery and Loan principal / Loan current portion values are now `Fixed assets` and `Loans`; the
+  fixed-asset and loan design docs are updated when those steps are built.)
 - Ledger line keys and controlled accounts.
 - Inventory (v1.1).
 - PO / subcontract / receiving / matching (docs/po_ap_matching_design.md; v1.1):
@@ -802,17 +818,23 @@ Planned schema work, in build order (names only):
   have its code), a trigger that blocks changing a set code, a trigger that
   blocks deleting a coded contact, and `is_customer DEFAULT 0`.
   `modules/services/contacts.py` added with 73 tests. Next: 2.4.
+- 2026-11-11: Portability rules (decisions H1-H6) and static tests; private GitHub remote with fresh history;
+  `config.RESOURCE_DIR` / `DATA_DIR` (P2a).
+- 2026-11-12: Phase 2.4a done (see the roadmap entry for 2.4). Baseline additions: `account.normal_balance`,
+  `subtype`, `is_tax_strategy_only`, the new `control_type` list; `company_settings` setup facts, controls and 27
+  system account pointers; `document_approval_setting`, `voucher_sequence`, `bank_account`; permissions
+  `company.create` and `year.reopen`; the self-approval trigger on `journal_entry` (only when
+  `require_separate_approver = 1`); master `company_registry.is_archived` and an immutable company code.
+  Decision C3 changed one old rule: an account number may change after posting (logged, Admin); type, parent,
+  control type and normal balance still lock. Next: 2.4b, then 2.5.
 
 **Known issues (code as it is today; fixed in the phase named):**
-- H2 allow-list (`tests/test_static_portability.py`): `approvals.py`, `authz.py`
-  and `tx.py` call `utc_now_iso()`, and `auth._now()` calls `datetime.now`.
-  Step 2.4 adds `now` / `today` to `ServiceContext` (with
-  `company_settings.timezone`) and these read the context. `auth._now` stays
-  listed on purpose until the auth functions take `now` as an argument,
-  because throttle and recovery run before any context exists. `auth.login`
-  and `companies.open_company` are context builders and are exempt.
-- `authz.py` runs `PRAGMA busy_timeout` on its own connection. In 2.4 it moves
-  into `database.py`'s connection helpers (H5: PRAGMAs live only there).
+- H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
+  purpose until the auth functions take `now` as an argument, because throttle and recovery run before any
+  context exists. `auth.login`, `companies.open_company` and `ServiceContext.__post_init__` are context builders
+  and are exempt.
+- `tzdata` is not installed in this development environment, so the company-local `today` falls back to the UTC
+  date with a logged warning and three time-zone tests are skipped. `pip install -r requirements.txt` fixes both.
 - `modules/views_wizard.py` inserts contacts with raw SQL and `is_customer = 1`
   but no `customer_code`, so the 2.6 CHECK rejects it. Phase 3 rewrites that
   screen to call `contacts.create_contact` (allow-listed under rule 11 until
@@ -833,11 +855,6 @@ Planned schema work, in build order (names only):
   `scripts/create_fresh_databases.py`, which builds the master only until the
   Phase 2.4 company creation service exists, so the app cannot open a company
   until then.
-- `journal_entry` has `CHECK (approved_by IS NULL OR approved_by IS NOT
-  created_by)` unconditionally, so a self-approved journal entry is rejected
-  even when `require_separate_approver = 0` (conflicts with
-  docs/roles_permissions_design.md section 5A). Resolve in 2.5 by replacing the
-  CHECK with a trigger that reads `company_settings.require_separate_approver`.
 - The sidebar's `NAV_ITEMS` role tuples (`app_strata.pyw`) hide items by role
   name. Replaced by permission-based visibility in Phase 3; the service layer
   enforces and the UI only hides (rule 10).

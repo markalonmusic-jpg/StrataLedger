@@ -16,9 +16,11 @@ PERMISSIONS = {
     "company.roles.manage": Permission("Company", "Create and edit roles and approval limits", False),
     "company.backup": Permission("Company", "Back up and export the company", False),
     "company.restore": Permission("Company", "Restore the company from a backup", True),
+    "company.create": Permission("Company", "Create a subsidiary company", False),
     # Periods
     "period.close": Permission("Periods", "Close a fiscal period", False),
     "period.reopen": Permission("Periods", "Reopen a closed fiscal period (reason required)", True),
+    "year.reopen": Permission("Periods", "Reopen a period in a closed fiscal year (reason required)", True),
     "period.view": Permission("Periods", "View fiscal periods", False),
     # Ledger
     "je.create": Permission("Ledger", "Create journal entries", False),

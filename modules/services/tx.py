@@ -13,7 +13,6 @@ from contextlib import contextmanager
 
 import config
 import modules.database as database
-from modules.services.clock import utc_now_iso
 
 
 @contextmanager
@@ -32,7 +31,7 @@ def write_transaction(db_path, context):
             conn.execute(
                 "UPDATE audit_context SET user_id = ?, terminal_id = ?, "
                 "software_version_tag = ?, set_at = ? WHERE id = 1",
-                (context.user_id, socket.gethostname(), config.APP_VERSION, utc_now_iso()),
+                (context.user_id, socket.gethostname(), config.APP_VERSION, context.now),
             )
             yield conn
             conn.execute(

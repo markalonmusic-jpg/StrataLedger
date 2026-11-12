@@ -36,7 +36,6 @@ from collections import namedtuple
 
 import modules.database as database
 from modules.services import permissions
-from modules.services.clock import utc_now_iso
 from modules.services.errors import PasswordChangeRequiredError, PermissionDeniedError, ValidationError
 from modules.services.paths import resolve_company_path, same_file
 
@@ -123,7 +122,7 @@ def record_company_open(context):
     if not current_access(context).is_master:
         return False
     _write_access_event(context.company_db_path, user_id=context.user_id, actor_type="Master",
-                        event_type="Open company", origin=context.origin)
+                        event_type="Open company", origin=context.origin, now=context.now)
     return True
 
 
@@ -243,11 +242,12 @@ def _deny(context, permission, actor_type, record_type, record_id):
     _write_access_event(
         context.company_db_path, user_id=context.user_id, actor_type=actor_type, event_type="Denied",
         permission_code=permission, record_type=record_type, record_id=record_id, origin=context.origin,
+        now=context.now,
     )
     raise PermissionDeniedError(f"Not permitted: {permission}" if permission else "Not permitted")
 
 
-def _write_access_event(company_db_path, *, user_id, actor_type, event_type, permission_code=None,
+def _write_access_event(company_db_path, *, user_id, actor_type, event_type, now, permission_code=None,
                         record_type=None, record_id=None, origin=None):
     """Append one access_event in its own short transaction. Never stores field values.
 
@@ -258,13 +258,13 @@ def _write_access_event(company_db_path, *, user_id, actor_type, event_type, per
         conn = database.get_connection(company_db_path)
         try:
             conn.isolation_level = None
-            conn.execute(f"PRAGMA busy_timeout = {int(ACCESS_EVENT_BUSY_TIMEOUT_MS)}")
+            database.set_busy_timeout(conn, ACCESS_EVENT_BUSY_TIMEOUT_MS)
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
                     "INSERT INTO access_event (occurred_at, user_id, actor_type, event_type, permission_code, "
                     "record_type, record_id, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (utc_now_iso(), user_id, actor_type, event_type, permission_code, record_type, record_id, origin),
+                    (now, user_id, actor_type, event_type, permission_code, record_type, record_id, origin),
                 )
                 conn.execute("COMMIT")
             except BaseException:

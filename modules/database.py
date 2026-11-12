@@ -30,6 +30,11 @@ def get_connection(db_path):
     return conn
 
 
+def set_busy_timeout(conn, milliseconds):
+    """How long this connection waits for a lock held by another writer (H5: PRAGMAs live here only)."""
+    conn.execute(f"PRAGMA busy_timeout = {int(milliseconds)}")
+
+
 def get_readonly_connection(db_path):
     """Public read-only connection (writes raise OperationalError). Caller closes it."""
     return _readonly_connection(db_path)

@@ -1,0 +1,73 @@
+account_number,name,parent_number,account_type,subtype,normal_balance,control_type,is_postable,system_role
+1000,Cash and Bank,,Asset,Current asset,D,,0,
+1010,Operating Checking,1000,Asset,Current asset,D,,1,default_bank
+1020,Savings,1000,Asset,Current asset,D,,1,
+1050,Undeposited Funds,1000,Asset,Current asset,D,Undeposited funds,1,undeposited_funds
+1060,Payment Processor Clearing,1000,Asset,Current asset,D,,1,
+1100,Receivables,,Asset,Current asset,D,,0,
+1110,Accounts Receivable,1100,Asset,Current asset,D,AR,1,ar
+1130,Employee Advances,1100,Asset,Current asset,D,Employee advance,1,employee_advances
+1140,Other Receivables,1100,Asset,Current asset,D,,1,
+1400,Prepaid Expenses,,Asset,Current asset,D,Deferral,1,prepaid_expenses
+1500,Fixed Assets,,Asset,Fixed asset,D,,0,
+1510,Computer Equipment,1500,Asset,Fixed asset,D,Fixed assets,1,
+1530,Office Equipment and Furniture,1500,Asset,Fixed asset,D,Fixed assets,1,
+1540,Vehicles,1500,Asset,Fixed asset,D,Fixed assets,1,
+1590,Accumulated Depreciation,1500,Asset,Fixed asset,C,Fixed assets,1,
+1600,Other Assets,,Asset,Other asset,D,,0,
+1610,Loan Closing Costs,1600,Asset,Other asset,D,,1,
+1620,Deposits Paid,1600,Asset,Other asset,D,,1,
+2000,Current Liabilities,,Liability,Current liability,C,,0,
+2010,Accounts Payable,2000,Liability,Current liability,C,AP,1,ap
+2040,Credit Card - Company Card,2000,Liability,Current liability,C,,1,
+2050,Credit Card Clearing,2000,Liability,Current liability,C,,1,credit_card_clearing
+2100,Payroll Liabilities,2000,Liability,Current liability,C,,0,
+2110,Payroll Clearing,2100,Liability,Current liability,C,,1,payroll_clearing
+2120,Federal Payroll Taxes Payable,2100,Liability,Current liability,C,,1,
+2130,State Payroll Taxes Payable,2100,Liability,Current liability,C,,1,
+2140,Benefits and Deductions Payable,2100,Liability,Current liability,C,,1,
+2200,Sales Tax Payable,2000,Liability,Current liability,C,Sales tax payable,1,sales_tax_payable
+2210,Use Tax Payable,2000,Liability,Current liability,C,Use tax payable,1,use_tax_payable
+2310,Unearned Revenue,2000,Liability,Current liability,C,Deferral,1,unearned_revenue
+2320,Customer Deposits,2000,Liability,Current liability,C,,1,customer_deposits
+2330,Accrued Liabilities,2000,Liability,Current liability,C,,1,
+2400,Current Portion of Long-Term Debt,2000,Liability,Current liability,C,Loans,1,
+2410,Line of Credit,2000,Liability,Current liability,C,Loans,1,
+2500,Long-Term Liabilities,,Liability,Long-term liability,C,,0,
+2510,Long-Term Loans,2500,Liability,Long-term liability,C,Loans,1,
+3000,Equity,,Equity,Equity,C,,0,
+3010,Owner's Capital / Common Stock,3000,Equity,Equity,C,,1,
+3020,Owner Draws / Distributions,3000,Equity,Equity,D,,1,
+3100,Retained Earnings,3000,Equity,Equity,C,,1,retained_earnings
+3900,Opening Balance Equity,3000,Equity,Equity,C,,1,opening_balance_equity
+4000,Revenue,,Revenue,Operating revenue,C,,0,
+4010,Service Revenue,4000,Revenue,Operating revenue,C,,1,
+4020,Subscription Revenue,4000,Revenue,Operating revenue,C,,1,
+4030,Product Sales,4000,Revenue,Operating revenue,C,,1,
+4090,Discounts and Refunds Given,4000,Revenue,Operating revenue,D,,1,
+5000,Cost of Sales,,Expense,Cost of sales,D,,0,
+5010,Direct Labor,5000,Expense,Cost of sales,D,,1,
+5020,Subcontractors and Contractors,5000,Expense,Cost of sales,D,,1,
+5030,Hosting and Delivery Costs,5000,Expense,Cost of sales,D,,1,
+5040,Cost of Products Sold,5000,Expense,Cost of sales,D,,1,
+6000,Operating Expenses,,Expense,Operating expense,D,,0,
+6010,Salaries and Wages,6000,Expense,Operating expense,D,,1,
+6020,Payroll Taxes,6000,Expense,Operating expense,D,,1,
+6030,Employee Benefits,6000,Expense,Operating expense,D,,1,
+6100,Rent and Utilities,6000,Expense,Operating expense,D,,1,
+6200,Software and Subscriptions,6000,Expense,Operating expense,D,,1,
+6300,Professional and Legal Fees,6000,Expense,Operating expense,D,,1,
+6400,Depreciation Expense,6000,Expense,Operating expense,D,,1,
+6500,Insurance,6000,Expense,Operating expense,D,,1,
+6600,Vehicle Expense,6000,Expense,Operating expense,D,,1,
+6700,Office Supplies,6000,Expense,Operating expense,D,,1,
+6800,Advertising and Marketing,6000,Expense,Operating expense,D,,1,
+6900,Bank Charges and Merchant Fees,6000,Expense,Operating expense,D,,1,bank_charges
+6950,Meals and Travel,6000,Expense,Operating expense,D,,1,
+7000,Other Income,,Revenue,Other income,C,,0,
+7010,Interest Income,7000,Revenue,Other income,C,,1,interest_income
+7020,Gain or Loss on Asset Disposal,7000,Revenue,Other income,C,,1,gain_loss_disposal
+8000,Other Expense,,Expense,Other expense,D,,0,
+8010,Interest Expense,8000,Expense,Other expense,D,,1,interest_expense
+8020,Rounding Variance,8000,Expense,Other expense,D,,1,rounding_variance
+8030,Income Tax Expense,8000,Expense,Other expense,D,,1,

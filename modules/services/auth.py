@@ -58,7 +58,12 @@ class Session:
 
 
 FirstMaster = namedtuple("FirstMaster", "user_id recovery_code")
-_Actor = namedtuple("_Actor", "user_id")  # all write_transaction needs for audit_context
+class _Actor(namedtuple("_Actor", "user_id now")):
+    """All write_transaction needs for audit_context. Authentication runs before any context exists,
+    so the actor takes its time from auth._now() (the one allow-listed clock read in this file)."""
+
+    def __new__(cls, user_id):
+        return super().__new__(cls, user_id, _iso(_now()))
 
 
 def _now():

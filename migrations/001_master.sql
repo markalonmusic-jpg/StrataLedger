@@ -60,6 +60,7 @@ CREATE TABLE "company_registry" (
     parent_company_id   INTEGER DEFAULT NULL,
     is_active           INTEGER DEFAULT 1 CHECK (is_active IN (0, 1)),
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_archived         INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
     FOREIGN KEY (parent_company_id) REFERENCES company_registry(company_id) ON DELETE SET NULL
 );
 
@@ -103,7 +104,7 @@ CREATE TABLE auth_event (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     occurred_at TEXT NOT NULL,
     event_type TEXT NOT NULL CHECK (event_type IN ('Login', 'Login failed', 'Locked', 'Password changed',
-        'Password reset', 'First Master created', 'Master recovered', 'Recovery failed', 'Denied')),
+        'Password reset', 'First Master created', 'Master recovered', 'Recovery failed', 'Denied', 'Company exported')),
     username TEXT,
     user_id INTEGER,
     actor_user_id INTEGER,
@@ -327,6 +328,14 @@ BEGIN
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
 
+-- Decision S1: a company code never changes (the company file is named after it).
+CREATE TRIGGER company_code_immutable
+BEFORE UPDATE OF company_code ON company_registry
+WHEN NEW.company_code IS NOT OLD.company_code
+BEGIN
+    SELECT RAISE(ABORT, 'A company code cannot be changed');
+END;
+
 CREATE TRIGGER audit_company_registry_insert
 AFTER INSERT ON company_registry
 BEGIN
@@ -342,6 +351,7 @@ BEGIN
             'database_file_path', NEW.database_file_path,
             'parent_company_id', NEW.parent_company_id,
             'is_active', NEW.is_active,
+            'is_archived', NEW.is_archived,
             'created_at', NEW.created_at),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -361,6 +371,7 @@ BEGIN
             'database_file_path', OLD.database_file_path,
             'parent_company_id', OLD.parent_company_id,
             'is_active', OLD.is_active,
+            'is_archived', OLD.is_archived,
             'created_at', OLD.created_at),
         json_object(
             'company_id', NEW.company_id,
@@ -369,6 +380,7 @@ BEGIN
             'database_file_path', NEW.database_file_path,
             'parent_company_id', NEW.parent_company_id,
             'is_active', NEW.is_active,
+            'is_archived', NEW.is_archived,
             'created_at', NEW.created_at),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -388,6 +400,7 @@ BEGIN
             'database_file_path', OLD.database_file_path,
             'parent_company_id', OLD.parent_company_id,
             'is_active', OLD.is_active,
+            'is_archived', OLD.is_archived,
             'created_at', OLD.created_at),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
