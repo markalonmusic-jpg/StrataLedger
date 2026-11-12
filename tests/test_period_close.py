@@ -82,7 +82,8 @@ def draft_entry(ctx, entry_date, period_name):
 def test_clean_first_period_closes_without_warnings_and_writes_history(ctx):
     checks = periods.close_checks(ctx, pid(ctx, "FY2027-01"))
     assert {c["code"]: c["ok"] for c in checks} == {"draft_entries": True, "earlier_period_open": True,
-                                                    "pending_approvals": True, "control_overrides": True}
+                                                    "pending_approvals": True, "control_overrides": True,
+                                                    "ledger_integrity": True}
     periods.close_period(ctx, pid(ctx, "FY2027-01"))
     row = q(ctx, "SELECT * FROM fiscal_period WHERE name = 'FY2027-01'")[0]
     assert row["is_closed"] == 1 and row["closed_by"] == ctx.user_id and row["closed_at"] == ctx.now

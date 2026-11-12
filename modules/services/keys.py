@@ -44,29 +44,41 @@ class SecretKey:
 
 
 class KeyProvider:
-    """The interface. `chain_key` returns the key that sealed (or will seal) under `key_id` in a company."""
+    """The interface. `get_key(company_id, key_id)` returns the key a company's ledger_chain_key row `key_id`
+    names, active or retired, or raises KeyUnavailableError. Retired keys must stay available for as long as the
+    entries they sealed exist (step 1c's local provider keeps every retired key, wrapped, forever)."""
 
-    def chain_key(self, company_id, key_id):
+    def get_key(self, company_id, key_id):
         raise NotImplementedError
 
 
 class NullKeyProvider(KeyProvider):
-    """No key is available on this computer; posting is refused."""
+    """No key is available on this computer; posting is refused and verification is Unavailable."""
 
-    def chain_key(self, company_id, key_id):
+    def get_key(self, company_id, key_id):
         raise KeyUnavailableError(NO_KEY_MESSAGE)
 
 
 class FixedKeyProvider(KeyProvider):
-    """One constant key for every company and key id. Tests only."""
+    """Constant keys for the test suite only: one key for every key id, or a {key_id: bytes} map that holds
+    several (an id that is not in the map is unavailable, like a lost key)."""
 
-    def __init__(self, key_bytes):
+    def __init__(self, keys):
         if os.environ.get("STRATALEDGER_ALLOW_TEST_KEYS") != "1":
             raise RuntimeError("FixedKeyProvider is for the test suite only")
-        self._key = SecretKey(key_bytes)
+        if isinstance(keys, dict):
+            self._keys = {key_id: SecretKey(value) for key_id, value in keys.items()}
+            self._single = None
+        else:
+            self._keys = {}
+            self._single = SecretKey(keys)
 
-    def chain_key(self, company_id, key_id):
-        return self._key
+    def get_key(self, company_id, key_id):
+        if self._single is not None:
+            return self._single
+        if key_id not in self._keys:
+            raise KeyUnavailableError(f"Ledger key {key_id} is not available on this computer.")
+        return self._keys[key_id]
 
     def __repr__(self):
         return "<FixedKeyProvider>"

@@ -125,6 +125,26 @@ def canonical_entry(header, lines, dimensions=()):
     return text.encode("utf-8")
 
 
+# --- Checkpoint MAC ------------------------------------------------------------------------------------------------
+
+CHECKPOINT_DOMAIN = b"SLCP1"
+CHECKPOINT_FIELDS = ("created_at", "created_by", "kind", "scope", "result", "through_entry_number", "chain_hash",
+                     "first_broken_entry_number", "key_id", "ref_type", "ref_id")
+
+
+def checkpoint_mac(key, company_code, checkpoint):
+    """The MAC of a ledger checkpoint (company row or master mirror): HMAC-SHA256 under the chain key named by
+    its key_id, over a domain tag, the company code and the canonical JSON of CHECKPOINT_FIELDS. A forged or
+    edited "verified through N" marker therefore fails."""
+    _check_key(key)
+    if not isinstance(company_code, str) or not company_code:
+        raise ChainFormatError("A company code is needed to sign a checkpoint")
+    fields = {f: _value(f, checkpoint[f]) for f in CHECKPOINT_FIELDS}
+    body = json.dumps(fields, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hmac.new(key, b"\x00".join((CHECKPOINT_DOMAIN, company_code.encode("utf-8"), body)),
+                    hashlib.sha256).hexdigest()
+
+
 # --- Seal and verify ---------------------------------------------------------------------------------------------
 
 def _check_hash(value, what):

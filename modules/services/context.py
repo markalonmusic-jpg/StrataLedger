@@ -26,6 +26,7 @@ class ServiceContext:
     agent_run_id: Optional[int] = None
     now: Optional[str] = None      # UTC ISO 8601 with offset; filled here (a context builder) when omitted
     today: Optional[str] = None    # the company-local ISO date; the UTC date until open_company sets it
+    read_only: bool = False        # the company file is open read-only (Auditor, design 6); no company writes
 
     def __post_init__(self):
         if self.origin not in ORIGINS:

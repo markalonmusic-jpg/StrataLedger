@@ -1174,7 +1174,8 @@ INSERT INTO permission (permission_code, module, description, is_sensitive) VALU
     ('report.export', 'Reports', 'Export reports', 0),
     ('ai.use', 'AI', 'Open and use the AI Copilot', 0),
     ('ai.settings', 'AI', 'Change AI keys, data sharing and budget', 0),
-    ('audit.view', 'Audit', 'View the audit trail', 1);
+    ('audit.view', 'Audit', 'View the audit trail', 1),
+    ('ledger.verify', 'Audit', 'Verify ledger integrity', 1);
 
 INSERT INTO role (role_code, name, is_system, is_active, project_scope, created_at)
     VALUES ('Admin', 'Admin', 1, 1, 'All', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'));

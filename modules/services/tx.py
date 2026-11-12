@@ -13,6 +13,7 @@ from contextlib import contextmanager
 
 import config
 import modules.database as database
+from modules.services.errors import PermissionDeniedError
 
 
 @contextmanager
@@ -21,8 +22,11 @@ def write_transaction(db_path, context):
 
     Commits on success (after clearing audit_context so a user never leaks into
     a later write), rolls back everything, including the audit_context change,
-    on any exception, and always closes the connection.
+    on any exception, and always closes the connection. A read-only context (Auditor) cannot open a write
+    on its company file; it may still record in the master (a verification result, design section 6).
     """
+    if getattr(context, "read_only", False) and str(db_path) == str(context.company_db_path):
+        raise PermissionDeniedError("This company is open read-only.")
     conn = database.get_connection(db_path)
     try:
         conn.isolation_level = None  # explicit transaction control

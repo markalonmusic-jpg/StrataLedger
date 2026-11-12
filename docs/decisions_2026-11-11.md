@@ -645,6 +645,21 @@ Added with Phase 2.5 step 3 (posting), 2026-11-12:
 - R14 Posting needs `je.post` only; the date check it runs internally (`periods.entry_date_warnings`) does not
   need `period.view`.
 
+Added with Phase 2.5 step 3b (verification), 2026-11-12:
+- K13 `ledger.verify` is a sensitive permission (module Audit), so it is held only where granted by name:
+  Admin (every code), Controller (starter template), the Auditor role when Phase 3 adds it, and the Master.
+  The Accountant does not get it (K11).
+- K14 Every ledger checkpoint is mirrored in the master (`chain_checkpoint`, append-only, same fields and MAC),
+  so restoring an older copy of a company file is detected; a read-only (Auditor) verification is recorded
+  there only.
+- K15 Incremental verification starts at the last OK checkpoint and re-checks the checkpointed entry (stored
+  hash, link and recomputed seal) and every entry after it; full verification re-proves everything. The
+  `ledger_integrity` close check always runs full.
+- K16 Unavailable (no key for a needed key id) is reported as such, never as tampering, and is never recorded
+  as a checkpoint; in the close checks it is always a warning.
+- K17 Measured verification speed misses the K12 targets (full 100k entries: about 26 s; incremental 100
+  entries: about 0.35 s); speeding it up is backlog item 14, not a blocker for step 1c.
+
 ## K. Audit readiness (decided 2026-11-12)
 
 Design: docs/audit_readiness_design.md. Build order: 2.5 Step 1b (chain schema), then Step 3 (posting seals

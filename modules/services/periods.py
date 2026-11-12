@@ -16,11 +16,12 @@ import re
 import sqlite3
 from datetime import date, timedelta
 
+from modules.services import ledger_verify
 from modules.services.authz import authorize
 from modules.services.errors import NotFoundError, ValidationError
 from modules.services.tx import read_connection, write_transaction
 
-# ledger_integrity is registered (its mode can be set) but runs only from step 3b, with the verify service.
+# ledger_integrity runs a full ledger verification once per close action (ledger_verify.integrity_check).
 CHECK_CODES = ("draft_entries", "earlier_period_open", "pending_approvals", "control_overrides", "ledger_integrity")
 CHECK_MODES = ("warn", "block")
 BASES = {"pre_adjustment": 12, "gaap": 13, "tax": 14}
@@ -298,12 +299,20 @@ def _run_checks(conn, period):
              "period": period["name"]} for code, ok, message in results]
 
 
+def _integrity(conn, context, label):
+    """The ledger_integrity close check (step 3b): one full verification per close action, whatever the number of
+    periods it closes. Warning by default, block when set (L2); a check that cannot run is only a warning."""
+    row = conn.execute("SELECT mode FROM period_close_check WHERE check_code = 'ledger_integrity'").fetchone()
+    return ledger_verify.integrity_check(conn, context, label, row["mode"] if row else "warn")
+
+
 def close_checks(context, period_id):
     """The close checks for a period, without closing it: [{'code', 'mode', 'ok', 'message', 'period'}]."""
     authorize(context, "period.view", record_type="fiscal_period", record_id=period_id)
     conn = read_connection(context.company_db_path)
     try:
-        return _run_checks(conn, _period(conn, period_id))
+        period = _period(conn, period_id)
+        return _run_checks(conn, period) + [_integrity(conn, context, period["name"])]
     finally:
         conn.close()
 
@@ -347,7 +356,7 @@ def close_period(context, period_id, *, acknowledge_warnings=False):
         period = _period(conn, period_id)
         if period["is_closed"]:
             raise ValidationError(f"{period['name']} is already closed")
-        _judge(_run_checks(conn, period), acknowledge_warnings)
+        _judge(_run_checks(conn, period) + [_integrity(conn, context, period["name"])], acknowledge_warnings)
         _close(conn, context, period, "Period close")
 
 
@@ -401,6 +410,8 @@ def set_books_closed_through(context, through_date, *, reason=None, confirm=Fals
                 results += [r for r in _run_checks(conn, period) if r["code"] != "earlier_period_open"]
                 _close(conn, context, period, "Books closed through")
                 names.append(row["name"])
+            if names:
+                results.append(_integrity(conn, context, names[-1]))
             _judge(results, acknowledge_warnings)
             conn.execute("UPDATE company_settings SET books_closed_through = ? WHERE id = 1", (new,))
         return {"dry_run": False, "closed": names}
@@ -438,6 +449,9 @@ def _forward_preview(context, new):
         rows = _open_through(conn, new)
         warnings = [r for row in rows for r in _run_checks(conn, _period(conn, row["period_id"]))
                     if not r["ok"] and r["code"] != "earlier_period_open"]
+        if rows:
+            check = _integrity(conn, context, rows[-1]["name"])
+            warnings += [] if check["ok"] else [check]
         return {"dry_run": True, "close": [r["name"] for r in rows], "warnings": warnings}
     finally:
         conn.close()
@@ -477,6 +491,7 @@ def close_year(context, year_id, *, acknowledge_warnings=False):
             period = _period(conn, row["period_id"])
             results += _run_checks(conn, period)
             _close(conn, context, period, "Year close")       # so period 14 sees period 13 as closed
+        results.append(_integrity(conn, context, year["name"]))
         _judge(results, acknowledge_warnings)
         conn.execute("UPDATE fiscal_year SET is_year_closed = 1, closed_at = ?, closed_by = ? WHERE year_id = ?",
                      (context.now, context.user_id, year_id))

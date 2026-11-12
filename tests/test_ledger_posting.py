@@ -329,7 +329,7 @@ def test_secret_key_is_redacted_and_cannot_be_pickled():
 
 def test_null_provider_always_refuses():
     with pytest.raises(KeyUnavailableError):
-        keys.NullKeyProvider().chain_key(1, 1)
+        keys.NullKeyProvider().get_key(1, 1)
 
 
 def test_fixed_provider_is_for_tests_only(monkeypatch):
@@ -378,6 +378,22 @@ def test_manual_entry_approval_fails_closed_when_the_entry_qualifies(env, ctx, t
 
 def test_manual_entry_approval_is_off_by_default(env, ctx):
     ledger.post_journal_entry(ctx, draft(env, entry_lines=lines(env, 10 ** 9)), confirm=True)
+
+
+def test_approval_refusals_apply_only_when_the_company_turns_the_control_on(env):
+    """Confirmation before step 3b: with manual_entry_approval off (the default) a plain manual entry posts with
+    no approval at any amount, even when a threshold is stored; a document type whose switch is off posts too."""
+    settings(env, manual_entry_approval=0, manual_entry_approval_threshold_cents=1)
+    human = ctx_for(env)
+    for amount in (1, 2, 10 ** 6, 10 ** 12):
+        entry_id = draft(env, entry_lines=lines(env, amount))
+        ledger.post_journal_entry(human, entry_id, confirm=True)
+        assert entry_row(env, entry_id)["is_posted"] == 1
+    system = ctx_for(env, "System")
+    for source in ("Bill", "Payment"):                 # their document_approval_setting rows default to off
+        entry_id = draft(env, system, source=source)
+        ledger.post_journal_entry(system, entry_id)
+        assert entry_row(env, entry_id)["is_posted"] == 1
 
 
 def test_a_document_entry_whose_document_type_needs_approval_fails_closed(env):

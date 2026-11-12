@@ -85,6 +85,7 @@ The General chart template omits Project Manager, General Manager, Warehouse and
 | `view.tax_ids` | Yes | | | | | | | | | | |
 | `view.bank_details` | Yes | | | | | | | | | | |
 | `audit.view` | Yes | | | | | | | | | | |
+| `ledger.verify` | Yes | | | | | | | | | | |
 
 ## 4. Owner's answers (2026-11-11)
 1. Controller holds both `period.reopen` and `year.reopen` (decision L7 amended). Reopening a closed year needs

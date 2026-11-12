@@ -50,7 +50,8 @@ ROLES = {
         "extra": [],
         "sensitive": ["period.reopen", "year.reopen", "je.approve", "bill.approve", "bill.override_match",
                       "payment.approve", "payment.release_hold", "po.approve", "payapp.approve", "asset.approve",
-                      "import.approve", "payroll.view", "view.tax_ids", "view.bank_details", "audit.view"],
+                      "import.approve", "payroll.view", "view.tax_ids", "view.bank_details", "audit.view",
+                      "ledger.verify"],
         "scope": "All",
     },
     "Accountant": {

@@ -17,7 +17,7 @@ SENSITIVE = {
     "bill.approve", "po.approve", "subcontract.approve", "estimate.approve", "change_order.approve",
     "payapp.approve", "time.approve", "import.approve",
     "bill.override_match", "period.reopen", "year.reopen", "payment.release_hold",
-    "company.restore", "audit.view",
+    "company.restore", "audit.view", "ledger.verify",
     "je.approve", "payment.approve", "asset.approve", "contract.approve",
 }
 

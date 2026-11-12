@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-12 · **Status:** design approved with changes (decisions K1-K12 and P5 in
 `docs/decisions_2026-11-11.md`). Built so far: Step 1b (the chain schema and the pure
-`modules/services/ledger_chain.py`). Everything else is design. Build order is in section 12.
+`modules/services/ledger_chain.py`), Step 3 (posting seals every entry) and Step 3b (the verify service,
+`modules/services/ledger_verify.py`, and the `ledger_integrity` close check). Everything else is design. Build order is in section 12.
 
 Read with: `docs/controls_audit.md`, `docs/roles_permissions_design.md`, decisions A5, L1-L8, B10, E7, H1-H5,
 P1-P5, U5, and CLAUDE.md backlog item 11 (issuing a new Master recovery code).
@@ -697,3 +698,44 @@ unchanged, and posting uses the counter-row lock described in 2.5.
   by pytest).
 * SQLite's integer affinity turns the text '1' into the integer 1, so the schema tests do not treat a numeric
   string as a wrong type.
+
+### As built in Step 3b (verification)
+* **Service:** `ledger_verify.verify_ledger(context, mode="incremental" | "full")`, permission `ledger.verify`
+  (K7, K13). It reads through a read-only connection, then records in two short writes: a `ledger_checkpoint`
+  row (kind Verify, scope, result, through, first broken, key_id, MAC) and its mirror in the master's new
+  `chain_checkpoint` table. A read-only context (`ServiceContext.read_only`, the Auditor's open, section 6)
+  records in the master only; `tx.write_transaction` refuses a company-file write from such a context.
+* **Result:** status `OK`, `Broken` or `Unavailable`. Broken names the first broken entry: number, JE number,
+  date, who posted it (name from the master), and a reason code: `Link`, `Hash`, `Gap`, `Void mismatch`,
+  `Key fingerprint`, `Truncated`, `Marker`. The message is plain language, names that entry and a next step,
+  and contains no hash or key. Unavailable (the key provider cannot supply a needed key) is never recorded as
+  a checkpoint and the message says plainly it is not a sign of tampering.
+* **Checkpoint MAC** (`ledger_chain.checkpoint_mac`): HMAC-SHA256 under the chain key named by the row's
+  key_id, over the tag `SLCP1`, the company code and the canonical JSON of the checkpoint fields. The latest OK
+  checkpoint in the file and the latest OK mirror in the master are both checked; a bad MAC is `Marker`.
+* **Incremental (K15):** it starts at the last OK checkpoint. It checks that the checkpointed entry still has
+  the recorded hash, re-checks that entry's link and recomputes its seal, then checks every entry after it.
+  It does not re-read the entries before the checkpoint: an edit inside the already-verified range is found
+  only by a **full** check, which is what re-proves older entries (run at every period and year close, on
+  demand, and before backups once the backup service exists). With no OK checkpoint, incremental runs full.
+* **Whole-ledger checks in both modes:** the void cross-check, and truncation against the latest OK
+  checkpoints (file and master) and the entry counter. Restoring an older copy of the file is caught by the
+  master's mirror ("this looks like an older copy of the company file").
+* **Documented limit:** if the last entries are cut, the counter is rolled back as well, and no checkpoint
+  exists in the file or the master, the shorter chain is consistent and verifies. Checkpoints, and printed
+  checkpoints in an auditor's hands, are what close this gap (section 3).
+* **Close check:** `ledger_integrity` runs one full verification per close action (period close, Books
+  closed through, year close, and the close-check preview), over the caller's connection, not recorded.
+  Broken follows the check's mode (warning by default, block when set, L2); Unavailable is always a warning
+  that says the check could not run.
+* **Keys:** the provider interface is now `get_key(company_id, key_id)`; the test provider can hold several
+  keys. **Step 1c:** the local provider must keep every retired key (wrapped, never deleted), because
+  verification asks for the key named by each entry's `chain_key_id`; a missing retired key makes
+  verification Unavailable, not Broken.
+* **Benchmarks (K12, measured 2026-11-12 on the development machine, `tools/benchmark_ledger_verify.py`):**
+  full verification of 100,000 entries with 3 lines each took 25.4 s and 28.0 s (two runs; target 10 s);
+  incremental verification of 100 new entries after a checkpoint at 100,000 took 0.34 s and 0.37 s (target
+  0.2 s). Both miss the targets. A profile shows about half of the full check is building the canonical form
+  in Python and a sixth is JSON encoding, so the seal itself is not the cost; the incremental check's fixed cost
+  is the whole-ledger SQL (mainly the void cross-check), which grows with the ledger. Follow-up: backlog
+  item 14.

@@ -1,0 +1,503 @@
+"""ledger_verify: the ledger integrity check and end-to-end tamper tests (Phase 2.5 step 3b).
+
+docs/audit_readiness_design.md sections 2.6, 3 and 12; decisions K3, K7, K11, K12. Every tamper test works on the
+test's own temporary company file and may drop the posted-row lock triggers there, as an outside tool would.
+Each failing case must name the correct first broken entry.
+"""
+import dataclasses
+import shutil
+import sqlite3
+
+import pytest
+
+from modules.services import keys, ledger, ledger_chain, ledger_verify, periods, role_templates
+from modules.services.errors import PermissionDeniedError, ValidationError
+from tests import ledger_helpers as lh
+from tests.authz_world import world  # noqa: F401  (fixture)
+
+NOW = "2026-03-20T10:00:00+00:00"
+TODAY = "2026-03-20"
+KEY_B = bytes(range(1, 33))
+
+
+@pytest.fixture
+def keyed(monkeypatch):
+    monkeypatch.setattr(keys, "_provider", keys.FixedKeyProvider(lh.TEST_CHAIN_KEY))
+
+
+@pytest.fixture
+def env(world, keyed):
+    world.settings("PARENT", require_separate_approver=0)
+    with world._company("PARENT") as c:
+        periods.seed_years(c, 1, 2026)
+        lh.ensure_test_chain_key(c)
+        world.accts = {"cash": lh.make_account(c, "1010"), "sales": lh.make_account(c, "4010"),
+                       "fees": lh.make_account(c, "4020")}
+    world.role("PARENT", "BOOKS", ["je.create", "je.post", "ledger.view", "ledger.verify", "period.view",
+                                   "period.close", "company.settings"])
+    world.user_id = world.user("books")
+    world.grant(world.user_id, "PARENT", "BOOKS")
+    return world
+
+
+def ctx_for(env, origin="Human", *, user=None, **changes):
+    base = env.ctx(user or env.user_id, "PARENT", origin)
+    return dataclasses.replace(base, now=NOW, today=TODAY, **changes)
+
+
+@pytest.fixture
+def ctx(env):
+    return ctx_for(env)
+
+
+def post_entries(env, ctx, count, *, start_amount=1000):
+    ids = []
+    for index in range(count):
+        amount = start_amount * (index + 1)
+        entry_id = ledger.create_entry(ctx, entry_date="2026-03-15", lines=[
+            {"account_id": env.accts["cash"], "debit_cents": amount, "memo": f"line {index + 1}"},
+            {"account_id": env.accts["sales"], "credit_cents": amount}])
+        ledger.post_journal_entry(ctx, entry_id, confirm=True)
+        ids.append(entry_id)
+    return ids
+
+
+@pytest.fixture
+def four(env, ctx):
+    """A ledger with entries JE-000001 to JE-000004 (entry ids are returned in number order)."""
+    return post_entries(env, ctx, 4)
+
+
+def rows(env, table, where="1 = 1", params=()):
+    return env.rows("PARENT", f"SELECT * FROM {table} WHERE {where} ORDER BY 1", params)
+
+
+def tamper(env, *statements):
+    """Edit the file as an outside tool would: drop every trigger that guards the journal, then run SQL."""
+    conn = sqlite3.connect(env.path("PARENT"))
+    try:
+        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name IN "
+                                    "('journal_entry', 'journal_line', 'journal_line_dimension', "
+                                    "'entry_number_sequence', 'ledger_checkpoint', 'ledger_chain_key')").fetchall():
+            conn.execute(f'DROP TRIGGER "{name}"')
+        for statement in statements:
+            if isinstance(statement, tuple):
+                conn.execute(*statement)
+            else:
+                conn.execute(statement)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def broken_at(result):
+    assert result["status"] == "Broken", result
+    return result["first_broken"]["entry_number"], result["first_broken"]["reason"]
+
+
+def full(ctx):
+    return ledger_verify.verify_ledger(ctx, mode="full")
+
+
+def entry_id_of(env, number):
+    return rows(env, "journal_entry", "entry_number = ?", (number,))[0]["entry_id"]
+
+
+# --- the confirmation asked for before step 3b -------------------------------------------------------------
+
+def test_a_clean_ledger_verifies(env, ctx, four):
+    result = full(ctx)
+    assert result["status"] == "OK" and result["through_entry_number"] == 4 and result["first_broken"] is None
+    assert result["chain_hash"] == rows(env, "journal_entry", "entry_number = 4")[0]["chain_hash"]
+    assert "JE-000001" in result["message"] and "JE-000004" in result["message"]
+
+
+def test_an_empty_ledger_verifies(env, ctx):
+    result = full(ctx)
+    assert (result["status"], result["through_entry_number"], result["chain_hash"]) == ("OK", 0, None)
+
+
+# --- tamper tests: each names the first broken entry --------------------------------------------------------
+
+def test_edited_line_amount(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET debit_cents = 2001 WHERE entry_id = ? AND debit_cents > 0",
+                 (entry_id_of(env, 2),)))
+    assert broken_at(full(ctx)) == (2, "Hash")
+
+
+def test_edited_memo(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'changed' WHERE entry_id = ? AND memo IS NOT NULL",
+                 (entry_id_of(env, 3),)))
+    assert broken_at(full(ctx)) == (3, "Hash")
+
+
+def test_flipped_control_override_flag(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET is_control_override = 1 WHERE entry_id = ?", (entry_id_of(env, 2),)))
+    assert broken_at(full(ctx)) == (2, "Hash")
+
+
+def test_changed_account(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET account_id = ? WHERE entry_id = ? AND credit_cents > 0",
+                 (env.accts["fees"], entry_id_of(env, 4))))
+    assert broken_at(full(ctx)) == (4, "Hash")
+
+
+def test_deleted_middle_entry(env, ctx, four):
+    target = entry_id_of(env, 2)
+    tamper(env, ("DELETE FROM journal_line WHERE entry_id = ?", (target,)),
+           ("DELETE FROM journal_entry WHERE entry_id = ?", (target,)))
+    result = full(ctx)
+    assert broken_at(result) == (2, "Gap")
+    assert result["first_broken"]["je_number"] == "JE-000002"
+
+
+def test_deleted_last_entries_are_truncation(env, ctx, four):
+    targets = (entry_id_of(env, 3), entry_id_of(env, 4))
+    tamper(env, *[(f"DELETE FROM journal_line WHERE entry_id = ?", (t,)) for t in targets],
+           *[(f"DELETE FROM journal_entry WHERE entry_id = ?", (t,)) for t in targets])
+    result = full(ctx)
+    assert broken_at(result) == (3, "Truncated")
+    assert result["through_entry_number"] == 2
+
+
+def test_deleted_last_entries_with_the_counter_rolled_back_are_caught_by_the_checkpoint(env, ctx, four):
+    assert full(ctx)["status"] == "OK"                    # records a checkpoint through 4
+    targets = (entry_id_of(env, 3), entry_id_of(env, 4))
+    tamper(env, *[("DELETE FROM journal_line WHERE entry_id = ?", (t,)) for t in targets],
+           *[("DELETE FROM journal_entry WHERE entry_id = ?", (t,)) for t in targets],
+           "UPDATE entry_number_sequence SET last_number = 2")
+    assert broken_at(full(ctx)) == (3, "Truncated")
+
+
+def test_deleted_tail_with_no_checkpoint_anywhere_is_the_documented_limit(env, ctx, four):
+    """Without any checkpoint (in the file or the master) and with the counter rolled back as well, a cut tail
+    leaves a consistent shorter chain: verification cannot know entries existed. Checkpoints (and auditors'
+    printed copies) are what close this gap; see docs/audit_readiness_design.md 2.6."""
+    targets = (entry_id_of(env, 3), entry_id_of(env, 4))
+    tamper(env, *[("DELETE FROM journal_line WHERE entry_id = ?", (t,)) for t in targets],
+           *[("DELETE FROM journal_entry WHERE entry_id = ?", (t,)) for t in targets],
+           "UPDATE entry_number_sequence SET last_number = 2")
+    result = full(ctx)
+    assert result["status"] == "OK" and result["through_entry_number"] == 2
+
+
+def test_swapped_entry_numbers(env, ctx, four):
+    second, third = entry_id_of(env, 2), entry_id_of(env, 3)
+    tamper(env, ("UPDATE journal_entry SET entry_number = 1000 WHERE entry_id = ?", (second,)),
+           ("UPDATE journal_entry SET entry_number = 2 WHERE entry_id = ?", (third,)),
+           ("UPDATE journal_entry SET entry_number = 3 WHERE entry_id = ?", (second,)))
+    assert broken_at(full(ctx)) == (2, "Link")
+
+
+def test_swapped_line_ids(env, ctx, four):
+    first, second = [r["line_id"] for r in rows(env, "journal_line", "entry_id = ?", (entry_id_of(env, 3),))]
+    tamper(env, ("UPDATE journal_line SET line_id = -1 WHERE line_id = ?", (first,)),
+           ("UPDATE journal_line SET line_id = ? WHERE line_id = ?", (first, second)),
+           ("UPDATE journal_line SET line_id = ? WHERE line_id = -1", (second,)))
+    assert broken_at(full(ctx)) == (3, "Hash")
+
+
+def test_a_forged_entry_without_the_key(env, ctx, four):
+    last = rows(env, "journal_entry", "entry_number = 4")[0]
+    forged_header = {**last, "entry_id": 999, "entry_number": 5, "description": "forged"}
+    forged_lines = [{**line, "line_id": 9990 + i, "entry_id": 999} for i, line in
+                    enumerate(rows(env, "journal_line", "entry_id = ?", (last["entry_id"],)))]
+    fake = ledger_chain.seal(bytes(32), "PARENT", last["chain_hash"],
+                             ledger_chain.canonical_entry(forged_header, forged_lines, []))
+    columns = ", ".join(forged_header)
+    marks = ", ".join("?" * len(forged_header))
+    line_columns = ", ".join(forged_lines[0])
+    tamper(env, (f"INSERT INTO journal_entry ({columns}) VALUES ({marks})",
+                 tuple({**forged_header, "chain_prev_hash": last["chain_hash"], "chain_hash": fake}.values())),
+           *[(f"INSERT INTO journal_line ({line_columns}) VALUES ({', '.join('?' * len(line))})", tuple(line.values()))
+             for line in forged_lines],
+           "UPDATE entry_number_sequence SET last_number = 5")
+    assert broken_at(full(ctx)) == (5, "Hash")
+
+
+def test_is_void_flipped_without_a_void_reversal(env, ctx, four):
+    tamper(env, ("UPDATE journal_entry SET is_void = 1 WHERE entry_id = ?", (entry_id_of(env, 2),)))
+    assert broken_at(full(ctx)) == (2, "Void mismatch")
+
+
+def test_a_void_cleared_while_its_reversal_stands(env, ctx, four):
+    with env._company("PARENT") as c:
+        reversal = lh.make_reversal(c, entry_id_of(env, 3), "Void", entry_date="2026-03-16")
+    seal_ctx = ctx
+    # post the reversal through the real chain so the ledger is clean before tampering
+    with env._company("PARENT") as c:
+        number = c.execute("SELECT last_number FROM entry_number_sequence").fetchone()[0] + 1
+    _post_reversal_like_the_service(env, reversal, number)
+    assert full(seal_ctx)["status"] == "OK"
+    tamper(env, ("UPDATE journal_entry SET is_void = 0 WHERE entry_id = ?", (entry_id_of(env, 3),)))
+    assert broken_at(full(ctx)) == (3, "Void mismatch")
+
+
+def _post_reversal_like_the_service(env, entry_id, number):
+    """Step 5 posts reversals; until then seal one with the company code the service uses."""
+    with env._company("PARENT") as c:
+        c.execute("UPDATE entry_number_sequence SET last_number = last_number + 1")
+        key_id = lh.ensure_test_chain_key(c)
+        prev = c.execute("SELECT chain_hash FROM journal_entry WHERE entry_number = ?", (number - 1,)).fetchone()[0]
+        header = dict(c.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone())
+        header.update(entry_number=number, posted_by=1, posted_at=NOW, chain_version=1, chain_key_id=key_id)
+        line_rows = [dict(r) for r in c.execute("SELECT * FROM journal_line WHERE entry_id = ?", (entry_id,))]
+        seal = ledger_chain.seal(lh.TEST_CHAIN_KEY, "PARENT", prev, ledger_chain.canonical_entry(header, line_rows, []))
+        c.execute("UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = 1, posted_at = ?, "
+                  "chain_version = 1, chain_key_id = ?, chain_prev_hash = ?, chain_hash = ? WHERE entry_id = ?",
+                  (number, NOW, key_id, prev, seal, entry_id))
+
+
+def test_a_forged_checkpoint_with_a_bad_mac(env, ctx, four):
+    head = rows(env, "journal_entry", "entry_number = 4")[0]["chain_hash"]
+    with env._company("PARENT") as c:
+        c.execute("INSERT INTO ledger_checkpoint (created_at, created_by, kind, scope, result, through_entry_number, "
+                  "chain_hash, key_id, mac) VALUES ('2026-03-21T00:00:00+00:00', 1, 'Verify', 'Full', 'OK', 4, ?, 1, ?)",
+                  (head, "f" * 64))
+    result = ledger_verify.verify_ledger(ctx, mode="incremental")
+    assert broken_at(result) == (4, "Marker")
+    assert broken_at(full(ctx)) == (4, "Marker")
+
+
+def test_verifying_with_the_wrong_key(env, ctx, four, monkeypatch):
+    monkeypatch.setattr(keys, "_provider", keys.FixedKeyProvider(bytes(32)))
+    assert broken_at(full(ctx)) == (1, "Key fingerprint")
+
+
+def test_entries_sealed_under_two_keys_verify_with_the_retired_key_present(env, ctx, monkeypatch):
+    post_entries(env, ctx, 2)
+    with env._company("PARENT") as c:
+        c.execute("UPDATE ledger_chain_key SET is_active = 0, retired_at = ?, retire_reason = 'Rotation'", (NOW,))
+        new_id = c.execute("INSERT INTO ledger_chain_key (fingerprint, created_at, created_by) VALUES (?, ?, 1) "
+                           "RETURNING key_id", (ledger_chain.fingerprint(KEY_B), NOW)).fetchone()[0]
+    monkeypatch.setattr(keys, "_provider", keys.FixedKeyProvider({1: lh.TEST_CHAIN_KEY, new_id: KEY_B}))
+    post_entries(env, ctx, 2)
+    assert [r["chain_key_id"] for r in rows(env, "journal_entry")] == [1, 1, new_id, new_id]
+    assert full(ctx)["status"] == "OK"
+
+
+def test_a_missing_retired_key_makes_verification_unavailable_not_broken(env, ctx, monkeypatch):
+    test_entries_sealed_under_two_keys_verify_with_the_retired_key_present(env, ctx, monkeypatch)
+    before = {t: rows(env, t) for t in ("ledger_checkpoint", "audit_log")}
+    mirrors = env.master_rows("SELECT * FROM chain_checkpoint")
+    monkeypatch.setattr(keys, "_provider", keys.FixedKeyProvider({2: KEY_B}))
+    result = full(ctx)
+    assert result["status"] == "Unavailable" and result["first_broken"] is None and result["checkpoint_id"] is None
+    assert "not a sign" in result["message"]
+    assert {t: rows(env, t) for t in ("ledger_checkpoint", "audit_log")} == before
+    assert env.master_rows("SELECT * FROM chain_checkpoint") == mirrors
+
+
+def test_incremental_misses_an_edit_inside_the_verified_range_and_full_finds_it(env, ctx, four):
+    """Expected: incremental re-checks only the checkpointed entry's hash and the entries after it, so an edit to
+    JE-000002 after a checkpoint through JE-000004 passes an incremental check; the full check finds it."""
+    assert full(ctx)["status"] == "OK"
+    tamper(env, ("UPDATE journal_line SET memo = 'changed' WHERE entry_id = ? AND memo IS NOT NULL",
+                 (entry_id_of(env, 2),)))
+    incremental = ledger_verify.verify_ledger(ctx, mode="incremental")
+    assert (incremental["status"], incremental["scope"]) == ("OK", "Incremental")
+    assert broken_at(full(ctx)) == (2, "Hash")
+
+
+def test_incremental_finds_an_edit_to_the_checkpointed_entry(env, ctx, four):
+    assert full(ctx)["status"] == "OK"
+    tamper(env, ("UPDATE journal_line SET memo = 'changed' WHERE entry_id = ? AND memo IS NOT NULL",
+                 (entry_id_of(env, 4),)))
+    assert broken_at(ledger_verify.verify_ledger(ctx, mode="incremental")) == (4, "Hash")
+
+
+def test_restoring_an_older_copy_is_caught_by_the_master_checkpoint(env, ctx, tmp_path):
+    post_entries(env, ctx, 2)
+    assert full(ctx)["status"] == "OK"
+    older = tmp_path / "older.db"
+    shutil.copy2(env.path("PARENT"), older)
+    post_entries(env, ctx, 2, start_amount=5000)
+    assert full(ctx)["status"] == "OK"                      # master now remembers JE-000004
+    shutil.copy2(older, env.path("PARENT"))                 # the older copy is consistent on its own
+    result = full(ctx)
+    assert broken_at(result) == (3, "Truncated")
+    assert "older copy" in result["first_broken"]["detail"]
+
+
+def test_a_forged_master_checkpoint_is_a_marker_break(env, ctx, four):
+    assert full(ctx)["status"] == "OK"
+    env.master_rows("SELECT 1")                             # master is reachable
+    conn = sqlite3.connect(env.master)
+    try:
+        conn.execute("INSERT INTO chain_checkpoint (company_id, company_checkpoint_id, recorded_from, created_at, "
+                     "created_by, kind, scope, result, through_entry_number, chain_hash, key_id, mac) VALUES (?, 1, "
+                     "'Company file', ?, 1, "
+                     "'Verify', 'Full', 'OK', 4, ?, 1, ?)",
+                     (env.company_id("PARENT"), NOW, rows(env, "journal_entry", "entry_number = 4")[0]["chain_hash"],
+                      "e" * 64))
+        conn.commit()
+    finally:
+        conn.close()
+    assert broken_at(full(ctx)) == (4, "Marker")
+
+
+# --- what a result says and what it records ---------------------------------------------------------------------
+
+def test_a_broken_result_names_the_entry_its_date_and_poster_in_plain_language(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    result = full(ctx)
+    broken = result["first_broken"]
+    assert (broken["je_number"], broken["entry_date"], broken["posted_by"]) == ("JE-000002", "2026-03-15", env.user_id)
+    assert "JE-000002" in result["message"] and "2026-03-15" in result["message"] and "F L" in result["message"]
+    assert "Entries before it are intact" in result["message"]
+    for secret in (lh.TEST_CHAIN_KEY.hex(), rows(env, "journal_entry", "entry_number = 2")[0]["chain_hash"]):
+        assert secret not in result["message"]
+
+
+def test_an_ok_full_check_records_a_maced_checkpoint_in_the_file_and_the_master(env, ctx, four):
+    result = full(ctx)
+    checkpoint = rows(env, "ledger_checkpoint", "checkpoint_id = ?", (result["checkpoint_id"],))[0]
+    assert {k: checkpoint[k] for k in ("kind", "scope", "result", "through_entry_number", "first_broken_entry_number",
+                                       "key_id", "created_at", "created_by")} == {
+        "kind": "Verify", "scope": "Full", "result": "OK", "through_entry_number": 4, "first_broken_entry_number": None,
+        "key_id": 1, "created_at": NOW, "created_by": env.user_id}
+    assert checkpoint["chain_hash"] == result["chain_hash"]
+    assert checkpoint["mac"] == ledger_chain.checkpoint_mac(lh.TEST_CHAIN_KEY, "PARENT", checkpoint)
+    mirror = env.master_rows("SELECT * FROM chain_checkpoint")[-1]
+    assert (mirror["company_id"], mirror["company_checkpoint_id"], mirror["recorded_from"], mirror["mac"]) == (
+        env.company_id("PARENT"), checkpoint["checkpoint_id"], "Company file", checkpoint["mac"])
+    assert rows(env, "audit_log", "table_name = 'ledger_checkpoint'")[-1]["record_id"] == checkpoint["checkpoint_id"]
+    assert result["recorded_in"] == ["company", "master"]
+
+
+def test_a_broken_check_records_the_first_broken_entry(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 3),)))
+    result = full(ctx)
+    checkpoint = rows(env, "ledger_checkpoint", "checkpoint_id = ?", (result["checkpoint_id"],))[0]
+    assert (checkpoint["result"], checkpoint["through_entry_number"], checkpoint["first_broken_entry_number"]) == (
+        "Broken", 2, 3)
+    assert checkpoint["chain_hash"] == rows(env, "journal_entry", "entry_number = 2")[0]["chain_hash"]
+
+
+def test_a_break_at_the_first_entry_records_through_zero(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 1),)))
+    checkpoint = rows(env, "ledger_checkpoint", "checkpoint_id = ?", (full(ctx)["checkpoint_id"],))[0]
+    assert (checkpoint["through_entry_number"], checkpoint["chain_hash"]) == (0, None)
+
+
+def test_incremental_without_a_checkpoint_runs_full(env, ctx, four):
+    result = ledger_verify.verify_ledger(ctx, mode="incremental")
+    assert (result["status"], result["scope"]) == ("OK", "Full")
+
+
+def test_incremental_seals_only_the_new_entries(env, ctx, four, monkeypatch):
+    full(ctx)
+    post_entries(env, ctx, 3)
+    calls = []
+    original = ledger_chain.seal
+    monkeypatch.setattr(ledger_chain, "seal", lambda *a, **k: calls.append(1) or original(*a, **k))
+    result = ledger_verify.verify_ledger(ctx, mode="incremental")
+    assert (result["status"], result["scope"], result["through_entry_number"]) == ("OK", "Incremental", 7)
+    assert len(calls) == 4                     # the checkpointed JE-000004 again, then the three new entries
+
+
+def test_incremental_starts_from_the_last_ok_checkpoint_not_a_broken_one(env, ctx, four):
+    full(ctx)                                                             # OK through 4
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 4),)))
+    assert full(ctx)["status"] == "Broken"                                # recorded as Broken
+    assert broken_at(ledger_verify.verify_ledger(ctx, mode="incremental")) == (4, "Hash")
+
+
+def test_an_unknown_mode_is_refused(env, ctx):
+    with pytest.raises(ValidationError):
+        ledger_verify.verify_ledger(ctx, mode="quick")
+
+
+def test_no_key_provider_is_unavailable_and_records_nothing(env, ctx, four, monkeypatch):
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    before = rows(env, "ledger_checkpoint")
+    result = full(ctx)
+    assert result["status"] == "Unavailable" and result["recorded_in"] == []
+    assert rows(env, "ledger_checkpoint") == before
+
+
+def test_a_read_only_context_records_in_the_master_only(env, four):
+    reader = ctx_for(env, read_only=True)
+    before = {t: rows(env, t) for t in ("ledger_checkpoint", "audit_log")}
+    result = full(reader)
+    assert result["status"] == "OK" and result["recorded_in"] == ["master"] and result["checkpoint_id"] is None
+    assert {t: rows(env, t) for t in ("ledger_checkpoint", "audit_log")} == before
+    mirror = env.master_rows("SELECT * FROM chain_checkpoint")[-1]
+    assert (mirror["recorded_from"], mirror["company_checkpoint_id"], mirror["through_entry_number"]) == (
+        "Read-only", None, 4)
+
+
+def test_a_read_only_context_cannot_open_a_company_write(env):
+    with pytest.raises(PermissionDeniedError, match="read-only"):
+        ledger.create_entry(ctx_for(env, read_only=True), entry_date="2026-03-15")
+
+
+def test_verify_needs_ledger_verify(env, four):
+    env.role("PARENT", "ACCOUNTANT", ["je.create", "je.post", "ledger.view", "account.manage"])
+    accountant = env.user("accountant")
+    env.grant(accountant, "PARENT", "ACCOUNTANT")
+    with pytest.raises(PermissionDeniedError):
+        full(ctx_for(env, user=accountant))
+
+
+def test_ledger_verify_goes_to_controller_but_not_accountant():
+    assert "ledger.verify" in role_templates.ROLES["Controller"]["sensitive"]
+    assert "ledger.verify" not in role_templates.ROLES["Accountant"]["sensitive"]
+    assert "ledger.verify" not in role_templates.permissions_for("Accountant")
+
+
+# --- the ledger_integrity close check (L2) -----------------------------------------------------------------------
+
+def march(env):
+    return rows(env, "fiscal_period", "start_date = '2026-03-01' AND is_adjustment_period = 0")[0]["period_id"]
+
+
+def integrity(env, ctx):
+    return {c["code"]: c for c in periods.close_checks(ctx, march(env))}["ledger_integrity"]
+
+
+def test_close_checks_run_a_full_verification(env, ctx, four, monkeypatch):
+    modes = []
+    original = ledger_verify.verify_connection
+    monkeypatch.setattr(ledger_verify, "verify_connection",
+                        lambda *a, **k: modes.append(k.get("mode")) or original(*a, **k))
+    check = integrity(env, ctx)
+    assert check["ok"] is True and modes == ["full"]
+
+
+def test_a_tampered_ledger_warns_at_close_by_default(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    check = integrity(env, ctx)
+    assert (check["ok"], check["mode"]) == (False, "warn") and "JE-000002" in check["message"]
+    with pytest.raises(periods.CloseWarningsError) as caught:
+        periods.close_period(ctx, march(env))
+    assert "ledger_integrity" in [w["code"] for w in caught.value.warnings]
+
+
+def test_a_tampered_ledger_blocks_the_close_when_set(env, ctx, four):
+    periods.set_close_check_mode(ctx, "ledger_integrity", "block")
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    with pytest.raises(ValidationError, match="JE-000002"):
+        periods.close_period(ctx, march(env), acknowledge_warnings=True)
+
+
+def test_unavailable_is_a_warning_even_when_the_check_blocks(env, ctx, four, monkeypatch):
+    periods.set_close_check_mode(ctx, "ledger_integrity", "block")
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    check = integrity(env, ctx)
+    assert (check["ok"], check["mode"]) == (False, "warn") and "could not run" in check["message"]
+    with env._company("PARENT") as c:          # earlier months closed so only this warning remains
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 WHERE start_date < '2026-03-01' "
+                  "AND fiscal_year_id IS NOT NULL", (NOW,))
+    periods.close_period(ctx, march(env), acknowledge_warnings=True)
+
+
+def test_year_close_runs_the_integrity_check(env, ctx, four):
+    periods.set_close_check_mode(ctx, "ledger_integrity", "block")
+    year = rows(env, "fiscal_year", "name = 'FY2026'")[0]["year_id"]
+    with env._company("PARENT") as c:
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 WHERE fiscal_year_id = ? "
+                  "AND is_adjustment_period = 0", (NOW, year))
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    with pytest.raises(ValidationError, match="JE-000002"):
+        periods.close_year(ctx, year, acknowledge_warnings=True)

@@ -406,3 +406,57 @@ BEGIN
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
+
+-- Phase 2.5 step 3b: a mirror of every ledger checkpoint, kept outside the company file, so restoring an older
+-- copy of a company cannot erase what this computer saw (docs/audit_readiness_design.md 3). A read-only
+-- (Auditor) verification is recorded here only. Same fields and MAC as the company's ledger_checkpoint;
+-- key_id refers to the company file's ledger_chain_key. Append-only.
+CREATE TABLE chain_checkpoint (
+    mirror_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES company_registry(company_id),
+    company_checkpoint_id INTEGER,
+    recorded_from TEXT NOT NULL CHECK (recorded_from IN ('Company file', 'Read-only')),
+    created_at TEXT NOT NULL,
+    created_by INTEGER,
+    kind TEXT NOT NULL CHECK (kind IN ('Verify', 'Period close', 'Year close', 'Report export', 'Backup', 'Restore',
+                                       'Key rotation', 'Manual')),
+    scope TEXT CHECK (scope IN ('Incremental', 'Full')),
+    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken')),
+    through_entry_number INTEGER NOT NULL
+        CHECK (typeof(through_entry_number) = 'integer' AND through_entry_number >= 0),
+    chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*')),
+    first_broken_entry_number INTEGER,
+    key_id INTEGER,
+    ref_type TEXT,
+    ref_id INTEGER,
+    mac TEXT NOT NULL CHECK (length(mac) = 64 AND mac NOT GLOB '*[^0-9a-f]*'),
+    CHECK ((recorded_from = 'Company file') = (company_checkpoint_id IS NOT NULL)),
+    CHECK ((kind = 'Verify') = (scope IS NOT NULL)),
+    CHECK ((result = 'Broken') = (first_broken_entry_number IS NOT NULL)),
+    CHECK ((through_entry_number = 0) = (chain_hash IS NULL))
+);
+
+CREATE INDEX chain_checkpoint_company ON chain_checkpoint (company_id, result, mirror_id);
+
+CREATE TRIGGER chain_checkpoint_no_update
+BEFORE UPDATE ON chain_checkpoint
+BEGIN
+    SELECT RAISE(ABORT, 'Ledger checkpoints cannot be changed');
+END;
+
+CREATE TRIGGER chain_checkpoint_no_delete
+BEFORE DELETE ON chain_checkpoint
+BEGIN
+    SELECT RAISE(ABORT, 'Ledger checkpoints cannot be deleted');
+END;
+
+CREATE TRIGGER audit_chain_checkpoint_insert
+AFTER INSERT ON chain_checkpoint
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'chain_checkpoint', NEW.mirror_id, 'Insert', NULL,
+        json_object('mirror_id', NEW.mirror_id, 'company_id', NEW.company_id, 'company_checkpoint_id', NEW.company_checkpoint_id, 'recorded_from', NEW.recorded_from, 'created_at', NEW.created_at, 'created_by', NEW.created_by, 'kind', NEW.kind, 'scope', NEW.scope, 'result', NEW.result, 'through_entry_number', NEW.through_entry_number, 'chain_hash', NEW.chain_hash, 'first_broken_entry_number', NEW.first_broken_entry_number, 'key_id', NEW.key_id, 'ref_type', NEW.ref_type, 'ref_id', NEW.ref_id, 'mac', NEW.mac),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;

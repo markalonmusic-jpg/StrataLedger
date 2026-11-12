@@ -101,6 +101,7 @@ PERMISSIONS = {
     "ai.settings": Permission("AI", "Change AI keys, data sharing and budget", False),
     # Audit
     "audit.view": Permission("Audit", "View the audit trail", True),
+    "ledger.verify": Permission("Audit", "Verify ledger integrity", True),
 }
 
 # An agent (origin 'Agent') may use ONLY these codes, and only when the user it

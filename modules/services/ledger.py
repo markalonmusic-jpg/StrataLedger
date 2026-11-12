@@ -376,7 +376,7 @@ def _active_key(conn, context):
     row = conn.execute("SELECT key_id, fingerprint FROM ledger_chain_key WHERE is_active = 1").fetchone()
     if row is None:
         raise KeyUnavailableError(keys.NO_KEY_MESSAGE)
-    key = keys.get_provider().chain_key(context.company_id, row["key_id"])
+    key = keys.get_provider().get_key(context.company_id, row["key_id"])
     if ledger_chain.fingerprint(key.use_for_hmac()) != row["fingerprint"]:
         raise KeyUnavailableError(f"The ledger key on this computer does not match this company's key "
                                   f"(key {row['key_id']}); nothing was posted.")

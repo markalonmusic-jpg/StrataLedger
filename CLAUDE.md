@@ -135,6 +135,8 @@ in code (`tests/test_config_paths.py` fails on one).
   `baseline-pre-2.5`). Historical, never applied.
 - `archive/baseline_pre_2_5_1b/` - the company baseline before 2.5 step 1b (tag `baseline-pre-2.5-1b`).
   Historical, never applied.
+- `archive/baseline_pre_2_5_3b/` - the company and master baselines before 2.5 step 3b (tag
+  `baseline-pre-2.5-3b`). Historical, never applied.
 - `accounting_librebase.db` - reference snapshot of the 60-table company
   schema (see section 5). Not read at runtime.
 - `system_master.db` - global authentication and routing database
@@ -663,8 +665,9 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     Build order: step 1 (done), step 2 (done), **step 1b** (done: chain schema and the pure `ledger_chain.py`,
     docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
     transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key
-    is available; done), **step 3b** (the verify service: incremental and full verification, checkpoints,
-    the `ledger_integrity` close check, end-to-end tamper tests on real files; before step 4), **step 1c**
+    is available; done), **step 3b** (done: the verify service, incremental and full verification,
+    checkpoints mirrored in the master, the `ledger_integrity` close check, end-to-end tamper tests), next
+    **step 1c**
     (keystore: installation and company keys, DPAPI, recovery-code wrap, the `cryptography` decision K2), then
     steps 4-7. Step 1c must land before any screen can post and before 2.5
     is declared done.
@@ -754,6 +757,9 @@ See docs/crm_pm_design.md section 11.
 12. Wire a `page_key` into the New Company screen (`views_new_company.py`), as the first-run screen already
     has (`setup.first_run`); see docs/help_system_design.md section 3.
 13. Chain `audit_log` like the ledger (decision K6; docs/audit_readiness_design.md).
+14. Speed up ledger verification toward the K12 targets (decision K17): build the canonical form with less
+    per-field work, and index or narrow the whole-ledger void and truncation queries so an incremental check
+    stays fast as the ledger grows. Measure with `tools/benchmark_ledger_verify.py`.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
@@ -954,6 +960,14 @@ Planned schema work, in build order (names only):
   (tests only, `STRATALEDGER_ALLOW_TEST_KEYS`), `SecretKey`. `periods.entry_date_warnings`; close check
   `control_overrides` built and `ledger_integrity` registered (runs from step 3b). Decisions R10-R14. Until step
   1c the app has no real key provider, so nothing can be posted outside the tests.
+- 2026-11-12: Phase 2.5 step 3b (verification; previous baselines in `archive/baseline_pre_2_5_3b/`).
+  `modules/services/ledger_verify.py`: `verify_ledger` (full / incremental, read-only reads, results OK / Broken /
+  Unavailable with reason codes Link, Hash, Gap, Void mismatch, Key fingerprint, Truncated, Marker, plain
+  messages), checkpoint rows with a MAC (`ledger_chain.checkpoint_mac`) in the file and mirrored in the master
+  (new master table `chain_checkpoint`), and the `ledger_integrity` close check (full, once per close action).
+  Permission `ledger.verify` (sensitive; Admin, Controller). `ServiceContext.read_only`; `write_transaction`
+  refuses company writes from it. Key provider `get_key(company_id, key_id)`. `tools/benchmark_ledger_verify.py`.
+  Decisions K13-K17.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
