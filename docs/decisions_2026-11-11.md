@@ -587,3 +587,11 @@ next touched. Paths use the real package name `modules/services/`.
   and KPI trends and propose a draft forecast version for human review; it
   never approves, locks or saves a version, and all amounts are computed by
   the fpa service, not by the AI.
+- S10 First-run setup is a GUI screen: when
+  system_master.db is missing or has no users, the app shows a Welcome
+  screen instead of login: build the master database, create the Master
+  (username, first/last name, email, password twice, 12+ characters),
+  show the recovery code once with a Copy button and a required 'I have
+  saved this code' checkbox, then sign in and offer 'Create your first
+  company' or 'Later'. Cancelling creates no user; the screen returns on
+  next launch. The recovery code and password are never logged.
