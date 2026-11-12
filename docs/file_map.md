@@ -129,6 +129,9 @@ in code (`tests/test_config_paths.py` fails on one).
     machine, so the screen warns that a copy may remain in history on some systems. Any Windows failure falls back to
     the Tk clipboard quietly; the text is never logged. `font_loader.py` still has its own `ctypes` use and moves
     here later (a test lists the only two files allowed to hold Windows calls).
+    `machine_protect` / `machine_unprotect` (Step 1c) wrap the installation key with DPAPI in machine scope, no
+    prompt, with the label `DPAPI_ENTROPY`; every failure is `MachineKeyError` with fixed text. The app hands them
+    to the key store; services never import this module (H1).
   - `views_new_user.py` and `views_user_profile.py` - global user provisioning
     and profile management.
   - `ai_agent.py` - planned (Phase 6), provider adapter (Gemini first); see

@@ -15,6 +15,16 @@ Failures are quiet: if any Windows call fails, the normal Tk clipboard is used i
 logged. The text being copied is never logged and never put in an exception message. Off Windows the functions are
 the plain Tk clipboard calls. Plain ctypes, no extra package. (font_loader.py also uses ctypes for fonts and will
 move here later.)
+
+machine_protect / machine_unprotect wrap and unwrap the installation key with DPAPI (Step 1c; audit design 2.7):
+machine scope (CRYPTPROTECT_LOCAL_MACHINE), so every Windows account on this computer can open the app (P1); never a
+prompt (CRYPTPROTECT_UI_FORBIDDEN); and the fixed label DPAPI_ENTROPY as extra entropy, so a blob another program
+wrapped does not open as ours. Machine scope means any program running on this computer can call DPAPI too: the
+wrap protects the key when the files are copied elsewhere, not from software on this computer. Every failure,
+off Windows included, is MachineKeyError with the fixed text MACHINE_KEY_UNAVAILABLE and no chained cause; only
+the error type is logged, never the data or its detail. Services never import this module (H1): the app hands these
+two functions to the key store at start-up. Buffers are zeroed before they are freed, which is best effort only:
+Python keeps its own copies of bytes objects.
 """
 import logging
 import struct
@@ -33,6 +43,17 @@ _OPEN_TRIES = 10
 _OPEN_WAIT_SECONDS = 0.02
 
 _logger = logging.getLogger("strataledger.platform")
+
+MACHINE_KEY_UNAVAILABLE = "This computer could not open its protected ledger key store."
+DPAPI_ENTROPY = b"StrataLedger installation key v1"
+_CRYPTPROTECT_UI_FORBIDDEN = 0x1
+_CRYPTPROTECT_LOCAL_MACHINE = 0x4
+PROTECT_FLAGS = _CRYPTPROTECT_UI_FORBIDDEN | _CRYPTPROTECT_LOCAL_MACHINE
+UNPROTECT_FLAGS = _CRYPTPROTECT_UI_FORBIDDEN
+
+
+class MachineKeyError(Exception):
+    """DPAPI could not wrap or unwrap. The message is always MACHINE_KEY_UNAVAILABLE."""
 
 
 def copy_secret_text(widget, text):
@@ -181,3 +202,63 @@ def _clear_windows():
             raise OSError("could not empty the clipboard")
     finally:
         user32.CloseClipboard()
+
+
+# --- DPAPI: the machine wrap of the installation key --------------------------------------------------------------
+
+def machine_protect(data):
+    """Wrap bytes with DPAPI in machine scope. Returns the blob; raises MachineKeyError."""
+    return _dpapi("protect", data, PROTECT_FLAGS)
+
+
+def machine_unprotect(blob):
+    """Unwrap a blob made by machine_protect on this computer. Returns the bytes; raises MachineKeyError."""
+    return _dpapi("unprotect", blob, UNPROTECT_FLAGS)
+
+
+def _dpapi(direction, data, flags):
+    if not isinstance(data, bytes):
+        raise TypeError("DPAPI takes bytes")
+    if not data:
+        raise ValueError("DPAPI needs at least one byte")
+    if not IS_WINDOWS:
+        raise MachineKeyError(MACHINE_KEY_UNAVAILABLE)
+    try:
+        return _call_dpapi(direction, data, DPAPI_ENTROPY, flags)
+    except Exception as error:  # noqa: BLE001  (one fixed error; the detail could name the data)
+        _logger.warning("DPAPI %s failed: %s", direction, type(error).__name__)
+        raise MachineKeyError(MACHINE_KEY_UNAVAILABLE) from None
+
+
+def _call_dpapi(direction, data, entropy, flags):
+    """CryptProtectData or CryptUnprotectData. Raises OSError with the Windows error number only."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    function = crypt32.CryptProtectData if direction == "protect" else crypt32.CryptUnprotectData
+    function.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.POINTER(Blob), ctypes.c_void_p,
+                         ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    function.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+
+    data_buffer = ctypes.create_string_buffer(data, len(data))
+    entropy_buffer = ctypes.create_string_buffer(entropy, len(entropy))
+    data_in = Blob(len(data), ctypes.cast(data_buffer, ctypes.POINTER(ctypes.c_char)))
+    entropy_in = Blob(len(entropy), ctypes.cast(entropy_buffer, ctypes.POINTER(ctypes.c_char)))
+    out = Blob()
+    try:
+        if not function(ctypes.byref(data_in), None, ctypes.byref(entropy_in), None, None, flags, ctypes.byref(out)):
+            raise OSError(f"Windows error {ctypes.get_last_error()}")
+        try:
+            return ctypes.string_at(out.pbData, out.cbData)
+        finally:
+            ctypes.memset(out.pbData, 0, out.cbData)
+            kernel32.LocalFree(ctypes.cast(out.pbData, ctypes.c_void_p))
+    finally:
+        ctypes.memset(data_buffer, 0, len(data))
