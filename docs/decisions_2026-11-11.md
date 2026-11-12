@@ -323,6 +323,11 @@ here (L5-L8, U1-U6) are still open.
 - P4 Start a new private GitHub repository from the current code with
   fresh history (the old history contains the removed token and test
   passwords). The old local repository is kept as an archive.
+- P5 Hosted target (decided 2026-11-12): PostgreSQL, expected on Azure Database for PostgreSQL. Keep SQL
+  portable; rules stay in services (H4); the posted-entry locks and the void trigger live in one per-dialect
+  place and will be rewritten, not ported; numbering and the hash chain use explicit counter-row locking that
+  ports; hosted is multi-tenant (not designed now); secrets sit behind one wrapper so Azure Key Vault can
+  replace DPAPI; a hosted relay for bank feeds becomes natural in the hosted product.
 
 ### S. Company setup (2.4)
 - S1 Company code suggested from the name, editable at setup, 3-10
@@ -622,3 +627,28 @@ Answers to the 2.5 plan's questions. Integrity unless marked control.
 - R9 Manual lines to controlled accounts (A5, control) are flagged `is_control_override` and reported by the
   `control_overrides` period-close check (warning by default, can be a block, L2). `reversal_note` is required
   and non-blank for Void and Correction, not for an Accrual reversal.
+
+## K. Audit readiness (decided 2026-11-12)
+
+Design: docs/audit_readiness_design.md. Build order: 2.5 Step 1b (chain schema), then Step 3 (posting seals
+through a KeyProvider interface; a fixed key in tests; posting refused when no real key is available), then
+Step 1c (keystore, recovery-code wrap). Step 1c lands before any screen can post and before 2.5 is done.
+- K1 The installation key is wrapped with DPAPI in machine scope, so every Windows account on the computer
+  can open the app (P1). Limit, stated plainly: any local user who can run code can unwrap it; DPAPI protects
+  against a copied disk or file, not against another account on the running computer.
+- K2 Add the `cryptography` library for the recovery-code wrap (AES-GCM), after confirming its licence and
+  the PyInstaller build.
+- K3 A broken chain warns and still allows posting by default; in Audit-ready mode posting is blocked until a
+  full verification passes. Nothing is ever posted without the chain key.
+- K4 The Auditor sees sensitive fields (tax IDs, bank details, wages) only if an Admin grants them.
+- K5 Restoring a backup whose checksum does not match is refused, except for the Master with a typed
+  confirmation and a reason; a safety backup is made first and the restore is flagged on the Audit-ready
+  checklist.
+- K6 Chaining `audit_log` goes on the backlog.
+- K7 New permission `ledger.verify` (run "Verify ledger integrity"), seeded to Admin, Controller and Auditor.
+- K8 The chain key leaves the installation only inside the passphrase-protected company bundle, exported and
+  imported by the Master only.
+- K9 Auditor becomes a 12th starter role: read-only, all non-sensitive views and reports, `audit.view`,
+  `ledger.verify`; it cannot post, approve or change settings.
+- K10 U5 stands: standard SQLite in v1.0; SQLCipher-type encryption at rest after v1, when the go/no-go
+  checklist in the design is green.

@@ -169,6 +169,10 @@ in code (`tests/test_config_paths.py` fails on one).
 - `docs/roles_permissions_design.md` - design draft for roles (per company,
   customizable), permissions, approval limits, separation of duties, project
   scope, and the Master / Admin model. NOT BUILT.
+- `docs/audit_readiness_design.md` - design for audit readiness: threat model, the keyed HMAC chain over
+  posted entries, checkpoints, keys (KeyProvider, DPAPI, recovery-code wrap), encryption at rest (after v1),
+  the Auditor role, audit trail reports, Audit-ready mode, backup checksums, and the Step 1b prompt.
+  NOT BUILT (decisions K1-K10, P5).
 - `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
   articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
   every screen). Content is deferred to the end of v1.0. NOT BUILT.
@@ -265,7 +269,10 @@ in code (`tests/test_config_paths.py` fails on one).
     such as `date('now')`, `strftime`, `julianday`, `INSERT OR REPLACE`,
     `GROUP_CONCAT`, and PRAGMAs only in `database.py` (H5); visual values live
     in `config.Theme` (H6). `tests/test_static_portability.py` enforces H1, H2,
-    H4 and H5; its allow-lists can only shrink.
+    H4 and H5; its allow-lists can only shrink. Hosted target is PostgreSQL, expected on Azure
+    Database for PostgreSQL (P5): posted-entry locks and the void trigger are rewritten per dialect,
+    numbering and the hash chain use explicit counter-row locking, and secrets sit behind one wrapper
+    (`KeyProvider`) so Azure Key Vault can replace DPAPI.
 
 ---
 
@@ -649,6 +656,12 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   - **2.5 Ledger services:** the controls-audit rules; every test in
     tests/test_service_rules_pending.py flips from xfail to pass (strict
     xfail means each one must be un-marked as it is implemented).
+    Build order: step 1 (done), step 2 (done), **step 1b** (chain schema and the pure `ledger_chain.py`,
+    docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
+    transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key
+    is available), **step 1c** (keystore: installation and company keys, DPAPI, recovery-code wrap, the
+    `cryptography` decision K2), then steps 4-7. Step 1c must land before any screen can post and before 2.5
+    is declared done.
   - **2.6 Customer and vendor codes (done):** `customer_number` and
     `vendor_number`, `contact.customer_code` / `vendor_code` (unique, CHECKed,
     immutable, coded contacts cannot be deleted), `modules/services/contacts.py`
@@ -730,8 +743,11 @@ See docs/crm_pm_design.md section 11.
 11. Issue a new Master recovery code (REQUIRED BEFORE v1.0): a service that, after the Master re-enters the
     password, replaces the recovery code and shows the new one once. The first-run screen asks for confirmation if
     the window is closed before the first code is saved, but a code lost later cannot be recovered without this.
+    Once the keystore exists (2.5 step 1c) this action must also re-wrap the installation key with the new code
+    (docs/audit_readiness_design.md section 2.7).
 12. Wire a `page_key` into the New Company screen (`views_new_company.py`), as the first-run screen already
     has (`setup.first_run`); see docs/help_system_design.md section 3.
+13. Chain `audit_log` like the ledger (decision K6; docs/audit_readiness_design.md).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
@@ -911,6 +927,9 @@ Planned schema work, in build order (names only):
   manual sources (none, Manual, Adjustment); Import and System origin may use the others. `ledger.py` is the only
   file allowed to write `journal_entry`, `journal_line` or `entry_number_sequence` (static test). Posting, numbering,
   approvals, reversal and rounding are steps 3-6.
+- 2026-11-12: Audit readiness design (`docs/audit_readiness_design.md`), decisions K1-K10 and P5 (hosted target
+  PostgreSQL on Azure). Docs only. The 2.5 build order now runs 1b (chain schema), 3 (posting with sealing),
+  1c (keystore) before steps 4-7.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
