@@ -308,7 +308,9 @@ CREATE TABLE "payment_allocation" (
     deferral_id INTEGER,
     amount_applied_cents INTEGER NOT NULL,
     CHECK (typeof(amount_applied_cents) = 'integer'),
-    CONSTRAINT allocation_amount_positive CHECK (amount_applied_cents > 0)
+    CONSTRAINT allocation_amount_positive CHECK (amount_applied_cents > 0),
+    -- 2.5: an allocation names exactly one document, an invoice or a deferral.
+    CONSTRAINT allocation_one_target CHECK ((invoice_id IS NULL) <> (deferral_id IS NULL))
 );
 
 -- Who is writing. One row; the service layer sets it inside each write
@@ -406,7 +408,7 @@ CREATE TABLE period_status_history (
 
 -- Period-close checks (L2): each is a warning by default and can be made a hard block in Controls.
 CREATE TABLE period_close_check (
-    check_code TEXT PRIMARY KEY CHECK (check_code IN ('draft_entries', 'earlier_period_open', 'pending_approvals')),
+    check_code TEXT PRIMARY KEY CHECK (check_code IN ('draft_entries', 'earlier_period_open', 'pending_approvals', 'control_overrides')),
     mode TEXT NOT NULL DEFAULT 'warn' CHECK (mode IN ('warn', 'block'))
 );
 
@@ -416,10 +418,10 @@ CREATE TABLE "journal_entry" (
     period_id INTEGER NOT NULL REFERENCES fiscal_period(period_id),
     reference TEXT,
     description TEXT,
-    source TEXT CHECK (source IN ('Manual', 'Invoice', 'Bill', 'Payment', 'Adjustment', 'Payroll', 'Import', 'Deferral', 'Completion')),
+    source TEXT CHECK (source IN ('Manual', 'Invoice', 'Bill', 'Payment', 'Adjustment', 'Payroll', 'Import', 'Deferral', 'Completion', 'Conversion')),
     is_posted INTEGER NOT NULL DEFAULT 0 CHECK (is_posted IN (0, 1)),
     is_void INTEGER NOT NULL DEFAULT 0 CHECK (is_void IN (0, 1)),
-    reverses_entry_id INTEGER UNIQUE REFERENCES journal_entry(entry_id),
+    reverses_entry_id INTEGER REFERENCES journal_entry(entry_id),
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     reversal_reason TEXT CHECK (reversal_reason IN ('Void', 'Accrual reversal', 'Correction')),
@@ -429,7 +431,15 @@ CREATE TABLE "journal_entry" (
     approved_by INTEGER,
     approved_at DATETIME,
     origin TEXT NOT NULL DEFAULT 'Human' CHECK (origin IN ('Human', 'Agent', 'Import', 'System')),
+    -- 2.5 (L5): the date the system posts this entry's Accrual reversal; never on a reversal itself.
+    auto_reverse_date TEXT CHECK (auto_reverse_date IS date(auto_reverse_date) AND auto_reverse_date > entry_date),
+    -- 2.5: why a Void or Correction was posted (reversal_reason is only the category).
+    reversal_note TEXT,
     CHECK ((reverses_entry_id IS NULL) = (reversal_reason IS NULL)),
+    CHECK (auto_reverse_date IS NULL OR reverses_entry_id IS NULL),
+    CHECK (reversal_note IS NULL OR reverses_entry_id IS NOT NULL),
+    CHECK (reversal_reason IS NULL OR reversal_reason = 'Accrual reversal'
+           OR length(trim(COALESCE(reversal_note, ''))) > 0),
     CHECK (is_posted = 1 OR entry_number IS NULL),
     CHECK ((approved_by IS NULL) = (approved_at IS NULL))
 );
@@ -449,6 +459,10 @@ CREATE TABLE "journal_line" (
     batch_id INTEGER REFERENCES import_batch(batch_id),
     is_retainage_line INTEGER DEFAULT 0 CHECK (is_retainage_line IN (0, 1)),
     external_ref TEXT,
+    -- 2.5 (A5): a manual line to a controlled account, allowed by allow_manual_control_je and flagged for close review.
+    is_control_override INTEGER NOT NULL DEFAULT 0 CHECK (is_control_override IN (0, 1)),
+    -- 2.5 (L8): the one-cent balancing line of an imported or converted entry.
+    is_rounding_adjustment INTEGER NOT NULL DEFAULT 0 CHECK (is_rounding_adjustment IN (0, 1)),
     CHECK (debit_cents = 0 OR credit_cents = 0),
     CHECK (debit_cents IS NULL OR typeof(debit_cents) = 'integer'),
     CHECK (credit_cents IS NULL OR typeof(credit_cents) = 'integer')
@@ -1145,7 +1159,15 @@ CREATE TABLE voucher_sequence (
 
 INSERT INTO voucher_sequence (id, last_number) VALUES (1, 1000);
 
-INSERT INTO period_close_check (check_code) VALUES ('draft_entries'), ('earlier_period_open'), ('pending_approvals');
+INSERT INTO period_close_check (check_code) VALUES ('draft_entries'), ('earlier_period_open'), ('pending_approvals'),
+    ('control_overrides');
+
+-- 2.5: an entry has at most one Void or Correction reversal and at most one Accrual reversal, so an accrual and
+-- its automatic reversal can be voided as a pair (decision L5).
+CREATE UNIQUE INDEX journal_entry_one_void_or_correction ON journal_entry (reverses_entry_id)
+    WHERE reversal_reason IN ('Void', 'Correction');
+CREATE UNIQUE INDEX journal_entry_one_accrual_reversal ON journal_entry (reverses_entry_id)
+    WHERE reversal_reason = 'Accrual reversal';
 
 -- Decision C4: full routing and account numbers live here only; they are shown masked without
 -- view.bank_details, never sent to the AI and never written in full to the audit log.
@@ -1581,6 +1603,8 @@ BEGIN
         AND NEW.approved_by IS OLD.approved_by
         AND NEW.approved_at IS OLD.approved_at
         AND NEW.origin IS OLD.origin
+        AND NEW.auto_reverse_date IS OLD.auto_reverse_date
+        AND NEW.reversal_note IS OLD.reversal_note
     ) THEN RAISE(ABORT, 'Posted journal entries cannot be changed; void them by posting a Void reversal') END;
 END;
 
@@ -1602,6 +1626,8 @@ WHEN EXISTS (SELECT 1 FROM journal_entry WHERE entry_id IN (OLD.entry_id, NEW.en
         AND NEW.batch_id IS OLD.batch_id
         AND NEW.is_retainage_line IS OLD.is_retainage_line
         AND NEW.external_ref IS OLD.external_ref
+        AND NEW.is_control_override IS OLD.is_control_override
+        AND NEW.is_rounding_adjustment IS OLD.is_rounding_adjustment
  )
 BEGIN SELECT RAISE(ABORT, 'Posted journal entries cannot be changed'); END;
 
@@ -1863,7 +1889,9 @@ BEGIN
             'posted_at', NEW.posted_at,
             'approved_by', NEW.approved_by,
             'approved_at', NEW.approved_at,
-            'origin', NEW.origin),
+            'origin', NEW.origin,
+            'auto_reverse_date', NEW.auto_reverse_date,
+            'reversal_note', NEW.reversal_note),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1895,7 +1923,9 @@ BEGIN
             'posted_at', OLD.posted_at,
             'approved_by', OLD.approved_by,
             'approved_at', OLD.approved_at,
-            'origin', OLD.origin),
+            'origin', OLD.origin,
+            'auto_reverse_date', OLD.auto_reverse_date,
+            'reversal_note', OLD.reversal_note),
         CASE WHEN OLD.is_posted = 0 AND NEW.is_posted = 1 THEN json_insert(json_object(
             'entry_id', NEW.entry_id,
             'entry_date', NEW.entry_date,
@@ -1914,7 +1944,9 @@ BEGIN
             'posted_at', NEW.posted_at,
             'approved_by', NEW.approved_by,
             'approved_at', NEW.approved_at,
-            'origin', NEW.origin),
+            'origin', NEW.origin,
+            'auto_reverse_date', NEW.auto_reverse_date,
+            'reversal_note', NEW.reversal_note),
             '$.lines', json((SELECT json_group_array(json_object(
                     'line_id', l.line_id,
                     'entry_id', l.entry_id,
@@ -1929,7 +1961,9 @@ BEGIN
                     'deferral_id', l.deferral_id,
                     'batch_id', l.batch_id,
                     'is_retainage_line', l.is_retainage_line,
-                    'external_ref', l.external_ref))
+                    'external_ref', l.external_ref,
+                    'is_control_override', l.is_control_override,
+                    'is_rounding_adjustment', l.is_rounding_adjustment))
                 FROM journal_line AS l WHERE l.entry_id = NEW.entry_id)))
         ELSE json_object(
             'entry_id', NEW.entry_id,
@@ -1949,7 +1983,9 @@ BEGIN
             'posted_at', NEW.posted_at,
             'approved_by', NEW.approved_by,
             'approved_at', NEW.approved_at,
-            'origin', NEW.origin) END,
+            'origin', NEW.origin,
+            'auto_reverse_date', NEW.auto_reverse_date,
+            'reversal_note', NEW.reversal_note) END,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -1979,7 +2015,9 @@ BEGIN
             'posted_at', OLD.posted_at,
             'approved_by', OLD.approved_by,
             'approved_at', OLD.approved_at,
-            'origin', OLD.origin),
+            'origin', OLD.origin,
+            'auto_reverse_date', OLD.auto_reverse_date,
+            'reversal_note', OLD.reversal_note),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;

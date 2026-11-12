@@ -595,3 +595,30 @@ next touched. Paths use the real package name `modules/services/`.
   saved this code' checkbox, then sign in and offer 'Create your first
   company' or 'Later'. Cancelling creates no user; the screen returns on
   next launch. The recovery code and password are never logged.
+
+## Phase 2.5 ledger and billing services (decided 2026-11-12)
+
+Answers to the 2.5 plan's questions. Integrity unless marked control.
+- R1 Rounding (L8) applies to three entry sources: CSV import (`Import`), payroll import (`Payroll`) and
+  conversion (`Conversion`, a new `journal_entry.source` value). Only those may carry a one-cent
+  `is_rounding_adjustment` line to `rounding_variance_acct_id`; manual entries have zero tolerance.
+- R2 `confirm=True` is required on a Human-origin `post_journal_entry`, and always on `void_entry` and
+  `reverse_entry`. Imports, system posts and the system-made auto-reversal do not take it.
+- R3 Agent-origin entries: with `require_separate_approver` off, the human the agent ran as may approve, and the
+  approval is flagged `self_approved`; with it on, a different human must approve.
+- R4 Pair void (L5): an entry has one Void-or-Correction reversal slot and one Accrual-reversal slot (two partial
+  unique indexes). Voiding an accrual that has an auto-reversal voids both; if either the original's or the
+  reversal's period is closed, the whole pair-void fails with a one-sentence error and nothing is written.
+- R5 Manual-entry approval threshold (control): approval is needed when total debits are strictly over the
+  threshold; an entry equal to it posts; with the setting on and no threshold, every manual entry needs approval.
+- R6 Invoice numbering: the first send of an Invoice or Credit Memo with no series creates a default unregistered
+  series ("INV-", "CM-", no registered range). Not for a company with the `ph_tax` add-on enabled, which must
+  have a registered series.
+- R7 Payment allocation in 2.5: same contact, a Received payment to a Sales invoice only, any open status (not
+  Draft, Void or Paid); the invoice is marked Paid when its net due (total minus retainage minus allocations, B2)
+  reaches zero. The allocation table stays open for credit memos and vendor-side allocation (B4-B6).
+- R8 A manual entry is one whose source is empty, `Manual` or `Adjustment`. User-made Void and Correction
+  reversals are exempt from threshold approval but need `je.reverse`, a reversal note and `confirm=True`.
+- R9 Manual lines to controlled accounts (A5, control) are flagged `is_control_override` and reported by the
+  `control_overrides` period-close check (warning by default, can be a block, L2). `reversal_note` is required
+  and non-blank for Void and Correction, not for an Accrual reversal.

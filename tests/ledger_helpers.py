@@ -147,12 +147,15 @@ def post(conn, entry_id, *, user=USER):
         )
 
 
-def make_reversal(conn, original_id, reason, *, entry_date="2026-03-16", period_id=None, lines=None):
+def make_reversal(conn, original_id, reason, *, entry_date="2026-03-16", period_id=None, lines=None, note=None):
+    """A Void or Correction carries a reversal note (required by the baseline); an Accrual reversal needs none."""
     period_id = period_id or ensure_period(conn, entry_date)
+    if note is None and reason in ("Void", "Correction"):
+        note = f"test {reason.lower()}"
     reversal_id = conn.execute(
-        "INSERT INTO journal_entry (entry_date, period_id, reverses_entry_id, reversal_reason, created_by) "
-        "VALUES (?, ?, ?, ?, ?) RETURNING entry_id",
-        (entry_date, period_id, original_id, reason, USER),
+        "INSERT INTO journal_entry (entry_date, period_id, reverses_entry_id, reversal_reason, reversal_note, "
+        "created_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING entry_id",
+        (entry_date, period_id, original_id, reason, note, USER),
     ).fetchone()[0]
     if lines is None:
         lines = [

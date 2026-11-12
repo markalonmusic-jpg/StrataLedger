@@ -149,18 +149,23 @@ def test_cannot_reverse_a_draft(conn):
 
 
 def test_entry_can_only_be_reversed_once(conn):
+    # 2.5: one Void-or-Correction slot and one Accrual-reversal slot per entry (decision L5, pair void);
+    # each slot takes one reversal. The full matrix is in tests/test_schema_ledger_2_5.py.
     original = posted_entry(conn)
+    make_reversal(conn, original, "Void")
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        make_reversal(conn, original, "Correction")
     make_reversal(conn, original, "Accrual reversal")
-    with pytest.raises(sqlite3.IntegrityError):
-        make_reversal(conn, original, "Void")
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        make_reversal(conn, original, "Accrual reversal")
 
 
 def test_cannot_reverse_a_voided_entry(conn):
     original = posted_entry(conn)
     first = make_reversal(conn, original, "Void")
     post(conn, first)
-    # A voided entry's existing reversal occupies the unique slot; a reversal of
-    # the reversal is allowed, but the original itself cannot be reversed again.
+    # A voided entry's Void reversal occupies the Void-or-Correction slot; a reversal of
+    # the reversal is allowed, but the original itself cannot be voided again.
     with pytest.raises(sqlite3.IntegrityError):
         make_reversal(conn, original, "Void")
 

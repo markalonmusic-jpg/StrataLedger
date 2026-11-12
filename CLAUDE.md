@@ -131,6 +131,8 @@ in code (`tests/test_config_paths.py` fails on one).
 - `archive/migrations_chain_v5/` - the migration chain that preceded the
   baseline (company 001-005, master 001-003). Historical, never applied (git
   tag `schema-chain-v5`).
+- `archive/baseline_pre_2_5/` - the company baseline as it stood before the Phase 2.5 edits (tag
+  `baseline-pre-2.5`). Historical, never applied.
 - `accounting_librebase.db` - reference snapshot of the 60-table company
   schema (see section 5). Not read at runtime.
 - `system_master.db` - global authentication and routing database
@@ -894,6 +896,14 @@ Planned schema work, in build order (names only):
   on the recovery-code screen goes through `platform_support.copy_secret_text` (Windows clipboard-history and cloud
   exclusion requested, Tk fallback), the code screen adds a line that a copy may remain in clipboard history on some
   systems, and backlog item 12 (page key for the New Company screen) was added.
+- 2026-11-12: Phase 2.5 step 1 (baseline additions; decisions R1-R9 in docs/decisions_2026-11-11.md). The
+  previous baseline is kept in `archive/baseline_pre_2_5/`. `journal_entry`: source `Conversion`,
+  `auto_reverse_date` (after the entry date, never on a reversal), `reversal_note` (required, non-blank, for Void
+  and Correction; only on reversals); `reverses_entry_id` is no longer UNIQUE but has two partial unique indexes
+  (one Void-or-Correction and one Accrual reversal per entry). `journal_line`: `is_control_override` and
+  `is_rounding_adjustment` (0/1, default 0). Both locks and the journal audit triggers cover the new columns.
+  `payment_allocation` names exactly one of invoice or deferral (CHECK). New close check `control_overrides`
+  (warning). No services yet.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on
