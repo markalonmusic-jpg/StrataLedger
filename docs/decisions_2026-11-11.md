@@ -543,3 +543,14 @@ next touched. Paths use the real package name `modules/services/`.
   (1: a warning of the impact, Continue/Cancel; 2: type the year name,
   e.g. FY2027, plus a reason). The service reopen_year requires reason and
   confirm_year_name matching the year's name, so no caller can skip it.
+- L7 amended: reopening a period, or moving Books closed through back,
+  needs one confirmation in the UI that names the period(s) affected and
+  warns that reports may change (Reopen/Cancel), then a reason. Year
+  reopen keeps its two confirmations.
+- 0b amended: every risky action asks 'Are you sure?' on press before
+  anything changes: reopen/close period or year, Books closed through,
+  post, void, reverse, archive/restore company, restore backup, delete
+  draft. Cancel is the default button (Enter never confirms). Reopen year
+  and archive/restore also need the name typed. Services require an
+  explicit confirm for reopen, year reopen, archive/restore and backup
+  restore, so no screen can skip it.
