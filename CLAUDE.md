@@ -180,7 +180,7 @@ in code (`tests/test_config_paths.py` fails on one).
 - `docs/password_recovery_design.md` - design for password recovery: Admin/Master reset with a generated
   temporary password (72 h, forced change), personal backup codes for regular users, the Master's recovery
   code for every change (re-wraps the installation key, Step 1c), abuse limits, session end after a reset,
-  optional email (last), TOTP hook (v1.1). NOT BUILT; open questions at its end.
+  optional email (last), TOTP hook (v1.1). NOT BUILT; decided (PW1-PW11).
 - `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
   articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
   every screen). Content is deferred to the end of v1.0. NOT BUILT.
@@ -987,6 +987,9 @@ Planned schema work, in build order (names only):
 - 2026-11-12: Password recovery design (`docs/password_recovery_design.md`, docs only): v1.0 Admin/Master reset and
   personal backup codes, the Master path after step 1c, email last, TOTP v1.1. Proposed build step "2.8 Password
   recovery" after 2.5; screens in Phase 3.
+- 2026-11-12: Password recovery decisions PW1-PW11 (docs/decisions_2026-11-11.md; design section 12 updated). The
+  proposals were accepted with two changes: an Admin reset offers "Also make new backup codes", ON by default (PW7),
+  and a user whose backup codes were made by an Admin is prompted at each sign-in to make their own set (PW11).
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

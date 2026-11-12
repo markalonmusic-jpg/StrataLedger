@@ -1,6 +1,7 @@
 # Password recovery design (DESIGN, NOT BUILT)
 
-**Date:** 2026-11-12 · **Status:** design for review. Nothing here is built.
+**Date:** 2026-11-12 · **Status:** design; the open questions are decided (PW1-PW11 in
+docs/decisions_2026-11-11.md, section 12 below). Nothing here is built.
 
 **Owner decisions this design follows:**
 * v1.0 ships two recovery paths:
@@ -65,14 +66,19 @@ Read with:
   * the warning that a copy may remain in clipboard history on some systems.
 * **Delivery:** the Admin gives it to the user in person, by phone, or in the company's own chat. The screen
   says so and never offers to email it.
-* **Expiry:** 72 hours (*confirm*; new `app_user.temp_password_expires_at`). Signing in after expiry gives:
+* **Expiry:** 72 hours (PW1; new `app_user.temp_password_expires_at`). Signing in after expiry gives:
   "This temporary password has expired. Ask your administrator for a new one." Only someone who typed the
   right temporary password sees that message, so it reveals nothing to a guesser.
 * **Forced change** at the next sign-in (existing `must_change_password`). Nothing else works until it is
   changed (existing `PasswordChangeRequiredError`).
-* **Backup codes** are not touched by an Admin reset (*confirm*, Q7).
-* **Audit:** `auth_event` "Temporary password issued" (actor, target), then "Password changed" when the user
-  sets their own.
+* **Backup codes (PW7):** the reset screen offers "Also make new backup codes", **ON by default**.
+  * On: the reset supersedes the user's old set in the same transaction, and the handover screen shows the
+    temporary password and the 10 new codes once (the same Copy, Print and "I have handed this over" pattern).
+    At the next sign-in, after the forced change, the user is prompted to make their own set (PW11, section 2).
+  * Off: the user's existing codes stay valid and untouched.
+* **Audit:** `auth_event` "Temporary password issued" (actor, target, whether new backup codes were made), then
+  "Backup codes issued" (actor, user, set id) when they were, then "Password changed" when the user sets their
+  own.
 
 ## 2. Personal backup codes (v1.0)
 
@@ -81,7 +87,7 @@ Read with:
   * Automatically, right after the user's first forced password change (their first sign-in): the next screen
     shows the codes before the user reaches the app.
   * Reissued at any time by the user (who must enter their current password) or by an Admin with
-    `user.reset_password` for that user.
+    `user.reset_password` for that user, on its own or with a reset (PW7).
   * Reissuing invalidates the whole old set at once.
 * **Shown once:** 10 codes on one screen with:
   * Print, which opens the system print dialog on a plain page (no network);
@@ -91,6 +97,13 @@ Read with:
 
   The screen advises: "Keep them somewhere other than this computer." When an Admin reissues, the Admin sees
   the codes once and hands them over like a temporary password.
+* **Prompt after an Admin-made set (PW11):** when the user's current set was issued by someone else (its
+  `issued_by` is not the user), every sign-in, after any forced password change, shows: "Your administrator
+  made these backup codes, so they have seen them. Make your own set now?" with "Make new codes" (the user's
+  own reissue, which needs their current password, just entered) and "Later" (goes into the app). The prompt
+  returns at each sign-in until the user's current set is one they issued. `login` reports it on the Session
+  (for example `backup_codes_prompt = True`); no extra column is stored. A user with no set at all gets the
+  automatic first issue above instead.
 * **Format and strength:** each code is 10 characters from the base32 alphabet (A-Z, 2-7), shown as two groups
   of five (`K7QXM-2RD4P`). That is 50 random bits, from `secrets`. Input is normalised: case and spaces are
   ignored and dashes are optional.
@@ -154,10 +167,10 @@ The constant 10 checks per attempt also slow automated guessing on the machine i
   * the Master recovery code: `#recovery`.
 
   Each key gives 5 wrong attempts, then a cooling-off of 30 seconds that doubles per further failure up to 15
-  minutes (*confirm*; these are today's values). A success clears that key.
+  minutes (PW8; these are today's values). A success clears that key.
 * **Per installation:** a new key `#forgot-all` counts every failed recovery attempt (backup code or recovery
   code) for any username. It allows 20 failures in 15 minutes, then pauses "Forgot password" for everyone for 15
-  minutes (*confirm*). Password sign-in is not paused by it. This stops spraying many usernames.
+  minutes (PW8). Password sign-in is not paused by it. This stops spraying many usernames.
 * **Wording:**
   * locked: "Too many attempts. Try again in N minutes." (`LoginThrottledError` already carries the wait);
   * paused for everyone: "Password recovery is paused for a few minutes after many failed attempts."
@@ -197,7 +210,8 @@ Lowest priority; built only after sections 1-5 and Step 1c.
   * `SmtpProvider` now; a hosted provider (Azure Communication Services or similar) later, with no service
     changes (P5);
   * a fake provider in tests.
-* **Settings screen** (installation level, Master only; *confirm* Q6). It holds:
+* **Settings screen** (installation level, Master only, PW6; a company's Admin may see it read-only). It
+  holds:
   * server, port, the encryption mode (STARTTLS or TLS-on-connect; plain is refused);
   * username and from address;
   * a "Send test message" button.
@@ -279,6 +293,12 @@ setup guide's advice (lock the screen, BitLocker) applies.
 10. A temporary password expires after 72 hours (fixed clock) and forces a change before anything else works.
 11. Policy: 11 characters refused, 12 accepted, 1024 accepted, 1025 refused; only spaces refused; the username
     in any case refused.
+13. Admin reset with "Also make new backup codes" on (the default): the old set fails at once, the new set
+    works, the reset and the issue are one transaction (a failure leaves both undone), and both are audited.
+    With it off, the old codes still work.
+14. The PW11 prompt: shown at sign-in when the current set's `issued_by` is another user, after the forced
+    change; "Later" signs in and the prompt returns next time; it stops once the user issues their own set;
+    it is never shown for a set the user made.
 12. Email (when built): the code expires at 15 minutes, 5 attempts, single use; the "password changed" notice is
     sent; no-email-configured screens say "Ask your administrator"; a fake provider records messages and no
     real network is used.
@@ -296,28 +316,29 @@ setup guide's advice (lock the screen, BitLocker) applies.
 
 ---
 
-## 12. Open questions, with proposed answers
+## 12. Decisions (answered 2026-11-12; PW1-PW11 in docs/decisions_2026-11-11.md)
 
-1. **Temporary password expiry.** Proposed: 72 hours, as suggested.
-2. **Admins resetting other Admins.** Today only the Master can. Proposed: keep it, so an Admin cannot take
-   over another Admin's account.
-3. **A new `user.reset_password` permission instead of `company.users.manage`.** Proposed: yes (sensitive,
-   seeded to Admin), so managing users and resetting passwords can be split.
-4. **A generated temporary password instead of one the Admin types.** Proposed: yes; the current API takes the
-   Admin's choice, which is replaced.
-5. **Backup code format and limits.** Proposed: 10 codes of 10 base32 characters (50 bits), scrypt per code,
-   every attempt checking all 10 slots, warning at 2 left.
-6. **Where email settings live.** The task says a company configures a mailbox, but user accounts belong to
-   the installation (the master database). Proposed: installation-level settings managed by the Master,
-   optionally shown to each company's Admin as read-only.
-7. **Does an Admin reset invalidate the user's backup codes?** Proposed: no; the codes stay valid, and the
-   user can reissue them.
-8. **Throttle values.** Proposed: keep today's per-account values (5, then 30 s doubling to 15 min) and add the
+The proposals were accepted, with two changes (PW7 and PW11).
+
+1. **Temporary password expiry (PW1).** 72 hours.
+2. **Admins resetting other Admins (PW2).** Only the Master can, so an Admin cannot take over another Admin's
+   account.
+3. **`user.reset_password` instead of `company.users.manage` (PW3).** Yes: sensitive, seeded to Admin, so
+   managing users and resetting passwords can be split.
+4. **A generated temporary password (PW4).** Yes; the current API, which takes the Admin's choice, is replaced.
+5. **Backup code format and limits (PW5).** 10 codes of 10 base32 characters (50 bits), scrypt per code, every
+   attempt checking all 10 slots, warning at 2 left.
+6. **Where email settings live (PW6).** Installation level, managed by the Master, optionally shown to each
+   company's Admin read-only.
+7. **Does an Admin reset touch the user's backup codes? (PW7, changed).** The reset offers "Also make new
+   backup codes", ON by default; on, the old set is superseded and the Admin hands over the new codes with the
+   temporary password; off, the old codes stay valid.
+8. **Throttle values (PW8).** Today's per-account values (5, then 30 s doubling to 15 min) plus the
    per-installation pause (20 failures in 15 minutes, 15-minute pause).
-9. **Master changes always needing the recovery code.** Proposed: yes, as decided. Each change issues a new
-   code and re-wraps the installation key, so the Master must save a new code every time; the screen says so
-   before they start.
-10. **Policy additions** (not only spaces, not the username). Proposed: apply to every new password from the
-    build step on; existing passwords are not forced to change.
-11. **Admin-reissued backup codes.** Proposed: the Admin sees them once and hands them over like a temporary
-    password; the user is told to reissue their own set soon.
+9. **Master changes always needing the recovery code (PW9).** Yes. Each change issues a new code and re-wraps
+   the installation key, so the Master saves a new code every time; the screen says so before they start.
+10. **Policy additions (PW10).** Not only spaces, not the username: for every new password from the build step
+    on; existing passwords are not forced to change.
+11. **Admin-made backup codes (PW11, changed).** The Admin sees them once and hands them over; the user is
+    PROMPTED at the next sign-in (after any forced change) to make their own set, and again at each sign-in
+    until they do.

@@ -692,3 +692,39 @@ Step 1c (keystore, recovery-code wrap). Step 1c lands before any screen can post
 - K12 Verification speed targets are benchmarks to measure and report when the verify service is built, not
   pass/fail tests: a full check of 100k entries (3 lines each) in 10 seconds, an incremental check of 100 new
   entries in 0.2 seconds.
+
+## PW. Password recovery (decided 2026-11-12)
+
+Design: docs/password_recovery_design.md (answers to its section 12). Already decided by the owner in the
+design's header: v1.0 has two recovery paths (an Admin or the Master resets a regular user; personal backup
+codes for every regular user), email is an optional add-on with the lowest priority, an authenticator (TOTP)
+comes in v1.1, and passwords are never emailed. All of these are integrity rules, not controls.
+- PW1 A temporary password expires 72 hours after it is issued (`app_user.temp_password_expires_at`).
+- PW2 Only the Master can reset an Admin. An Admin can reset neither the Master nor a user who is Admin in any
+  company.
+- PW3 New sensitive permission `user.reset_password` (module Company), seeded to Admin; it replaces
+  `company.users.manage` as the reset gate, so managing users and resetting passwords can be split.
+- PW4 The app generates the temporary password (16 characters, unambiguous base32, groups of four, 80 bits);
+  the Admin no longer types one. It is shown once with the secret-safe Copy and an "I have handed this over"
+  button that clears the clipboard.
+- PW5 Backup codes: 10 codes of 10 base32 characters (50 bits), each stored as a scrypt hash with its own salt;
+  every attempt checks all 10 slots (a dummy hash for used or superseded slots and unknown users); a warning at
+  2 codes left or fewer.
+- PW6 Email settings are installation-level, managed by the Master; a company's Admin may see them read-only.
+- PW7 (changed from the proposal) An Admin or Master reset offers "Also make new backup codes", ON by default.
+  When it is on, the reset supersedes the user's old set in the same transaction and the Admin's handover
+  screen shows the temporary password and the 10 new codes once. When it is turned off, the user's existing
+  codes stay valid. Either choice is recorded in `auth_event`.
+- PW8 Throttle: per account, today's values (5 wrong attempts, then 30 seconds doubling to 15 minutes; a success
+  clears the key); per installation, 20 failed recovery attempts (backup code or recovery code, any username)
+  in 15 minutes pause "Forgot password" for everyone for 15 minutes. Password sign-in is never paused by it.
+- PW9 Every Master password change needs the recovery code (with the current password for a change, alone for a
+  forgotten password). Each use issues a new code at once and re-wraps the installation key with it in the same
+  transaction (Step 1c), so the Master saves a new code every time; the screen says so before they start.
+- PW10 The policy additions (not only spaces; not the username in any letter case) apply to every new password
+  from the build step on. Existing passwords are not forced to change.
+- PW11 (changed from the proposal) When an Admin or the Master issues a user's backup codes (PW7 or a reissue),
+  the user is PROMPTED at their next sign-in, after any forced password change, to make their own set: "Your
+  administrator made these backup codes, so they have seen them. Make your own set now?" with "Make new codes"
+  and "Later". "Later" lets the user in; the prompt returns at every sign-in until the current set is one the
+  user issued. The test is the set's `issued_by` (not the user), so no extra flag is stored.
