@@ -815,10 +815,6 @@ Planned schema work, in build order (names only):
   in the terminal) and companies are registered again through the New Company
   screen (today, raw SQL in `views_new_company.py`) or the 2.4 company creation
   service.
-- The hardcoded token and the plaintext password comparison are gone from the
-  code (2.3) but remain in git history. The section 8 "no remote, no push" rule
-  stays until a decision on that history (rewrite it, or accept it because the
-  token was never a real credential).
 - `users.create_user` copies the role code into the legacy free-text
   `app_user.role`, which only the sidebar reads; `app_user.role` and the
   `role = 'Master'` half of the one-Master triggers are removed from the
@@ -848,12 +844,15 @@ Planned schema work, in build order (names only):
 - Show diffs. Write tests for every rule you enforce, run them, and show the
   results.
 - Commit at the end of each phase with a clear message.
-- The git repo is local only. Do not add a remote or push until Phase 5
-  removes the hardcoded token and plaintext passwords; anything committed
-  stays in history even after the file is fixed.
+- The git repo has one remote, `origin`, a private GitHub repository
+  (`markalonmusic-jpg/StrataLedger`). Push `main` to it after each commit. The
+  history was started fresh at the baseline commit, so it holds no earlier
+  token or password; the old repo is kept as a local archive and is never
+  pushed. Never commit `.db` files, credentials or tokens, and never
+  force-push without asking.
 - Back up `.db` files before any schema change; git does not track them.
 - Only one tool edits the files at a time (Claude Code or GitHub Copilot).
-  Commit between handoffs.
+  Commit and push between handoffs, and pull before starting.
 - Finish every task with a summary: files changed, tests run, anything
   uncertain.
 - Planning and review happen in the Claude chat; this tool performs the tasks
