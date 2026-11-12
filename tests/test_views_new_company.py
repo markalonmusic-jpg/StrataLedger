@@ -19,6 +19,20 @@ VIEW = Path(__file__).resolve().parent.parent / "modules" / "views_new_company.p
 
 # --- Static rules for a view ---------------------------------------------------------------------------
 
+def test_view_declares_a_unique_page_key():
+    from modules import views_new_company as view
+
+    assert re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", view.PAGE_KEY)
+    declared_keys = []
+    for path in VIEW.parent.glob("views_*.py"):
+        match = re.search(r'(?m)^PAGE_KEY\s*=\s*["\']([^"\']+)["\']', path.read_text(encoding="utf-8"))
+        if match:
+            declared_keys.append(match.group(1))
+
+    assert declared_keys.count(view.PAGE_KEY) == 1
+    assert view.PAGE_KEY == "setup.new_company"
+
+
 def _code_lines():
     text = VIEW.read_text(encoding="utf-8")
     return [line for line in text.splitlines() if not line.strip().startswith("#")]

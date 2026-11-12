@@ -23,6 +23,7 @@ from modules.ui_components import ask_confirm, show_error, show_info
 
 _logger = logging.getLogger("strataledger.ui")
 
+PAGE_KEY = "setup.new_company"
 PANEL_WIDTH = 780
 PANEL_HEIGHT = 640
 TOP_LEVEL_LABEL = "None: a new top-level company"
