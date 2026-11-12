@@ -721,9 +721,16 @@ unchanged, and posting uses the counter-row lock described in 2.5.
 * **Whole-ledger checks in both modes:** the void cross-check, and truncation against the latest OK
   checkpoints (file and master) and the entry counter. Restoring an older copy of the file is caught by the
   master's mirror ("this looks like an older copy of the company file").
+* **Automatic checkpoints:** `ledger_verify.checkpoint_on_close(context)` signs a checkpoint (company file
+  and master mirror) whenever a company is closed in the app (logout) and when the app exits. It is system
+  upkeep (no permission), runs an incremental check (full when there is no checkpoint yet), records OK or
+  Broken like `verify_ledger`, records nothing when no key is available, and never raises (a failure is
+  logged).
 * **Documented limit:** if the last entries are cut, the counter is rolled back as well, and no checkpoint
-  exists in the file or the master, the shorter chain is consistent and verifies. Checkpoints, and printed
-  checkpoints in an auditor's hands, are what close this gap (section 3).
+  exists in the file or the master, the shorter chain is consistent and verifies. Because a checkpoint is now
+  written at every company close and app exit, this gap exists only before a ledger's first close (or when no
+  key was available at every close). The master's mirror catches a cut tail afterwards even if the file's own
+  checkpoints are deleted too. Printed checkpoints in an auditor's hands cover the rest (section 3).
 * **Close check:** `ledger_integrity` runs one full verification per close action (period close, Books
   closed through, year close, and the close-check preview), over the caller's connection, not recorded.
   Broken follows the check's mode (warning by default, block when set, L2); Unavailable is always a warning

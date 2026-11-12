@@ -968,6 +968,9 @@ Planned schema work, in build order (names only):
   Permission `ledger.verify` (sensitive; Admin, Controller). `ServiceContext.read_only`; `write_transaction`
   refuses company writes from it. Key provider `get_key(company_id, key_id)`. `tools/benchmark_ledger_verify.py`.
   Decisions K13-K17.
+- 2026-11-12: 3b follow-up: `ledger_verify.checkpoint_on_close` signs a checkpoint (file and master) when a company
+  is closed (logout) and at app exit (`App.close_company_ledger`, `App.on_app_exit` on WM_DELETE_WINDOW). Decision
+  K18.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

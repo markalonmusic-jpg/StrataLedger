@@ -21,7 +21,7 @@ from modules.views_user_profile import render_user_profile_view
 from modules.views_wizard import CustomerIntakeWizard
 from modules.font_loader import ensure_inter_font
 from modules.sidebar import NavItem, Sidebar
-from modules.services import auth, companies
+from modules.services import auth, companies, ledger_verify
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError,
 )
@@ -64,6 +64,7 @@ class App(ctk.CTk):
         self.context = None   # ServiceContext of the open company
         self.is_copilot_visible = True
         self._breadcrumb_parts = ("PLATFORM", "OVERVIEW")
+        self.protocol("WM_DELETE_WINDOW", self.on_app_exit)
 
         if not os.path.exists(self.upload_dir):
             os.makedirs(self.upload_dir, exist_ok=True)
@@ -242,6 +243,15 @@ class App(ctk.CTk):
         self.db = context.company_db_path
         self.active_company_name = company_name
         self.build_master_layout_canvas()
+
+    def close_company_ledger(self):
+        """Sign a ledger checkpoint for the open company before it closes (audit design 2.6). Never blocks closing."""
+        if self.context is not None:
+            ledger_verify.checkpoint_on_close(self.context)
+
+    def on_app_exit(self):
+        self.close_company_ledger()
+        self.destroy()
 
     def reset_session(self):
         self.session = None
@@ -639,6 +649,7 @@ class App(ctk.CTk):
         if not messagebox.askyesno("Log Out", "Are you sure you want to log out and lock the active company ledger file?"):
             return
 
+        self.close_company_ledger()
         self.reset_session()
         self.show_no_company_open_screen()
 

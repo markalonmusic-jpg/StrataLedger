@@ -20,12 +20,14 @@
 * Messages are plain language and name the first broken entry; they never contain a hash or a key.
 """
 import hmac
+import logging
 
 from modules.services import keys, ledger_chain
 from modules.services.authz import authorize
 from modules.services.errors import KeyUnavailableError, NotFoundError, ValidationError
 from modules.services.tx import read_connection, write_transaction
 
+_logger = logging.getLogger("strataledger")
 VERIFY = "ledger.verify"
 MODES = ("incremental", "full")
 OK, BROKEN, UNAVAILABLE = "OK", "Broken", "Unavailable"
@@ -283,6 +285,25 @@ def verify_ledger(context, *, mode="incremental"):
     authorize(context, VERIFY, record_type="journal_entry")
     if mode not in MODES:
         raise ValidationError("Choose an incremental or a full check")
+    return _verify_and_record(context, mode)
+
+
+def checkpoint_on_close(context):
+    """Sign a checkpoint of the ledger when its company is closed (logout) or the app exits, so a cut tail is
+    caught after a ledger's first close even if nobody ran a check (step 3b follow-up). System upkeep: it needs
+    no permission, runs an incremental check (full when there is no checkpoint yet) and records it like
+    verify_ledger. It never raises, because it runs while a window is closing; a failure is logged.
+    Returns the result, or None when no company is open or the check could not run at all."""
+    if context is None:
+        return None
+    try:
+        return _verify_and_record(context, "incremental")
+    except Exception:                       # noqa: BLE001  (logged; closing must go on)
+        _logger.exception("The ledger checkpoint on close could not be written (company_id=%s)", context.company_id)
+        return None
+
+
+def _verify_and_record(context, mode):
     company_code = _company_code(context)
     key_for = _key_for(context)
     anchors = _master_anchors(context)

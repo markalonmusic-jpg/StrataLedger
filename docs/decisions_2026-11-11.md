@@ -657,6 +657,9 @@ Added with Phase 2.5 step 3b (verification), 2026-11-12:
   `ledger_integrity` close check always runs full.
 - K16 Unavailable (no key for a needed key id) is reported as such, never as tampering, and is never recorded
   as a checkpoint; in the close checks it is always a warning.
+- K18 A signed checkpoint is written automatically when a company is closed (logout) and at app exit
+  (system upkeep, no permission, never blocks closing), so the "no checkpoint yet" truncation gap exists only
+  before a ledger's first close.
 - K17 Measured verification speed misses the K12 targets (full 100k entries: about 26 s; incremental 100
   entries: about 0.35 s); speeding it up is backlog item 14, not a blocker for step 1c.
 

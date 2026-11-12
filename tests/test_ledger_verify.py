@@ -501,3 +501,76 @@ def test_year_close_runs_the_integrity_check(env, ctx, four):
     tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
     with pytest.raises(ValidationError, match="JE-000002"):
         periods.close_year(ctx, year, acknowledge_warnings=True)
+
+
+# --- automatic checkpoints when a company is closed and at app exit (3b follow-up a) ----------------------------
+
+def test_closing_a_company_writes_a_signed_checkpoint_in_the_file_and_the_master(env, four):
+    env.role("PARENT", "CLERK", ["je.create", "ledger.view"])          # no ledger.verify: this is system upkeep
+    clerk = env.user("clerk")
+    env.grant(clerk, "PARENT", "CLERK")
+    result = ledger_verify.checkpoint_on_close(ctx_for(env, user=clerk))
+    assert result["status"] == "OK" and result["recorded_in"] == ["company", "master"]
+    checkpoint = rows(env, "ledger_checkpoint")[-1]
+    assert (checkpoint["kind"], checkpoint["result"], checkpoint["through_entry_number"]) == ("Verify", "OK", 4)
+    assert checkpoint["created_by"] == clerk
+    assert checkpoint["mac"] == ledger_chain.checkpoint_mac(lh.TEST_CHAIN_KEY, "PARENT", checkpoint)
+    assert env.master_rows("SELECT mac FROM chain_checkpoint")[-1]["mac"] == checkpoint["mac"]
+
+
+def test_after_the_first_close_a_cut_tail_with_the_counter_rolled_back_is_caught(env, ctx, four):
+    """The documented limit (no checkpoint anywhere) now exists only before a ledger's first close."""
+    ledger_verify.checkpoint_on_close(ctx)
+    targets = (entry_id_of(env, 3), entry_id_of(env, 4))
+    tamper(env, *[("DELETE FROM journal_line WHERE entry_id = ?", (t,)) for t in targets],
+           *[("DELETE FROM journal_entry WHERE entry_id = ?", (t,)) for t in targets],
+           "UPDATE entry_number_sequence SET last_number = 2",
+           "DELETE FROM ledger_checkpoint")                       # even with the file's own checkpoints removed
+    result = full(ctx)
+    assert broken_at(result) == (3, "Truncated") and "older copy" in result["first_broken"]["detail"]
+
+
+def test_closing_without_a_key_records_nothing_and_does_not_raise(env, ctx, four, monkeypatch):
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    result = ledger_verify.checkpoint_on_close(ctx)
+    assert result["status"] == "Unavailable" and result["recorded_in"] == []
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_the_first_close_runs_a_full_check_and_records_a_broken_ledger_as_broken(env, ctx, four):
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    result = ledger_verify.checkpoint_on_close(ctx)
+    assert (result["scope"], broken_at(result)) == ("Full", (2, "Hash"))
+    assert rows(env, "ledger_checkpoint")[-1]["result"] == "Broken"
+
+
+def test_closing_never_raises(env, ctx, four, monkeypatch, caplog):
+    def explode(*args, **kwargs):
+        raise RuntimeError("disk gone")
+    monkeypatch.setattr(ledger_verify, "verify_connection", explode)
+    assert ledger_verify.checkpoint_on_close(ctx) is None
+    assert "checkpoint" in caplog.text
+
+
+def test_closing_a_read_only_company_records_in_the_master_only(env, four):
+    result = ledger_verify.checkpoint_on_close(ctx_for(env, read_only=True))
+    assert result["recorded_in"] == ["master"] and rows(env, "ledger_checkpoint") == []
+
+
+def test_closing_with_no_company_open_does_nothing():
+    assert ledger_verify.checkpoint_on_close(None) is None
+
+
+def test_the_app_checkpoints_on_logout_and_on_exit():
+    import ast
+    from pathlib import Path
+    source = (Path(__file__).resolve().parent.parent / "app_strata.pyw").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    def calls(name):
+        return {c.func.attr for c in ast.walk(functions[name]) if isinstance(c, ast.Call)
+                and isinstance(c.func, ast.Attribute)}
+    assert "close_company_ledger" in calls("handle_secure_logout")
+    assert "close_company_ledger" in calls("on_app_exit")
+    assert "checkpoint_on_close" in calls("close_company_ledger")
+    assert 'protocol("WM_DELETE_WINDOW", self.on_app_exit)' in source
