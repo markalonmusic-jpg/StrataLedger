@@ -213,6 +213,16 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-12: Step 1c sub-step 1: `cryptography==50.0.2` pinned in requirements.txt (Apache-2.0 OR BSD-3-Clause,
   OpenSSL 4.0.3 built in); `requirements-dev.txt` holds pytest and PyInstaller 6.22.3. A one-file PyInstaller
   build runs AES-GCM and scrypt (+3.7 MB); `tools/check_frozen_crypto.py` repeats the check.
+- 2026-11-12: `mockups/` moved out of the repository to C:\Users\marka\StrataLedger_mockups (21 files, hashes
+  checked); roadmap backlog 15 says so (602e7dd). `draft/ui-mockups` unchanged (older copy).
+- 2026-11-12: Step 1c sub-step 2: `platform_support.machine_protect` / `machine_unprotect`, DPAPI machine scope,
+  no prompt, label `DPAPI_ENTROPY`; every failure is `MachineKeyError` with fixed text (b844825).
+- 2026-11-12: Step 1c sub-step 3: `modules/services/key_wrap.py`, the only importer of `cryptography`: AES-256-GCM
+  `wrap_key` / `unwrap_key` bound to the row by associated data, `recovery_kek` (scrypt with its own salt behind a
+  label, KS2); `SecretKey.use_for_aead` (KS4); `passwords.normalize_recovery_code` (9fe2260).
+- 2026-11-12: Step 1c sub-step 4: master baseline gains `installation_key` and `company_key` (no audit triggers,
+  KS9), the key `auth_event` types and `auth_event.company_id`. The development master was rebuilt (the old file
+  is in Backups/); `Companies/COMBUZZ.db` is untouched and no longer registered.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

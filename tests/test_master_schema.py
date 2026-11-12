@@ -243,7 +243,7 @@ def test_auth_event_is_append_only_and_checked(fresh):
     assert rejects(fresh, "DELETE FROM auth_event")
     columns = {r["name"] for r in fresh.execute("PRAGMA table_info(auth_event)")}
     assert columns == {"event_id", "occurred_at", "event_type", "username", "user_id", "actor_user_id",
-                       "permission_code"}  # no password, hash or code column
+                       "permission_code", "company_id"}  # no password, hash, code or key column
 
 
 def test_login_throttle_and_recovery_tables(fresh):

@@ -221,6 +221,17 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   import one. A plain `export_company` copy carries no keys: it can still be read, but its chain can be
   verified only on the source installation. Until the bundle is built, `export_company` returns the warning
   `EXPORT_NOT_VERIFIABLE` with its path, and the export screen must show it (KS11).
+* **Master tables (built in Step 1c sub-step 4):** `installation_key` (one row: the public `fingerprint`,
+  `machine_blob` + `machine_wrapped_at`, both NULL while this computer has no DPAPI copy, `recovery_salt` (16
+  bytes), `recovery_blob` (61 bytes), `recovery_wrapped_at`, `created_at`; the blobs may be re-wrapped, the
+  fingerprint, `created_at` and id never change, and the row is never deleted) and `company_key` (`company_id`,
+  `purpose` `chain` or `encryption`, `fingerprint`, `wrapped_key` (61 bytes), `created_at`; append-only, unique
+  per company, purpose and fingerprint, and no ON DELETE, so a company with keys cannot leave the registry).
+  Neither is audited (KS9); `auth_event` gained the event types `Installation key created`, `Installation key
+  rewrapped`, `Recovery code issued`, `Ledger key created`, `Ledger key rotated`, `Ledger key lost` and an
+  optional `company_id`. A wrapped key is `version | nonce | ciphertext | tag` (`key_wrap.py`); its associated
+  data names the row (`associated_data("company_key", company_id, purpose, fingerprint)`), so a blob copied to
+  another row does not open.
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).
@@ -707,6 +718,7 @@ SQLite-only constructs in the baseline that the PostgreSQL schema must rewrite. 
 | `INTEGER PRIMARY KEY AUTOINCREMENT` | every table, including `ledger_chain_key`, `ledger_checkpoint` | `GENERATED ALWAYS AS IDENTITY` |
 | `IS` / `IS NOT` comparing values | lock triggers (`NEW.x IS OLD.x`) | `IS NOT DISTINCT FROM` |
 | Partial unique indexes (`WHERE ...`) | `journal_entry_chain_hash_unique`, `ledger_chain_key_one_active`, the reversal slots | Supported as is |
+| `BLOB` with `typeof(x) = 'blob'` and `length(x)` | Step 1c master `installation_key` (`machine_blob`, `recovery_salt`, `recovery_blob`) and `company_key.wrapped_key`; their `GLOB` fingerprints and RAISE triggers are as above | `bytea` with `octet_length(x)`; drop the `typeof` CHECK |
 
 The chain itself is unaffected: the canonical form (2.4) is defined on values, the golden vectors must pass
 unchanged, and posting uses the counter-row lock described in 2.5.

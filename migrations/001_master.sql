@@ -104,11 +104,14 @@ CREATE TABLE auth_event (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     occurred_at TEXT NOT NULL,
     event_type TEXT NOT NULL CHECK (event_type IN ('Login', 'Login failed', 'Locked', 'Password changed',
-        'Password reset', 'First Master created', 'Master recovered', 'Recovery failed', 'Denied', 'Company exported')),
+        'Password reset', 'First Master created', 'Master recovered', 'Recovery failed', 'Denied', 'Company exported',
+        'Installation key created', 'Installation key rewrapped', 'Recovery code issued', 'Ledger key created',
+        'Ledger key rotated', 'Ledger key lost')),
     username TEXT,
     user_id INTEGER,
     actor_user_id INTEGER,
-    permission_code TEXT
+    permission_code TEXT,
+    company_id INTEGER
 );
 
 -- The Master's one-time recovery code, stored only as a scrypt hash. One row.
@@ -459,4 +462,63 @@ BEGIN
         json_object('mirror_id', NEW.mirror_id, 'company_id', NEW.company_id, 'company_checkpoint_id', NEW.company_checkpoint_id, 'recorded_from', NEW.recorded_from, 'created_at', NEW.created_at, 'created_by', NEW.created_by, 'kind', NEW.kind, 'scope', NEW.scope, 'result', NEW.result, 'through_entry_number', NEW.through_entry_number, 'chain_hash', NEW.chain_hash, 'first_broken_entry_number', NEW.first_broken_entry_number, 'key_id', NEW.key_id, 'ref_type', NEW.ref_type, 'ref_id', NEW.ref_id, 'mac', NEW.mac),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- Phase 2.5 step 1c: the key store (docs/audit_readiness_design.md 2.7; decisions KS3, KS9, KS10).
+-- installation_key: one row. The installation key itself is never stored; only its public fingerprint and two
+-- wrapped copies: machine_blob (DPAPI, machine scope; NULL while this computer has no DPAPI copy, which locks the
+-- key until the Master restores it with the recovery code) and recovery_blob (AES-256-GCM under the key scrypt
+-- derives from the recovery code with recovery_salt). Re-wrapping rewrites the blobs; the key never changes and
+-- the row is never deleted. Not audited, so no blob reaches audit_log: each change writes an auth_event instead.
+CREATE TABLE installation_key (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
+    machine_blob BLOB CHECK (machine_blob IS NULL OR (typeof(machine_blob) = 'blob' AND length(machine_blob) > 0)),
+    machine_wrapped_at TEXT,
+    recovery_salt BLOB NOT NULL CHECK (typeof(recovery_salt) = 'blob' AND length(recovery_salt) = 16),
+    recovery_blob BLOB NOT NULL CHECK (typeof(recovery_blob) = 'blob' AND length(recovery_blob) = 61),
+    recovery_wrapped_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    CHECK ((machine_blob IS NULL) = (machine_wrapped_at IS NULL))
+);
+
+CREATE TRIGGER installation_key_same_key
+BEFORE UPDATE OF id, fingerprint, created_at ON installation_key
+WHEN NEW.id IS NOT OLD.id OR NEW.fingerprint IS NOT OLD.fingerprint OR NEW.created_at IS NOT OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'The installation key cannot be replaced, only re-wrapped');
+END;
+
+CREATE TRIGGER installation_key_no_delete
+BEFORE DELETE ON installation_key
+BEGIN
+    SELECT RAISE(ABORT, 'The installation key cannot be deleted');
+END;
+
+-- company_key: every company's keys (purpose 'chain'; 'encryption' is for section 4), each wrapped by the
+-- installation key with AES-256-GCM (61 bytes; the associated data names the company, purpose and fingerprint).
+-- The fingerprint matches the company file's ledger_chain_key row. Append-only: retired keys are kept forever,
+-- because verification needs them; retirement is recorded in the company file. No ON DELETE: a company with keys
+-- cannot leave the registry. Not audited (see installation_key). Losing this file makes every company's ledger
+-- unverifiable, so it is backed up with every company (KS10).
+CREATE TABLE company_key (
+    company_key_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES company_registry(company_id),
+    purpose TEXT NOT NULL CHECK (purpose IN ('chain', 'encryption')),
+    fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
+    wrapped_key BLOB NOT NULL CHECK (typeof(wrapped_key) = 'blob' AND length(wrapped_key) = 61),
+    created_at TEXT NOT NULL,
+    UNIQUE (company_id, purpose, fingerprint)
+);
+
+CREATE TRIGGER company_key_no_update
+BEFORE UPDATE ON company_key
+BEGIN
+    SELECT RAISE(ABORT, 'Stored company keys cannot be changed');
+END;
+
+CREATE TRIGGER company_key_no_delete
+BEFORE DELETE ON company_key
+BEGIN
+    SELECT RAISE(ABORT, 'Stored company keys cannot be deleted');
 END;
