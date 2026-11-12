@@ -576,7 +576,7 @@ def test_the_app_checkpoints_on_logout_and_on_exit():
     assert 'protocol("WM_DELETE_WINDOW", self.on_app_exit)' in source
 
 
-# --- signed checkpoints after a period or year close (A3) -------------------------------------------------------
+# --- signed checkpoints after a period or year close (docs/audit_readiness_design.md section 3) ------------------
 
 def _close_rows(env, kind):
     return rows(env, "ledger_checkpoint", "kind = ?", (kind,))
@@ -706,20 +706,90 @@ def test_only_the_closes_sign_close_checkpoints():
     assert callers == ["modules/services/ledger_verify.py", "modules/services/periods.py"]
 
 
-def test_signing_a_close_checkpoint_needs_period_close(env, four):
-    env.role("PARENT", "VIEWER", ["ledger.view", "period.view"])
-    viewer = env.user("viewer")
-    env.grant(viewer, "PARENT", "VIEWER")
+def _verification(env):
     conn = sqlite3.connect(env.path("PARENT"))
     conn.row_factory = sqlite3.Row
     try:
-        verification = ledger_verify.full_verification(conn, ctx_for(env))
+        return ledger_verify.full_verification(conn, ctx_for(env))
     finally:
         conn.close()
-    with pytest.raises(PermissionDeniedError):
-        ledger_verify.record_close_checkpoint(ctx_for(env, user=viewer), verification, kind="Period close",
-                                              ref_id=march(env))
-    assert rows(env, "ledger_checkpoint") == []
+
+
+def _nothing_recorded(env, result):
+    assert result["checkpoint_id"] is None and result["recorded_in"] == []
+    assert result["checkpoint_error"] == ledger_verify.CHECKPOINT_NOT_SAVED
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_signing_a_close_checkpoint_needs_period_close_and_a_denial_is_reported_not_raised(env, four, caplog):
+    env.role("PARENT", "VIEWER", ["ledger.view", "period.view"])
+    viewer = env.user("viewer")
+    env.grant(viewer, "PARENT", "VIEWER")
+    result = ledger_verify.record_close_checkpoint(ctx_for(env, user=viewer), _verification(env),
+                                                   kind="Period close", ref_id=march(env))
+    _nothing_recorded(env, result)
+    assert "PermissionDenied" in caplog.text
+
+
+def test_a_permission_check_that_fails_after_the_close_never_undoes_it(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    def deny(*args, **kwargs):
+        raise PermissionDeniedError("access was removed")
+    monkeypatch.setattr(ledger_verify, "authorize", deny)
+    result = periods.close_period(ctx, march(env))
+    assert rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["is_closed"] == 1
+    _nothing_recorded(env, result)
+
+
+def test_a_close_checkpoint_is_signed_only_for_a_period_that_is_closed(env, ctx, four, caplog):
+    result = ledger_verify.record_close_checkpoint(ctx, _verification(env), kind="Period close", ref_id=march(env))
+    _nothing_recorded(env, result)
+    assert "not closed" in caplog.text
+
+
+def test_a_close_checkpoint_is_signed_only_for_a_year_that_is_closed(env, ctx, four):
+    result = ledger_verify.record_close_checkpoint(ctx, _verification(env), kind="Year close", ref_id=_fy2026(env))
+    _nothing_recorded(env, result)
+
+
+def test_a_close_checkpoint_for_a_period_that_does_not_exist_is_not_signed(env, ctx, four):
+    result = ledger_verify.record_close_checkpoint(ctx, _verification(env), kind="Period close", ref_id=999999)
+    _nothing_recorded(env, result)
+
+
+@pytest.mark.parametrize("change", [{"chain_hash": "0" * 64}, {"through_entry_number": 3}, {"through_entry_number": 9},
+                                    {"through_entry_number": 4, "chain_hash": None}])
+def test_a_close_checkpoint_refuses_a_verification_that_does_not_match_the_ledger(env, ctx, four, change, caplog):
+    _close_earlier_months(env)
+    periods.close_period(ctx, march(env))                     # signs its own checkpoint (checkpoints are append-only)
+    before = (len(rows(env, "ledger_checkpoint")), len(env.master_rows("SELECT * FROM chain_checkpoint")))
+    result = ledger_verify.record_close_checkpoint(ctx, {**_verification(env), **change}, kind="Period close",
+                                                   ref_id=march(env))
+    assert result["checkpoint_id"] is None and result["recorded_in"] == []
+    assert result["checkpoint_error"] == ledger_verify.CHECKPOINT_NOT_SAVED
+    assert (len(rows(env, "ledger_checkpoint")), len(env.master_rows("SELECT * FROM chain_checkpoint"))) == before
+    assert "does not match" in caplog.text
+
+
+def test_a_checkpoint_saved_in_the_file_but_not_the_master_says_so(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    original = ledger_verify.write_transaction
+    def master_fails(path, context):
+        if path == context.master_db_path:
+            raise RuntimeError("master locked")
+        return original(path, context)
+    monkeypatch.setattr(ledger_verify, "write_transaction", master_fails)
+    result = periods.close_period(ctx, march(env))
+    [checkpoint] = _close_rows(env, "Period close")
+    assert result["checkpoint_id"] == checkpoint["checkpoint_id"] and result["recorded_in"] == ["company"]
+    assert result["checkpoint_error"] == ledger_verify.CHECKPOINT_PARTLY_SAVED
+    assert "company file" in result["checkpoint_error"] and "master locked" not in result["checkpoint_error"]
+    assert env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_close_that_records_its_checkpoint_reports_no_error(env, ctx, four):
+    _close_earlier_months(env)
+    assert "checkpoint_error" not in periods.close_period(ctx, march(env))
 
 
 def test_the_next_incremental_check_starts_from_the_close_checkpoint(env, ctx, four, monkeypatch):

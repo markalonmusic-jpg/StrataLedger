@@ -197,6 +197,14 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   design decisions to docs/design_decisions.md, the long file map to docs/file_map.md, and path-scoped rules to
   `.claude/rules/`; accuracy fixes to CLAUDE.md, docs/CLAUDE_UI.md, `.github/copilot-instructions.md` and the
   agent files.
+- 2026-11-12: Design-chat mockups and unreviewed Theme/`ui_components` changes parked on the local branch
+  `draft/ui-mockups` (not pushed; backlog 15).
+- 2026-11-12: Review fixes to the close checkpoints and page keys. `record_close_checkpoint` never raises after the
+  close has committed: a refused permission is logged and reported in `checkpoint_error` like a failed write. It
+  signs only a period or year that is closed and a verification whose chain hash is the stored one. A checkpoint
+  saved in the company file but not the master says so (`CHECKPOINT_PARTLY_SAVED`). `tests/test_page_keys.py` now
+  runs the app's real router on a stand-in window and reads off which view module each sidebar key opens and
+  which row it marks active, instead of a hand-written table.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

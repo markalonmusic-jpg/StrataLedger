@@ -312,7 +312,7 @@ def _verify_and_record(context, mode):
                                                             mode=mode, anchors=_master_anchors(context)))
     finally:
         conn.close()
-    return _record(context, result, kind="Verify")
+    return _record(context, {**result, "checkpoint_id": None, "recorded_in": []}, kind="Verify")
 
 
 CLOSE_KINDS = {"Period close": "fiscal_period", "Year close": "fiscal_year"}
@@ -320,26 +320,58 @@ CHECKPOINT_NOT_SAVED = ("The close is done, but its ledger checkpoint could not 
                         "record one.")
 
 
+CHECKPOINT_PARTLY_SAVED = ("The close is done and its ledger checkpoint is saved in the company file, but not in "
+                           "this computer's copy. Run a ledger check to record one.")
+_CLOSED_SQL = {"Period close": "SELECT is_closed AS closed FROM fiscal_period WHERE period_id = ?",
+               "Year close": "SELECT is_year_closed AS closed FROM fiscal_year WHERE year_id = ?"}
+
+
 def record_close_checkpoint(context, verification, *, kind, ref_id):
     """Sign the close's own full verification as a 'Period close' or 'Year close' checkpoint, in the company file
-    and the master mirror, after the close has committed (A3). `verification` is the result
-    full_verification returned inside the close, so the ledger is not checked twice. Unavailable records nothing
-    (K16). The close already stands, so a checkpoint that cannot be written is logged and reported in
-    'checkpoint_error', never raised. Only periods.py calls it (a static test checks)."""
+    and the master mirror, after the close has committed (docs/audit_readiness_design.md section 3).
+    `verification` is the result full_verification returned inside the close, so the ledger is not checked twice.
+    Unavailable records nothing (K16). Before signing it confirms the period or year is closed and the verified
+    hash is the one stored in the ledger. The close already stands, so nothing here raises after the commit: a
+    refused permission, a failed confirmation or a failed write is logged and reported in 'checkpoint_error'
+    (CHECKPOINT_PARTLY_SAVED when the company row was written but the master copy was not). Only periods.py calls
+    it (a static test checks)."""
     if kind not in CLOSE_KINDS:
         raise ValidationError("Unknown close checkpoint")
-    authorize(context, "period.close", record_type=CLOSE_KINDS[kind], record_id=ref_id)
+    result = {**verification, "checkpoint_id": None, "recorded_in": []}
     try:
-        return _record(context, verification, kind=kind, ref_type=CLOSE_KINDS[kind], ref_id=ref_id)
+        authorize(context, "period.close", record_type=CLOSE_KINDS[kind], record_id=ref_id)
+        if result["status"] != UNAVAILABLE:
+            _confirm_close(context, result, kind, ref_id)
+        _record(context, result, kind=kind, ref_type=CLOSE_KINDS[kind], ref_id=ref_id)
     except Exception:                       # noqa: BLE001  (logged and reported; the close has committed)
         _logger.exception("The %s checkpoint could not be written (company_id=%s)", kind.lower(), context.company_id)
-        return {**verification, "checkpoint_id": None, "recorded_in": [], "checkpoint_error": CHECKPOINT_NOT_SAVED}
+        result["checkpoint_error"] = CHECKPOINT_PARTLY_SAVED if result["recorded_in"] else CHECKPOINT_NOT_SAVED
+    return result
 
 
-def _record(context, verification, *, kind, ref_type=None, ref_id=None):
+def _confirm_close(context, verification, kind, ref_id):
+    """Refuse to sign a close that did not happen, or a verification whose hash is not the stored ledger's."""
+    conn = read_connection(context.company_db_path)
+    try:
+        row = conn.execute(_CLOSED_SQL[kind], (ref_id,)).fetchone()
+        if row is None or not row["closed"]:
+            raise ValidationError(f"{kind}: {CLOSE_KINDS[kind]} {ref_id} is not closed")
+        through = verification["through_entry_number"]
+        stored = None
+        if through:
+            entry = conn.execute("SELECT chain_hash FROM journal_entry WHERE is_posted = 1 AND entry_number = ?",
+                                 (through,)).fetchone()
+            stored = entry["chain_hash"] if entry else ""
+        if stored != verification["chain_hash"]:
+            raise ValidationError(f"{kind}: the verification through entry {through} does not match the ledger")
+    finally:
+        conn.close()
+
+
+def _record(context, result, *, kind, ref_type=None, ref_id=None):
     """Write a verification result as a signed checkpoint row (company file unless read-only) and its master
-    mirror. Returns the result with 'checkpoint_id' and 'recorded_in'."""
-    result = {**verification, "checkpoint_id": None, "recorded_in": []}
+    mirror. Fills in result['checkpoint_id'] and result['recorded_in'] as each write commits, so a caller that
+    catches a failure knows what was saved. Returns the result."""
     if result["status"] == UNAVAILABLE:
         return result
     company_code = _company_code(context)

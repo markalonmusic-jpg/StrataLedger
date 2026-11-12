@@ -302,7 +302,8 @@ def _run_checks(conn, period):
 def _integrity(conn, context, label):
     """The ledger_integrity close check (step 3b): one full verification per close action, whatever the number of
     periods it closes. Warning by default, block when set (L2); a check that cannot run is only a warning.
-    Returns (check, verification); a close keeps the verification and signs it as its checkpoint (A3)."""
+    Returns (check, verification); a close keeps the verification and signs it as its checkpoint (audit design
+    section 3)."""
     row = conn.execute("SELECT mode FROM period_close_check WHERE check_code = 'ledger_integrity'").fetchone()
     verification = ledger_verify.full_verification(conn, context)
     check = ledger_verify.integrity_check(conn, context, label, row["mode"] if row else "warn", verification)
@@ -354,7 +355,8 @@ def _reopen(conn, context, period, via, reason):
 
 def close_period(context, period_id, *, acknowledge_warnings=False):
     """Close one period after its checks (L2). Warnings need acknowledge_warnings=True; blocks always stop it.
-    Returns the close's ledger verification, signed as a 'Period close' checkpoint after the commit (A3)."""
+    Returns the close's ledger verification, signed as a 'Period close' checkpoint after the commit (audit design
+    section 3)."""
     authorize(context, "period.close", record_type="fiscal_period", record_id=period_id)
     with write_transaction(context.company_db_path, context) as conn:
         period = _period(conn, period_id)
@@ -390,7 +392,8 @@ def set_books_closed_through(context, through_date, *, reason=None, confirm=Fals
     """Lock every month that ends on or before through_date, or move the date back (which reopens months).
 
     Forward needs period.close and runs each month's close checks; it returns the months closed and, under
-    'checkpoint', the ledger verification signed as a 'Period close' checkpoint for the last of them (A3).
+    'checkpoint', the ledger verification signed as a 'Period close' checkpoint for the last of them (audit design
+    section 3).
     Backward needs period.reopen, confirm=True and a reason; dry_run=True returns the months it would reopen (or
     close) and changes nothing.
     """
@@ -483,7 +486,7 @@ def close_year(context, year_id, *, acknowledge_warnings=False):
 
     Periods 13 and 14 go through the same close checks as any period (L2): warnings need
     acknowledge_warnings=True and blocks always stop the close. Returns the close's ledger verification, signed
-    as a 'Year close' checkpoint after the commit (A3).
+    as a 'Year close' checkpoint after the commit (audit design section 3).
     """
     authorize(context, "period.close", record_type="fiscal_year", record_id=year_id)
     with write_transaction(context.company_db_path, context) as conn:
