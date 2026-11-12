@@ -17,6 +17,8 @@
 * The reads use a read-only connection. The result is written afterwards in short separate writes: a
   ledger_checkpoint row in the company file and its mirror in the master (`chain_checkpoint`). A read-only
   (Auditor) context records in the master only.
+* A period, Books closed through or year close signs the full verification it ran as its close check as a
+  'Period close' / 'Year close' checkpoint once the close has committed (`record_close_checkpoint`).
 * Messages are plain language and name the first broken entry; they never contain a hash or a key.
 """
 import hmac
@@ -304,24 +306,58 @@ def checkpoint_on_close(context):
 
 
 def _verify_and_record(context, mode):
-    company_code = _company_code(context)
-    key_for = _key_for(context)
-    anchors = _master_anchors(context)
     conn = read_connection(context.company_db_path)
     try:
-        result = _describe(conn, context, verify_connection(conn, company_code, key_for, mode=mode, anchors=anchors))
+        result = _describe(conn, context, verify_connection(conn, _company_code(context), _key_for(context),
+                                                            mode=mode, anchors=_master_anchors(context)))
+    finally:
+        conn.close()
+    return _record(context, result, kind="Verify")
+
+
+CLOSE_KINDS = {"Period close": "fiscal_period", "Year close": "fiscal_year"}
+CHECKPOINT_NOT_SAVED = ("The close is done, but its ledger checkpoint could not be saved. Run a ledger check to "
+                        "record one.")
+
+
+def record_close_checkpoint(context, verification, *, kind, ref_id):
+    """Sign the close's own full verification as a 'Period close' or 'Year close' checkpoint, in the company file
+    and the master mirror, after the close has committed (A3). `verification` is the result
+    full_verification returned inside the close, so the ledger is not checked twice. Unavailable records nothing
+    (K16). The close already stands, so a checkpoint that cannot be written is logged and reported in
+    'checkpoint_error', never raised. Only periods.py calls it (a static test checks)."""
+    if kind not in CLOSE_KINDS:
+        raise ValidationError("Unknown close checkpoint")
+    authorize(context, "period.close", record_type=CLOSE_KINDS[kind], record_id=ref_id)
+    try:
+        return _record(context, verification, kind=kind, ref_type=CLOSE_KINDS[kind], ref_id=ref_id)
+    except Exception:                       # noqa: BLE001  (logged and reported; the close has committed)
+        _logger.exception("The %s checkpoint could not be written (company_id=%s)", kind.lower(), context.company_id)
+        return {**verification, "checkpoint_id": None, "recorded_in": [], "checkpoint_error": CHECKPOINT_NOT_SAVED}
+
+
+def _record(context, verification, *, kind, ref_type=None, ref_id=None):
+    """Write a verification result as a signed checkpoint row (company file unless read-only) and its master
+    mirror. Returns the result with 'checkpoint_id' and 'recorded_in'."""
+    result = {**verification, "checkpoint_id": None, "recorded_in": []}
+    if result["status"] == UNAVAILABLE:
+        return result
+    company_code = _company_code(context)
+    key_for = _key_for(context)
+    conn = read_connection(context.company_db_path)
+    try:
         active = conn.execute("SELECT key_id FROM ledger_chain_key WHERE is_active = 1").fetchone()
     finally:
         conn.close()
-    result.update(checkpoint_id=None, recorded_in=[])
-    if result["status"] == UNAVAILABLE or active is None:
+    if active is None:
         return result
     checkpoint = {
-        "created_at": context.now, "created_by": context.user_id, "kind": "Verify", "scope": result["scope"],
+        "created_at": context.now, "created_by": context.user_id, "kind": kind,
+        "scope": result["scope"] if kind == "Verify" else None,
         "result": result["status"], "through_entry_number": result["through_entry_number"],
         "chain_hash": result["chain_hash"],
         "first_broken_entry_number": result["first_broken"]["entry_number"] if result["first_broken"] else None,
-        "key_id": active["key_id"], "ref_type": None, "ref_id": None,
+        "key_id": active["key_id"], "ref_type": ref_type, "ref_id": ref_id,
     }
     try:
         checkpoint["mac"] = ledger_chain.checkpoint_mac(key_for(active["key_id"]), company_code, checkpoint)
@@ -346,16 +382,22 @@ def _verify_and_record(context, mode):
 
 # --- The period-close check (L2) --------------------------------------------------------------------------------
 
-def integrity_check(conn, context, label, mode):
-    """The ledger_integrity close check: a FULL verification over the caller's connection, not recorded.
-    Broken follows the check's mode (warn or block); Unavailable is always a warning that says the check could
-    not run, never a failure."""
+def full_verification(conn, context):
+    """A FULL verification over the caller's connection, described but not recorded (the close keeps it and
+    records it with record_close_checkpoint once the close has committed)."""
     core = verify_connection(conn, _company_code(context), _key_for(context), mode="full",
                              anchors=_master_anchors(context))
-    described = _describe(conn, context, core)
-    if core["status"] == OK:
+    return _describe(conn, context, core)
+
+
+def integrity_check(conn, context, label, mode, verification=None):
+    """The ledger_integrity close check from a full verification (run here unless `verification` is given).
+    Broken follows the check's mode (warn or block); Unavailable is always a warning that says the check could
+    not run, never a failure."""
+    described = verification if verification is not None else full_verification(conn, context)
+    if described["status"] == OK:
         return {"code": "ledger_integrity", "mode": mode, "ok": True, "message": None, "period": label}
-    if core["status"] == UNAVAILABLE:
+    if described["status"] == UNAVAILABLE:
         return {"code": "ledger_integrity", "mode": "warn", "ok": False, "period": label,
                 "message": "Ledger verification could not run because the ledger key is not available on this "
                            "computer (this is not a sign of tampering)"}

@@ -301,9 +301,12 @@ def _run_checks(conn, period):
 
 def _integrity(conn, context, label):
     """The ledger_integrity close check (step 3b): one full verification per close action, whatever the number of
-    periods it closes. Warning by default, block when set (L2); a check that cannot run is only a warning."""
+    periods it closes. Warning by default, block when set (L2); a check that cannot run is only a warning.
+    Returns (check, verification); a close keeps the verification and signs it as its checkpoint (A3)."""
     row = conn.execute("SELECT mode FROM period_close_check WHERE check_code = 'ledger_integrity'").fetchone()
-    return ledger_verify.integrity_check(conn, context, label, row["mode"] if row else "warn")
+    verification = ledger_verify.full_verification(conn, context)
+    check = ledger_verify.integrity_check(conn, context, label, row["mode"] if row else "warn", verification)
+    return check, verification
 
 
 def close_checks(context, period_id):
@@ -312,7 +315,7 @@ def close_checks(context, period_id):
     conn = read_connection(context.company_db_path)
     try:
         period = _period(conn, period_id)
-        return _run_checks(conn, period) + [_integrity(conn, context, period["name"])]
+        return _run_checks(conn, period) + [_integrity(conn, context, period["name"])[0]]
     finally:
         conn.close()
 
@@ -350,14 +353,17 @@ def _reopen(conn, context, period, via, reason):
 # --- Close and reopen a period ------------------------------------------------------------------------
 
 def close_period(context, period_id, *, acknowledge_warnings=False):
-    """Close one period after its checks (L2). Warnings need acknowledge_warnings=True; blocks always stop it."""
+    """Close one period after its checks (L2). Warnings need acknowledge_warnings=True; blocks always stop it.
+    Returns the close's ledger verification, signed as a 'Period close' checkpoint after the commit (A3)."""
     authorize(context, "period.close", record_type="fiscal_period", record_id=period_id)
     with write_transaction(context.company_db_path, context) as conn:
         period = _period(conn, period_id)
         if period["is_closed"]:
             raise ValidationError(f"{period['name']} is already closed")
-        _judge(_run_checks(conn, period) + [_integrity(conn, context, period["name"])], acknowledge_warnings)
+        check, verification = _integrity(conn, context, period["name"])
+        _judge(_run_checks(conn, period) + [check], acknowledge_warnings)
         _close(conn, context, period, "Period close")
+    return ledger_verify.record_close_checkpoint(context, verification, kind="Period close", ref_id=period_id)
 
 
 def reopen_period(context, period_id, *, reason=None, confirm=False):
@@ -383,8 +389,10 @@ def set_books_closed_through(context, through_date, *, reason=None, confirm=Fals
                              acknowledge_warnings=False):
     """Lock every month that ends on or before through_date, or move the date back (which reopens months).
 
-    Forward needs period.close and runs each month's close checks. Backward needs period.reopen, confirm=True and
-    a reason; dry_run=True returns the months it would reopen (or close) and changes nothing.
+    Forward needs period.close and runs each month's close checks; it returns the months closed and, under
+    'checkpoint', the ledger verification signed as a 'Period close' checkpoint for the last of them (A3).
+    Backward needs period.reopen, confirm=True and a reason; dry_run=True returns the months it would reopen (or
+    close) and changes nothing.
     """
     new = _parse_date(through_date, "date").isoformat()
     conn = read_connection(context.company_db_path)
@@ -403,18 +411,22 @@ def set_books_closed_through(context, through_date, *, reason=None, confirm=Fals
         return _forward_preview(context, new)
     if forward:
         with write_transaction(context.company_db_path, context) as conn:
-            names, results = [], []
+            names, results, last_id, verification = [], [], None, None
             for row in _open_through(conn, new):
                 period = _period(conn, row["period_id"])
                 # The months close in order in this one transaction, so an earlier month is never left open.
                 results += [r for r in _run_checks(conn, period) if r["code"] != "earlier_period_open"]
                 _close(conn, context, period, "Books closed through")
                 names.append(row["name"])
+                last_id = row["period_id"]
             if names:
-                results.append(_integrity(conn, context, names[-1]))
+                check, verification = _integrity(conn, context, names[-1])
+                results.append(check)
             _judge(results, acknowledge_warnings)
             conn.execute("UPDATE company_settings SET books_closed_through = ? WHERE id = 1", (new,))
-        return {"dry_run": False, "closed": names}
+        checkpoint = (ledger_verify.record_close_checkpoint(context, verification, kind="Period close", ref_id=last_id)
+                      if names else None)
+        return {"dry_run": False, "closed": names, "checkpoint": checkpoint}
     if dry_run:
         conn = read_connection(context.company_db_path)
         try:
@@ -450,7 +462,7 @@ def _forward_preview(context, new):
         warnings = [r for row in rows for r in _run_checks(conn, _period(conn, row["period_id"]))
                     if not r["ok"] and r["code"] != "earlier_period_open"]
         if rows:
-            check = _integrity(conn, context, rows[-1]["name"])
+            check = _integrity(conn, context, rows[-1]["name"])[0]
             warnings += [] if check["ok"] else [check]
         return {"dry_run": True, "close": [r["name"] for r in rows], "warnings": warnings}
     finally:
@@ -470,7 +482,8 @@ def close_year(context, year_id, *, acknowledge_warnings=False):
     """Lock a fiscal year (B1): months 1-12 must be closed; 13 and 14 are closed with it. No closing entries.
 
     Periods 13 and 14 go through the same close checks as any period (L2): warnings need
-    acknowledge_warnings=True and blocks always stop the close.
+    acknowledge_warnings=True and blocks always stop the close. Returns the close's ledger verification, signed
+    as a 'Year close' checkpoint after the commit (A3).
     """
     authorize(context, "period.close", record_type="fiscal_year", record_id=year_id)
     with write_transaction(context.company_db_path, context) as conn:
@@ -491,11 +504,13 @@ def close_year(context, year_id, *, acknowledge_warnings=False):
             period = _period(conn, row["period_id"])
             results += _run_checks(conn, period)
             _close(conn, context, period, "Year close")       # so period 14 sees period 13 as closed
-        results.append(_integrity(conn, context, year["name"]))
+        check, verification = _integrity(conn, context, year["name"])
+        results.append(check)
         _judge(results, acknowledge_warnings)
         conn.execute("UPDATE fiscal_year SET is_year_closed = 1, closed_at = ?, closed_by = ? WHERE year_id = ?",
                      (context.now, context.user_id, year_id))
         _history(conn, context, year_id=year_id, action="Year close", via="Year close")
+    return ledger_verify.record_close_checkpoint(context, verification, kind="Year close", ref_id=year_id)
 
 
 def reopen_year(context, year_id, reason=None, confirm_year_name=None):

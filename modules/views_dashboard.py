@@ -1,6 +1,9 @@
 import customtkinter as ctk
 from config import Theme
 
+PAGE_KEY = "customers.dashboard"
+
+
 def render_dashboard_flight_deck(parent_view, workspace_frame):
     view_frame = ctk.CTkScrollableFrame(workspace_frame, corner_radius=0, fg_color="transparent")
     view_frame.grid(row=0, column=0, sticky="nsew")

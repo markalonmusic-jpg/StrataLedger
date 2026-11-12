@@ -574,3 +574,163 @@ def test_the_app_checkpoints_on_logout_and_on_exit():
     assert "close_company_ledger" in calls("on_app_exit")
     assert "checkpoint_on_close" in calls("close_company_ledger")
     assert 'protocol("WM_DELETE_WINDOW", self.on_app_exit)' in source
+
+
+# --- signed checkpoints after a period or year close (A3) -------------------------------------------------------
+
+def _close_rows(env, kind):
+    return rows(env, "ledger_checkpoint", "kind = ?", (kind,))
+
+
+def _close_earlier_months(env):
+    with env._company("PARENT") as c:
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 WHERE start_date < '2026-03-01' "
+                  "AND fiscal_year_id IS NOT NULL", (NOW,))
+
+
+def _fy2026(env):
+    return rows(env, "fiscal_year", "name = 'FY2026'")[0]["year_id"]
+
+
+def _close_months_of(env, year):
+    with env._company("PARENT") as c:
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 WHERE fiscal_year_id = ? "
+                  "AND is_adjustment_period = 0", (NOW, year))
+
+
+def _assert_signed_and_mirrored(env, checkpoint):
+    assert checkpoint["mac"] == ledger_chain.checkpoint_mac(lh.TEST_CHAIN_KEY, "PARENT", checkpoint)
+    mirror = env.master_rows("SELECT * FROM chain_checkpoint WHERE company_checkpoint_id = ?",
+                             (checkpoint["checkpoint_id"],))
+    assert len(mirror) == 1 and mirror[0]["recorded_from"] == "Company file"
+    for field in ledger_chain.CHECKPOINT_FIELDS + ("mac",):
+        assert mirror[0][field] == checkpoint[field], field
+
+
+def test_a_period_close_records_a_signed_checkpoint_in_the_file_and_the_master(env, ctx, four):
+    _close_earlier_months(env)
+    result = periods.close_period(ctx, march(env))
+    assert result["status"] == "OK" and result["recorded_in"] == ["company", "master"]
+    [checkpoint] = _close_rows(env, "Period close")
+    assert (checkpoint["scope"], checkpoint["result"], checkpoint["through_entry_number"]) == (None, "OK", 4)
+    assert (checkpoint["ref_type"], checkpoint["ref_id"]) == ("fiscal_period", march(env))
+    assert checkpoint["chain_hash"] == rows(env, "journal_entry", "entry_number = 4")[0]["chain_hash"]
+    assert (checkpoint["created_by"], checkpoint["created_at"]) == (env.user_id, NOW)
+    assert checkpoint["checkpoint_id"] == result["checkpoint_id"]
+    _assert_signed_and_mirrored(env, checkpoint)
+    assert _close_rows(env, "Verify") == []
+
+
+def test_a_year_close_records_a_signed_year_close_checkpoint(env, ctx, four):
+    year = _fy2026(env)
+    _close_months_of(env, year)
+    result = periods.close_year(ctx, year, acknowledge_warnings=True)
+    assert result["status"] == "OK"
+    [checkpoint] = _close_rows(env, "Year close")
+    assert (checkpoint["ref_type"], checkpoint["ref_id"], checkpoint["through_entry_number"]) == ("fiscal_year", year, 4)
+    _assert_signed_and_mirrored(env, checkpoint)
+    assert _close_rows(env, "Period close") == []       # periods 13 and 14 close inside the year close
+
+
+def test_books_closed_through_records_one_period_close_checkpoint_for_the_last_month(env, ctx, four):
+    result = periods.set_books_closed_through(ctx, "2026-03-31", acknowledge_warnings=True)
+    assert result["closed"][-1] == rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["name"]
+    [checkpoint] = _close_rows(env, "Period close")
+    assert (checkpoint["ref_type"], checkpoint["ref_id"]) == ("fiscal_period", march(env))
+    assert result["checkpoint"]["checkpoint_id"] == checkpoint["checkpoint_id"]
+    _assert_signed_and_mirrored(env, checkpoint)
+
+
+def test_a_close_verifies_the_ledger_only_once(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    modes = []
+    original = ledger_verify.verify_connection
+    monkeypatch.setattr(ledger_verify, "verify_connection",
+                        lambda *a, **k: modes.append(k.get("mode")) or original(*a, **k))
+    periods.close_period(ctx, march(env))
+    assert modes == ["full"]
+
+
+def test_a_close_that_does_not_happen_records_no_checkpoint(env, ctx, four):
+    with pytest.raises(periods.CloseWarningsError):            # earlier months open: a warning not acknowledged
+        periods.close_period(ctx, march(env))
+    periods.set_close_check_mode(ctx, "ledger_integrity", "block")
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    with pytest.raises(ValidationError):
+        periods.close_period(ctx, march(env), acknowledge_warnings=True)
+    year = _fy2026(env)
+    _close_months_of(env, year)
+    with pytest.raises(ValidationError):
+        periods.close_year(ctx, year, acknowledge_warnings=True)
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_close_past_an_acknowledged_broken_ledger_records_it_as_broken(env, ctx, four):
+    _close_earlier_months(env)
+    tamper(env, ("UPDATE journal_line SET memo = 'x' WHERE entry_id = ? AND memo IS NOT NULL", (entry_id_of(env, 2),)))
+    result = periods.close_period(ctx, march(env), acknowledge_warnings=True)
+    assert broken_at(result) == (2, "Hash")
+    [checkpoint] = _close_rows(env, "Period close")
+    assert (checkpoint["result"], checkpoint["first_broken_entry_number"], checkpoint["through_entry_number"]) == (
+        "Broken", 2, 1)
+    _assert_signed_and_mirrored(env, checkpoint)
+
+
+def test_a_close_without_a_key_closes_and_records_nothing(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    result = periods.close_period(ctx, march(env), acknowledge_warnings=True)
+    assert result["status"] == "Unavailable" and result["recorded_in"] == []
+    assert rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["is_closed"] == 1
+    assert rows(env, "ledger_checkpoint") == [] and env.master_rows("SELECT * FROM chain_checkpoint") == []
+
+
+def test_a_checkpoint_that_cannot_be_written_never_undoes_the_close(env, ctx, four, monkeypatch, caplog):
+    _close_earlier_months(env)
+    def explode(*args, **kwargs):
+        raise RuntimeError("disk gone")
+    monkeypatch.setattr(ledger_chain, "checkpoint_mac", explode)
+    result = periods.close_period(ctx, march(env))
+    assert rows(env, "fiscal_period", "period_id = ?", (march(env),))[0]["is_closed"] == 1
+    assert result["checkpoint_id"] is None and result["recorded_in"] == []
+    assert "could not be saved" in result["checkpoint_error"] and "disk gone" not in result["checkpoint_error"]
+    assert "checkpoint" in caplog.text
+    assert rows(env, "ledger_checkpoint") == []
+
+
+def test_only_the_closes_sign_close_checkpoints():
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    callers = sorted(p.relative_to(root).as_posix() for p in list((root / "modules").rglob("*.py")) +
+                     [root / "app_strata.pyw"] if "record_close_checkpoint(" in p.read_text(encoding="utf-8"))
+    assert callers == ["modules/services/ledger_verify.py", "modules/services/periods.py"]
+
+
+def test_signing_a_close_checkpoint_needs_period_close(env, four):
+    env.role("PARENT", "VIEWER", ["ledger.view", "period.view"])
+    viewer = env.user("viewer")
+    env.grant(viewer, "PARENT", "VIEWER")
+    conn = sqlite3.connect(env.path("PARENT"))
+    conn.row_factory = sqlite3.Row
+    try:
+        verification = ledger_verify.full_verification(conn, ctx_for(env))
+    finally:
+        conn.close()
+    with pytest.raises(PermissionDeniedError):
+        ledger_verify.record_close_checkpoint(ctx_for(env, user=viewer), verification, kind="Period close",
+                                              ref_id=march(env))
+    assert rows(env, "ledger_checkpoint") == []
+
+
+def test_the_next_incremental_check_starts_from_the_close_checkpoint(env, ctx, four, monkeypatch):
+    _close_earlier_months(env)
+    periods.close_period(ctx, march(env))
+    entry_id = ledger.create_entry(ctx, entry_date="2026-04-02", lines=[
+        {"account_id": env.accts["cash"], "debit_cents": 500}, {"account_id": env.accts["sales"], "credit_cents": 500}])
+    ledger.post_journal_entry(ctx, entry_id, confirm=True, acknowledge_date_warnings=True)
+    sealed = []
+    original = ledger_chain.seal
+    monkeypatch.setattr(ledger_chain, "seal", lambda *a, **k: sealed.append(a[2]) or original(*a, **k))
+    result = ledger_verify.verify_ledger(ctx, mode="incremental")
+    assert (result["status"], result["scope"], result["through_entry_number"]) == ("OK", "Incremental", 5)
+    assert len(sealed) == 2                                    # the checkpointed entry 4 and the new entry 5

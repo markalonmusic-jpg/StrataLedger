@@ -246,6 +246,14 @@ Screens show the first 16 hex characters in groups (`3f9a-1c2e-77b0-41d5`); expo
 
 **Kinds:** Verify, Period close, Year close, Report export, Backup, Restore, Key rotation, Manual.
 
+**Close checkpoints (built):** a successful period close, Books closed through (one for the last month it
+closes) and year close each sign the full verification they ran as their close check, as a `Period close` or
+`Year close` checkpoint (scope empty, `ref_type` `fiscal_period` / `fiscal_year`, `ref_id` the period or year),
+in the file and the master mirror, after the close commits. The ledger is checked once per close. A close that
+is refused records nothing; Unavailable records nothing (K16); a close past an acknowledged broken ledger
+records a Broken checkpoint. A checkpoint that cannot be written never undoes the close: it is logged and the
+close's result says so in one sentence.
+
 **Auditor workflow:**
 1. At year end the client sends the signed period-close or year-close report. The auditor records the
    checkpoint printed on it (in working papers, outside the client's computer).

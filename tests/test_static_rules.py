@@ -132,13 +132,14 @@ DENY_CALLS = {"authorize", "deny", "_deny", "_deny_master"}
 #    _auth_write (the throttle / auth_event writer used by login and denials).
 #  * periods.ensure_upcoming_years: system upkeep run by open_company (creates the fiscal years due within
 #    60 days, decision S3); it runs as the opening user so the audit log shows who triggered it.
-#  * ledger_verify._verify_and_record: records a verification result. Its callers are verify_ledger, which
-#    authorizes ledger.verify first, and checkpoint_on_close, system upkeep when a company is closed or the app
-#    exits (it signs the ledger head as the closing user; audit design 2.6).
+#  * ledger_verify._record: writes a verification result as a checkpoint. Its callers are verify_ledger, which
+#    authorizes ledger.verify first; checkpoint_on_close, system upkeep when a company is closed or the app
+#    exits (it signs the ledger head as the closing user; audit design 2.6); and record_close_checkpoint, which
+#    authorizes period.close (called only by the period and year closes, after they authorized it).
 RULE_10_EXCLUDED = {
     "tx.py:write_transaction", "authz.py:_write_access_event",
     "auth.py:create_first_master", "auth.py:change_password", "auth.py:recover_master", "auth.py:_auth_write",
-    "periods.py:ensure_upcoming_years", "ledger_verify.py:_verify_and_record",
+    "periods.py:ensure_upcoming_years", "ledger_verify.py:_record",
 }
 
 

@@ -978,6 +978,12 @@ Planned schema work, in build order (names only):
 - 2026-11-12: 3b follow-up: `ledger_verify.checkpoint_on_close` signs a checkpoint (file and master) when a company
   is closed (logout) and at app exit (`App.close_company_ledger`, `App.on_app_exit` on WM_DELETE_WINDOW). Decision
   K18.
+- 2026-11-12: Small fixes. `views_dashboard.PAGE_KEY = "customers.dashboard"` and `tests/test_page_keys.py` (every
+  view's PAGE_KEY equals the key the sidebar and `App.navigate_to` route to it; the routes table must list every
+  sidebar key). The Copilot worktree and its two branches were removed. Period close, Books closed through and year
+  close sign their full verification as a `Period close` / `Year close` checkpoint (file and master) after the
+  close commits (`ledger_verify.record_close_checkpoint`; a failed write is logged and reported, never undoes the
+  close).
 - 2026-11-12: Password recovery design (`docs/password_recovery_design.md`, docs only): v1.0 Admin/Master reset and
   personal backup codes, the Master path after step 1c, email last, TOTP v1.1. Proposed build step "2.8 Password
   recovery" after 2.5; screens in Phase 3.
