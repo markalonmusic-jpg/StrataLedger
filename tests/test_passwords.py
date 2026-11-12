@@ -62,6 +62,16 @@ def test_policy_rejects_short_passwords(candidate):
         passwords.check_password_policy(candidate)
 
 
+@pytest.mark.parametrize("length,accepted", [(1023, True), (1024, True), (1025, False)])
+def test_policy_maximum_is_exactly_1024_characters(length, accepted):
+    assert passwords.MAX_LENGTH == 1024
+    if accepted:
+        passwords.check_password_policy("x" * length)
+    else:
+        with pytest.raises(ValidationError):
+            passwords.check_password_policy("x" * length)
+
+
 def test_policy_accepts_twelve_and_rejects_huge():
     passwords.check_password_policy("twelve chars")
     with pytest.raises(ValidationError):

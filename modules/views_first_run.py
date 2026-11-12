@@ -7,19 +7,22 @@ A view builds widgets and calls services; it holds no SQL and no business rules 
 routing, the form checks and the error wording are in modules/first_run_model.py. Colours, fonts and radii come from
 config.Theme only (H6); dialogs are the shared modal in ui_components.
 
-Secrets: the password and the recovery code are held only in this controller, only until the sign-in. After the sign-in
+Secrets: the Copy button goes through platform_support.copy_secret_text, which on Windows ASKS Windows to keep the
+copy out of clipboard history and cloud sync. That is a request: we could not observe Windows honouring it (clipboard
+history is off on the development machine), so the screen warns that a copy may remain in history on some systems.
+The password and the recovery code are held only in this controller, only until the sign-in. After the sign-in
 the controller drops its references to them (it does not and cannot overwrite the memory they occupied). Neither is
 ever logged: this module logs the type of an error and the path of a file, nothing else.
 """
 import logging
 import tkinter as tk
-from tkinter import TclError
 
 import customtkinter as ctk
 
 import modules.database as database
 from config import Theme
 from modules import first_run_model as model
+from modules import platform_support
 from modules.services import auth
 from modules.services.errors import ServiceError
 from modules.ui_components import ask_confirm, show_error
@@ -53,6 +56,7 @@ class FirstRunSetup:
         self.vars = {}
         self.draft = model.Draft()
         self.welcome_text = model.WELCOME_TEXT
+        self.code_notice = model.CODE_NOTICE
         self.code_shown = False
         self.continue_button = None
         self._code = None
@@ -183,9 +187,7 @@ class FirstRunSetup:
                             "The Master account was created. This code is shown only once.")
         body = ctk.CTkFrame(panel, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=Theme.pad_lg)
-        self._label(body, "If you ever forget the Master password, this code is the only way to reset it. Write it "
-                          "down or save it in a password manager, and keep it offline. StrataLedger cannot show it "
-                          "again.", muted=True)
+        self._label(body, self.code_notice, muted=True)
         self.vars = {"code": tk.StringVar(master=self.container, value=self._code),
                      "acknowledged": tk.BooleanVar(master=self.container, value=False)}
         ctk.CTkEntry(body, textvariable=self.vars["code"], state="readonly", justify="center",
@@ -202,20 +204,16 @@ class FirstRunSetup:
         self.continue_button.configure(state="disabled")
 
     def copy_code(self):
-        self.container.clipboard_clear()
-        self.container.clipboard_append(self._code)
+        platform_support.copy_secret_text(self.container, self._code)
 
     def on_ack_changed(self):
         allowed = model.can_continue(self.code_shown, bool(self.vars["acknowledged"].get()))
         self.continue_button.configure(state="normal" if allowed else "disabled")
 
     def _clear_clipboard_if_code(self):
-        try:
-            held = self.container.clipboard_get()
-        except TclError:                  # nothing on the clipboard
-            return
+        held = platform_support.read_clipboard_text(self.container)
         if model.same_code(held, self._code):
-            self.container.clipboard_clear()
+            platform_support.clear_clipboard(self.container)
 
     # --- Step 3: sign in and offer the first company ---------------------------------------------------------------------------
 

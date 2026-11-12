@@ -111,6 +111,15 @@ def test_password_cannot_equal_the_username_ignoring_case():
     assert model.validate(draft(username="administrator1", password=" administrator1", repeat=" administrator1")) == []
 
 
+@pytest.mark.parametrize("length,accepted", [(1023, True), (1024, True), (1025, False)])
+def test_password_maximum_boundary(length, accepted):
+    password = "x" * length
+    problems = model.validate(draft(password=password, repeat=password))
+    assert (problems == []) is accepted
+    if not accepted:
+        assert any("1024" in p for p in problems)
+
+
 def test_password_has_a_maximum_length():
     long = "x" * 1025
     assert any("1024" in p for p in model.validate(draft(password=long, repeat=long)))

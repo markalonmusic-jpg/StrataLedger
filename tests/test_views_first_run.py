@@ -5,11 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from tkinter import TclError
 
 import modules.database as database
 from modules import first_run_model as model
 from modules import views_first_run as view
+from modules import platform_support
 from modules.services import auth, logging_setup, passwords
 from modules.services.errors import ValidationError
 
@@ -269,10 +269,30 @@ def test_closing_after_the_box_is_ticked_still_asks_until_continue(setup):
 # --- The clipboard ---------------------------------------------------------------------------------------------------
 
 def clipboard(root):
-    try:
-        return root.clipboard_get()
-    except TclError:
-        return ""
+    return platform_support.read_clipboard_text(root)
+
+
+def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch):
+    make_master(setup)
+    seen = []
+    monkeypatch.setattr(view.platform_support, "copy_secret_text", lambda widget, text: seen.append(text) or "tk")
+    setup.wizard.copy_code()
+    assert seen == [setup.wizard.vars["code"].get()]
+
+
+def test_a_failed_windows_copy_still_copies_and_does_not_crash(setup, tk_root, monkeypatch):
+    make_master(setup)
+    monkeypatch.setattr(platform_support, "IS_WINDOWS", True)
+    monkeypatch.setattr(platform_support, "_copy_windows", lambda text: (_ for _ in ()).throw(OSError("busy")))
+    setup.wizard.copy_code()
+    assert clipboard(tk_root) == setup.wizard.vars["code"].get()
+
+
+def test_the_code_screen_warns_about_clipboard_history(setup):
+    make_master(setup)
+    text = setup.wizard.code_notice
+    assert "shown only once" in text.lower() or "cannot show it again" in text.lower()
+    assert "clipboard history" in text.lower() and "some systems" in text.lower()
 
 
 def test_copy_puts_the_code_on_the_clipboard(setup, tk_root):

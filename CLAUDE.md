@@ -191,6 +191,15 @@ in code (`tests/test_config_paths.py` fails on one).
     (Copy button, required "I have saved this code" box), sign in, then offer "Create your first company" or
     "Later". Routing, form checks and wording are in `first_run_model.py` (no Tk, unit tested); the state check is
     `auth.inspect_master`. Page key `setup.first_run`.
+  - `platform_support.py` - the one place for operating-system calls (decision P3), plain `ctypes`, no package.
+    `copy_secret_text` puts the recovery code on the clipboard and, on Windows, also writes the formats
+    `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory` (0) and
+    `CanUploadToCloudClipboard` (0) to ask Windows to keep it out of clipboard history and cloud sync;
+    `read_clipboard_text` and `clear_clipboard` use the Windows API too (Tk can serve a stale copy). The flags are
+    REQUESTED: we could not observe Windows honouring them, because clipboard history is off on the development
+    machine, so the screen warns that a copy may remain in history on some systems. Any Windows failure falls back to
+    the Tk clipboard quietly; the text is never logged. `font_loader.py` still has its own `ctypes` use and moves
+    here later (a test lists the only two files allowed to hold Windows calls).
   - `views_new_user.py` and `views_user_profile.py` - global user provisioning
     and profile management.
   - `ai_agent.py` - planned (Phase 6), provider adapter (Gemini first); see
@@ -719,6 +728,8 @@ See docs/crm_pm_design.md section 11.
 11. Issue a new Master recovery code (REQUIRED BEFORE v1.0): a service that, after the Master re-enters the
     password, replaces the recovery code and shows the new one once. The first-run screen asks for confirmation if
     the window is closed before the first code is saved, but a code lost later cannot be recovered without this.
+12. Wire a `page_key` into the New Company screen (`views_new_company.py`), as the first-run screen already
+    has (`setup.first_run`); see docs/help_system_design.md section 3.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
@@ -878,7 +889,11 @@ Planned schema work, in build order (names only):
   touching it. Invalid input builds no file; if the file is built but the Master cannot be created, the next launch
   shows setup again. Password and recovery code are held only until the sign-in and the screen then drops its
   references to them (it does not overwrite the memory); neither is ever logged; Continue clears the clipboard if
-  it still holds the code. `create_fresh_databases.py` is unchanged (a developer tool).
+  it still holds the code, with or without dashes. `create_fresh_databases.py` is unchanged (a developer tool).
+- 2026-11-12: S10 follow-up. Password maximum boundary tested (1023 and 1024 accepted, 1025 rejected). The Copy button
+  on the recovery-code screen goes through `platform_support.copy_secret_text` (Windows clipboard-history and cloud
+  exclusion requested, Tk fallback), the code screen adds a line that a copy may remain in clipboard history on some
+  systems, and backlog item 12 (page key for the New Company screen) was added.
 
 **Known issues (code as it is today; fixed in the phase named):**
 - H2 allow-list (`tests/test_static_portability.py`): only `auth._now()` still reads the clock. It stays on

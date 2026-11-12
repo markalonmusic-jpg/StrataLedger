@@ -23,6 +23,13 @@ WELCOME_TEXT = (
 )
 
 
+CODE_NOTICE = (
+    "If you ever forget the Master password, this code is the only way to reset it. Write it down or save it in a "
+    "password manager, and keep it offline. StrataLedger cannot show it again. If you use Copy, a copy may remain "
+    "in the clipboard history on some systems; clear it there if you can."
+)
+
+
 @dataclass
 class Draft:
     username: str = ""
