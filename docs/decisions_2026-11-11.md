@@ -307,6 +307,17 @@ here (L5-L8, U1-U6) are still open.
 - P2 Company files live only in the installation's `Companies` folder;
   never a user-chosen folder. Off-site safety comes from backups copied to
   a second folder (E7), which may be cloud-synced.
+- P2a Code and data are separate folders, both worked out at runtime
+  (never a hardcoded machine path):
+  - Resource folder (read-only: code, chart templates, help, fonts): the
+    folder the app runs from (the PyInstaller bundle folder when packaged).
+  - Data folder (writable: system_master.db, Companies, Backups, Logs,
+    Uploaded_Files): the STRATALEDGER_DATA_DIR environment variable if
+    set; otherwise the repository folder when running from source;
+    otherwise %PROGRAMDATA%\StrataLedger for the installed app.
+    ProgramData is shared by every Windows account on the computer, which
+    P1 needs; the installer gives it the right permissions.
+  - Tests always set their own temporary data folder.
 - P3 v1 supports Windows 10 and 11 only. Code stays portable (no
   Windows-only calls outside one platform module) so macOS can follow.
 - P4 Start a new private GitHub repository from the current code with
