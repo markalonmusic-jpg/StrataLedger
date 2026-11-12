@@ -153,8 +153,8 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-12):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, and 2.5 steps 1, 2, 1b, 3, 3b
 (drafts, sealed posting, verification, signed checkpoints at close, logout and exit). Password recovery is
-decided (PW1-PW11; build step 2.8 after 2.5). Next: 2.5 step 1c (keystore), steps 4-7, 2.7 (hooks and
-add-ons), then Phase 3 (screens). Until step 1c there is no real key provider, so nothing posts outside tests.
+decided (PW1-PW11; build step 2.8 after 2.5). Now: 2.5 step 1c (keystore, KS1-KS11), sub-step 1 done
+(`cryptography` pinned); then steps 4-7, 2.7, Phase 3. Until 1c sub-step 6 nothing posts outside tests.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an

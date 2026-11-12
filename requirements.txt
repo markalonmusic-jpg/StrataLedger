@@ -1,2 +1,4 @@
 customtkinter>=5.2
 tzdata>=2024.1
+# AES-256-GCM for the ledger key store (decisions K2, KS1). Pinned: key wrapping must not change under an upgrade.
+cryptography==50.0.2

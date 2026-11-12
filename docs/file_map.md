@@ -20,7 +20,9 @@ in code (`tests/test_config_paths.py` fails on one).
 - `templates/coa/` - the approved chart-of-accounts templates (`construction.csv`, `general.csv`, decision I1)
   and their README. Read through `modules/services/storage.py` and `chart_templates.py`; "Import my own CSV"
   uses the same parser (`csv_table.py`).
-- `requirements.txt` - runtime packages (`customtkinter`, `tzdata`). `tzdata` is a hard requirement: if a
+- `requirements.txt` - runtime packages (`customtkinter`, `tzdata`, `cryptography` pinned for the key store, KS1).
+  `requirements-dev.txt` adds the developer tools (pytest, PyInstaller); `tools/check_frozen_crypto.py` checks a
+  frozen build still runs AES-GCM. `tzdata` is a hard requirement: if a
   company's time zone cannot be loaded, `open_company` raises `InstallationError` ("reinstall"); there is no
   fallback to the UTC date. The test environment installs it too, and the time-zone tests never skip.
 - `migrations/` - the baseline schema, one file per database kind

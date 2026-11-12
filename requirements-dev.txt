@@ -1,0 +1,4 @@
+# Developer tools (decision KS1): the test suite and the Windows build. Not needed by the installed app.
+-r requirements.txt
+pytest==9.2.0
+pyinstaller==6.22.3

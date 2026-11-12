@@ -208,6 +208,11 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-12: Mutation check of the close checkpoints (44 mutants, 36 killed); tests for the five real gaps
   (fbbabe2). A verification or close that signs no checkpoint now always says why in `no_checkpoint_reason` (no
   ledger key on this computer, no active key in the company, or the write failed); it is never silent.
+- 2026-11-12: `export_company` returns a warning that the copy cannot be verified on another computer (KS11,
+  e89d214). Key store decisions KS1-KS11 recorded (971ca70).
+- 2026-11-12: Step 1c sub-step 1: `cryptography==50.0.2` pinned in requirements.txt (Apache-2.0 OR BSD-3-Clause,
+  OpenSSL 4.0.3 built in); `requirements-dev.txt` holds pytest and PyInstaller 6.22.3. A one-file PyInstaller
+  build runs AES-GCM and scrypt (+3.7 MB); `tools/check_frozen_crypto.py` repeats the check.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

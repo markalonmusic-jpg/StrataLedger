@@ -205,8 +205,10 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
       through `platform_support.py`, the one module for OS calls, P3/H1), so every Windows account on the
       computer can open the app (P1);
     * one wrapped with the **Master recovery code**: scrypt (its own salt, never the login hash's) gives a
-      key-encryption key, used with AES-256-GCM from the `cryptography` package (K2: confirm the licence
-      and PyInstaller first).
+      key-encryption key, used with AES-256-GCM from the `cryptography` package (K2). Confirmed 2026-11-12:
+      `cryptography` 50.0.2 (Apache-2.0 OR BSD-3-Clause; cffi MIT-0, pycparser BSD-3-Clause), OpenSSL 4.0.3
+      built into its own extension; a PyInstaller 6.22.3 one-file build runs AES-GCM and scrypt and adds about
+      3.7 MB (`tools/check_frozen_crypto.py`).
   * **Company chain keys** (and later encryption keys) are random and stored in the master (`company_key`),
     wrapped by the installation key with AES-GCM.
   * The recovery code is in clear only at first-run, at Master recovery and when backlog item 11 issues a
