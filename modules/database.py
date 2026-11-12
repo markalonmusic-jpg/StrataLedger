@@ -6,11 +6,11 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from config import BACKUP_DIR, BASE_PROJECT_DIR
+from config import BACKUP_DIR, MIGRATIONS_DIR as _CONFIG_MIGRATIONS_DIR
 
 
 MAX_DIMENSION_DEPTH = 3
-MIGRATIONS_DIR = os.path.join(BASE_PROJECT_DIR, "migrations")
+MIGRATIONS_DIR = _CONFIG_MIGRATIONS_DIR
 MIGRATIONS = [(1, "001_company.sql")]
 MASTER_MIGRATIONS = [(1, "001_master.sql")]
 

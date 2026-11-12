@@ -7,11 +7,11 @@ import tkinter.font as tkfont
 import zipfile
 from urllib.request import urlopen
 
-from config import BASE_PROJECT_DIR
+from config import FONT_DIR as _CONFIG_FONT_DIR
 
 logger = logging.getLogger(__name__)
 
-FONT_DIR = os.path.join(BASE_PROJECT_DIR, "fonts")
+FONT_DIR = _CONFIG_FONT_DIR
 FONT_FILES = (
     "Inter-Regular.ttf",
     "Inter-Medium.ttf",

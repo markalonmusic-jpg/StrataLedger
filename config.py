@@ -1,13 +1,79 @@
-import os
+r"""Paths and constants (decision P2a).
 
-BASE_PROJECT_DIR = r"C:\Users\marka\StrataLedger"
-MASTER_DB_PATH = os.path.join(BASE_PROJECT_DIR, "system_master.db")
-COMPANIES_DIR = os.path.join(BASE_PROJECT_DIR, "Companies")
-UPLOAD_DIR = os.path.join(BASE_PROJECT_DIR, "Uploaded_Files")
-BACKUP_DIR = os.path.join(BASE_PROJECT_DIR, "Backups")
-LOG_DIR = os.path.join(BASE_PROJECT_DIR, "Logs")
-LOG_FILE = os.path.join(LOG_DIR, "strataledger.log")
+RESOURCE_DIR is the folder the app runs from: sys._MEIPASS when frozen, else the folder of this
+file. Code, migrations, fonts, templates and help are read from there and never written.
+
+DATA_DIR holds everything the app writes: the databases, Companies, Backups, Logs and uploads.
+It is STRATALEDGER_DATA_DIR if that is set; otherwise the repo folder when running from source;
+otherwise %PROGRAMDATA%\StrataLedger when frozen (created if missing).
+
+BASE_PROJECT_DIR is kept as an alias of DATA_DIR. Services read it at call time, so tests can
+patch it.
+"""
+import os
+import sys
+
 APP_VERSION = "0.2.0-dev"
+DATA_DIR_ENV = "STRATALEDGER_DATA_DIR"
+
+
+def resolve_resource_dir(frozen, meipass, executable):
+    """The folder the app runs from."""
+    if frozen:
+        return os.path.abspath(meipass) if meipass else os.path.dirname(os.path.abspath(executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_data_dir(environ, frozen, resource_dir):
+    """Where the app keeps its data (see the module docstring). Creates the frozen default."""
+    override = (environ.get(DATA_DIR_ENV) or "").strip()
+    if override:
+        return os.path.abspath(override)
+    if not frozen:
+        return os.path.abspath(resource_dir)
+    base = environ.get("PROGRAMDATA") or environ.get("USERPROFILE") or environ.get("HOME") or resource_dir
+    path = os.path.join(base, "StrataLedger")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass          # the first write reports the real problem, with its path
+    return path
+
+
+def build_paths(data_dir, resource_dir):
+    """Every derived path: written data under data_dir, read-only resources under resource_dir."""
+    log_dir = os.path.join(data_dir, "Logs")
+    return {
+        "MASTER_DB_PATH": os.path.join(data_dir, "system_master.db"),
+        "COMPANIES_DIR": os.path.join(data_dir, "Companies"),
+        "UPLOAD_DIR": os.path.join(data_dir, "Uploaded_Files"),
+        "BACKUP_DIR": os.path.join(data_dir, "Backups"),
+        "LOG_DIR": log_dir,
+        "LOG_FILE": os.path.join(log_dir, "strataledger.log"),
+        "MIGRATIONS_DIR": os.path.join(resource_dir, "migrations"),
+        "FONT_DIR": os.path.join(resource_dir, "fonts"),
+        "TEMPLATES_DIR": os.path.join(resource_dir, "templates"),
+        "HELP_DIR": os.path.join(resource_dir, "help"),
+    }
+
+
+_FROZEN = bool(getattr(sys, "frozen", False))
+RESOURCE_DIR = resolve_resource_dir(_FROZEN, getattr(sys, "_MEIPASS", None), sys.executable)
+DATA_DIR = resolve_data_dir(os.environ, _FROZEN, RESOURCE_DIR)
+BASE_PROJECT_DIR = DATA_DIR      # alias, kept so existing code and tests need no change
+
+_paths = build_paths(DATA_DIR, RESOURCE_DIR)
+MASTER_DB_PATH = _paths["MASTER_DB_PATH"]
+COMPANIES_DIR = _paths["COMPANIES_DIR"]
+UPLOAD_DIR = _paths["UPLOAD_DIR"]
+BACKUP_DIR = _paths["BACKUP_DIR"]
+LOG_DIR = _paths["LOG_DIR"]
+LOG_FILE = _paths["LOG_FILE"]
+MIGRATIONS_DIR = _paths["MIGRATIONS_DIR"]
+FONT_DIR = _paths["FONT_DIR"]
+TEMPLATES_DIR = _paths["TEMPLATES_DIR"]
+HELP_DIR = _paths["HELP_DIR"]
+
 
 class Theme:
     bg_color = "#090D16"

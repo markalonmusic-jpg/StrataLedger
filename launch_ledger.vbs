@@ -1,2 +1,5 @@
+Set fso = CreateObject("Scripting.FileSystemObject")
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """C:\Users\marka\AppData\Local\Programs\Python\Python311\pythonw.exe"" ""C:\Users\marka\StrataLedger\app_strata.pyw""", 0, False
+folder = fso.GetParentFolderName(WScript.ScriptFullName)
+WshShell.CurrentDirectory = folder
+WshShell.Run "pythonw """ & folder & "\app_strata.pyw""", 0, False
