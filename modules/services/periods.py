@@ -392,23 +392,24 @@ def set_books_closed_through(context, through_date, *, reason=None, confirm=Fals
     if dry_run:
         conn = read_connection(context.company_db_path)
         try:
-            return {"dry_run": True, "reopen": [r["name"] for r in _closed_after(conn, new)]}
+            return {"dry_run": True, "reopen": [r["name"] for r in _closed_between(conn, new, old)]}
         finally:
             conn.close()
     _require_confirm(confirm)
     reason = _clean_reason(reason)
     with write_transaction(context.company_db_path, context) as conn:
         names = []
-        for row in _closed_after(conn, new):
+        for row in _closed_between(conn, new, old):
             _reopen(conn, context, _period(conn, row["period_id"]), "Books closed through", reason)
             names.append(row["name"])
         conn.execute("UPDATE company_settings SET books_closed_through = ? WHERE id = 1", (new,))
     return {"dry_run": False, "reopened": names}
 
 
-def _closed_after(conn, day):
+def _closed_between(conn, new, old):
+    """Closed months after the new date up to the old one. Months closed separately beyond the old date stay closed."""
     return conn.execute("SELECT period_id, name FROM fiscal_period WHERE is_adjustment_period = 0 AND is_closed = 1 "
-                        "AND end_date > ? ORDER BY start_date", (day,)).fetchall()
+                        "AND end_date > ? AND end_date <= ? ORDER BY start_date", (new, old)).fetchall()
 
 
 def _open_through(conn, day):
@@ -436,8 +437,12 @@ def _year(conn, year_id):
     return row
 
 
-def close_year(context, year_id):
-    """Lock a fiscal year (B1): months 1-12 must be closed; 13 and 14 are closed with it. No closing entries."""
+def close_year(context, year_id, *, acknowledge_warnings=False):
+    """Lock a fiscal year (B1): months 1-12 must be closed; 13 and 14 are closed with it. No closing entries.
+
+    Periods 13 and 14 go through the same close checks as any period (L2): warnings need
+    acknowledge_warnings=True and blocks always stop the close.
+    """
     authorize(context, "period.close", record_type="fiscal_year", record_id=year_id)
     with write_transaction(context.company_db_path, context) as conn:
         year = _year(conn, year_id)
@@ -450,10 +455,14 @@ def close_year(context, year_id):
             raise ValidationError(f"Close these periods first: {', '.join(still_open)}")
         if conn.execute("SELECT 1 FROM fiscal_year WHERE start_date > ?", (year["end_date"],)).fetchone() is None:
             _create_year(conn, _start_month(conn), int(year["name"][2:]) + 1)
+        results = []
         for row in conn.execute("SELECT period_id FROM fiscal_period WHERE fiscal_year_id = ? "
                                 "AND is_adjustment_period = 1 AND is_closed = 0 ORDER BY period_number",
                                 (year_id,)).fetchall():
-            _close(conn, context, _period(conn, row["period_id"]), "Year close")
+            period = _period(conn, row["period_id"])
+            results += _run_checks(conn, period)
+            _close(conn, context, period, "Year close")       # so period 14 sees period 13 as closed
+        _judge(results, acknowledge_warnings)
         conn.execute("UPDATE fiscal_year SET is_year_closed = 1, closed_at = ?, closed_by = ? WHERE year_id = ?",
                      (context.now, context.user_id, year_id))
         _history(conn, context, year_id=year_id, action="Year close", via="Year close")

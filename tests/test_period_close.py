@@ -374,3 +374,56 @@ def test_history_cannot_be_edited(ctx):
             conn.execute("DELETE FROM period_status_history")
     finally:
         conn.close()
+
+
+# --- 2.4b fixes ----------------------------------------------------------------------------------
+
+def test_backward_move_reopens_only_the_months_between_the_dates(ctx):
+    periods.set_books_closed_through(ctx, "2027-04-30", acknowledge_warnings=True)
+    periods.close_period(ctx, pid(ctx, "FY2027-05"))                       # closed separately, after the date
+    preview = periods.set_books_closed_through(ctx, "2027-02-28", dry_run=True)
+    assert preview["reopen"] == ["FY2027-03", "FY2027-04"]
+    result = periods.set_books_closed_through(ctx, "2027-02-28", reason="Audit fix", confirm=True)
+    assert result["reopened"] == ["FY2027-03", "FY2027-04"]
+    assert [is_closed(ctx, f"FY2027-0{n}") for n in (1, 2, 3, 4, 5)] == [1, 1, 0, 0, 1]
+    assert q(ctx, "SELECT books_closed_through FROM company_settings") == [{"books_closed_through": "2027-02-28"}]
+    assert [h["period"] for h in history(ctx) if h["action"] == "Reopen"] == ["FY2027-03", "FY2027-04"]
+
+
+def test_dry_run_matches_the_real_move_exactly(ctx):
+    periods.set_books_closed_through(ctx, "2027-06-30", acknowledge_warnings=True)
+    periods.close_period(ctx, pid(ctx, "FY2027-08"), acknowledge_warnings=True)
+    preview = periods.set_books_closed_through(ctx, "2027-03-31", dry_run=True)
+    real = periods.set_books_closed_through(ctx, "2027-03-31", reason="Fix", confirm=True)
+    assert preview["reopen"] == real["reopened"] == ["FY2027-04", "FY2027-05", "FY2027-06"]
+    assert is_closed(ctx, "FY2027-08") == 1
+
+
+def test_year_close_runs_the_checks_on_13_and_14_as_warnings(ctx):
+    close_months(ctx, *range(1, 13))
+    draft_entry(ctx, "2027-12-31", "FY2027-13")
+    with pytest.raises(periods.CloseWarningsError) as caught:
+        periods.close_year(ctx, yid(ctx, "FY2027"))
+    assert [w["code"] for w in caught.value.warnings] == ["draft_entries"]
+    assert caught.value.warnings[0]["period"] == "FY2027-13"
+    assert q(ctx, "SELECT is_year_closed FROM fiscal_year WHERE name = 'FY2027'") == [{"is_year_closed": 0}]
+    assert is_closed(ctx, "FY2027-13") == 0 and is_closed(ctx, "FY2027-14") == 0
+    periods.close_year(ctx, yid(ctx, "FY2027"), acknowledge_warnings=True)
+    assert is_closed(ctx, "FY2027-13") == 1 and is_closed(ctx, "FY2027-14") == 1
+
+
+def test_year_close_blocks_when_a_check_is_a_block(ctx):
+    close_months(ctx, *range(1, 13))
+    draft_entry(ctx, "2027-12-31", "FY2027-14")
+    periods.set_close_check_mode(ctx, "draft_entries", "block")
+    with pytest.raises(ValidationError) as caught:
+        periods.close_year(ctx, yid(ctx, "FY2027"), acknowledge_warnings=True)
+    assert not isinstance(caught.value, periods.CloseWarningsError) and "FY2027-14" in str(caught.value)
+    assert q(ctx, "SELECT is_year_closed FROM fiscal_year WHERE name = 'FY2027'") == [{"is_year_closed": 0}]
+    assert is_closed(ctx, "FY2027-13") == 0                       # nothing half-closed
+
+
+def test_year_close_with_clean_adjustment_periods_needs_no_acknowledgement(ctx):
+    close_months(ctx, *range(1, 13))
+    periods.close_year(ctx, yid(ctx, "FY2027"))
+    assert is_closed(ctx, "FY2027-14") == 1
