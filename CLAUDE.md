@@ -759,7 +759,9 @@ See docs/crm_pm_design.md section 11.
 13. Chain `audit_log` like the ledger (decision K6; docs/audit_readiness_design.md).
 14. Speed up ledger verification toward the K12 targets (decision K17): build the canonical form with less
     per-field work, and index or narrow the whole-ledger void and truncation queries so an incremental check
-    stays fast as the ledger grows. Measure with `tools/benchmark_ledger_verify.py`.
+    stays fast as the ledger grows. Measure with `tools/benchmark_ledger_verify.py`. Whatever the speed, every
+    screen that starts a full verification (Ledger integrity, period and year close, Books closed through,
+    backups) runs it in the background with progress and a responsive window (docs/audit_readiness_design.md 2.6).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
@@ -993,6 +995,9 @@ Planned schema work, in build order (names only):
   other screens adopt the shared components.
 - The tests share one hidden Tk window (`tk_app` in `tests/conftest.py`): several Tk roots in one process
   intermittently fail on Windows.
+- The seven tests that use the real Windows clipboard (`tests/test_platform_support.py`, marker
+  `live_clipboard`) are deselected by default because another program can change the clipboard mid-test; run
+  them with `STRATALEDGER_LIVE_CLIPBOARD=1` when changing `platform_support.py`.
 - `users.create_user` copies the role code into the legacy free-text
   `app_user.role`, which only the sidebar reads; `app_user.role` and the
   `role = 'Master'` half of the one-Master triggers are removed from the

@@ -164,6 +164,12 @@ through N" marker is detected and treated as no marker.
 > matches the seal recorded when it was posted, so it may have been changed outside StrataLedger. Entries
 > before it are intact. Restore a backup made before 2026-03-16, or ask your accountant to review."
 
+**Background work (K17, backlog 14):** a full verification can take tens of seconds on a large ledger (about
+26 s for 100,000 entries as measured in Step 3b), so every screen that starts one (Ledger integrity "Verify now",
+period close, year close, Books closed through, and later backups) must run it in the background, show progress
+(entries checked out of the total) and keep the window responsive; the result arrives when it is done. The
+incremental check at company open is short and can stay in the foreground until the ledger is large.
+
 **Screen** (Phase 3): Settings > Ledger integrity. It shows the last check (when, by whom, scope, result)
 and the current checkpoint. It has a "Verify now" button, a box to paste an auditor's checkpoint and
 compare it, and the history of checks. Running a check needs `ledger.verify` (K7).
@@ -745,4 +751,4 @@ unchanged, and posting uses the counter-row lock described in 2.5.
   0.2 s). Both miss the targets. A profile shows about half of the full check is building the canonical form
   in Python and a sixth is JSON encoding, so the seal itself is not the cost; the incremental check's fixed cost
   is the whole-ledger SQL (mainly the void cross-check), which grows with the ledger. Follow-up: backlog
-  item 14.
+  item 14. Whatever the speed, screens run full verification in the background with progress (2.6).
