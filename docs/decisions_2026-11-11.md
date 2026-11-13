@@ -194,6 +194,8 @@ R. Phase 2.5 ledger and billing services:
 - R22 Rejection needs a reason; resubmit only after a change
 - R23 Only a human approves or rejects
 - R24 Posting records and seals the last approver
+- R25 The stale ledger xfails are rewritten in step 4
+- R26 The close checkpoint is signed with a fresh context
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1064,3 +1066,10 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
   contexts are refused by the approval service.
 - R24 Posting an approved entry writes `approved_by` and `approved_at` from the last approving action; both are
   sealed in the chain (already hashed fields).
+- R25 (owner, STOP 2 answer 2, confirming plan answer 6) The pending xfails `cannot_post_to_header_or_inactive_account`
+  (both cases) and `manual_entry_to_controlled_account_is_blocked` are rewritten in step 4 against the real
+  services, with the approval xfails R5 and Agent/Import: the controlled-account test is the
+  `allow_manual_control_je` = 0 case (R9), and the default (1) posts the line and flags it.
+- R26 (owner, STOP 2 answer 1) `App.close_company_ledger`, used at logout and app exit, signs its checkpoint with
+  `action_context()`, so the checkpoint records the time the company was closed. Closing never blocks: a context
+  that cannot be built is logged and the checkpoint skipped.

@@ -83,7 +83,10 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     keys. Both baseline changes in one edit (previous baselines saved to archive/ with a tag, one rebuild).
     Done: the baseline edit and rebuild, part (1) the key-lost checkpoint and verifier (KS12, KS14-KS16) and
     part (2) replacing a lost installation key (KS13, KS17-KS21, `installation_keys.py`); screens in Phase 3.
-    Then steps 4-7. Step 1c landed before any screen can post; 2.5 is not done until steps 1d and 4-7 are.
+    **Step 4** (done 2026-11-13, R15-R26): approvals in posting: submit for approval with the entry's digest,
+    posting only with an Approved request that matches the entry, chains and limits, edits cancel, rejection
+    needs a change, separation also covers posting, a fresh context per action, the last approver sealed.
+    Then steps 5-7. Step 1c landed before any screen can post; 2.5 is not done until steps 5-7 are.
     Accepted until step 2.8: the Master can change the password without the recovery code
     (`auth.change_password`).
   - **2.6 Customer and vendor codes (done):** `customer_number` and

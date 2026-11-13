@@ -1,10 +1,7 @@
 """ledger.post_journal_entry, Phase 2.5 step 3 (decisions L4, L6, A5, R2, R5, R8, R9, K3; audit design 2.5, 2.7).
 
-Approvals (step 4), reversals and auto-reversal (step 5), rounding (step 6) and the verify service (step 3b) are
-later steps: until step 4, posting FAILS CLOSED for anything that would need an approval.
-
-Replaces the post half of pending test `cannot_post_to_header_or_inactive_account` and pending test
-`manual_entry_to_controlled_account_is_blocked` (the pending file is untouched until step 7).
+Approvals in posting (step 4) are tested in tests/test_ledger_approvals.py; here only that an entry needing
+approval is refused until it has one. Reversals and auto-reversal (step 5) and rounding (step 6) come later.
 """
 import dataclasses
 import re
@@ -23,7 +20,7 @@ from tests.authz_world import world  # noqa: F401  (fixture)
 
 NOW = "2026-03-20T10:00:00+00:00"
 TODAY = "2026-03-20"
-APPROVAL_MESSAGE = "This entry needs the approval step, which is not available yet."
+APPROVAL_MESSAGE = "This entry needs approval before it posts; send it for approval first."
 
 
 @pytest.fixture
@@ -347,7 +344,7 @@ def test_the_default_provider_refuses(monkeypatch):
         importlib.reload(keys)
 
 
-# --- fail closed until step 4: anything that would need an approval --------------------------------------
+# --- anything that needs an approval is refused until it has one (R20; tests/test_ledger_approvals.py) -----
 
 def test_an_agent_drafted_entry_waits_for_the_approval_step(env, ctx):
     entry_id = draft(env, ctx_for(env, "Agent"))
@@ -357,7 +354,8 @@ def test_an_agent_drafted_entry_waits_for_the_approval_step(env, ctx):
 def test_an_import_entry_waits_for_the_approval_step(env, ctx):
     entry_id = draft(env, ctx_for(env, "Import"), source="Import")
     refused(env, lambda: ledger.post_journal_entry(ctx, entry_id, confirm=True), PostingError, APPROVAL_MESSAGE)
-    refused(env, lambda: ledger.post_journal_entry(ctx_for(env, "Import"), entry_id), PostingError, APPROVAL_MESSAGE)
+    refused(env, lambda: ledger.post_journal_entry(ctx_for(env, "Import"), entry_id), PostingError,
+            ledger.IMPORT_POSTED_BY_A_PERSON)
 
 
 @pytest.mark.parametrize("threshold, amount, posts", [
@@ -366,7 +364,7 @@ def test_an_import_entry_waits_for_the_approval_step(env, ctx):
     (1000, 1001, False),       # strictly over needs approval
     (5000, 1000, True),
 ])
-def test_manual_entry_approval_fails_closed_when_the_entry_qualifies(env, ctx, threshold, amount, posts):
+def test_manual_entry_approval_is_needed_when_the_entry_qualifies(env, ctx, threshold, amount, posts):
     settings(env, manual_entry_approval=1, manual_entry_approval_threshold_cents=threshold)
     entry_id = draft(env, entry_lines=lines(env, amount))
     if posts:
@@ -396,7 +394,7 @@ def test_approval_refusals_apply_only_when_the_company_turns_the_control_on(env)
         assert entry_row(env, entry_id)["is_posted"] == 1
 
 
-def test_a_document_entry_whose_document_type_needs_approval_fails_closed(env):
+def test_a_document_entry_whose_document_type_needs_approval_is_refused_without_one(env):
     with env._company("PARENT") as c:
         c.execute("UPDATE document_approval_setting SET requires_approval = 1 WHERE document_type = 'Bill'")
     system = ctx_for(env, "System")
@@ -451,6 +449,32 @@ def test_a_warning_never_blocks_an_open_period(env):
 
 
 # --- controlled accounts (A5, R9) ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("change", ["is_postable = 0", "is_active = 0"])
+def test_cannot_post_to_header_or_inactive_account(env, ctx, change):
+    """C2 (was a pending xfail, decision R25): the account rules run again at posting on the stored lines."""
+    special = A(env, "cash")
+    entry_id = draft(env)
+    with env._company("PARENT") as c:
+        c.execute(f"UPDATE account SET {change} WHERE account_id = ?", (special,))
+    refused(env, lambda: ledger.post_journal_entry(ctx, entry_id, confirm=True), PostingError, "1010")
+
+
+def test_manual_entry_to_controlled_account_is_blocked(env, ctx):
+    """R9 (was a pending xfail, decision R25): blocked only when allow_manual_control_je = 0."""
+    settings(env, allow_manual_control_je=0)
+    entry_id = draft(env, entry_lines=lines(env, debit="ar", debit_extra={"contact_id": env.customer}))
+    refused(env, lambda: ledger.post_journal_entry(ctx, entry_id, confirm=True), PostingError, "controlled account")
+
+
+def test_manual_entry_to_controlled_account_posts_and_is_flagged_by_default(env, ctx):
+    """R9 (decision R25): the default (allow_manual_control_je = 1) posts the line and flags it."""
+    entry_id = draft(env, entry_lines=lines(env, debit="ar", debit_extra={"contact_id": env.customer}))
+    ledger.post_journal_entry(ctx, entry_id, confirm=True)
+    flags = {l["account_id"]: l["is_control_override"] for l in
+             env.rows("PARENT", "SELECT * FROM journal_line WHERE entry_id = ?", (entry_id,))}
+    assert flags == {A(env, "ar"): 1, A(env, "sales"): 0}
+
 
 def test_a_manual_line_to_a_controlled_account_is_allowed_and_flagged_by_default(env, ctx):
     entry_id = draft(env, entry_lines=lines(env, debit="inventory"))

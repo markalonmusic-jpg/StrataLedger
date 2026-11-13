@@ -125,6 +125,22 @@ def canonical_entry(header, lines, dimensions=()):
     return text.encode("utf-8")
 
 
+# Filled in when the entry posts; empty in the approval digest, so approving and posting see the same content.
+POSTING_FIELDS = ("entry_number", "posted_by", "posted_at", "approved_by", "approved_at", "chain_version",
+                  "chain_key_id")
+
+
+def entry_digest(header, lines, dimensions=()):
+    """SHA-256 (hex) of a draft's canonical form with the posting fields empty (R15).
+
+    Stored on the entry's approval request; posting refuses unless the entry still has this digest. It is the
+    form `seal` hashes, so an approval covers exactly what is sealed except the fields posting itself writes.
+    """
+    blank = dict(header)
+    blank.update({field: None for field in POSTING_FIELDS})
+    return hashlib.sha256(canonical_entry(blank, lines, dimensions)).hexdigest()
+
+
 # --- Checkpoint MAC ------------------------------------------------------------------------------------------------
 
 CHECKPOINT_DOMAIN = b"SLCP1"

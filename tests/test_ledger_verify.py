@@ -912,3 +912,48 @@ def test_the_next_incremental_check_starts_from_the_close_checkpoint(env, ctx, f
     result = ledger_verify.verify_ledger(ctx, mode="incremental")
     assert (result["status"], result["scope"], result["through_entry_number"]) == ("OK", "Incremental", 5)
     assert len(sealed) == 2                                    # the checkpointed entry 4 and the new entry 5
+
+
+# --- R26: the close checkpoint is signed with a fresh context ----------------------------------------------------
+
+def _app_class():
+    import importlib.machinery
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "app_strata.pyw"
+    loader = importlib.machinery.SourceFileLoader("app_strata_for_close_checkpoint", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _fake_app(module, context):
+    from types import SimpleNamespace
+    fake = SimpleNamespace(context=context)
+    fake.action_context = lambda: module.App.action_context(fake)
+    return fake
+
+
+def test_the_close_checkpoint_uses_the_time_of_closing(env, ctx, monkeypatch):
+    from modules.services import clock
+    module = _app_class()
+    seen = []
+    monkeypatch.setattr(module.ledger_verify, "checkpoint_on_close", seen.append)
+    monkeypatch.setattr(clock, "utc_now_iso", lambda: "2026-04-01T18:00:00+00:00")
+    module.App.close_company_ledger(_fake_app(module, ctx))
+    assert [c.now for c in seen] == ["2026-04-01T18:00:00+00:00"]
+    assert (seen[0].user_id, seen[0].company_id, seen[0].origin) == (ctx.user_id, ctx.company_id, ctx.origin)
+
+
+def test_the_close_checkpoint_never_blocks_closing(env, ctx, monkeypatch, caplog):
+    from modules.services.errors import InstallationError
+    module = _app_class()
+    seen = []
+    monkeypatch.setattr(module.ledger_verify, "checkpoint_on_close", seen.append)
+    def broken(_context):
+        raise InstallationError("Time zone data is missing")
+    monkeypatch.setattr(module.companies, "action_context", broken)
+    module.App.close_company_ledger(_fake_app(module, ctx))        # does not raise
+    assert seen == [] and "checkpoint on close was skipped" in caplog.text
+    module.App.close_company_ledger(_fake_app(module, None))        # no company open: nothing

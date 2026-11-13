@@ -39,6 +39,7 @@ ALLOWED_STATUS_CHANGES = {
 }
 _CANCELLABLE = ("Pending", "Approved")
 ONLY_A_PERSON = "Only a person can approve or reject; sign in and do it yourself."
+_NOUN = {"journal_entry": "entry"}    # how a refusal names the record; "document" otherwise
 
 Slot = namedtuple("Slot", "step_no role_code")
 _Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privileged role_code")
@@ -93,8 +94,12 @@ def is_approval_required(context, document_type):
 # --- Requests ------------------------------------------------------------------------------
 
 def submit_for_approval(context, document_type, record_type, record_id, amount_cents, *, created_by,
-                        project_id=None):
-    """Create a Pending approval request for a document. Returns its request_id."""
+                        project_id=None, document_digest=None):
+    """Create a Pending approval request for a document. Returns its request_id.
+
+    document_digest (R15): the document's content digest; a document whose newest request was Rejected with
+    the same digest is refused until it changes (R22). Required by the baseline for journal entries.
+    """
     _check_document_type(document_type)
     _check_cents(amount_cents, "amount_cents")
     if not record_type or record_id is None:
@@ -104,14 +109,19 @@ def submit_for_approval(context, document_type, record_type, record_id, amount_c
     authorize(context, permissions.SUBMIT_PERMISSION[document_type], project_id,
               record_type=record_type, record_id=record_id)
     with write_transaction(context.company_db_path, context) as conn:
+        newest = request_state(conn, record_type, record_id)
+        if (newest is not None and newest["status"] == "Rejected" and document_digest is not None
+                and newest["document_digest"] == document_digest):
+            raise ValidationError(f"Change the {_NOUN.get(record_type, 'document')} before sending it again; "
+                                  f"it was rejected: {newest['reason']}.")
         policy_id, chain = _chain_for(conn, document_type, amount_cents)
         try:
             return conn.execute(
                 "INSERT INTO approval_request (document_type, record_type, record_id, amount_cents, policy_id, "
-                "created_by, project_id, chain_json, status, submitted_by, submitted_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?) RETURNING request_id",
+                "created_by, project_id, chain_json, status, submitted_by, submitted_at, document_digest) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?) RETURNING request_id",
                 (document_type, record_type, record_id, amount_cents, policy_id, created_by, project_id,
-                 json.dumps(chain), context.user_id, context.now),
+                 json.dumps(chain), context.user_id, context.now, document_digest),
             ).fetchone()[0]
         except sqlite3.IntegrityError as error:
             if "approval_request.record_type" in str(error):
@@ -182,6 +192,38 @@ def is_approved(conn, record_type, record_id):
         "ORDER BY request_id DESC LIMIT 1", (record_type, record_id),
     ).fetchone()
     return row is not None and row[0] == "Approved"
+
+
+def request_state(conn, record_type, record_id):
+    """The record's newest approval request as a dict, or None (the posting gate reads this).
+
+    Keys: request_id, status, document_type, amount_cents, document_digest, created_by, reason (the rejection's,
+    else None), step and steps (the open step's position and the number of steps; step is None when every step
+    is complete), approved_by and approved_at (the last Approve action, else None).
+    """
+    row = conn.execute(
+        "SELECT request_id, status, document_type, amount_cents, document_digest, created_by, chain_json "
+        "FROM approval_request WHERE record_type = ? AND record_id = ? ORDER BY request_id DESC LIMIT 1",
+        (record_type, record_id)).fetchone()
+    if row is None:
+        return None
+    state = dict(row)
+    chain = json.loads(state.pop("chain_json"))
+    acted = [dict(r) for r in conn.execute(
+        "SELECT step_no, role_code, user_id, decision, reason, acted_at FROM approval_action WHERE request_id = ? "
+        "ORDER BY action_id", (state["request_id"],))]
+    step_nos = sorted({slot["step_no"] for slot in chain})
+    open_steps = [n for n in step_nos if any(_filled(slot, acted) < slot["required_count"]
+                                             for slot in chain if slot["step_no"] == n)]
+    approvals_made = [a for a in acted if a["decision"] == "Approve"]
+    rejections = [a for a in acted if a["decision"] == "Reject"]
+    state.update(
+        steps=len(step_nos), step=step_nos.index(open_steps[0]) + 1 if open_steps else None,
+        reason=rejections[-1]["reason"] if rejections else None,
+        approved_by=approvals_made[-1]["user_id"] if approvals_made else None,
+        approved_at=approvals_made[-1]["acted_at"] if approvals_made else None,
+    )
+    return state
 
 
 # --- Policies and limits (company.roles.manage) ------------------------------------------------

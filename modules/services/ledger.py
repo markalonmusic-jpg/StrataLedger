@@ -23,14 +23,21 @@ Posting (`post_journal_entry`, step 3) runs every check again on the stored draf
 sets the control-override flags, locks the entry counter row, reads it, increments it, seals the entry with the
 company's chain key (docs/audit_readiness_design.md 2.5) and writes is_posted, the number, who and when and the
 four chain columns in ONE update. Any failure rolls the whole transaction back, so numbers stay gapless and the
-chain has no hole. Until step 4 builds approvals, posting FAILS CLOSED for anything that would need one: Agent
-and Import entries, manual entries over the approval threshold, documents whose type requires approval.
-Reversals (step 5) and automatic reversals are refused here.
+chain has no hole. Reversals (step 5) and automatic reversals are refused here.
+
+Approvals (step 4, R15-R24): an entry needs an Approved request before it posts when its origin is Agent or
+Import, when it is a manual entry over the manual-entry approval threshold, or when its document type requires
+approval (`approval_document_type`). `submit_entry_for_approval` runs the posting checks and sends it with the
+entry's digest; posting re-reads the newest request inside its transaction and refuses unless it is Approved
+for the entry exactly as it is now, then writes and seals the last approver. A Pending request blocks posting
+of any entry. Any edit or delete cancels the request in the same transaction. With require_separate_approver
+on, the entry's creator cannot post it (R17). Only a person posts an Import-origin entry until the Imports phase
+builds batch review (R18).
 """
 import sqlite3
 from datetime import date
 
-from modules.services import keys, ledger_chain, periods
+from modules.services import approvals, keys, ledger_chain, periods
 from modules.services.authz import authorize
 from modules.services.errors import (
     KeyUnavailableError, NotFoundError, PeriodClosedError, PostingError, ValidationError,
@@ -39,7 +46,9 @@ from modules.services.tx import read_connection, write_transaction
 
 CREATE = "je.create"
 POST = "je.post"
-APPROVAL_STEP_MESSAGE = "This entry needs the approval step, which is not available yet."
+RECORD_TYPE = "journal_entry"
+IMPORT_POSTED_BY_A_PERSON = ("An imported entry is posted by a person after review; sign in and post it from the "
+                             "approved entries.")
 # Document sources whose document type has its own "requires approval" switch (decision 1.6).
 DOCUMENT_APPROVAL_TYPES = {"Bill": "Bill", "Payment": "Payment", "Import": "Import batch", "Payroll": "Import batch"}
 # A manual line to these controlled accounts must name the contact (A5): (contact flag, word).
@@ -243,6 +252,7 @@ def update_entry(context, entry_id, *, entry_date=_UNSET, description=_UNSET, re
         if cleaned is not None:
             conn.execute("DELETE FROM journal_line WHERE entry_id = ?", (entry_id,))
             _insert_lines(conn, entry_id, cleaned)
+        approvals.cancel_in_transaction(conn, context, RECORD_TYPE, entry_id)        # R21: one change
 
 
 def delete_entry(context, entry_id):
@@ -250,6 +260,7 @@ def delete_entry(context, entry_id):
     authorize(context, CREATE, record_type="journal_entry", record_id=entry_id)
     with write_transaction(context.company_db_path, context) as conn:
         _draft(conn, entry_id)
+        approvals.cancel_in_transaction(conn, context, RECORD_TYPE, entry_id)        # R21: one change
         try:
             conn.execute("DELETE FROM journal_line WHERE entry_id = ?", (entry_id,))
             conn.execute("DELETE FROM journal_entry WHERE entry_id = ?", (entry_id,))
@@ -327,20 +338,93 @@ def _settings(conn):
     return conn.execute("SELECT * FROM company_settings WHERE id = 1").fetchone()
 
 
-def _fail_closed_on_approvals(conn, entry, settings, manual, debits):
-    """Until step 4 there is no approval step, so anything that would need one is refused (fail closed)."""
-    if entry["origin"] in ("Agent", "Import"):
-        raise PostingError(APPROVAL_STEP_MESSAGE)
-    if manual and settings is not None and settings["manual_entry_approval"]:
-        threshold = settings["manual_entry_approval_threshold_cents"]
-        if threshold is None or debits > threshold:          # R5: strictly over; none means every manual entry
-            raise PostingError(APPROVAL_STEP_MESSAGE)
+def approval_document_type(conn, entry, settings, debits):
+    """The approval document type an entry needs before it posts (R20), or None when it posts directly.
+
+    Agent origin: always (Journal entry). Import origin: always (Import batch, R18). A manual entry: when
+    manual-entry approval is on and its debits are strictly over the threshold, or no threshold is set (R5).
+    A document source: when its document type requires approval (1.6).
+    """
+    if entry["origin"] == "Import":
+        return "Import batch"
+    if entry["origin"] == "Agent":
+        return "Journal entry"
+    if entry["source"] in MANUAL_SOURCES:
+        if settings is not None and settings["manual_entry_approval"]:
+            threshold = settings["manual_entry_approval_threshold_cents"]
+            if threshold is None or debits > threshold:
+                return "Journal entry"
+        return None
     document_type = DOCUMENT_APPROVAL_TYPES.get(entry["source"])
     if document_type:
         row = conn.execute("SELECT requires_approval FROM document_approval_setting WHERE document_type = ?",
                            (document_type,)).fetchone()
         if row is not None and row["requires_approval"]:
-            raise PostingError(APPROVAL_STEP_MESSAGE)
+            return document_type
+    return None
+
+
+def _entry_digest(conn, entry):
+    """The R15 digest of the entry as stored now (before posting sets any flag)."""
+    entry_lines = conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+                               (entry["entry_id"],)).fetchall()
+    dimensions = conn.execute(
+        "SELECT d.* FROM journal_line_dimension AS d JOIN journal_line AS l ON l.line_id = d.line_id "
+        "WHERE l.entry_id = ?", (entry["entry_id"],)).fetchall()
+    return ledger_chain.entry_digest(entry, entry_lines, dimensions)
+
+
+def _approval_gate(state, needed, digest, debits):
+    """Refuse posting unless the approvals allow it (R15, R20). Returns (approved_by, approved_at) or (None, None).
+
+    A Pending request blocks every entry. An Approved request must match the entry now (digest, amount and, when
+    approval is needed, the document type), whether or not approval is still needed.
+    """
+    status = state["status"] if state else None
+    if status == "Pending":
+        raise PostingError(f"This entry is waiting for approval (step {state['step']} of {state['steps']}); "
+                           "post it when the approval is complete.")
+    if status == "Approved":
+        if (state["document_digest"] != digest or state["amount_cents"] != debits
+                or (needed is not None and state["document_type"] != needed)):
+            raise PostingError("The approved entry does not match the entry now; send it for approval again.")
+        return state["approved_by"], state["approved_at"]
+    if needed is None:
+        return None, None
+    if status == "Rejected":
+        raise PostingError(f"This entry was rejected: {state['reason']}. Change it and send it for approval again.")
+    if status == "Cancelled":
+        raise PostingError("The approval was cancelled because the entry was changed; send it for approval again.")
+    raise PostingError("This entry needs approval before it posts; send it for approval first.")
+
+
+def _postable(conn, entry_id):
+    """Every posting check that does not depend on approval. Returns (entry, period, rows, debits, overrides)."""
+    entry = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+    if entry is None:
+        raise NotFoundError("That journal entry does not exist")
+    if entry["is_posted"]:
+        raise PostingError("This entry is already posted")
+    if entry["reverses_entry_id"] is not None:
+        raise PostingError("A reversal is posted by the reverse or void action, not here")
+    if entry["auto_reverse_date"] is not None:
+        raise PostingError("This entry has an automatic reversal date, which is not available yet; "
+                           "clear the date to post it")
+    period_id = periods.resolve_entry_period(conn, entry["entry_date"], entry["period_id"])
+    period = conn.execute("SELECT name, is_closed, is_adjustment_period FROM fiscal_period WHERE period_id = ?",
+                          (period_id,)).fetchone()
+    if period["is_closed"]:
+        raise PeriodClosedError(f"{period['name']} is closed; reopen it or date the entry in an open period")
+    check_entry_lines(conn, entry_id)
+    rows = conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,)).fetchall()
+    if len(rows) < 2:
+        raise PostingError("A journal entry needs at least two lines to post")
+    debits = sum(r["debit_cents"] or 0 for r in rows)
+    credits = sum(r["credit_cents"] or 0 for r in rows)
+    if debits != credits or debits <= 0:
+        raise PostingError(f"This entry does not balance: debits {_money(debits)}, credits {_money(credits)}")
+    overrides = _control_overrides(conn, rows, _settings(conn)) if entry["source"] in MANUAL_SOURCES else []
+    return entry, period, rows, debits, overrides
 
 
 def _control_overrides(conn, rows, settings):
@@ -397,46 +481,66 @@ def _chain_head(conn):
     return row["chain_hash"] if row is not None else ledger_chain.GENESIS
 
 
+def submit_entry_for_approval(context, entry_id):
+    """Send a draft for approval (R20). Returns the approval request id.
+
+    Runs every posting check that does not depend on approval, then submits the entry's document type, its
+    total debits and its digest (R15). Refused for an entry that can be posted directly, while a request is
+    waiting, once it is approved and unchanged, and after a rejection until the entry has changed (R22).
+    """
+    authorize(context, CREATE, record_type=RECORD_TYPE, record_id=entry_id)
+    conn = read_connection(context.company_db_path)
+    try:
+        entry, _, rows, debits, _ = _postable(conn, entry_id)
+        needed = approval_document_type(conn, entry, _settings(conn), debits)
+        digest = _entry_digest(conn, entry)
+        state = approvals.request_state(conn, RECORD_TYPE, entry_id)
+    finally:
+        conn.close()
+    if needed is None:
+        raise ValidationError("This entry can be posted directly; it does not need approval.")
+    if state is not None and state["status"] == "Pending":
+        raise ValidationError("This entry is already waiting for approval.")
+    if state is not None and state["status"] == "Approved" and state["document_digest"] == digest:
+        raise ValidationError("This entry is already approved; post it.")
+    projects = {r["project_id"] for r in rows}
+    project_id = projects.pop() if len(projects) == 1 else None
+    return approvals.submit_for_approval(context, needed, RECORD_TYPE, entry_id, debits,
+                                         created_by=entry["created_by"], project_id=project_id,
+                                         document_digest=digest)
+
+
+def _check_creator_may_post(context, entry_id):
+    """R17: with require_separate_approver on, the entry's creator cannot post it (logged, before the write)."""
+    conn = read_connection(context.company_db_path)
+    try:
+        row = conn.execute("SELECT created_by FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise NotFoundError("That journal entry does not exist")
+    approvals.check_separate_approver(context, row["created_by"], permission_code=POST, record_type=RECORD_TYPE,
+                                      record_id=entry_id)
+
+
 def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_warnings=False):
     """Post a draft: check it again, number it, seal it. Returns {'entry_id', 'entry_number', 'warnings'}.
 
     A Human-origin post needs confirm=True (R2). Date warnings (L6, Human origin only) raise DateWarningsError
     until acknowledge_date_warnings=True; they never block an open period.
     """
-    authorize(context, POST, record_type="journal_entry", record_id=entry_id)
+    authorize(context, POST, record_type=RECORD_TYPE, record_id=entry_id)
     if context.origin == "Human" and confirm is not True:
         raise ValidationError("Confirm the posting first; a posted entry can only be corrected by reversing it")
-    if context.origin in ("Agent", "Import"):
-        raise PostingError(APPROVAL_STEP_MESSAGE)
+    if context.origin == "Import":
+        raise PostingError(IMPORT_POSTED_BY_A_PERSON)
+    _check_creator_may_post(context, entry_id)
     company_code = _company_code(context)
     with write_transaction(context.company_db_path, context) as conn:
-        entry = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
-        if entry is None:
-            raise NotFoundError("That journal entry does not exist")
-        if entry["is_posted"]:
-            raise PostingError("This entry is already posted")
-        if entry["reverses_entry_id"] is not None:
-            raise PostingError("A reversal is posted by the reverse or void action, not here")
-        if entry["auto_reverse_date"] is not None:
-            raise PostingError("This entry has an automatic reversal date, which is not available yet; "
-                               "clear the date to post it")
-        period_id = periods.resolve_entry_period(conn, entry["entry_date"], entry["period_id"])
-        period = conn.execute("SELECT name, is_closed, is_adjustment_period FROM fiscal_period WHERE period_id = ?",
-                              (period_id,)).fetchone()
-        if period["is_closed"]:
-            raise PeriodClosedError(f"{period['name']} is closed; reopen it or date the entry in an open period")
-        check_entry_lines(conn, entry_id)
-        rows = conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,)).fetchall()
-        if len(rows) < 2:
-            raise PostingError("A journal entry needs at least two lines to post")
-        debits = sum(r["debit_cents"] or 0 for r in rows)
-        credits = sum(r["credit_cents"] or 0 for r in rows)
-        if debits != credits or debits <= 0:
-            raise PostingError(f"This entry does not balance: debits {_money(debits)}, credits {_money(credits)}")
-        settings = _settings(conn)
-        manual = entry["source"] in MANUAL_SOURCES
-        _fail_closed_on_approvals(conn, entry, settings, manual, debits)
-        overrides = _control_overrides(conn, rows, settings) if manual else []
+        entry, period, rows, debits, overrides = _postable(conn, entry_id)
+        needed = approval_document_type(conn, entry, _settings(conn), debits)
+        approved_by, approved_at = _approval_gate(approvals.request_state(conn, RECORD_TYPE, entry_id), needed,
+                                                  _entry_digest(conn, entry), debits)
         warnings = []
         if context.origin == "Human" and not period["is_adjustment_period"]:
             warnings = [w for w in periods.entry_date_warnings(conn, entry["entry_date"], context.today)
@@ -452,6 +556,7 @@ def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_war
         prev_hash = _chain_head(conn)
         header = dict(entry)
         header.update(entry_number=number, posted_by=context.user_id, posted_at=context.now,
+                      approved_by=approved_by, approved_at=approved_at,
                       chain_version=ledger_chain.CHAIN_VERSION, chain_key_id=key_id)
         sealed_lines = [dict(r) for r in conn.execute(
             "SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
@@ -463,9 +568,10 @@ def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_war
         try:
             conn.execute(
                 "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
-                "chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, chain_hash = ? WHERE entry_id = ?",
-                (number, context.user_id, context.now, ledger_chain.CHAIN_VERSION, key_id, prev_hash, chain_hash,
-                 entry_id))
+                "approved_by = ?, approved_at = ?, chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
+                "chain_hash = ? WHERE entry_id = ?",
+                (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
+                 prev_hash, chain_hash, entry_id))
         except sqlite3.IntegrityError as exc:
             raise PostingError(f"The entry could not be posted: {exc}") from None
     return {"entry_id": entry_id, "entry_number": number, "warnings": warnings}

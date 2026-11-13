@@ -251,9 +251,10 @@ FRESH_CONTEXT_CALLS = {
     "ledger": {"post_journal_entry", "submit_entry_for_approval"},
     "approvals": {"approve", "reject"},
     "periods": {"close_period", "close_year", "set_books_closed_through"},
+    "ledger_verify": {"checkpoint_on_close"},           # R26
 }
 _FRESH_BARE_NAMES = {"post_journal_entry", "submit_entry_for_approval", "close_period", "close_year",
-                     "set_books_closed_through"}
+                     "set_books_closed_through", "checkpoint_on_close"}
 
 
 def _is_action_context_call(node):
@@ -305,6 +306,7 @@ def test_screens_do_not_import_the_guarded_functions_under_other_names():
     "approvals.reject(self.context, 1, 'no')", "periods.close_period(self.app.context, 3)",
     "periods.close_year(c, 1)", "periods.set_books_closed_through(c, '2026-01-31')",
     "ledger.submit_entry_for_approval(c, 5)", "post_journal_entry(c, 5)", "ledger.post_journal_entry()",
+    "ledger_verify.checkpoint_on_close(self.context)",
     "ledger.post_journal_entry(context=self.app.action_context(), entry_id=5)",
 ])
 def test_fresh_context_checker_flags_a_stored_context(call):

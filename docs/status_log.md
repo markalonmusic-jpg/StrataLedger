@@ -310,6 +310,22 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   never deleted (R16). Status rules stay in the service (H4). New tests/test_schema_approval_audit.py (16 tests);
   two raw-insert test helpers give the digest. Decisions R15-R24 recorded (the owner's answers to the Step 4
   plan). The master baseline did not change. Suite 2184 passed.
+- 2026-11-13: Step 4 STOP 1 rebuild: development databases rebuilt from the new baseline (the old master moved to
+  `Backups/20261113-024507/`; no company files existed). The script's first-Master prompt cannot be answered in a
+  non-interactive shell (EOFError after the rebuild finished).
+- 2026-11-13: Step 4 STOP 2 (part A): `companies.action_context` and `App.action_context` (R19; a fresh `now` and
+  company-local `today` per post, approval, rejection and close; static test on the screens); approvals: an edit
+  cancels a Pending or Approved request (R21), `cancel_in_transaction` for document services, approve and reject
+  refuse Import and System origins (R23), status changes through `ALLOWED_STATUS_CHANGES` (R16); `authz.deny`
+  takes a message. The stale-now known issue left CLAUDE.md. Suite 2230 passed.
+- 2026-11-13: Step 4 STOP 3 (part B): `ledger.submit_entry_for_approval` and the posting gate (R15, R17, R20, R24):
+  `approval_document_type` decides which entries need approval; posting refuses an entry with a Pending request,
+  one that needs approval without an Approved request matching its digest, amount and type, and (separation on)
+  one posted by its creator; it writes and seals the last approver. Import-origin contexts still cannot post (R18).
+  `update_entry` / `delete_entry` cancel the request in the same transaction (R21). `ledger_chain.entry_digest`;
+  `approvals.request_state`; `submit_for_approval` stores the digest and refuses an unchanged rejected document
+  (R22). The close checkpoint uses `action_context()` (R26). Six pending xfails rewritten against the real
+  services (R25): 12 xfailed became 6. New tests/test_ledger_approvals.py. Suite 2269 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 import customtkinter as ctk
@@ -25,6 +26,8 @@ from modules.services import auth, companies, key_store, keys, ledger_verify
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError, ValidationError,
 )
+
+_logger = logging.getLogger("strataledger.app")
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -264,9 +267,17 @@ class App(ctk.CTk):
         return companies.action_context(self.context)
 
     def close_company_ledger(self):
-        """Sign a ledger checkpoint for the open company before it closes (audit design 2.6). Never blocks closing."""
-        if self.context is not None:
-            ledger_verify.checkpoint_on_close(self.context)
+        """Sign a ledger checkpoint for the open company before it closes (audit design 2.6). Never blocks closing.
+
+        The checkpoint records the time of closing, so it gets a fresh context (R26); if that cannot be built
+        the failure is logged and the checkpoint skipped.
+        """
+        if self.context is None:
+            return
+        try:
+            ledger_verify.checkpoint_on_close(self.action_context())
+        except ServiceError:
+            _logger.exception("The ledger checkpoint on close was skipped (company_id=%s)", self.context.company_id)
 
     def on_app_exit(self):
         self.close_company_ledger()

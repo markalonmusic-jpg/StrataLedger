@@ -75,7 +75,8 @@ in code (`tests/test_config_paths.py` fails on one).
   customizable), permissions, approval limits, separation of duties, project
   scope, and the Master / Admin model. Services BUILT in Phases 2.2-2.4
   (`permissions.py`, `authz.py`, `approvals.py`, `users.py`,
-  `role_templates.py`); the role screens are Phase 3.
+  `role_templates.py`); approvals wired into ledger posting in 2.5 step 4
+  (`ledger.submit_entry_for_approval`, the posting gate); the role and approval screens are Phase 3.
 - `docs/audit_readiness_design.md` - design for audit readiness: threat model, the keyed HMAC chain over
   posted entries, checkpoints, keys (KeyProvider, DPAPI, recovery-code wrap), encryption at rest (after v1),
   the Auditor role, audit trail reports, Audit-ready mode, backup checksums, and the Step 1b prompt.
