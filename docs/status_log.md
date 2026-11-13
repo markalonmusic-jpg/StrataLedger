@@ -237,6 +237,13 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   The suite's test switch `key_store.use_test_key_for_new_companies` (only with STRATALEDGER_ALLOW_TEST_KEYS=1,
   KS7) is on for every test via tests/conftest.py. Posting works through the service outside tests from here;
   there is no posting screen yet. A real-DPAPI test runs first run, start-up, create company, post and verify.
+  (f46d58b)
+- 2026-11-12: Step 1c sub-step 7: every new Master recovery code re-wraps the installation key in the same
+  transaction: `recover_master` (also restores the DPAPI copy for this computer; KS5 result when the copy is
+  damaged), `change_master_password` (PW9: password and code) and `issue_recovery_code` (backlog 11: password,
+  DPAPI copy opens the key; refused while locked). All return `CodeIssued`. The first-run code screen says
+  plainly when the key could not be saved for this computer (`first_run_model.KEY_LOCKED_NOTICE`), and
+  `scripts/create_fresh_databases.py` now passes the DPAPI wrap too.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

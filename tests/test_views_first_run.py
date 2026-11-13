@@ -202,6 +202,48 @@ def test_submit_wraps_the_installation_key_with_dpapi(setup, monkeypatch):
     assert seen == [platform_support.DPAPI]
 
 
+def _label_texts(widget):
+    texts = []
+    for child in widget.winfo_children():
+        if type(child).__name__ == "CTkLabel":
+            texts.append(child.cget("text"))
+        texts += _label_texts(child)
+    return texts
+
+
+class _FailingDpapi:
+    def protect(self, data):
+        raise RuntimeError("no DPAPI")
+
+    def unprotect(self, blob):
+        raise RuntimeError("no DPAPI")
+
+
+class _WorkingDpapi:
+    def protect(self, data):
+        return b"ok" + data
+
+    def unprotect(self, blob):
+        return blob[2:]
+
+
+def test_a_locked_ledger_key_is_said_plainly_on_the_code_screen(setup, monkeypatch):
+    """Step 1c: when the DPAPI copy could not be made, the code screen says so before Continue."""
+    monkeypatch.setattr(view.platform_support, "DPAPI", _FailingDpapi())
+    make_master(setup)
+    assert model.KEY_LOCKED_NOTICE == ("The ledger key could not be saved for this computer. Keep your recovery "
+                                       "code: you will need it to restore the key before you can create a company.")
+    assert setup.wizard.stage == "code"
+    assert model.KEY_LOCKED_NOTICE in _label_texts(setup.holder)
+
+
+def test_the_locked_key_notice_is_not_shown_when_the_key_was_saved(setup, monkeypatch):
+    monkeypatch.setattr(view.platform_support, "DPAPI", _WorkingDpapi())
+    make_master(setup)
+    texts = _label_texts(setup.holder)
+    assert model.CODE_NOTICE in texts and model.KEY_LOCKED_NOTICE not in texts
+
+
 def test_continue_is_refused_until_the_box_is_ticked(setup):
     make_master(setup)
     assert str(setup.wizard.continue_button.cget("state")) == "disabled"

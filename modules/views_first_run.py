@@ -57,6 +57,7 @@ class FirstRunSetup:
         self.draft = model.Draft()
         self.welcome_text = model.WELCOME_TEXT
         self.code_notice = model.CODE_NOTICE
+        self.key_locked = False
         self.code_shown = False
         self.continue_button = None
         self._code = None
@@ -175,6 +176,7 @@ class FirstRunSetup:
             show_error(self.container, title, message)
             return
         self._username, self._password, self._code = d.username.strip(), model.sign_in_secret(d), created.recovery_code
+        self.key_locked = bool(created.ledger_key_locked)
         self.draft = model.Draft()
         self._show_code()
 
@@ -188,6 +190,8 @@ class FirstRunSetup:
         body = ctk.CTkFrame(panel, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=Theme.pad_lg)
         self._label(body, self.code_notice, muted=True)
+        if self.key_locked:
+            self._label(body, model.KEY_LOCKED_NOTICE)
         self.vars = {"code": tk.StringVar(master=self.container, value=self._code),
                      "acknowledged": tk.BooleanVar(master=self.container, value=False)}
         ctk.CTkEntry(body, textvariable=self.vars["code"], state="readonly", justify="center",

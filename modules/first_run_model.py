@@ -29,6 +29,12 @@ CODE_NOTICE = (
     "in the clipboard history on some systems; clear it there if you can."
 )
 
+# Step 1c: shown on the code screen, before Continue, when the ledger key's DPAPI copy could not be made.
+KEY_LOCKED_NOTICE = (
+    "The ledger key could not be saved for this computer. Keep your recovery code: you will need it to restore the "
+    "key before you can create a company."
+)
+
 
 @dataclass
 class Draft:

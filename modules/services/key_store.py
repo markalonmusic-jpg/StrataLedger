@@ -40,7 +40,8 @@ _test_new_company_key = None
 
 __all__ = ["KEY_STORE_LOCKED", "NO_KEY_MESSAGE", "LocalKeyProvider", "company_key_associated_data",
            "create_installation_key", "installation_fingerprint", "recovery_associated_data",
-           "switched_on_test_key", "use_test_key_for_new_companies"]
+           "open_machine_copy", "open_with_machine_wrap", "open_with_recovery_code",
+           "rewrap_installation_key", "switched_on_test_key", "use_test_key_for_new_companies"]
 
 
 def installation_fingerprint(key):
@@ -108,6 +109,62 @@ def create_installation_key(conn, recovery_code, machine_wrap, now):
     return machine_blob is None
 
 
+def open_machine_copy(row, machine_wrap):
+    """The installation key from an installation_key row's DPAPI copy, or None (no copy, no wrap, DPAPI failed, or
+    it opened to another key). Only the error type is logged."""
+    if row["machine_blob"] is None or machine_wrap is None:
+        return None
+    try:
+        key = SecretKey(machine_wrap.unprotect(bytes(row["machine_blob"])))
+    except Exception as error:  # noqa: BLE001  (DPAPI failing here means another computer or account)
+        _logger.warning("the ledger key could not be opened on this computer: %s", type(error).__name__)
+        return None
+    if not hmac.compare_digest(installation_fingerprint(key), row["fingerprint"]):
+        _logger.warning("the ledger key opened on this computer is not this installation's key")
+        return None
+    return key
+
+
+def _installation_row(conn):
+    return conn.execute("SELECT fingerprint, machine_blob, recovery_salt, recovery_blob FROM installation_key "
+                        "WHERE id = 1").fetchone()
+
+
+def open_with_recovery_code(conn, code):
+    """The installation key from its recovery copy, or None (no key, a wrong code, or a damaged copy)."""
+    row = _installation_row(conn)
+    if row is None:
+        return None
+    try:
+        key = key_wrap.unwrap_key(key_wrap.recovery_kek(code, bytes(row["recovery_salt"])),
+                                  bytes(row["recovery_blob"]), recovery_associated_data(row["fingerprint"]))
+    except (KeyUnavailableError, ValueError):
+        return None
+    return key if hmac.compare_digest(installation_fingerprint(key), row["fingerprint"]) else None
+
+
+def open_with_machine_wrap(conn, machine_wrap):
+    """The installation key from its DPAPI copy on this computer, or None."""
+    row = _installation_row(conn)
+    return None if row is None else open_machine_copy(row, machine_wrap)
+
+
+def rewrap_installation_key(conn, key, new_code, machine_wrap, now):
+    """Re-wrap the installation key inside the caller's master transaction: the recovery copy with `new_code`
+    (a new salt) and, when `machine_wrap` is given and works, the DPAPI copy for this computer. A failed machine
+    wrap keeps the old DPAPI copy. Returns True if a DPAPI copy for this computer was written."""
+    fingerprint = installation_fingerprint(key)
+    salt = key_wrap.new_salt()
+    blob = key_wrap.wrap_key(key_wrap.recovery_kek(new_code, salt), key, recovery_associated_data(fingerprint))
+    conn.execute("UPDATE installation_key SET recovery_salt = ?, recovery_blob = ?, recovery_wrapped_at = ? "
+                 "WHERE id = 1", (salt, blob, now))
+    machine_blob = _machine_copy(machine_wrap, key)
+    if machine_blob is not None:
+        conn.execute("UPDATE installation_key SET machine_blob = ?, machine_wrapped_at = ? WHERE id = 1",
+                     (machine_blob, now))
+    return machine_blob is not None
+
+
 class LocalKeyProvider(KeyProvider):
     """The key provider of a desktop installation: the installation key opened with DPAPI (P5: Azure Key Vault
     replaces it when hosted, with no service change)."""
@@ -137,15 +194,8 @@ class LocalKeyProvider(KeyProvider):
             self.status = "missing"
             return self.status
         self.status = "locked"
-        if row["machine_blob"] is None or self._machine_wrap is None:
-            return self.status
-        try:
-            key = SecretKey(self._machine_wrap.unprotect(bytes(row["machine_blob"])))
-        except Exception as error:  # noqa: BLE001  (DPAPI failing here means another computer or account)
-            _logger.warning("the ledger key could not be opened on this computer: %s", type(error).__name__)
-            return self.status
-        if not hmac.compare_digest(installation_fingerprint(key), row["fingerprint"]):
-            _logger.warning("the ledger key opened on this computer is not this installation's key")
+        key = open_machine_copy(row, self._machine_wrap)
+        if key is None:
             return self.status
         self._installation = key
         self.status = "unlocked"

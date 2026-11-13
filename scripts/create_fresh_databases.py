@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config  # noqa: E402
 import modules.database as database  # noqa: E402
+from modules import first_run_model, platform_support  # noqa: E402
 from modules.services import auth, companies  # noqa: E402
 from modules.services.errors import ServiceError  # noqa: E402
 
@@ -194,13 +195,16 @@ def offer_first_master(master_path):
         print("The passwords do not match; no Master was created.")
         return EXIT_FAILED
     try:
-        created = auth.create_first_master(master_path, username, secret, first_name, last_name, email)
+        created = auth.create_first_master(master_path, username, secret, first_name, last_name, email,
+                                           machine_wrap=platform_support.DPAPI)
     except ServiceError as error:
         print(f"No Master was created: {error}")
         return EXIT_FAILED
     print("")
     print(f"Master '{username}' created.")
     print("RECOVERY CODE: " + created.recovery_code)
+    if created.ledger_key_locked:
+        print(first_run_model.KEY_LOCKED_NOTICE)
     print("Store this safely, offline. It is shown only once and is the only way to reset the Master password.")
     print("")
     return 0

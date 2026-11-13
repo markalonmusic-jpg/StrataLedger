@@ -80,7 +80,7 @@ def test_recovery_code_is_shown_once_and_only_its_hash_is_stored(master_path, ca
 
 def test_recover_master_sets_a_new_password_and_rotates_the_code(master_path):
     created = auth.create_first_master(master_path, "owner", PASSWORD, "Ann", "Owner", "ann@x.test")
-    new_code = auth.recover_master(master_path, created.recovery_code, NEW)
+    new_code = auth.recover_master(master_path, created.recovery_code, NEW).recovery_code
     assert new_code != created.recovery_code
     auth.login(master_path, "owner", NEW)
     with pytest.raises(AuthenticationError):

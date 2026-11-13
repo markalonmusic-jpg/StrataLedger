@@ -32,7 +32,8 @@ from datetime import datetime, timedelta, timezone
 import modules.database as database
 from modules.services import key_store, passwords
 from modules.services.errors import (
-    AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, PermissionDeniedError, ValidationError,
+    AuthenticationError, KeyStoreLockedError, LoginThrottledError, PasswordChangeRequiredError,
+    PermissionDeniedError, ValidationError,
 )
 from modules.services.tx import read_connection, write_transaction
 
@@ -60,6 +61,17 @@ class Session:
 
 
 FirstMaster = namedtuple("FirstMaster", "user_id recovery_code ledger_key_locked", defaults=(False,))
+# A new Master recovery code (recover_master, change_master_password, issue_recovery_code). `ledger_key_restored`
+# is False when the installation key could not be re-wrapped for this computer; `message` then says why.
+CodeIssued = namedtuple("CodeIssued", "recovery_code ledger_key_restored message")
+
+LEDGER_KEY_NOT_RESTORED = ("The Master password was reset, but the ledger key could not be restored: its saved "
+                           "copy does not open with this recovery code. Nothing can be posted until the Master "
+                           "starts a new ledger key.")
+LEDGER_KEY_LOCKED_HERE = ("The Master password was reset, but this computer could not protect the ledger key, so "
+                          "it stays locked here. Keep the new recovery code and try again on this computer.")
+NEW_CODE_NEEDS_KEY = ("A new recovery code cannot be issued while the ledger key is locked on this computer. "
+                      "Restore it with the current recovery code first.")
 
 
 class _Actor(namedtuple("_Actor", "user_id now")):
@@ -158,8 +170,14 @@ def create_first_master(master_db_path, username, password, first_name, last_nam
     return FirstMaster(user_id, code, locked)
 
 
-def recover_master(master_db_path, code, new_password):
-    """Set a new Master password with the one-time recovery code. Returns the NEW recovery code."""
+def recover_master(master_db_path, code, new_password, *, machine_wrap=None):
+    """Set a new Master password with the one-time recovery code. Returns CodeIssued with the NEW code.
+
+    In the same transaction the installation key is opened with the old code and re-wrapped: its recovery copy
+    with the new code and, through `machine_wrap` (the app passes platform_support.DPAPI), its DPAPI copy for this
+    computer, which restores a key that is locked here (KS5). If the code is valid but its copy does not open, the
+    password is still reset and the result says the ledger key could not be restored.
+    """
     passwords.check_password_policy(new_password)
     _check_throttle(master_db_path, RECOVERY_KEY)
     conn = read_connection(master_db_path)
@@ -176,13 +194,109 @@ def recover_master(master_db_path, code, new_password):
     with write_transaction(master_db_path, _Actor(master["user_id"])) as conn:
         conn.execute("UPDATE app_user SET password_hash = ?, must_change_password = 0 WHERE user_id = ?",
                      (passwords.hash_password(new_password), master["user_id"]))
-        conn.execute("UPDATE master_recovery SET code_hash = ?, created_at = ? WHERE id = 1",
-                     (passwords.hash_recovery_code(new_code), _iso(_now())))
+        opened, here = _replace_code(conn, master["user_id"], code, new_code, machine_wrap)
         conn.execute("DELETE FROM login_throttle WHERE throttle_key IN (?, ?)", (RECOVERY_KEY, master["username"]))
         _insert_event(conn, "Master recovered", username=master["username"], user_id=master["user_id"],
                       actor_user_id=master["user_id"])
     _logger.warning("Master password recovered with the recovery code: user=%s", master["user_id"])
-    return new_code
+    if not opened:
+        return CodeIssued(new_code, False, LEDGER_KEY_NOT_RESTORED)
+    if not here:
+        return CodeIssued(new_code, False, LEDGER_KEY_LOCKED_HERE)
+    return CodeIssued(new_code, True, None)
+
+
+def change_master_password(session, current_password, code, new_password):
+    """The Master's password change (PW9): the current password AND the recovery code. Issues a new code at once
+    and re-wraps the installation key's recovery copy with it, in the same transaction. Returns CodeIssued."""
+    require_master(session, "master.change_password")
+    passwords.check_password_policy(new_password)
+    row = _verify_own_password(session, current_password)
+    if current_password == new_password:
+        raise ValidationError("Choose a password different from the current one")
+    _verify_master_code(session.master_db_path, code)
+    new_code = passwords.generate_recovery_code()
+    with write_transaction(session.master_db_path, _Actor(session.user_id)) as conn:
+        conn.execute("UPDATE app_user SET password_hash = ?, must_change_password = 0 WHERE user_id = ?",
+                     (passwords.hash_password(new_password), session.user_id))
+        opened, _here = _replace_code(conn, session.user_id, code, new_code, None)
+        _insert_event(conn, "Recovery code issued", username=row["username"], user_id=session.user_id,
+                      actor_user_id=session.user_id)
+        _insert_event(conn, "Password changed", username=row["username"], user_id=session.user_id,
+                      actor_user_id=session.user_id)
+    return CodeIssued(new_code, True, None) if opened else CodeIssued(new_code, False, LEDGER_KEY_NOT_RESTORED)
+
+
+def issue_recovery_code(session, password, *, machine_wrap=None):
+    """A new Master recovery code after the password is entered again (backlog 11), for a code lost while this
+    computer can still open the ledger key: the DPAPI copy (through `machine_wrap`) opens the installation key and
+    its recovery copy is re-wrapped with the new code. Refused while the key is locked here, because a new code
+    must always open the key. Returns CodeIssued."""
+    require_master(session, "master.recovery_code")
+    row = _verify_own_password(session, password)
+    new_code = passwords.generate_recovery_code()
+    with write_transaction(session.master_db_path, _Actor(session.user_id)) as conn:
+        key = key_store.open_with_machine_wrap(conn, machine_wrap)
+        if key is None:
+            raise KeyStoreLockedError(NEW_CODE_NEEDS_KEY)
+        key_store.rewrap_installation_key(conn, key, new_code, None, _iso(_now()))
+        _set_code_hash(conn, new_code)
+        _insert_event(conn, "Installation key rewrapped", user_id=session.user_id, actor_user_id=session.user_id)
+        _insert_event(conn, "Recovery code issued", username=row["username"], user_id=session.user_id,
+                      actor_user_id=session.user_id)
+    _logger.warning("a new Master recovery code was issued: user=%s", session.user_id)
+    return CodeIssued(new_code, True, None)
+
+
+def _set_code_hash(conn, new_code):
+    conn.execute("UPDATE master_recovery SET code_hash = ?, created_at = ? WHERE id = 1",
+                 (passwords.hash_recovery_code(new_code), _iso(_now())))
+
+
+def _replace_code(conn, user_id, old_code, new_code, machine_wrap):
+    """Inside the caller's master transaction: open the installation key with the old code, re-wrap it with the
+    new one (and for this computer when `machine_wrap` is given), and store the new code's hash.
+    Returns (opened, protected_here)."""
+    key = key_store.open_with_recovery_code(conn, old_code)
+    here = False
+    if key is not None:
+        here = key_store.rewrap_installation_key(conn, key, new_code, machine_wrap, _iso(_now()))
+        _insert_event(conn, "Installation key rewrapped", user_id=user_id, actor_user_id=user_id)
+    else:
+        _logger.error("the Master recovery code is valid but the ledger key's recovery copy did not open")
+    _set_code_hash(conn, new_code)
+    return key is not None, here
+
+
+def _verify_own_password(session, password):
+    """The session user's row if `password` is theirs; otherwise a throttled failure and AuthenticationError."""
+    _check_throttle(session.master_db_path, session.username)
+    conn = read_connection(session.master_db_path)
+    try:
+        row = conn.execute("SELECT username, is_active, password_hash FROM app_user WHERE user_id = ?",
+                           (session.user_id,)).fetchone()
+    finally:
+        conn.close()
+    verified = passwords.verify_password(password, row["password_hash"] if row else _dummy())
+    if row is None or row["is_active"] != 1 or not verified:
+        _record_failure(session.master_db_path, session.username, "Login failed", username=session.username,
+                        user_id=session.user_id)
+        raise AuthenticationError("The current password is not correct")
+    return row
+
+
+def _verify_master_code(master_db_path, code):
+    """Check the Master recovery code (throttled under RECOVERY_KEY); AuthenticationError if it is not valid."""
+    _check_throttle(master_db_path, RECOVERY_KEY)
+    conn = read_connection(master_db_path)
+    try:
+        stored = conn.execute("SELECT code_hash FROM master_recovery WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    valid = passwords.verify_recovery_code(code, stored["code_hash"] if stored else _dummy())
+    if not (valid and stored):
+        _record_failure(master_db_path, RECOVERY_KEY, "Recovery failed", username=None, user_id=None)
+        raise AuthenticationError("The recovery code is not valid")
 
 
 # --- Login and password change ----------------------------------------------------------------

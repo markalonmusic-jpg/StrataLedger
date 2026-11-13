@@ -110,6 +110,8 @@ def test_script_never_hashes_or_inserts_users_itself(script):
     source = SCRIPT.read_text(encoding="utf-8")
     assert "scrypt" not in source and "INSERT INTO app_user" not in source and "hashlib" not in source
     assert "getpass" in source and "auth.create_first_master" in source
+    assert "machine_wrap=platform_support.DPAPI" in source      # Step 1c: the script's Master gets a DPAPI copy
+    assert "KEY_LOCKED_NOTICE" in source
 
 
 def answers(monkeypatch, script, *, yes="y", username="owner", first="Ann", last="Owner", email="ann@x.test",

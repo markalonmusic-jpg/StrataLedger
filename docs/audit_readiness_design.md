@@ -243,8 +243,19 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   * `create_company` gets the chain key from the provider before building anything (KS6), then writes the file's
     key row and, in the registry's master transaction, the `company_key` row and a `Ledger key created`
     auth_event.
-  * Not built yet: no screen tells the Master at first run that the key is locked, and a locked key cannot be
-    restored until sub-step 7 (recovery re-wrap).
+  * The first-run code screen says "The ledger key could not be saved for this computer. ..." when the DPAPI
+    copy was not made (sub-step 7).
+* **As built in Step 1c sub-step 7 (every new recovery code re-wraps the installation key):**
+  * `auth.recover_master(path, code, new_password, machine_wrap=)` opens the key with the old code and, in the
+    same transaction, re-wraps the recovery copy with the new code and the DPAPI copy for this computer (a new
+    computer, or a key locked since first run, is restored this way). A failed DPAPI wrap keeps the old copy.
+  * `auth.change_master_password(session, password, code, new_password)` (PW9) and `auth.issue_recovery_code(
+    session, password, machine_wrap=)` (backlog 11: the DPAPI copy opens the key; refused while it is locked).
+  * Each returns `CodeIssued(recovery_code, ledger_key_restored, message)`. A valid code whose copy does not open
+    still resets the password, with `LEDGER_KEY_NOT_RESTORED` (KS5). Events: `Installation key rewrapped`,
+    `Recovery code issued`, `Password changed`, `Master recovered`.
+  * Not changed: `auth.change_password` still lets the Master change the password without the code (no PW9
+    screen exists yet); step 2.8 switches the Master's screen to `change_master_password`.
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).
