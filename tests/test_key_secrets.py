@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 import config
-from modules.services import auth, key_store, key_wrap, keys, ledger_chain, ledger_keys, logging_setup
+from modules.services import (auth, installation_keys, key_store, key_wrap, keys, ledger_chain, ledger_keys,
+                              logging_setup)
 from modules.services.keys import SecretKey
 from tests import ledger_helpers as lh
 from tests.authz_world import PASSWORD, world  # noqa: F401  (fixture)
@@ -20,7 +21,8 @@ from tests.test_company_keys import CODE, _create, _installation
 from tests.test_key_store import INSTALLATION, FakeMachineWrap
 
 NEW = "Tr0ub4dor&3-horse-staple"
-CHAIN_KEYS = [bytes([n]) * 32 for n in (11, 22, 33, 44)]
+CHAIN_KEYS = [bytes([n]) * 32 for n in (11, 22, 33, 44, 161, 162, 163, 164)]
+REPLACEMENT = SecretKey(bytes(range(100, 132)))           # not a palindrome: the fake DPAPI only reverses
 
 
 @pytest.fixture
@@ -115,13 +117,30 @@ def _key_lost(world, monkeypatch):
     return [], [Path(config.BASE_PROJECT_DIR) / created["database_file_path"]]
 
 
-@pytest.mark.parametrize("flow", ["recover", "change", "issue", "rotate", "key_lost"])
+def _replace(world, monkeypatch):
+    """Step 1d: the installation key is lost (no DPAPI copy, code lost) and replaced; every company gets an epoch."""
+    created = _create(world.root)
+    conn = sqlite3.connect(world.master)
+    conn.execute("UPDATE installation_key SET machine_blob = NULL, machine_wrapped_at = NULL")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(keys, "_provider", key_store.LocalKeyProvider(world.master, FakeMachineWrap()))
+    monkeypatch.setattr(key_wrap, "new_secret_key", lambda: REPLACEMENT)
+    result = installation_keys.replace_installation_key(world.root, PASSWORD, confirm_text="NEW LEDGER KEY",
+                                                        machine_wrap=FakeMachineWrap())
+    assert {c["status"] for c in result.companies} == {"done"}
+    return [CODE, result.recovery_code, PASSWORD], [Path(config.BASE_PROJECT_DIR) / created["database_file_path"]]
+
+
+@pytest.mark.parametrize("flow", ["recover", "change", "issue", "rotate", "key_lost", "replace"])
 def test_no_secret_from_a_key_flow_reaches_a_log_an_audit_row_or_a_file(known, monkeypatch, caplog, log_file, flow):
     monkeypatch.setattr(key_store, "_test_new_company_key", None)
     monkeypatch.setattr(keys, "_provider", key_store.LocalKeyProvider(known.master, FakeMachineWrap()))
     with caplog.at_level(logging.DEBUG):
         if flow == "key_lost":
             secrets, company_files = _key_lost(known, monkeypatch)
+        elif flow == "replace":
+            secrets, company_files = _replace(known, monkeypatch)
         else:
             secrets, company_files = {"recover": _recover, "change": _change, "issue": _issue,
                                       "rotate": _rotate}[flow](known)
@@ -129,7 +148,7 @@ def test_no_secret_from_a_key_flow_reaches_a_log_an_audit_row_or_a_file(known, m
         handler.flush()
     logs = caplog.text + (log_file.read_text(encoding="utf-8") if log_file.exists() else "")
     audit = " ".join(_audit_text(p) for p in [known.master, *company_files])
-    keys_in_play = [INSTALLATION.use_for_aead(), *CHAIN_KEYS]
+    keys_in_play = [INSTALLATION.use_for_aead(), REPLACEMENT.use_for_aead(), *CHAIN_KEYS]
     for secret in [*secrets, *keys_in_play, *_blobs(known)]:
         for form in _text_forms(secret):
             assert form not in logs, f"{flow}: a secret reached the log"

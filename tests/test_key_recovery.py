@@ -74,7 +74,7 @@ def _opens_with(master_path, code):
     row = _row(master_path)
     try:
         key = key_wrap.unwrap_key(key_wrap.recovery_kek(code, row["recovery_salt"]), row["recovery_blob"],
-                                  key_store.recovery_associated_data(row["fingerprint"]))
+                                  key_store.recovery_associated_data(1, row["fingerprint"]))
     except keys.KeyUnavailableError:
         return False
     return key.use_for_aead() == INSTALLATION.use_for_aead()

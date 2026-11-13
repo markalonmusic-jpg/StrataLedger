@@ -347,12 +347,34 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   * The note "entries JE-000001 to JE-N cannot be verified" has **no expiry** (KS15): it stays on every close
     report and export that covers those periods, and on the Audit-ready page.
   * A lost key found again later is not used to re-verify the range in 1d (KS18; backlog 16).
-* **A lost installation key (Step 1d part B, KS13, KS17, KS19-KS21; not built yet):** when DPAPI is unusable and
-  the recovery code lost (or both copies damaged), the Master creates a new installation key (password plus the
-  typed phrase `NEW LEDGER KEY`, after a screen showing how many companies get a new key epoch), and every company
-  in the registry, archived included, then enters a key-lost epoch. `installation_key` is append-only history with
-  one active row (built in the baseline); `company_key.installation_key_id` names the key that wrapped each row.
-  Each installation key's copies are bound to its own row id plus its fingerprint. Plan: docs/next_step.md.
+* **A lost installation key (built in Step 1d part B, KS13, KS17, KS19-KS21):** when DPAPI is unusable and the
+  recovery code lost (or both copies damaged), `installation_keys.replace_installation_key(session, password,
+  confirm_text=, machine_wrap=)` makes a new one. Order:
+  1. the Master check (before anything else, rule 10);
+  2. the typed phrase `NEW LEDGER KEY` (before the password, so a mistyped phrase never counts as a failed
+     sign-in);
+  3. the Master's password (throttled like a sign-in);
+  4. refused while this computer's DPAPI copy still opens the key (`KEY_NOT_LOST`), or when there is no key yet.
+
+  Then one master transaction (the DPAPI check is repeated inside it): the old row retired (`Key lost`); a new
+  row, the next id, with a NEW recovery code (which also replaces the `master_recovery` hash, so the old code
+  opens nothing) and this computer's DPAPI copy (if this computer cannot protect it, everything rolls back with
+  `NEW_KEY_NOT_PROTECTED`); the `Installation key replaced` and `Recovery code issued` events. The process's key
+  provider is then replaced by one over the new key; the app must also call `App.start_key_store()` again (Phase
+  3 screen). Then every company in the registry, archived included (KS19), enters a key-lost epoch through
+  `ledger_keys.start_new_key_epoch`. That part is not atomic across files: the result (`KeyReplaced`, which shows
+  the code once and is redacted and not copyable) lists each company as `done` or `failed` with one sentence (a
+  typed service error's own sentence, `COMPANY_FILE_MISSING`, or `COMPANY_NOT_FINISHED`; never a path or a
+  traceback). `remaining_companies(session)` finds the companies left behind (their active ledger key has no
+  `company_key` row wrapped by the active installation key) and `finish_remaining_companies(session)` starts
+  their epochs. `replacement_preview(session, machine_wrap=)` (Master only, read only) gives the screen the
+  company count and the warning sentence, so screen and service agree (KS17).
+  * **Bindings (KS21):** a recovery copy's associated data is `("installation_key", row id, "recovery",
+    fingerprint)`; a DPAPI copy of a row other than 1 holds `SHA-256(associated_data("installation_key", row id,
+    "machine", fingerprint))` before the 32 key bytes. Row 1 keeps its Step 1c binding (bare key). A copy moved
+    to another row does not open.
+  * The provider opens only `company_key` rows wrapped by the active installation key (`installation_key_id`);
+    older rows are kept and treated as unavailable. A retired installation key keeps its recovery copy (KS18).
 
 ---
 
@@ -626,6 +648,13 @@ be designed with that work.
 17. DPAPI round trip; the recovery-code wrap round trips; a wrong code fails cleanly; Master recovery
     re-wraps for a new machine (DPAPI simulated); backlog item 11 re-wraps.
 18. Rotation: entries across two key epochs verify; a retired key cannot seal.
+18b. Replacing the installation key (Step 1d, tests/test_installation_key_replace.py): a non-Master is refused
+    first; a wrong phrase writes nothing; a wrong password, a key that still opens here, a computer that cannot
+    protect the new key all leave every key, checkpoint and company file unchanged; success retires the old row,
+    activates a new one, the new code opens it and the old code opens nothing; the events are recorded; every
+    company, archived included, gets an epoch and can post; old company keys are not opened; the result redacts
+    the code; the preview's count matches; a missing company file is reported and finished later; KS21 copies
+    moved to another row do not open, and row 1 keeps its binding. tests/test_key_secrets.py adds the flow.
 18a. Key lost (Step 1d, tests/test_key_lost_checkpoint.py): the epoch writes one signed Key lost / Unverified row
     in the file and the mirror; a failure inside the transaction leaves the old key active and no row; a failed
     mirror keeps the epoch and says so. Full and incremental are OK with `unverified_through` after an epoch; a

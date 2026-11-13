@@ -81,8 +81,8 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     installation key when the old one is lost (password plus a typed confirmation, a recorded event), and every
     company then enters a key-lost epoch automatically; data stays readable and posting continues under new
     keys. Both baseline changes in one edit (previous baselines saved to archive/ with a tag, one rebuild).
-    Progress: the baseline edit and rebuild (STOP 1) and part (1), the key-lost checkpoint and verifier (STOP 2),
-    are done (KS12, KS14-KS16); part (2), replacing the installation key (KS13, KS17-KS21), is next.
+    Done: the baseline edit and rebuild, part (1) the key-lost checkpoint and verifier (KS12, KS14-KS16) and
+    part (2) replacing a lost installation key (KS13, KS17-KS21, `installation_keys.py`); screens in Phase 3.
     Then steps 4-7. Step 1c landed before any screen can post; 2.5 is not done until steps 1d and 4-7 are.
     Accepted until step 2.8: the Master can change the password without the recovery code
     (`auth.change_password`).

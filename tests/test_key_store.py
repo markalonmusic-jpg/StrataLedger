@@ -111,7 +111,7 @@ def test_the_recovery_copy_opens_with_the_code_shown_once(master_path, known_key
     created = _first_master(master_path, FakeMachineWrap())
     row = _row(master_path)
     kek = key_wrap.recovery_kek(created.recovery_code, row["recovery_salt"])
-    opened = key_wrap.unwrap_key(kek, row["recovery_blob"], key_store.recovery_associated_data(row["fingerprint"]))
+    opened = key_wrap.unwrap_key(kek, row["recovery_blob"], key_store.recovery_associated_data(1, row["fingerprint"]))
     assert opened.use_for_aead() == known_key.use_for_aead()
 
 
@@ -273,7 +273,7 @@ def test_the_recovery_copy_is_bound_to_its_row_by_the_associated_data(master_pat
     created = _first_master(master_path, FakeMachineWrap())
     row = _row(master_path)
     kek = key_wrap.recovery_kek(created.recovery_code, row["recovery_salt"])
-    assert key_store.recovery_associated_data(row["fingerprint"]) == key_wrap.associated_data(
+    assert key_store.recovery_associated_data(1, row["fingerprint"]) == key_wrap.associated_data(
         "installation_key", 1, "recovery", row["fingerprint"])
     for other in (key_wrap.associated_data("installation_key", 1, "recovery", "0" * 64),
                   key_wrap.associated_data("installation_key", 2, "recovery", row["fingerprint"]),

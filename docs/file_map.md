@@ -109,6 +109,8 @@ in code (`tests/test_config_paths.py` fails on one).
   installation key wrapped each company key. `ledger_keys.py` rotates a company key and starts a key-lost epoch,
   whose `Key lost` checkpoint `ledger_verify.py` signs in the same transaction; `ledger_verify.py` then verifies
   from the entry after it and reports the earlier range as unverified (`unverified_note`).
+  `installation_keys.py` (Step 1d) replaces a lost installation key (Master, typed `NEW LEDGER KEY`) and starts a
+  key-lost epoch in every company; `remaining_companies` / `finish_remaining_companies` complete any left behind.
 - `tests/` - pytest suite. `scripts/` and `tools/` - developer tools. `.claude/agents/` - subagents.
 - `modules/` - screens and the database layer. LEGACY screens (the files in `CONNECT_ALLOW_LIST` in
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,

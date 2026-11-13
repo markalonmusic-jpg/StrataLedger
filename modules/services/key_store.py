@@ -15,6 +15,11 @@
   nothing in the master; it works only while STRATALEDGER_ALLOW_TEST_KEYS is "1" (KS7).
 * The key rows are not audited (KS9); each change writes an auth_event without the blob. Python cannot reliably
   wipe bytes from memory: the unlocked key lives in the provider for the life of the process.
+* Step 1d (KS13, KS21): `installation_key` keeps history with one active row. A lost key is retired and replaced
+  (`replace_installation_key`, called by installation_keys.py). Each row's copies are bound to its own id and
+  fingerprint: the recovery copy's associated data names the row id; the DPAPI copy of a row other than 1 holds a
+  32-byte binding (SHA-256 of the row's associated data) before the key. Row 1 keeps its Step 1c binding (bare
+  key). The provider opens only company keys wrapped by the ACTIVE installation key.
 """
 import hashlib
 import hmac
@@ -40,8 +45,9 @@ _test_new_company_key = None
 
 __all__ = ["KEY_STORE_LOCKED", "NO_KEY_MESSAGE", "LocalKeyProvider", "company_key_associated_data",
            "create_installation_key", "installation_fingerprint", "recovery_associated_data",
-           "open_machine_copy", "open_with_machine_wrap", "open_with_recovery_code",
-           "rewrap_installation_key", "switched_on_test_key", "use_test_key_for_new_companies"]
+           "open_machine_copy", "open_recovery_copy", "open_with_machine_wrap", "open_with_recovery_code",
+           "replace_installation_key", "rewrap_installation_key", "switched_on_test_key",
+           "use_test_key_for_new_companies"]
 
 
 def installation_fingerprint(key):
@@ -49,8 +55,16 @@ def installation_fingerprint(key):
     return hmac.new(key.use_for_aead(), INSTALLATION_FINGERPRINT_LABEL, hashlib.sha256).hexdigest()
 
 
-def recovery_associated_data(fingerprint):
-    return key_wrap.associated_data("installation_key", 1, "recovery", fingerprint)
+def recovery_associated_data(row_id, fingerprint):
+    """Binds a recovery copy to its installation_key row (id and fingerprint, KS21)."""
+    return key_wrap.associated_data("installation_key", row_id, "recovery", fingerprint)
+
+
+def _machine_binding(row_id, fingerprint):
+    """The 32 bytes a DPAPI copy of row `row_id` (other than 1) holds before the key (KS21); b"" for row 1."""
+    if row_id == 1:
+        return b""
+    return hashlib.sha256(key_wrap.associated_data("installation_key", row_id, "machine", fingerprint)).digest()
 
 
 def company_key_associated_data(company_id, purpose, fingerprint):
@@ -79,46 +93,68 @@ def switched_on_test_key():
     return _test_new_company_key
 
 
-def _machine_copy(machine_wrap, key):
-    """The DPAPI copy, or None if there is no machine wrap or it fails (only the error type is logged)."""
+def _machine_copy(machine_wrap, key, row_id):
+    """The DPAPI copy of row `row_id`, or None if there is no machine wrap or it fails (only the error type is
+    logged)."""
     if machine_wrap is None:
         return None
     try:
-        blob = machine_wrap.protect(key.use_for_aead())
+        blob = machine_wrap.protect(_machine_binding(row_id, installation_fingerprint(key)) + key.use_for_aead())
     except Exception as error:  # noqa: BLE001  (any OS failure leaves the key locked, never the setup undone)
         _logger.warning("the ledger key could not be protected for this computer: %s", type(error).__name__)
         return None
     return blob if isinstance(blob, bytes) and blob else None
 
 
-def create_installation_key(conn, recovery_code, machine_wrap, now):
-    """Make the installation key inside the caller's master transaction. Returns True if it is locked (no DPAPI
-    copy). Raises ValidationError if the installation already has one: it can never be replaced."""
-    if conn.execute("SELECT 1 FROM installation_key WHERE is_active = 1").fetchone() is not None:
-        raise ValidationError(ALREADY_HAS_A_KEY)
+def _insert_installation_key(conn, recovery_code, machine_wrap, now):
+    """Insert a new, active installation key row (the next id) with its recovery copy and, when the machine wrap
+    works, its DPAPI copy. Returns True if it has no DPAPI copy (locked here)."""
+    row_id = conn.execute("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM installation_key").fetchone()[0]
     key = key_wrap.new_secret_key()
     fingerprint = installation_fingerprint(key)
     salt = key_wrap.new_salt()
     recovery_blob = key_wrap.wrap_key(key_wrap.recovery_kek(recovery_code, salt), key,
-                                      recovery_associated_data(fingerprint))
-    machine_blob = _machine_copy(machine_wrap, key)
+                                      recovery_associated_data(row_id, fingerprint))
+    machine_blob = _machine_copy(machine_wrap, key, row_id)
     conn.execute(
-        "INSERT INTO installation_key (fingerprint, machine_blob, machine_wrapped_at, recovery_salt, "
-        "recovery_blob, recovery_wrapped_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (fingerprint, machine_blob, now if machine_blob else None, salt, recovery_blob, now, now))
+        "INSERT INTO installation_key (id, fingerprint, machine_blob, machine_wrapped_at, recovery_salt, "
+        "recovery_blob, recovery_wrapped_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (row_id, fingerprint, machine_blob, now if machine_blob else None, salt, recovery_blob, now, now))
     return machine_blob is None
 
 
+def create_installation_key(conn, recovery_code, machine_wrap, now):
+    """Make the installation key inside the caller's master transaction (first run). Returns True if it is locked
+    (no DPAPI copy). Raises ValidationError if the installation already has one."""
+    if conn.execute("SELECT 1 FROM installation_key WHERE is_active = 1").fetchone() is not None:
+        raise ValidationError(ALREADY_HAS_A_KEY)
+    return _insert_installation_key(conn, recovery_code, machine_wrap, now)
+
+
+def replace_installation_key(conn, recovery_code, machine_wrap, now):
+    """Inside the caller's master transaction (installation_keys.py only, after its checks): retire the active
+    installation key as 'Key lost' and make a new active one with `recovery_code`. Returns True if the new key has
+    no DPAPI copy for this computer; the caller then rolls back."""
+    conn.execute("UPDATE installation_key SET is_active = 0, retired_at = ?, retire_reason = 'Key lost' "
+                 "WHERE is_active = 1", (now,))
+    return _insert_installation_key(conn, recovery_code, machine_wrap, now)
+
+
 def open_machine_copy(row, machine_wrap):
-    """The installation key from an installation_key row's DPAPI copy, or None (no copy, no wrap, DPAPI failed, or
-    it opened to another key). Only the error type is logged."""
+    """The installation key from an installation_key row's DPAPI copy, or None (no copy, no wrap, DPAPI failed, a
+    copy bound to another row, or it opened to another key). Only the error type is logged."""
     if row["machine_blob"] is None or machine_wrap is None:
         return None
     try:
-        key = SecretKey(machine_wrap.unprotect(bytes(row["machine_blob"])))
+        opened = machine_wrap.unprotect(bytes(row["machine_blob"]))
     except Exception as error:  # noqa: BLE001  (DPAPI failing here means another computer or account)
         _logger.warning("the ledger key could not be opened on this computer: %s", type(error).__name__)
         return None
+    binding = _machine_binding(row["id"], row["fingerprint"])
+    if len(opened) != len(binding) + 32 or not hmac.compare_digest(opened[:len(binding)], binding):
+        _logger.warning("the ledger key copy on this computer belongs to another installation key")
+        return None
+    key = SecretKey(opened[len(binding):])
     if not hmac.compare_digest(installation_fingerprint(key), row["fingerprint"]):
         _logger.warning("the ledger key opened on this computer is not this installation's key")
         return None
@@ -126,21 +162,25 @@ def open_machine_copy(row, machine_wrap):
 
 
 def _installation_row(conn):
-    return conn.execute("SELECT fingerprint, machine_blob, recovery_salt, recovery_blob FROM installation_key "
+    return conn.execute("SELECT id, fingerprint, machine_blob, recovery_salt, recovery_blob FROM installation_key "
                         "WHERE is_active = 1").fetchone()
 
 
-def open_with_recovery_code(conn, code):
-    """The installation key from its recovery copy, or None (no key, a wrong code, or a damaged copy)."""
-    row = _installation_row(conn)
-    if row is None:
-        return None
+def open_recovery_copy(row, code):
+    """The installation key from an installation_key row's recovery copy, or None (a wrong code, a damaged copy,
+    or a copy bound to another row)."""
     try:
         key = key_wrap.unwrap_key(key_wrap.recovery_kek(code, bytes(row["recovery_salt"])),
-                                  bytes(row["recovery_blob"]), recovery_associated_data(row["fingerprint"]))
+                                  bytes(row["recovery_blob"]), recovery_associated_data(row["id"], row["fingerprint"]))
     except (KeyUnavailableError, ValueError):
         return None
     return key if hmac.compare_digest(installation_fingerprint(key), row["fingerprint"]) else None
+
+
+def open_with_recovery_code(conn, code):
+    """The active installation key from its recovery copy, or None (no key, a wrong code, or a damaged copy)."""
+    row = _installation_row(conn)
+    return None if row is None else open_recovery_copy(row, code)
 
 
 def open_with_machine_wrap(conn, machine_wrap):
@@ -154,14 +194,16 @@ def rewrap_installation_key(conn, key, new_code, machine_wrap, now):
     (a new salt) and, when `machine_wrap` is given and works, the DPAPI copy for this computer. A failed machine
     wrap keeps the old DPAPI copy. Returns True if a DPAPI copy for this computer was written."""
     fingerprint = installation_fingerprint(key)
+    row_id = conn.execute("SELECT id FROM installation_key WHERE is_active = 1 AND fingerprint = ?",
+                          (fingerprint,)).fetchone()[0]
     salt = key_wrap.new_salt()
-    blob = key_wrap.wrap_key(key_wrap.recovery_kek(new_code, salt), key, recovery_associated_data(fingerprint))
+    blob = key_wrap.wrap_key(key_wrap.recovery_kek(new_code, salt), key, recovery_associated_data(row_id, fingerprint))
     conn.execute("UPDATE installation_key SET recovery_salt = ?, recovery_blob = ?, recovery_wrapped_at = ? "
-                 "WHERE is_active = 1", (salt, blob, now))
-    machine_blob = _machine_copy(machine_wrap, key)
+                 "WHERE id = ?", (salt, blob, now, row_id))
+    machine_blob = _machine_copy(machine_wrap, key, row_id)
     if machine_blob is not None:
-        conn.execute("UPDATE installation_key SET machine_blob = ?, machine_wrapped_at = ? WHERE is_active = 1",
-                     (machine_blob, now))
+        conn.execute("UPDATE installation_key SET machine_blob = ?, machine_wrapped_at = ? WHERE id = ?",
+                     (machine_blob, now, row_id))
     return machine_blob is not None
 
 
@@ -221,7 +263,8 @@ class LocalKeyProvider(KeyProvider):
         conn = read_connection(self._master_db_path)
         try:
             row = conn.execute("SELECT wrapped_key FROM company_key WHERE company_id = ? AND purpose = ? "
-                               "AND fingerprint = ?", (company_id, CHAIN, fingerprint)).fetchone()
+                               "AND fingerprint = ? AND installation_key_id = ?",
+                               (company_id, CHAIN, fingerprint, self._installation_id)).fetchone()
         finally:
             conn.close()
         if row is None:

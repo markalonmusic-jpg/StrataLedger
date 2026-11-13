@@ -277,6 +277,13 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   and returns `unverified_through` / `unverified_reason`; messages name the range (`unverified_note`). The close
   check warns on the range in every mode; rotation after an epoch signs its checkpoint again. Decisions KS12-KS21
   recorded (with index rows). New tests/test_key_lost_checkpoint.py (36 tests).
+- 2026-11-12: Step 1d part B (STOP 3): new `modules/services/installation_keys.py`: `replacement_preview`,
+  `replace_installation_key` (Master, `NEW LEDGER KEY`, password, refused while the DPAPI copy opens; one master
+  transaction retires the old key and makes a new one with a new recovery code; then every company, archived
+  included, gets a key-lost epoch; per-company results), `remaining_companies`, `finish_remaining_companies`. The
+  key store binds each installation key's copies to its row id (KS21; row 1 unchanged) and opens only company keys
+  wrapped by the active installation key. New tests/test_installation_key_replace.py (24 tests); the leak check
+  covers the flow.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
