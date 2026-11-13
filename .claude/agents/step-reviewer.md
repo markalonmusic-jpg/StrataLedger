@@ -12,7 +12,7 @@ Do not edit, create, stage or commit any file. Bash is for read-only commands on
 Inputs: the step name and the commit range or diff to review (ask for it if not given).
 
 Check, in this order:
-1. Read CLAUDE.md, docs/decisions_2026-11-11.md, docs/design_decisions.md and the design doc the step names. List every decision the step claims to implement.
+1. Read CLAUDE.md. In docs/decisions_2026-11-11.md, docs/design_decisions.md and docs/audit_readiness_design.md (and any other design doc the step names), read only the decisions and sections the step names or cites, found by a text search for their codes or headings (the index at the top of docs/decisions_2026-11-11.md lists every code); do not read those files in full. List every decision the step claims to implement.
 2. For each one, find the code that enforces it and the test that proves it. Report any decision with no enforcing code, or no test, or a test that would still pass if the rule were removed.
 3. Defaults: controls (approvals, separation of duties, posting restrictions, controlled-account blocks) must be OFF by default unless a decision says otherwise. Integrity rules are always on. Flag anything reversed.
 4. Refused paths must write nothing: look for before/after snapshot tests, audit log included.

@@ -257,6 +257,14 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   this computer's DPAPI copy; `FirstMaster` / `CodeIssued` redact the code; the provider's cache follows the
   file's fingerprint; tests for the associated-data bindings, rotation failure paths, KS6's order and a
   log/audit/file leak check over five key flows. Backlog 17: restrict the data folder's permissions.
+- 2026-11-12: Step 1c accepted. Docs only, to cut what each session reads: an index of every decision code at the
+  top of docs/decisions_2026-11-11.md; the as-built notes and the Step 1b prompt moved from
+  docs/audit_readiness_design.md to "Audit design history" below (the rules they held stay in the design, shorter);
+  step-reviewer reads only the decisions and sections a step cites; CLAUDE.md section 8 gains the search-first
+  and docs/next_step.md rules. Owner decisions recorded: Step 1d scope (key-lost checkpoint recorded as
+  Unverified; a new installation key when the old one is lost), backlog 17 in the installer (Phase 5, required
+  before v1.0), new backlog 18 (start-up warning when the data folder is readable by all users), and the Master's
+  password change without the code stays until 2.8.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
@@ -306,3 +314,239 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - The sidebar's `NAV_ITEMS` role tuples (`app_strata.pyw`) hide items by role
   name. Replaced by permission-based visibility in Phase 3; the service layer
   enforces and the UI only hides (rule 10).
+
+## Audit design history (moved from docs/audit_readiness_design.md on 2026-11-12)
+
+Moved unchanged. The rules in these notes are kept, shortened, in the design doc; these are the dated
+notes as written at each step. The two open points in sub-step 9 were decided on 2026-11-12 for Step 1d.
+
+### Section 2.7, Step 1c as built
+
+* **As built in Step 1c sub-steps 5-6:**
+  * The installation key's fingerprint is `HMAC-SHA256(key, "StrataLedger installation key fingerprint v1")`;
+    the recovery copy's associated data is `("installation_key", 1, "recovery", fingerprint)`.
+  * `auth.create_first_master(..., machine_wrap=)` makes the key in the Master's transaction. The first-run screen
+    passes `platform_support.DPAPI`. Without a DPAPI copy the Master is created and `ledger_key_locked` is True;
+    without a recovery copy nothing is created. An installation that already has a key refuses a second first run.
+  * `LocalKeyProvider` is set by `App.start_key_store()` before the launcher and after first-run sign-in. It
+    holds the installation key in memory for the life of the process and caches unwrapped chain keys.
+  * `create_company` gets the chain key from the provider before building anything (KS6), then writes the file's
+    key row and, in the registry's master transaction, the `company_key` row and a `Ledger key created`
+    auth_event.
+  * The first-run code screen says "The ledger key could not be saved for this computer. ..." when the DPAPI
+    copy was not made (sub-step 7).
+* **As built in Step 1c sub-step 7 (every new recovery code re-wraps the installation key):**
+  * `auth.recover_master(path, code, new_password, machine_wrap=)` opens the key with the old code and, in the
+    same transaction, re-wraps the recovery copy with the new code and the DPAPI copy for this computer (a new
+    computer, or a key locked since first run, is restored this way). A failed DPAPI wrap keeps the old copy.
+  * `auth.change_master_password(session, password, code, new_password)` (PW9) and `auth.issue_recovery_code(
+    session, password, machine_wrap=)` (backlog 11: the DPAPI copy opens the key; refused while it is locked).
+  * Each returns `CodeIssued(recovery_code, ledger_key_restored, message)`. A valid code whose copy does not open
+    still resets the password, with `LEDGER_KEY_NOT_RESTORED` (KS5). Events: `Installation key rewrapped`,
+    `Recovery code issued`, `Password changed`, `Master recovered`.
+  * Not changed: `auth.change_password` still lets the Master change the password without the code (no PW9
+    screen exists yet); step 2.8 switches the Master's screen to `change_master_password`.
+* **As built in Step 1c sub-step 8 (rotation):** `ledger_keys.rotate_chain_key(session, company_id)`, Master only
+  (no new company permission, so the company baseline is unchanged). Order: the key store must be able to make a
+  key; a full check under the current key (refused with `ROTATION_NEEDS_KEY` when that key is not available here);
+  the new wrapped key and a `Ledger key rotated` auth_event in the master; the old key retired (`Rotation`) and the
+  new one active in the company file; then the check signed as a `Key rotation` checkpoint with the NEW key
+  (`ref_type` `ledger_chain_key`, `ref_id` the retired key), in the file and the mirror. A rotation over a Broken
+  ledger is allowed and its checkpoint says Broken. A checkpoint that cannot be saved never undoes the rotation
+  (`checkpoint_error`).
+* **As built in Step 1c sub-step 9 (key lost):** `ledger_keys.start_new_key_epoch(session, company_id,
+  confirm_company_code=)`, Master only, the company code typed. For a company whose active key cannot be opened
+  here while the installation key can (refused with `KEY_STILL_AVAILABLE` when the key still opens: rotate it).
+  The old key is retired as `Key lost`, a new key becomes active (wrapped in the master, `Ledger key lost`
+  auth_event; the company file's audit trigger records the retirement), and posting goes on: the next entry
+  chains to the last stored hash. A full check stays Unavailable (never Broken) because the old entries need the
+  lost key; the result names the last entry sealed before the epoch. **Two open points (owner decision):**
+  1. **No epoch checkpoint is signed.** `ledger_checkpoint.result` allows only OK and Broken, and signing
+     unverified history as OK would claim a check that did not happen; the incremental verifier would also
+     re-check the anchor entry with the lost key. An honest epoch needs a new result or kind (for example
+     `Key lost` with result `Unverified`) and a verifier that starts after the epoch's entry. Both change the
+     company baseline.
+  2. **A lost installation key** (DPAPI unusable and the recovery code lost, or KS5's damaged copy) loses every
+     company key at once, and no new company key can be stored, because `installation_key` can never be replaced.
+     Recovering needs a new installation key epoch (replace the row, recorded, with every company then starting
+     a new key), which changes the master baseline's `installation_key_same_key` trigger.
+* **Changed after the Step 1c review:**
+  * Rotation needs only the CURRENT key to open here (not the whole history): after a key-lost epoch the full
+    check is Unavailable, the rotation goes on and signs no checkpoint, and its result says why. This removes a
+    loop in which rotation sent the user to the epoch and the epoch sent them back to rotation.
+  * KS5: when the recovery copy is damaged but this computer's DPAPI copy opens, `recover_master` and
+    `change_master_password(..., machine_wrap=)` rebuild the recovery copy from it with the new code.
+    `LEDGER_KEY_NOT_RESTORED` now means both copies failed (open point 2 above).
+  * `LocalKeyProvider` reads the company file's fingerprint on every `get_key` and caches by fingerprint, so a
+    company file replaced in the same session (restore, Phase 5) never gets the key cached for the file it
+    replaced.
+  * `FirstMaster` and `CodeIssued` show `<redacted>` for the code and cannot be pickled or copied.
+  * `scripts/create_fresh_databases.py --sample-company` sets the `LocalKeyProvider` itself.
+  * For step 2.8: after a recovery restores the key, the running app must call `App.start_key_store()` again,
+    or it stays locked until the next start.
+
+Rotation and key-lost text as it stood before the trim:
+
+* **Rotation:** "Rotate ledger key" (Master) creates a new key, retires the old one (`Rotation`) and writes
+  a checkpoint. The next entry is sealed with the new key and chains to the old key's last hash. Old keys
+  are kept, wrapped, forever, because verification needs them.
+* **Key lost** (DPAPI unusable and recovery code lost): the ledger data is still readable (the chain is not
+  encryption). Entries sealed with the lost key can no longer be verified. The Master starts a new key epoch
+  (`Key lost`, recorded with a checkpoint and a sensitive audit entry); Audit-ready mode shows "history
+  before entry N cannot be verified" until the next year close.
+
+
+### Section 16, Steps 1b and 3b as built
+
+#### As built in Step 1b (differences from section 14)
+* `journal_line.entry_id` is hashed too (the line list in 2.2 now says so), so a line moved to another entry
+  breaks both entries. `journal_line_dimension.line_id` is classified as excluded because it only groups
+  dimensions under their hashed line.
+* Date fields (`entry_date`, `auto_reverse_date`) must be text; an integer date is refused.
+* The test helper that adds the fixed test key is `ensure_test_chain_key` (a `test_` name would be collected
+  by pytest).
+* SQLite's integer affinity turns the text '1' into the integer 1, so the schema tests do not treat a numeric
+  string as a wrong type.
+
+#### As built in Step 3b (verification)
+* **Service:** `ledger_verify.verify_ledger(context, mode="incremental" | "full")`, permission `ledger.verify`
+  (K7, K13). It reads through a read-only connection, then records in two short writes: a `ledger_checkpoint`
+  row (kind Verify, scope, result, through, first broken, key_id, MAC) and its mirror in the master's new
+  `chain_checkpoint` table. A read-only context (`ServiceContext.read_only`, the Auditor's open, section 6)
+  records in the master only; `tx.write_transaction` refuses a company-file write from such a context.
+* **Result:** status `OK`, `Broken` or `Unavailable`. Broken names the first broken entry: number, JE number,
+  date, who posted it (name from the master), and a reason code: `Link`, `Hash`, `Gap`, `Void mismatch`,
+  `Key fingerprint`, `Truncated`, `Marker`. The message is plain language, names that entry and a next step,
+  and contains no hash or key. Unavailable (the key provider cannot supply a needed key) is never recorded as
+  a checkpoint and the message says plainly it is not a sign of tampering.
+* **Checkpoint MAC** (`ledger_chain.checkpoint_mac`): HMAC-SHA256 under the chain key named by the row's
+  key_id, over the tag `SLCP1`, the company code and the canonical JSON of the checkpoint fields. The latest OK
+  checkpoint in the file and the latest OK mirror in the master are both checked; a bad MAC is `Marker`.
+* **Incremental (K15):** it starts at the last OK checkpoint. It checks that the checkpointed entry still has
+  the recorded hash, re-checks that entry's link and recomputes its seal, then checks every entry after it.
+  It does not re-read the entries before the checkpoint: an edit inside the already-verified range is found
+  only by a **full** check, which is what re-proves older entries (run at every period and year close, on
+  demand, and before backups once the backup service exists). With no OK checkpoint, incremental runs full.
+* **Whole-ledger checks in both modes:** the void cross-check, and truncation against the latest OK
+  checkpoints (file and master) and the entry counter. Restoring an older copy of the file is caught by the
+  master's mirror ("this looks like an older copy of the company file").
+* **Automatic checkpoints:** `ledger_verify.checkpoint_on_close(context)` signs a checkpoint (company file
+  and master mirror) whenever a company is closed in the app (logout) and when the app exits. It is system
+  upkeep (no permission), runs an incremental check (full when there is no checkpoint yet), records OK or
+  Broken like `verify_ledger`, records nothing when no key is available, and never raises (a failure is
+  logged).
+* **Documented limit:** if the last entries are cut, the counter is rolled back as well, and no checkpoint
+  exists in the file or the master, the shorter chain is consistent and verifies. Because a checkpoint is now
+  written at every company close and app exit, this gap exists only before a ledger's first close (or when no
+  key was available at every close). The master's mirror catches a cut tail afterwards even if the file's own
+  checkpoints are deleted too. Printed checkpoints in an auditor's hands cover the rest (section 3).
+* **Close check:** `ledger_integrity` runs one full verification per close action (period close, Books
+  closed through, year close, and the close-check preview), over the caller's connection, not recorded.
+  Broken follows the check's mode (warning by default, block when set, L2); Unavailable is always a warning
+  that says the check could not run.
+* **Keys:** the provider interface is now `get_key(company_id, key_id)`; the test provider can hold several
+  keys. **Step 1c:** the local provider must keep every retired key (wrapped, never deleted), because
+  verification asks for the key named by each entry's `chain_key_id`; a missing retired key makes
+  verification Unavailable, not Broken.
+* **Benchmarks (K12, measured 2026-11-12 on the development machine, `tools/benchmark_ledger_verify.py`):**
+  full verification of 100,000 entries with 3 lines each took 25.4 s and 28.0 s (two runs; target 10 s);
+  incremental verification of 100 new entries after a checkpoint at 100,000 took 0.34 s and 0.37 s (target
+  0.2 s). Both miss the targets. A profile shows about half of the full check is building the canonical form
+  in Python and a sixth is JSON encoding, so the seal itself is not the cost; the incremental check's fixed cost
+  is the whole-ledger SQL (mainly the void cross-check), which grows with the ledger. Follow-up: backlog
+  item 14. Whatever the speed, screens run full verification in the background with progress (2.6).
+
+### Section 14, the Step 1b prompt (built)
+
+#### Step 1b prompt (ready to paste)
+
+> **Phase 2.5 Step 1b: baseline schema for the tamper-evident ledger chain** (docs/audit_readiness_design.md
+> sections 2, 3, 12). Design decisions K1-K10 and P5 apply. Tests first; each step green; commit by
+> explicit path; push.
+>
+> **0. Save the previous baseline first** (no migrations): copy `migrations/001_company.sql` to
+> `archive/baseline_pre_2_5_1b/001_company.sql` with a README naming the commit, and tag that commit
+> `baseline-pre-2.5-1b`. The master baseline does not change in 1b.
+>
+> **1. Tests to write first** (they must fail before the baseline edit):
+> - `tests/test_schema_ledger_chain.py`:
+>   - drafts have all four chain columns NULL;
+>   - posting with any chain column missing is refused;
+>   - a posted entry with a draft-style NULL seal is refused;
+>   - hex CHECKs reject uppercase, 63 or 65 characters and non-hex;
+>   - `chain_version` other than 1 is refused;
+>   - `chain_key_id` must reference `ledger_chain_key`;
+>   - duplicate `chain_hash` is refused (partial unique);
+>   - each chain column is locked once posted (parametrized update);
+>   - the Void reversal still sets `is_void` on a sealed original;
+>   - `ledger_chain_key`: one active key, no delete, a key can be retired once (is_active 1 to 0 with
+>     `retired_at` and `retire_reason`), other columns are locked, a retired key cannot be reactivated;
+>   - `ledger_checkpoint`: insert allowed; no update; no delete;
+>     `(result = 'Broken') = (first_broken_entry_number IS NOT NULL)`;
+>     `(through_entry_number = 0) = (chain_hash IS NULL)`; scope required exactly for kind Verify; MAC
+>     format; the insert writes an audit row;
+>   - the `journal_entry` audit JSON (insert, update and delete triggers, including the post snapshot)
+>     carries the four chain columns;
+>   - `period_close_check` has `ledger_integrity` seeded as a warning.
+> - `tests/test_ledger_chain.py` (pure module, no database for most tests):
+>   - golden vectors in `tests/data/ledger_chain_vectors.json`;
+>   - canonical form rules (sorted keys, timestamp normalisation, line and dimension order, float
+>     refused);
+>   - each hashed field changes the hash; excluded fields do not;
+>   - the column classification test against `PRAGMA table_info` of `journal_entry`, `journal_line` and
+>     `journal_line_dimension`.
+>
+> **2. Baseline edits** (`migrations/001_company.sql`):
+> - `journal_entry` new columns:
+>   - `chain_version INTEGER CHECK (chain_version IS NULL OR chain_version = 1)`
+>   - `chain_key_id INTEGER REFERENCES ledger_chain_key(key_id)`
+>   - `chain_prev_hash TEXT CHECK (chain_prev_hash IS NULL OR (length(chain_prev_hash) = 64 AND chain_prev_hash NOT GLOB '*[^0-9a-f]*'))`
+>   - `chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*'))`
+>   - `CHECK (is_posted = 1 OR (chain_version IS NULL AND chain_key_id IS NULL AND chain_prev_hash IS NULL AND chain_hash IS NULL))`
+>   - `CHECK (is_posted = 0 OR (chain_version IS NOT NULL AND chain_key_id IS NOT NULL AND chain_prev_hash IS NOT NULL AND chain_hash IS NOT NULL))`
+> - `CREATE UNIQUE INDEX journal_entry_chain_hash_unique ON journal_entry (chain_hash) WHERE chain_hash IS NOT NULL;`
+> - New table `ledger_chain_key`: `key_id INTEGER PRIMARY KEY AUTOINCREMENT`,
+>   `fingerprint TEXT NOT NULL UNIQUE` (64 lowercase hex, CHECK), `created_at TEXT NOT NULL`,
+>   `created_by INTEGER`, `is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))`,
+>   `retired_at TEXT`, `retire_reason TEXT CHECK (retire_reason IN ('Rotation', 'Key lost', 'Compromised'))`,
+>   `CHECK ((is_active = 1) = (retired_at IS NULL))`, `CHECK ((retired_at IS NULL) = (retire_reason IS NULL))`.
+>   Constraints:
+>   - `CREATE UNIQUE INDEX ledger_chain_key_one_active ON ledger_chain_key (is_active) WHERE is_active = 1;`
+>   - trigger `ledger_chain_key_no_delete`;
+>   - trigger `ledger_chain_key_retire_only`: an update may only move `is_active` from 1 to 0 and set
+>     `retired_at` / `retire_reason`; every other column stays.
+>   - audit insert and update triggers.
+> - New table `ledger_checkpoint`: `checkpoint_id INTEGER PRIMARY KEY AUTOINCREMENT`,
+>   `created_at TEXT NOT NULL`, `created_by INTEGER`,
+>   `kind TEXT NOT NULL CHECK (kind IN ('Verify', 'Period close', 'Year close', 'Report export', 'Backup', 'Restore', 'Key rotation', 'Manual'))`,
+>   `scope TEXT CHECK (scope IN ('Incremental', 'Full'))`,
+>   `result TEXT NOT NULL CHECK (result IN ('OK', 'Broken'))`,
+>   `through_entry_number INTEGER NOT NULL CHECK (typeof(through_entry_number) = 'integer' AND through_entry_number >= 0)`,
+>   `chain_hash TEXT` (hex CHECK), `first_broken_entry_number INTEGER`,
+>   `key_id INTEGER REFERENCES ledger_chain_key(key_id)`, `ref_type TEXT`, `ref_id INTEGER`,
+>   `mac TEXT NOT NULL` (hex CHECK), plus:
+>   - `CHECK ((kind = 'Verify') = (scope IS NOT NULL))`
+>   - `CHECK ((result = 'Broken') = (first_broken_entry_number IS NOT NULL))`
+>   - `CHECK ((through_entry_number = 0) = (chain_hash IS NULL))`
+>
+>   Triggers `ledger_checkpoint_no_update`, `ledger_checkpoint_no_delete`, and the audit insert trigger.
+> - `journal_entry_lock_posted`: add `NEW.chain_version IS OLD.chain_version`, the same for `chain_key_id`,
+>   `chain_prev_hash` and `chain_hash`.
+> - The `journal_entry` audit triggers (insert, update both branches, delete): add the four chain columns.
+> - `period_close_check`: add `'ledger_integrity'` to the CHECK and seed it (mode `warn`).
+> - **No trigger checks the previous hash or the active key** (owner decision): the service computes the
+>   chain and verification catches mismatches.
+>
+> **3. Pure module** `modules/services/ledger_chain.py` (no database writes, no keys stored):
+> `HASHED_ENTRY`, `EXCLUDED_ENTRY`, `HASHED_LINE`, `EXCLUDED_LINE`, `canonical_entry(header, lines, dims)`,
+> `seal(key_bytes, company_code, prev_hash, canonical) -> hex`, `GENESIS = "0" * 64`.
+>
+> **4. Test helpers:** `tests/ledger_helpers.post` seals with a fixed test key (insert one active
+> `ledger_chain_key` row with that key's fingerprint on first use) and writes the four chain columns in the
+> posting UPDATE. Route the three raw posting UPDATEs in `tests/test_controls_004.py` through it, or give
+> them the chain columns. Adapt any other test that posts by raw SQL.
+>
+> **5. Verify:** full suite green (state counts), the new tests failed before the edit, `git status` clean
+> after the commit. Update CLAUDE.md (status entry, the Step 1b line in the 2.5 roadmap). **STOP after
+> Step 1b and report:** what changed in the baseline, the tests adapted, counts and the commit hash. Do not
+> start Step 3.

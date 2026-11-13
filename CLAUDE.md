@@ -151,14 +151,12 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-12):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, and 2.5 steps 1, 2, 1b, 3, 3b
-(drafts, sealed posting, verification, signed checkpoints at close, logout and exit). Password recovery is
-decided (PW1-PW11; build step 2.8 after 2.5). Now: 2.5 step 1c (keystore, KS1-KS11) built, sub-steps 1-9 (the
-service can post outside tests; no posting screen yet), two key-lost points open; then steps 4-7, 2.7, Phase 3.
+**Where we are (2026-11-12):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, and 2.5 steps 1, 2, 1b, 3, 3b, 1c
+(drafts, sealed posting, verification, checkpoints, keystore KS1-KS11; the service can post, no posting screen
+yet). Now: 2.5 step 1d (docs/next_step.md); then steps 4-7, 2.7, 2.8 (password recovery, PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
-- `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an
-  argument.
+- `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
 - The context from `open_company` is kept for the whole session, so its `now` and `today` are the time the
   company was opened. A screen must get a fresh context for each action before it posts, closes a period or
   approves (posted_at is sealed into the chain). Not built yet.
@@ -167,12 +165,9 @@ service can post outside tests; no posting screen yet), two key-lost points open
   `views_wizard.py` inserts a customer without a code, which the baseline rejects. Phase 3.
 - The launcher's "Open Existing Ledger File" button cannot work (it passes a path as a company id) and the
   launcher list shows archived companies. Phase 3.
-- `ui_components.DataTable` needs `Theme.create_scrollbar`, which does not exist; the modal's badge styles
-  hold hex colours. Phase 3.
-- `app_user.role` is a legacy free-text column read only by the sidebar's `NAV_ITEMS`; Phase 3 replaces it
-  with permission-based visibility and removes it from the baseline.
-- Tests share one hidden Tk window (`tk_app` in tests/conftest.py). The live-clipboard tests run only with
-  `STRATALEDGER_LIVE_CLIPBOARD=1`.
+- `ui_components.DataTable` needs `Theme.create_scrollbar` (missing); modal badge styles hold hex colours. Phase 3.
+- `app_user.role` is legacy free text read only by the sidebar's `NAV_ITEMS`; Phase 3 replaces and removes it.
+- Tests share one hidden Tk window (`tk_app` in conftest.py); live-clipboard tests need `STRATALEDGER_LIVE_CLIPBOARD=1`.
 
 ## 8. Working agreement
 
@@ -193,6 +188,11 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
   secrets-auditor; run mutation-tester on the committed step. View-only screens may go to screen-builder;
   the main session reviews and commits its work. Run one agent that edits files at a time.
 - Finish every task with a summary: files changed, tests run, anything uncertain.
+- Find decisions by code with a text search (grep); never read docs/decisions_2026-11-11.md,
+  docs/design_decisions.md or a design doc in full unless the task says so. A session that adds a decision code
+  also adds its one-line row to the index at the top of docs/decisions_2026-11-11.md.
+- At each STOP, write the next step's plan, open questions and current counts to docs/next_step.md (overwrite
+  it). A new session starts by reading it.
 - Planning and review happen in the Claude chat; this tool performs the tasks from the prompts it is given.
 
 ## 9. Open decisions and notes for review

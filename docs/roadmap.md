@@ -73,11 +73,17 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
     transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key
     is available; done), **step 3b** (done: the verify service, incremental and full verification,
-    checkpoints mirrored in the master, the `ledger_integrity` close check, end-to-end tamper tests), next
-    **step 1c**
-    (keystore: installation and company keys, DPAPI, recovery-code wrap, the `cryptography` decision K2), then
-    steps 4-7. Step 1c must land before any screen can post and before 2.5
-    is declared done.
+    checkpoints mirrored in the master, the `ledger_integrity` close check, end-to-end tamper tests), **step
+    1c** (done: keystore: installation and company keys, DPAPI, recovery-code wrap, rotation, key-lost epoch),
+    next **step 1d** (decided 2026-11-12, plan in docs/next_step.md): (1) a key-lost epoch writes a signed
+    checkpoint that records the history before it as Unverified (key lost), and the verifier reports that range
+    as Unverified, never Broken, and verifies the new epoch from its first entry; (2) the Master can create a new
+    installation key when the old one is lost (password plus a typed confirmation, a recorded event), and every
+    company then enters a key-lost epoch automatically; data stays readable and posting continues under new
+    keys. Both baseline changes in one edit (previous baselines saved to archive/ with a tag, one rebuild).
+    Then steps 4-7. Step 1c landed before any screen can post; 2.5 is not done until steps 1d and 4-7 are.
+    Accepted until step 2.8: the Master can change the password without the recovery code
+    (`auth.change_password`).
   - **2.6 Customer and vendor codes (done):** `customer_number` and
     `vendor_number`, `contact.customer_code` / `vendor_code` (unique, CHECKed,
     immutable, coded contacts cannot be deleted), `modules/services/contacts.py`
@@ -177,6 +183,9 @@ See docs/crm_pm_design.md section 11.
 17. Restrict the data folder (`%PROGRAMDATA%\StrataLedger`) at install or first run so other local accounts
     cannot read `system_master.db`: today it keeps the inherited permissions, and the machine-scope DPAPI copy of
     the installation key opens for any local user who can read it (secrets audit of Step 1c; audit design 1).
+    Decided 2026-11-12: built in the installer (Phase 5), REQUIRED BEFORE v1.0.
+18. A start-up check that warns the Master when the data folder is readable by all users of the computer (with
+    backlog 17, so a folder copied or created outside the installer is caught).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned

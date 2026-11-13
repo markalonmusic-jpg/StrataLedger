@@ -4,6 +4,233 @@ Status: DECIDED by the product owner. This file is the source for the
 CLAUDE.md and design-doc updates. Where a design doc disagrees, this file
 wins until CLAUDE.md is updated. Do NOT edit decisions here without asking.
 
+## Index (one line per decision code; search the code to find its text)
+
+Find a decision with a text search for its code (for example `KS6`), then read only that line or section. A
+session that adds a decision code adds its row here. Two code letters repeat: C1-C5 are deferrals (section 2)
+and C1-C6 the chart of accounts (Round 2); L7 has two amendments in section I.
+
+Principles and reconciled decisions:
+- 0 Graduated controls: integrity rules always on, controls off by default (section 0)
+- 0b Ease of use: simple by default, power one step away (section 0b; amended in section I)
+- 1.1 Manual entries to controlled accounts allowed and flagged (A5)
+- 1.2 Undeposited Funds optional; six required accounts (B3, A6)
+- 1.3 Bill voucher numbers from their own sequence, gaps allowed (B7)
+- 1.4 The UI guide is docs/CLAUDE_UI.md (E12)
+- 1.5 Management view excludes tax-strategy accounts; tax basis is periods 1-14 (A1)
+- 1.6 Approvals off by default per document type
+- 1.7 Built code that had to change after 2.3
+
+A. Company setup and chart of accounts (section 2):
+- A1 Fiscal year, adjustment periods 13 and 14, report basis selector
+- A2 Company date format; ISO dates stored
+- A3 Account normal balance and contra toggle
+- A4 Retainage receivable and Retainage payable control types
+- A5 Controlled account types; GRNI variance clearing
+- A6 System account pointers on company_settings
+- A7 Chart templates on the Create Company screen
+- A8 The approval engine is the only approval mechanism
+- A9 Require a different approver: default off
+
+B. Posting, payments, bank rec, year-end (section 2):
+- B1 No closing entries; year-end locks the year
+- B2 Invoice Paid when net due is zero; retainage separate
+- B3 Receipt destinations, bank deposits, processor payouts
+- B4 Unapplied customer payments
+- B5 Vendor credit memos
+- B6 Credit memos and payments share one allocation table
+- B7 Voucher numbers (see 1.3)
+- B8 Bills approved and off hold before a payment run
+- B9 Check printing and NACHA ACH export
+- B10 Undo only the latest reconciliation
+- B11 CSV and OFX/QFX statement import; no live feeds in v1
+- B12 Credit cards reconcile on the same screen
+- B13 journal_entry.source_doc_type and source_doc_id
+- B14 Voiding a received payment
+
+C. Deferrals, subscriptions, recurring (section 2):
+- C1 Early cancellation of a deferral
+- C2 saas_subscription billing plans
+- C3 One recurring_template for invoices, bills and entries
+- C4 Period close blocked by unposted deferrals (amended by L2)
+- C5 Full-month proration by default
+
+D. Construction, v1.1 (section 2):
+- D1 Expected job loss accrued in full
+- D2 Cumulative WIP entry, auto-reversed
+- D3 project.poc_method
+- D4 Separate Retainage Release document
+- D5 Retainage rates
+- D6 Optional tax codes on pay application lines
+- D7 Completed stage and pipeline_stage.allows_billing
+- D8 T&M billing
+- D9 Estimates and sign_contract
+- D10 cost_forecast append-only
+
+E. Scope and operations (section 2):
+- E1 Release order v1.0, v1.1, v1.2
+- E2 Sales and use tax
+- E3 1099 reporting
+- E4 Conversion wizard
+- E5 Consolidated reports
+- E6 One base currency per company
+- E7 Backup schedule and retention
+- E8 Payroll import and labor accrual
+- E9 Customer statements, AR aging, email through company SMTP
+- E10 Desktop licence and hosted pricing
+- E11 origin on journal_entry, staged_transaction and audit_log
+- E12 Archive superseded docs; standard names
+
+F. Import mappings (section 2):
+- F1 Mapping kinds
+- F2 Mapping targets
+- F3 import_source types
+- F4 Mapping uniqueness and match order
+- F5 import.mapping.manage; deactivate and add
+- F6 CSV column layouts per company and source
+- F7 Employees are contacts; wages masked
+
+G. Report presets and prompt-to-report (section 2):
+- G1 Built-in report preset library
+- G2 User presets, private or shared
+- G3 Plain-language prompt per preset
+- G4 Prompt-to-report with the AI (v1.2)
+- G5 Prompt box without the AI (local keyword match)
+- G6 Date words resolved by the app
+- G7 Reports run under the user's permissions
+
+P. Platform and files (Round 2):
+- P1 One computer per installation
+- P2 Company files only in the Companies folder
+- P2a Resource folder and data folder
+- P3 Windows 10 and 11 only; portable code
+- P4 New private repository with fresh history
+- P5 Hosted target PostgreSQL on Azure
+
+S. Company setup (Round 2):
+- S1 Company code
+- S2 Fiscal year names
+- S3 First fiscal year and automatic periods
+- S4 Periods 13 and 14 hidden until turned on
+- S5 Four-step Create Company wizard
+- S6 Starter roles
+- S7 New subsidiary copies the parent
+- S8 Admin of a new company or subsidiary
+- S9 Companies archived, never deleted
+- S10 First-run setup screen (in section J)
+
+C. Chart of accounts (Round 2):
+- C1 Account numbers, 4-8 digits
+- C2 Up to 4 levels; parents take no postings
+- C3 Editing names, numbers, type and normal balance
+- C4 Bank routing and account numbers masked
+- C5 Dimensions offered after setup
+- C6 Required dimension per account (control)
+
+L. Ledger and periods (Round 2):
+- L1 Books closed through and the period-close screen
+- L2 Period-close checks warn by default, can block
+- L3 One accounting date per document
+- L4 One gapless journal entry sequence
+- L5 Auto-reversing entries
+- L6 Date warnings
+- L7 Period and year reopen (amended twice in section I)
+- L8 Import rounding of one cent
+
+U. Packaging, updates, licensing and support:
+- U1 PyInstaller and Inno Setup, code-signed
+- U2 Daily update check against a signed manifest
+- U3 Offline signed licence; perpetual use
+- U4 Support bundle
+- U5 Standard SQLite in v1; encryption later
+- U6 Update flow
+
+Uncoded items in "L5-L8 and remaining items": Theme (light theme deferred), Sample company, Accounting
+sign-off, Help.
+
+H. SaaS readiness and portability:
+- H1 Services are UI- and OS-free
+- H2 Clock and today come from the context
+- H3 Storage abstraction
+- H4 Where rules live
+- H5 Portable SQL in services
+- H6 Screen specs and design tokens
+
+I. Management report layouts and KPIs:
+- I1 Chart templates approved
+- I2 Report layouts
+- I3 KPIs
+- I4 KPIs split by dimension
+
+J. Budgets, forecasts and FP&A:
+- J1 KPI calc mode and require_at_close
+- J2 Budgets
+- J3 Rolling forecasts
+- J4 Excel FP&A export
+- J5 AI reforecast skill
+
+R. Phase 2.5 ledger and billing services:
+- R1 Rounding applies to three entry sources
+- R2 confirm=True on posts, voids and reversals
+- R3 Agent-origin approvals
+- R4 Pair void and reversal slots
+- R5 Manual-entry approval threshold
+- R6 Default unregistered invoice series
+- R7 Payment allocation in 2.5
+- R8 What a manual entry is
+- R9 Control overrides and reversal notes
+- R10 Controlled accounts and required contacts
+- R11 Posting fails closed until approvals exist
+- R12 Date warnings for Human-origin posts only
+- R13 Posting checks the chain key fingerprint
+- R14 Posting needs je.post only
+
+K. Audit readiness:
+- K1 DPAPI machine scope, limit stated
+- K2 cryptography library for the recovery wrap
+- K3 Broken chain warns; Audit-ready mode blocks
+- K4 Auditor sees sensitive fields only if granted
+- K5 Restore with a mismatched checksum
+- K6 audit_log chaining on the backlog
+- K7 ledger.verify permission
+- K8 Chain key leaves only in the company bundle
+- K9 Auditor starter role
+- K10 U5 stands; encryption after v1
+- K11 Accountant does not get ledger.verify
+- K12 Verification speed targets are benchmarks
+- K13 ledger.verify is sensitive
+- K14 Checkpoints mirrored in the master
+- K15 Incremental verification anchor
+- K16 Unavailable is never tampering
+- K17 Measured verification speed
+- K18 Automatic checkpoints at close and exit
+
+PW. Password recovery:
+- PW1 Temporary password expires after 72 hours
+- PW2 Who can reset an Admin
+- PW3 user.reset_password permission
+- PW4 App-generated temporary password
+- PW5 Backup codes
+- PW6 Installation-level email settings
+- PW7 Reset offers new backup codes
+- PW8 Throttles
+- PW9 Master password changes need the recovery code
+- PW10 Password policy additions
+- PW11 Prompt to replace admin-issued backup codes
+
+KS. Key store, Phase 2.5 step 1c:
+- KS1 cryptography pinned; PyInstaller a developer tool
+- KS2 Recovery key-encryption key from hashlib.scrypt
+- KS3 get_key matches by fingerprint
+- KS4 SecretKey.use_for_aead
+- KS5 Valid code, damaged wrap
+- KS6 Create company refused while the key is locked
+- KS7 Test key hook for create_company
+- KS8 Key-lost epoch service in 1c; screen in Phase 3
+- KS9 Master key tables not audited
+- KS10 The master holds every company's keys
+- KS11 Export warning until the key bundle exists
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
