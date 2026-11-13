@@ -1,171 +1,109 @@
-# Next step: Phase 2.5 Step 4 (approvals in posting)
+# Next step: Phase 2.5 Step 5 (reversals and automatic reversals)
 
-Written at Step 4 STOP 2 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: PLAN APPROVED (2026-11-13) with the owner's answers (decisions R15-R24). STOP 1 done (company baseline:
-digest column, approval audit and no-delete; development databases rebuilt 2026-11-13, the old master moved to
-`Backups/20261113-024507/`). STOP 2 done: part A. Next: part B (STOP 3).
+Written at the end of Step 4 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
+Status: **Step 4 done, waiting for the owner's hand check.** Step 5 is not planned yet: the next session writes
+its plan (plan mode) and stops for approval before any code.
 
-**State at STOP 2:** suite **2230 passed, 7 deselected, 12 xfailed**. The master is empty (no users,
-companies or keys) and there are no company files.
+**State at the end of Step 4:** suite **2294 passed, 7 deselected, 6 xfailed**. HEAD: the commit that adds this file (after 9ed6f83).
+The development master is empty (no users, companies or keys) and there are no company files.
 
-**Part A, built (STOP 2):**
-- `companies.action_context(context)`: same identity, new `now`, company-local `today` (R19). `App.action_context()`
-  in app_strata.pyw. Static test `test_screens_pass_a_fresh_context_to_post_approve_and_close` (tests/test_static_rules.py):
-  in app_strata.pyw and `modules/views_*.py`, calls to `ledger.post_journal_entry`, `ledger.submit_entry_for_approval`,
-  `approvals.approve` / `reject`, `periods.close_period` / `close_year` / `set_books_closed_through` must pass an
-  `action_context()` call first (no screen calls them yet; checker tests prove it bites).
-- approvals.py: `cancel_on_edit` cancels Pending **or Approved** (G1, R21); `cancel_in_transaction(conn, context,
-  record_type, record_id)` for document services to call inside their own write (G2; the caller authorizes the edit);
-  `approve` / `reject` refuse any origin but Human, logged, before any read of the request (G4, R23, message
-  `ONLY_A_PERSON`); every status change goes through `_change_status` and `ALLOWED_STATUS_CHANGES` (R16).
-- `authz.deny(..., message=None)`: an optional sentence replacing "Not permitted".
-- CLAUDE.md: the stale-now known issue is removed.
-- D (AGENT_ALLOWED) was already enforced by tests/test_permissions_registry.py
-  `test_no_approve_or_post_permission_is_agent_allowed` (`.approve`, `.post`, `.reverse` and more); nothing added.
+## Hand check for the owner (Step 4)
 
-**Next, part B (STOP 3):** section C below (ledger wiring: `submit_entry_for_approval`, `update_entry` /
-`delete_entry` call `approvals.cancel_in_transaction`, `post_journal_entry` gate, R17 separation at posting, R24),
-section E (the flipped xfails, 12 to 9), the tests in F not yet written, decisions index check, docs (status_log,
-roadmap, file_map, the "Where we are" paragraph). Then step-reviewer and mutation-tester, fixes, new next_step.md.
+There is no posting screen yet, so the check runs the real services on a throwaway company in a temporary folder
+(never the real databases) and prints what a person would see. From the repo root, in PowerShell:
 
-**Owner answers (2026-11-13), built as decided:**
-1. Use the existing `approval_*` tables; change the baseline only for a gap the design shows (one edit, tag,
-   archive copy, one rebuild).
-2. Any edit after approval cancels it (`cancel_on_edit`); the entry must be resubmitted.
-3. A rejected entry can be resubmitted after an edit. Rejection needs a reason; the rejected request stays.
-4. The stale-now known issue is fixed in this step: posting, approval and rejection take `now` from a fresh
-   context per action (H2 holds: no clock reads in services). Removed from CLAUDE.md Known issues when done.
-5. Multi-approver chains and approval limits are in scope (owner requirement).
+```
+$env:STRATALEDGER_ALLOW_TEST_KEYS = "1"; python tools/hand_check_step4.py; Remove-Item Env:STRATALEDGER_ALLOW_TEST_KEYS
+```
 
-## What approvals.py (2.2b) already does
+The variable lets this one run use the test suite's fixed chain key (`keys.FixedKeyProvider` refuses without it;
+without it the script prints one line and does nothing). The last line must be **"Every step behaved as decided."**
+Read the sentences on the way; these are the ones to judge (rule 0b):
 
-- `is_approval_required(context, document_type)`: Journal entry follows `company_settings.manual_entry_approval`;
-  other types follow `document_approval_setting` (all off by default, 1.6).
-- `submit_for_approval(context, document_type, record_type, record_id, amount_cents, *, created_by, project_id)`:
-  authorizes the type's submit permission (`je.create` for journal entries: the agent may submit), picks the
-  policy whose band covers the amount (or the default one-approver chain), copies the chain onto the request
-  (`chain_json`), one Pending request per record (partial unique index).
-- `approve` / `reject(reason)`: approval limit (`check_approval_limit`), the approve permission (`je.approve`,
-  not in AGENT_ALLOWED), steps in order, parallel steps, `required_count` different people, one person one slot,
-  Master and Admin fill any slot once, the separate-approver rule (on: the creator is denied; off: the action is
-  flagged `self_approved`, R3), every denial logged before the write, a re-check inside the write. A rejection
-  needs a reason and ends the request (status Rejected, the row and its action stay).
-- `cancel_on_edit(context, record_type, record_id)`: cancels a **Pending** request in its own transaction.
-- `is_approved(conn, record_type, record_id)`: the newest request is Approved (the posting gate).
-- Policies and limits: `create_policy` (no overlapping bands), `deactivate_policy`, `set_approval_limit`
-  (`company.roles.manage`, audited tables). 34 tests in tests/test_approvals.py.
+| Section | What you should see |
+|---|---|
+| 1 | Every control off: "This entry can be posted directly; it does not need approval." and the entry posts. |
+| 2 | Threshold 1,000.00: 1,000.00 posts; 1,000.01 is refused "...send it for approval first."; "already waiting"; "waiting for approval (step 1 of 1)"; after Anna approves it posts with `approved_by` = Anna and `approved_at` = her approval time (15:30). |
+| 3 | Two steps: Carl cannot approve first; after Anna, posting says "step 2 of 2"; Carl completes it. |
+| 4 | An edit after approval: "The approval was cancelled because the entry was changed; send it for approval again."; the new request starts at step 1. |
+| 5 | Reject needs a reason; posting says "This entry was rejected (Wrong account); change it and..."; sending it again unchanged, or after re-saving the same lines, is refused; after a real change it can be sent. |
+| 6 | Agent and Import entries with every control off: refused until approved; "Only a person can approve or reject..."; the agent cannot post ("Not permitted: je.post"); "An imported entry is posted by a person after review..."; a person posts both. |
+| 7 | Separation on: "This company needs a different person to post an entry you created; ask a colleague to post it."; another clerk posts it. |
+| 8 | Verification OK; changing one approver breaks the chain at that entry. |
+| 9 | The audit log holds the approval requests and actions; denials are logged. |
+| 10 | A fresh context has the current time, not the time the company was opened. |
 
-## What posting needs from it, and the gaps found
+## What Step 4 built (R15-R26)
 
-| # | Need | Today | Proposed |
-|---|---|---|---|
-| G1 | An edit after approval cancels the approval (answer 2) | `cancel_on_edit` cancels Pending only, so an approved draft edited afterwards would still post as approved | cancel Pending **or Approved**; `completed_at` set to the edit's `now` |
-| G2 | The cancel and the edit are one change | `cancel_on_edit` opens its own transaction | an internal `cancel_in_transaction(conn, context, record_type, record_id)` called inside `ledger.update_entry` and `ledger.delete_entry`; the public function stays for other documents |
-| G3 | "Resubmitted after an edit" (answer 3) and "approved = what is posted" | the request records only the amount; nothing ties it to the entry's content | a digest of the entry (the canonical header and lines, as sealed, without the posting fields) stored on the request; submit refuses a digest equal to the last Rejected request's; posting refuses unless the approved digest equals the entry now. **Needs a column (baseline gap B1).** |
-| G4 | Approvals are by a human | `authorize` refuses Agent origin only; an Import or System context holding `je.approve` could approve | approve and reject refuse any origin but Human (integrity, one sentence) |
-| G5 | The audit log records every change (integrity) | `approval_request` and `approval_action` have **no audit triggers**; a request row can be deleted | **baseline gap B2**: audit insert/update triggers on `approval_request`, audit insert on `approval_action`, and a no-delete trigger on `approval_request` (integrity, like `approval_action`'s append-only triggers). Allowed status changes (Pending to Approved, Rejected or Cancelled; Approved to Cancelled) live in the service (H4), with tests |
-| G6 | `approved_by` / `approved_at` on the entry | approvals.py never writes them (by design) | posting writes the last approver and their `acted_at`; both are sealed (already in `ledger_chain` header fields) |
+- **Part A (0b00935):** `companies.action_context` / `App.action_context` (R19) and a static test that screens,
+  `app_strata.pyw` and `*_model.py` pass `action_context()` to post, submit, approve, reject, the closes and the
+  close checkpoint; approvals: edits cancel Pending or Approved (R21), `cancel_in_transaction`, only a person
+  approves or rejects (R23), `ALLOWED_STATUS_CHANGES` (R16).
+- **Part B (431f2e2):** `ledger.submit_entry_for_approval` and the posting gate (R15, R17, R20, R24),
+  `ledger_chain.entry_digest`, `approvals.request_state`, edits and deletes cancel in their own transaction, the
+  close checkpoint with a fresh context (R26), six pending xfails rewritten (R25; 12 xfailed became 6).
+- **Review fixes (9ed6f83):** closing never blocks; submit reads, digests and inserts in one write transaction;
+  re-saving the same lines is not a change; a creator's approval made while separation was off stops counting when
+  it is turned on (no dead end); the Import-context post is a logged denial; clearer sentences.
+- **Mutation fixes (this commit):** 12 tests for real survivors, each now killed; `tools/hand_check_step4.py`.
 
-**Baseline (only if B1 and/or B2 are approved):** one edit of `migrations/001_company.sql`, previous baseline
-copied to `archive/baseline_pre_2_5_4/` with tag `baseline-pre-2.5-4`, failing schema tests first, one rebuild
-(`scripts/create_fresh_databases.py --apply`, after asking). B1: `approval_request.document_digest TEXT` (64 hex
-CHECK, NULL allowed for document types that do not use it yet). The master baseline does not change.
+**Corrected plan wording:** the Step 4 plan said "an Import or System context is still refused" at posting. Only
+Import is refused (R18). System contexts post document entries as they did before Step 4 (without `confirm`), and
+R17 applies to them too. The reviewer read it the same way.
 
-## Design
+## Reviews
 
-### A. A fresh context per action (answer 4)
-- `companies.action_context(context)`: the same identity with a new `now` and the company-local `today`, built with
-  `dataclasses.replace(context, now=None, today=None)` (the clock is read only in `ServiceContext.__post_init__`,
-  which H2 already exempts) and `clock.local_today` with the company time zone. No new clock read in services.
-- `App.action_context()` in `app_strata.pyw` returns it for the open company. Screens never pass the stored session
-  context to an action.
-- Static test (tests/test_static_rules.py): in `app_strata.pyw` and `modules/views_*.py`, every call to
-  `ledger.post_journal_entry`, `ledger.submit_entry_for_approval`, `approvals.approve`, `approvals.reject` and
-  `periods.close_period` / `close_year` passes an `...action_context()` call as its first argument. Tests that `action_context`
-  moves `now` (clock patched) and keeps the user, company, origin and read-only flag.
-- CLAUDE.md: remove the stale-now known issue; status_log entry.
-
-### B. Which entries need approval (R11 replaced, nothing lifted except through approval)
-An entry needs an Approved request before it posts when any of these holds:
-1. **origin Agent**: always, whatever the controls (integrity);
-2. **origin Import**: always, one human review (integrity); a second approver or a chain is a control set through
-   an "Import batch" policy (`required_count` 2, or two steps), off by default;
-3. a manual entry (source none, Manual, Adjustment) with `manual_entry_approval` on and the debits **strictly over**
-   the threshold, or no threshold set (R5; an entry equal to the threshold posts);
-4. a document source (Bill, Payment, Import, Payroll) whose type has `requires_approval` on (1.6).
-
-Document type of the request: "Import batch" for Import origin and for sources Import and Payroll; "Bill" and
-"Payment" for those sources; otherwise "Journal entry". The amount is the entry's total debits. `created_by` is the
-entry's creator (for an Agent entry, the human it ran as, so R3's self-approval flag follows). `project_id` is the
-one project all lines share, else none.
-
-### C. The ledger functions
-- `ledger.submit_entry_for_approval(context, entry_id)`: authorizes `je.create`, runs every posting check that
-  does not depend on approval (balanced, two lines, open period, accounts, controlled-account contacts, no
-  reversal, no auto-reversal date), works out the document type and amount, computes the digest, then
-  `approvals.submit_for_approval`. Refused for an entry that needs no approval ("This entry can be posted
-  directly."), while one is Pending, and when the digest equals the last rejected one ("Change the entry before
-  sending it again; it was rejected: <reason>.").
-- `ledger.update_entry` and `ledger.delete_entry` cancel a Pending or Approved request in the same transaction
-  (G1, G2).
-- `ledger.post_journal_entry`: the R11 refusals and `APPROVAL_STEP_MESSAGE` are removed. An entry that needs
-  approval posts only when, inside the posting transaction: the newest request is Approved, its digest equals the
-  entry now, and its amount equals the debits. Otherwise one sentence names the next action (send for approval;
-  waiting for step N of M; rejected: reason; approval cancelled by an edit, send again). On success it writes
-  `approved_by` / `approved_at` (sealed). An entry with a Pending request cannot be posted directly, even when
-  approval is not required.
-- Posting stays Human origin only: `je.post` is not agent-allowed, and an Import or System context is still
-  refused until the Imports phase builds batch posting (the reversal and auto-reversal refusals stay until step 5).
-
-### D. AGENT_ALLOWED
-A static test: no `*.approve` code and neither `je.post` nor `je.reverse` in `permissions.AGENT_ALLOWED`; an
-agent-origin call to `approve` or `reject` is denied and logged before any read (already tested; kept).
-
-### E. Pending xfails that flip (tests/test_service_rules_pending.py)
-They call a proposed API (`ledger.post_entry(conn, ...)`, a `billing` module), so they are rewritten against the
-real services and un-marked:
-- `test_manual_entry_over_threshold_needs_approval` (R5, with the boundary: equal posts, one cent over needs it);
-- `test_agent_and_import_entries_always_need_human_approval`, split as design_decisions.md says into one test for
-  Agent and one for Import, both with every control off.
-Expected: **12 xfailed becomes 9**.
-
-### F. Tests first (new tests/test_ledger_approvals.py, plus the static and schema tests)
-Each rule above gets a failing test before code: the four triggers for approval and their absence (a manual entry
-with approval off posts directly); R5 at, one cent over and with no threshold; Agent and Import with every control
-off; R3 (separation off: the run-as human approves and the action is `self_approved`; on: a different human must);
-a two-step chain and a 2-of-3 step on a journal entry, posting refused until the last step; an approval limit too
-low is denied; an edit after approval cancels it and posting is refused until resubmitted and approved from step
-1; delete cancels; a rejected entry needs an edit before resubmission and its request stays Rejected with the
-reason; posting refuses a mismatched digest or amount (tampered request); `approved_by` / `approved_at` are the
-last approver's and are in the seal (verification OK; changing them is Broken); approve/reject from an Import or
-System context refused; the audit log records submit, approve, reject and cancel (if B2); `action_context`.
-
-## STOP points
-
-1. **STOP 1 (only if B1 or B2 is approved):** schema tests first, the baseline edit, archive copy and tag, the
-   rebuild (asked before `--apply`). Commit, push, report.
-2. **STOP 2, part A:** `action_context` and its static test, the approvals.py changes (G1, G2, G4 and the status
-   rules), CLAUDE.md known issue removed. Full suite, commit, push, report.
-3. **STOP 3, part B:** the ledger wiring (C), the flipped xfails (E), decisions recorded (next free R codes, with
-   index rows), docs (status_log, roadmap, file_map, the "Where we are" paragraph). Full suite, commit, push, then
-   step-reviewer and mutation-tester (secrets-auditor is not needed: no auth, keys or codes change), fixes, new
-   docs/next_step.md, report.
+- **step-reviewer:** approve with changes. Fixed: closing could be blocked by a non-service error; the
+  separation dead end; the submit race; the line re-save loophole in R22; message wording; test gaps (rollback of
+  the edit with its cancel, refused submits, approval tables in the `refused()` snapshot, `*_model.py` in the
+  R19 checker). It also noted that a creator's approval in an earlier step was not caught after separation was
+  turned on: now caught (any self-approved action stops counting).
+- **secrets-auditor:** no Critical, High or Medium findings; no key material in logs, messages or rows. Fixed:
+  a DEBUG-log test for the chain key over the whole approval flow; the denial row's user and actor are asserted;
+  the Import-context post is logged; closing catches every error. Left as is (question 2 below): the "only a
+  person" denial records no permission code.
+- **mutation-tester:** 112 mutations, 88 killed, 24 survived. Tests added for the 12 real gaps (separation off
+  posts and stays "already approved"; no settings row counts as separation on; two projects give no project;
+  Payroll follows the Import batch switch; dimensions are in the digest, unit and ledger level; `approved_at` is
+  the last approval's; a self-approval in an earlier step stops counting; the changed-while-sending refusal;
+  `App.action_context` without a company; the checker refuses a lookalike call). Each was re-run against its
+  mutation and is killed. Equivalent or defence in depth (not tested): the project passed to the submit
+  permission (no submit permission is project-scoped today: `je.create`, `bill.create`, `payment.make`,
+  `import.run` are not in `PROJECT_SCOPED`); `debits <= 0` (unreachable after `check_lines`); line order in the
+  digest (same order at submit and post); `is_posted` in `POSTING_FIELDS` (always 0 on a draft); first or last
+  rejection reason (one rejection ends a request); `approved_by` from any last action and `self_approved`
+  counting rejections (read only when Approved); `_record` writing the status directly (already checked Pending);
+  `_change_status`'s rowcount and `AND status = ?` guards (race only); `_live_requests` first or last (at most one
+  live request without hand-edited SQL).
 
 ## Open questions for the owner
 
-Questions 1-5 of the plan were answered (R15-R19, R18; see the decisions index). Still open:
+1. **Submitter and approver:** separation compares the approver with the entry's creator only. User B can submit
+   A's draft and then approve it (with separation on, B is not the creator). Should the submitter also be barred
+   from approving when separation is on?
+2. **The "only a person" denial** is logged before any read of the request, so its `access_event` row has no
+   permission code (user, origin, actor, record are there). Keep it, or read the request first so the row names
+   `je.approve` / `import.approve`?
+3. **Older sentences not yet rule 0b:** an approver who cannot fill the open step, or is over their limit, sees
+   "Not permitted: je.approve"; a missing reason says "A reason is required to reject" (no next step). These
+   predate Step 4. Fix them now as a small change, or with the approval screens in Phase 3?
+4. **Rejection reasons** appear in refusal sentences and so can reach the log file (rule 12). They are what a
+   person typed, not secrets. Keep, or log a fixed sentence and show the reason only on screen?
 
-1. **The other stale xfails:** `test_cannot_post_to_header_or_inactive_account` (2 cases) and
-   `test_manual_entry_to_controlled_account_is_blocked` test rules already built in steps 2-3 but still call the
-   proposed API. The second one contradicts the decided default (manual entries to controlled accounts are allowed
-   and flagged). Rewrite them in Step 4, or leave them for a later clean-up?
-2. **Checkpoint on close (found at STOP 2):** `App.close_company_ledger` passes the session context to
-   `ledger_verify.checkpoint_on_close`, so the closing checkpoint is signed with the time the company was
-   opened, not closed. R19 does not name it. Pass `self.action_context()` there too (proposed, part B), or leave it?
+## Step 5, to plan next session
+
+Reversals and automatic reversals (the refusals in `ledger._postable` for `reverses_entry_id` and
+`auto_reverse_date`, R11's remainder), then step 6 (rounding) and step 7 (the remaining six xfails in
+tests/test_service_rules_pending.py: reversal date, payment over-allocation, one allocation target, reopening
+with a reason, numbering, period from date). Read docs/decisions_2026-11-11.md by code (grep) and the reversal
+parts of docs/design_decisions.md before planning.
 
 ## Carried forward
 
 - Phase 3 screens: show the unverified range and the close check's warning; after a key replacement call
-  `App.start_key_store()` again; show `KeyReplaced.recovery_code` once.
+  `App.start_key_store()` again; show `KeyReplaced.recovery_code` once; every post, approval and close passes
+  `self.app.action_context()` (the static test enforces it).
 - Whether retired installation keys keep their recovery copies is decided with KS18's key restore (backlog 16).
 - `auth._now()` remains the one allowed clock read in services (H2).
+- `scripts/create_fresh_databases.py --apply` ends with an EOFError in a non-interactive shell (its first-Master
+  prompt); the rebuild itself completes. Small fix if wanted: skip the prompt when stdin is not a terminal.

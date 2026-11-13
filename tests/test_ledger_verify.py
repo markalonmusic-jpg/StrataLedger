@@ -963,3 +963,10 @@ def test_the_close_checkpoint_never_blocks_closing(env, ctx, monkeypatch, caplog
     module.App.close_company_ledger(_fake_app(module, ctx))        # does not raise
     assert seen == [] and "checkpoint on close was skipped" in caplog.text
     module.App.close_company_ledger(_fake_app(module, None))        # no company open: nothing
+
+
+def test_the_app_action_context_needs_an_open_company():
+    from modules.services.errors import ValidationError
+    module = _app_class()
+    with pytest.raises(ValidationError, match="Open a company first"):
+        module.App.action_context(_fake_app(module, None))

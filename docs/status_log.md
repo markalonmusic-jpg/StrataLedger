@@ -334,6 +334,11 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   a reason ending in a full stop is not doubled. Tests for each, the denial row's user and actor, rollback of the
   edit with its cancel, refused submits, a DEBUG-log check for the chain key, and the R19 checker scans
   `*_model.py`. Suite 2280 passed, 6 xfailed.
+- 2026-11-13: Step 4 mutation check (mutation-tester): 112 mutations, 88 killed. Tests added for the 12 survivors
+  that mattered, each now killed (separation off, no settings row, two projects, Payroll, dimensions in the digest,
+  the last approval time, a self-approval in an earlier step, the changed-while-sending refusal,
+  `App.action_context` with no company, the checker's lookalike call); the rest are equivalent or defence in depth
+  (docs/next_step.md). New `tools/hand_check_step4.py` for the owner's hand check. Suite 2294 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

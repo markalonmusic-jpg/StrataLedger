@@ -308,6 +308,7 @@ def test_screens_do_not_import_the_guarded_functions_under_other_names():
     "periods.close_year(c, 1)", "periods.set_books_closed_through(c, '2026-01-31')",
     "ledger.submit_entry_for_approval(c, 5)", "post_journal_entry(c, 5)", "ledger.post_journal_entry()",
     "ledger_verify.checkpoint_on_close(self.context)",
+    "ledger.post_journal_entry(self.app.get_context(), 5)", "approvals.approve(fresh(), 1)",
     "ledger.post_journal_entry(context=self.app.action_context(), entry_id=5)",
 ])
 def test_fresh_context_checker_flags_a_stored_context(call):

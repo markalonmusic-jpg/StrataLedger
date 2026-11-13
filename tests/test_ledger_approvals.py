@@ -591,3 +591,145 @@ def test_the_approval_flow_never_logs_the_chain_key(team, caplog, tmp_path):
     text = (tmp_path / "debug.log").read_text(encoding="utf-8") + caplog.text + "".join(
         str(e) + repr(e) for e in errors)
     assert [form for form in forms if form in text] == []
+
+
+# --- Step 4 mutation-test survivors ------------------------------------------------------------------------------
+
+def _self_approved_manual_entry(team):
+    """Separation off: the poster creates, sends and approves their own manual entry (flagged self_approved)."""
+    settings(team, require_separate_approver=0)
+    _require_approval(team)
+    team.grant_permission("PARENT", "POSTER", "je.approve")
+    entry_id = make(team)
+    approvals.approve(as_(team, "poster"), submit(team, entry_id))
+    return entry_id
+
+
+def test_with_separation_off_a_self_approved_entry_posts(team):
+    entry_id = _self_approved_manual_entry(team)
+    post(team, entry_id)
+    row = entry_row(team, entry_id)
+    assert (row["is_posted"], row["approved_by"], row["posted_by"]) == (1, team.people["poster"],
+                                                                         team.people["poster"])
+
+
+def test_with_separation_off_a_self_approved_entry_is_already_approved(team):
+    entry_id = _self_approved_manual_entry(team)
+    with pytest.raises(ValidationError, match="already approved; post it"):
+        submit(team, entry_id)
+
+
+def test_with_no_settings_row_a_self_approval_does_not_count(team):
+    """The safe default: no company_settings row counts as separation on."""
+    settings(team, require_separate_approver=0)
+    team.grant_permission("PARENT", "APPROVER", "je.create")
+    entry_id = make(team, who="appr1", origin="Agent")
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id, who="appr1", origin="Agent"))
+    tamper(team, "DELETE FROM company_settings WHERE id = 1")
+    refused(team, lambda: post(team, entry_id), PostingError, "approved by the person who created it")
+
+
+def test_a_self_approval_in_an_earlier_step_also_stops_counting(team):
+    """Any approval by the creator, not only the last one, no longer counts once separation is on."""
+    settings(team, require_separate_approver=0)
+    _require_approval(team)
+    team.grant_permission("PARENT", "APPROVER", "je.create")
+    approvals.create_policy(as_(team, "admin"), "Two steps", "Journal entry", 0, None,
+                            [(1, "APPROVER", 1), (2, "CONTROLLER", 1)])
+    entry_id = make(team, who="appr1")
+    request_id = submit(team, entry_id, who="appr1")
+    approvals.approve(as_(team, "appr1"), request_id)                 # the creator fills step 1
+    approvals.approve(as_(team, "ctrl"), request_id)
+    settings(team, require_separate_approver=1)
+    refused(team, lambda: post(team, entry_id), PostingError, "approved by the person who created it")
+
+
+def test_approved_at_is_the_last_approval_time(team):
+    _require_approval(team)
+    approvals.create_policy(as_(team, "admin"), "Two steps", "Journal entry", 0, None,
+                            [(1, "APPROVER", 1), (2, "CONTROLLER", 1)])
+    entry_id = make(team)
+    request_id = submit(team, entry_id)
+    approvals.approve(as_(team, "appr1", now=NOW), request_id)
+    approvals.approve(as_(team, "ctrl", now=LATER), request_id)
+    post(team, entry_id)
+    assert entry_row(team, entry_id)["approved_at"] == LATER
+    assert verify(team)["ok"]
+
+
+def test_a_request_for_lines_on_two_projects_has_no_project(team):
+    _require_approval(team)
+    first, second = team.project("PARENT"), team.project("PARENT")
+    entry_id = ledger.create_entry(as_(team, "poster"), entry_date="2026-03-15", lines=[
+        {"account_id": A(team, "cash"), "debit_cents": 100, "project_id": first},
+        {"account_id": A(team, "sales"), "credit_cents": 100, "project_id": second}])
+    submit(team, entry_id)
+    assert requests(team, entry_id)[0]["project_id"] is None
+    same = ledger.create_entry(as_(team, "poster"), entry_date="2026-03-15", lines=[
+        {"account_id": A(team, "cash"), "debit_cents": 100, "project_id": first},
+        {"account_id": A(team, "sales"), "credit_cents": 100, "project_id": first}])
+    submit(team, same)
+    assert requests(team, same)[0]["project_id"] == first
+
+
+@pytest.mark.parametrize("switch", [1, 0])
+def test_a_payroll_entry_follows_the_import_batch_switch(team, switch):
+    with team._company("PARENT") as c:
+        c.execute("UPDATE document_approval_setting SET requires_approval = ? WHERE document_type = 'Import batch'",
+                  (switch,))
+    entry_id = make(team, origin="System", source="Payroll")
+    if not switch:
+        post(team, entry_id, origin="System")
+        assert entry_row(team, entry_id)["is_posted"] == 1
+        return
+    refused(team, lambda: post(team, entry_id, origin="System"), PostingError, "send it for approval")
+    request_id = submit(team, entry_id, origin="System")
+    assert requests(team, entry_id)[0]["document_type"] == "Import batch"
+    approvals.approve(as_(team, "appr1"), request_id)
+    post(team, entry_id, origin="System")
+
+
+def test_posting_refuses_a_dimension_added_after_approval(team):
+    _require_approval(team)
+    entry_id = make(team)
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id))
+    with team._company("PARENT") as c:
+        type_id = c.execute("INSERT INTO dimension_type (name) VALUES ('Region') RETURNING dimension_type_id"
+                            ).fetchone()[0]
+        value_id = c.execute("INSERT INTO dimension_value (dimension_type_id, code, name) VALUES (?, 'N', 'North') "
+                             "RETURNING dimension_value_id", (type_id,)).fetchone()[0]
+        line_id = c.execute("SELECT line_id FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+                            (entry_id,)).fetchone()[0]
+        c.execute("INSERT INTO journal_line_dimension (line_id, dimension_type_id, dimension_value_id) "
+                  "VALUES (?, ?, ?)", (line_id, type_id, value_id))
+    refused(team, lambda: post(team, entry_id), PostingError, "does not match")
+
+
+def test_the_digest_covers_dimensions():
+    header = {f: None for f in ledger_chain.HASHED_ENTRY}
+    header.update(entry_id=1, entry_date="2026-03-15", period_id=3, origin="Human", created_by=1,
+                  created_at="2026-03-15T00:00:00+00:00")
+    line = {f: None for f in ledger_chain.HASHED_LINE}
+    line.update(line_id=1, entry_id=1, account_id=5, debit_cents=10, credit_cents=0, is_retainage_line=0,
+                is_control_override=0, is_rounding_adjustment=0)
+    plain = ledger_chain.entry_digest(header, [line])
+    north = ledger_chain.entry_digest(header, [line], [{"line_id": 1, "dimension_type_id": 1, "dimension_value_id": 1}])
+    south = ledger_chain.entry_digest(header, [line], [{"line_id": 1, "dimension_type_id": 1, "dimension_value_id": 2}])
+    assert len({plain, north, south}) == 3
+
+
+def test_submit_refuses_an_entry_whose_project_changed_while_it_was_sent(team, monkeypatch):
+    _require_approval(team)
+    project = team.project("PARENT")
+    on_project = [dict(line, project_id=project) for line in lines(team)]
+    entry_id = ledger.create_entry(as_(team, "poster"), entry_date="2026-03-15", lines=on_project)
+    real = approvals.authorize_submit
+
+    def move_off_the_project(context, *args, **kwargs):
+        real(context, *args, **kwargs)
+        ledger.update_entry(as_(team, "poster"), entry_id, lines=lines(team))
+
+    monkeypatch.setattr(approvals, "authorize_submit", move_off_the_project)
+    with pytest.raises(ValidationError, match="changed while it was being sent"):
+        submit(team, entry_id)
+    assert requests(team, entry_id) == []
