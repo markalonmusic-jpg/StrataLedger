@@ -1073,7 +1073,13 @@ CREATE TABLE approval_request (
     submitted_by INTEGER NOT NULL,
     submitted_at TEXT NOT NULL,
     completed_at TEXT,
-    CHECK ((status = 'Pending') = (completed_at IS NULL))
+    -- 2.5 step 4 (R15): SHA-256 of the document's canonical form when it was submitted (for a journal entry, the
+    -- form ledger_chain seals). Posting refuses unless it still matches; a rejected entry is resubmitted only with
+    -- a new digest. Required for journal entries; other documents add it when their services are built.
+    document_digest TEXT CHECK (document_digest IS NULL
+                                OR (length(document_digest) = 64 AND document_digest NOT GLOB '*[^0-9a-f]*')),
+    CHECK ((status = 'Pending') = (completed_at IS NULL)),
+    CHECK (record_type <> 'journal_entry' OR document_digest IS NOT NULL)
 );
 
 CREATE TABLE approval_action (
@@ -2791,6 +2797,105 @@ CREATE TRIGGER access_event_no_delete
 BEFORE DELETE ON access_event
 BEGIN
     SELECT RAISE(ABORT, 'access_event is append-only');
+END;
+
+-- 2.5 step 4 (R16): approval requests are part of the audit trail. A request is never deleted (a rejected or
+-- cancelled one stays); which status changes are allowed is a service rule (H4). approval_action is
+-- append-only, so only its insert is audited.
+CREATE TRIGGER approval_request_no_delete
+BEFORE DELETE ON approval_request
+BEGIN
+    SELECT RAISE(ABORT, 'approval_request rows are never deleted');
+END;
+
+CREATE TRIGGER audit_approval_request_insert
+AFTER INSERT ON approval_request
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'approval_request', NEW.request_id,
+        'Insert',
+        NULL,
+        json_object(
+            'request_id', NEW.request_id,
+            'document_type', NEW.document_type,
+            'record_type', NEW.record_type,
+            'record_id', NEW.record_id,
+            'amount_cents', NEW.amount_cents,
+            'policy_id', NEW.policy_id,
+            'created_by', NEW.created_by,
+            'project_id', NEW.project_id,
+            'chain_json', NEW.chain_json,
+            'status', NEW.status,
+            'submitted_by', NEW.submitted_by,
+            'submitted_at', NEW.submitted_at,
+            'completed_at', NEW.completed_at,
+            'document_digest', NEW.document_digest),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_approval_request_update
+AFTER UPDATE ON approval_request
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'approval_request', NEW.request_id,
+        'Update',
+        json_object(
+            'request_id', OLD.request_id,
+            'document_type', OLD.document_type,
+            'record_type', OLD.record_type,
+            'record_id', OLD.record_id,
+            'amount_cents', OLD.amount_cents,
+            'policy_id', OLD.policy_id,
+            'created_by', OLD.created_by,
+            'project_id', OLD.project_id,
+            'chain_json', OLD.chain_json,
+            'status', OLD.status,
+            'submitted_by', OLD.submitted_by,
+            'submitted_at', OLD.submitted_at,
+            'completed_at', OLD.completed_at,
+            'document_digest', OLD.document_digest),
+        json_object(
+            'request_id', NEW.request_id,
+            'document_type', NEW.document_type,
+            'record_type', NEW.record_type,
+            'record_id', NEW.record_id,
+            'amount_cents', NEW.amount_cents,
+            'policy_id', NEW.policy_id,
+            'created_by', NEW.created_by,
+            'project_id', NEW.project_id,
+            'chain_json', NEW.chain_json,
+            'status', NEW.status,
+            'submitted_by', NEW.submitted_by,
+            'submitted_at', NEW.submitted_at,
+            'completed_at', NEW.completed_at,
+            'document_digest', NEW.document_digest),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_approval_action_insert
+AFTER INSERT ON approval_action
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'approval_action', NEW.action_id,
+        'Insert',
+        NULL,
+        json_object(
+            'action_id', NEW.action_id,
+            'request_id', NEW.request_id,
+            'step_no', NEW.step_no,
+            'role_code', NEW.role_code,
+            'user_id', NEW.user_id,
+            'decision', NEW.decision,
+            'reason', NEW.reason,
+            'self_approved', NEW.self_approved,
+            'acted_at', NEW.acted_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
 
 CREATE TRIGGER approval_action_no_update

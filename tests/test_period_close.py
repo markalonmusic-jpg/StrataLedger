@@ -118,8 +118,8 @@ def test_pending_approval_check(ctx):
     entry = q(ctx, "SELECT entry_id FROM journal_entry")[0]["entry_id"]
     conn = raw(ctx)
     conn.execute("INSERT INTO approval_request (document_type, record_type, record_id, amount_cents, created_by, "
-                 "chain_json, status, submitted_by, submitted_at) VALUES ('Journal entry', 'journal_entry', ?, 100, "
-                 "1, '[]', 'Pending', 1, '2027-01-10T00:00:00+00:00')", (entry,))
+                 "chain_json, status, submitted_by, submitted_at, document_digest) VALUES ('Journal entry', "
+                 "'journal_entry', ?, 100, 1, '[]', 'Pending', 1, '2027-01-10T00:00:00+00:00', ?)", (entry, "ab" * 32))
     conn.commit()
     conn.close()
     checks = {c["code"]: c["ok"] for c in periods.close_checks(ctx, pid(ctx, "FY2027-01"))}

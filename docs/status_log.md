@@ -304,6 +304,12 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-13: `auth.CodeIssued` and `auth.FirstMaster` are read-only classes too: `auth._HoldsACode` is now a
   slotted base (fields as read-only attributes; redacted repr and str; no indexing, iteration, `_asdict`,
   `vars()` or JSON; no pickling or copying), shared with `installation_keys.KeyReplaced`. Tests first.
+- 2026-11-13: Step 4 STOP 1 (baseline; previous company baseline in `archive/baseline_pre_2_5_4/`, tag
+  `baseline-pre-2.5-4`): `approval_request.document_digest` (64 hex, required for a journal entry's request, R15);
+  audit triggers on `approval_request` (insert, update) and `approval_action` (insert); `approval_request` rows are
+  never deleted (R16). Status rules stay in the service (H4). New tests/test_schema_approval_audit.py (16 tests);
+  two raw-insert test helpers give the digest. Decisions R15-R24 recorded (the owner's answers to the Step 4
+  plan). The master baseline did not change. Suite 2184 passed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

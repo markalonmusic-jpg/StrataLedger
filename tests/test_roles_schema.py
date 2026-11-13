@@ -314,9 +314,10 @@ def make_request(c, record_id=1, status="Pending", policy_id=None, record_type="
     completed_at = None if status == "Pending" else "2026-01-02T00:00:00+00:00"
     return c.execute(
         "INSERT INTO approval_request (document_type, record_type, record_id, amount_cents, policy_id, chain_json, "
-        "status, created_by, submitted_by, submitted_at, completed_at) "
-        "VALUES ('Bill', ?, ?, 5000, ?, '[]', ?, 1, 1, '2026-01-01T00:00:00+00:00', ?) RETURNING request_id",
-        (record_type, record_id, policy_id, status, completed_at)).fetchone()[0]
+        "status, created_by, submitted_by, submitted_at, completed_at, document_digest) "
+        "VALUES ('Bill', ?, ?, 5000, ?, '[]', ?, 1, 1, '2026-01-01T00:00:00+00:00', ?, ?) RETURNING request_id",
+        (record_type, record_id, policy_id, status, completed_at,
+         "ab" * 32 if record_type == "journal_entry" else None)).fetchone()[0]
 
 
 def raw_request(doc="Bill", record_id=3, amount="1", chain="'[]'", status="Pending", policy="NULL",

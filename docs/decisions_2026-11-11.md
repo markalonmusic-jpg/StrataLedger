@@ -184,6 +184,16 @@ R. Phase 2.5 ledger and billing services:
 - R12 Date warnings for Human-origin posts only
 - R13 Posting checks the chain key fingerprint
 - R14 Posting needs je.post only
+- R15 An approval request carries the entry's content digest
+- R16 Approval requests and actions are audited; requests never deleted
+- R17 Separation of duties also covers posting
+- R18 Import-origin entries approved one at a time until batch review
+- R19 A fresh context for every post, approval and close
+- R20 Which entries need approval; R11 lifted only through approval
+- R21 Any edit or delete cancels the approval
+- R22 Rejection needs a reason; resubmit only after a change
+- R23 Only a human approves or rejects
+- R24 Posting records and seals the last approver
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1024,3 +1034,33 @@ The step 1d plan was approved with these answers (design: docs/audit_readiness_d
   recovery-code helpers, so auth.py does not grow.
 - KS21 Each installation key's recovery copy and DPAPI copy are bound to its own row id plus its fingerprint (key
   id 1 keeps its current binding). A copy from one installation key row is refused on another row (tested).
+
+Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers to the Step 4 plan):
+- R15 A journal entry's approval request stores `document_digest`: SHA-256 (hex) of the entry's canonical form,
+  the same form `ledger_chain` seals (posting fields empty), so approval and sealing check the same content.
+  Posting refuses unless the newest approved request's digest equals the entry as it is now; resubmission is
+  refused until the digest differs from the last rejected one. Required for journal entries in the baseline.
+- R16 `approval_request` (insert, update) and `approval_action` (insert) are in the audit log, every column;
+  an `approval_request` row is never deleted (trigger). Which status changes are allowed (Pending to Approved,
+  Rejected or Cancelled; Approved to Cancelled) is a service rule (H4), not a trigger.
+- R17 With `require_separate_approver` = 1 the entry's creator can neither approve nor post it, for every entry
+  (also one that needs no approval). Off by default (control, section 0).
+- R18 In step 4 an Import-origin entry is approved one entry at a time (document type "Import batch",
+  `import.approve`). The review of a whole batch comes with the Imports phase and must still count as the one
+  human review (integrity).
+- R19 Posting, approval, rejection, period close, books closed through and year close each take `now` and
+  `today` from a fresh context built for that action (`companies.action_context`); a static test checks the
+  screens. H2 holds: no new clock read in services.
+- R20 An entry needs an approved request before it posts when: its origin is Agent or Import (always, whatever
+  the controls); it is a manual entry with manual-entry approval on and debits strictly over the threshold, or
+  no threshold (R5); or its document source's type has "requires approval" on (1.6). R11's refusals are lifted
+  only through approval. An entry with a Pending request cannot be posted directly.
+- R21 Any edit or delete of a draft cancels its Pending or Approved request in the same transaction; it must be
+  resubmitted and approved from step 1.
+- R22 A rejection needs a reason; the rejected request and its action stay for the audit trail. The entry can be
+  resubmitted after it has changed (R15).
+- R23 Only a Human-origin context approves or rejects (integrity): Agent is also refused by `authorize`
+  (`AGENT_ALLOWED` never holds an approve code, `je.post` or `je.reverse`; static test), and Import and System
+  contexts are refused by the approval service.
+- R24 Posting an approved entry writes `approved_by` and `approved_at` from the last approving action; both are
+  sealed in the chain (already hashed fields).

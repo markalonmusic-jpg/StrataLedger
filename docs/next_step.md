@@ -1,11 +1,11 @@
 # Next step: Phase 2.5 Step 4 (approvals in posting)
 
 Written at the Step 4 planning STOP (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: PLAN PROPOSED, waiting for the owner's approval. No Step 4 code is written.
+Status: PLAN APPROVED (2026-11-13) with the owner's answers (decisions R15-R24). STOP 1 done: the company
+baseline edit (tag `baseline-pre-2.5-4`, archive copy), waiting for the owner's word on the rebuild. Next: part A.
 
-**State at this STOP:** Step 1d accepted. HEAD is this file's commit, on top of the KeyReplaced fix (the result is
-no longer a namedtuple) and `638c9f1`. Suite on the committed tree: **2163 passed, 7 deselected, 12 xfailed**
-(about 8 minutes). Working tree clean, `main` pushed.
+**State at STOP 1:** suite **2184 passed, 7 deselected, 12 xfailed**. The master baseline did not change; the
+development master is empty (no users, companies or keys) and there are no company files.
 
 **Owner answers (2026-11-13), built as decided:**
 1. Use the existing `approval_*` tables; change the baseline only for a gap the design shows (one edit, tag,
