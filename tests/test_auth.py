@@ -75,7 +75,7 @@ def test_recovery_code_is_shown_once_and_only_its_hash_is_stored(master_path, ca
     assert PASSWORD not in stored
     assert code not in caplog.text and PASSWORD not in caplog.text
     events = [r["event_type"] for r in _rows(master_path, "SELECT event_type FROM auth_event")]
-    assert events == ["First Master created"]
+    assert events == ["First Master created", "Installation key created"]
 
 
 def test_recover_master_sets_a_new_password_and_rotates_the_code(master_path):
@@ -170,22 +170,26 @@ def test_login_without_rehash_leaves_no_audit_context(world):
     assert world.master_rows("SELECT user_id FROM audit_context") == [{"user_id": None}]
 
 
-def test_first_master_recovery_row_is_upserted(master_path):
+def test_a_rebuilt_user_table_cannot_set_up_a_second_master(master_path):
+    """Before step 1c a wiped user table let first-run start again (the recovery row was upserted). Now the
+    installation key exists and can never be replaced, so setting up again is refused and nothing changes; a
+    lost Master is restored with the recovery code instead (key_store.ALREADY_HAS_A_KEY)."""
     import sqlite3
-    first = auth.create_first_master(master_path, "root", "correct horse battery", "R", "T", "r@x.test")
+    auth.create_first_master(master_path, "root", "correct horse battery", "R", "T", "r@x.test")
     conn = sqlite3.connect(master_path)
     conn.execute("PRAGMA foreign_keys = OFF")
     conn.execute("DELETE FROM app_user")      # simulate a rebuilt user table; the recovery row stays
     conn.commit()
+    before = conn.execute("SELECT id, code_hash FROM master_recovery").fetchall()
     conn.close()
-    second = auth.create_first_master(master_path, "root", "correct horse battery", "R", "T", "r@x.test")
-    assert second.recovery_code != first.recovery_code
+    with pytest.raises(ValidationError, match="recovery code"):
+        auth.create_first_master(master_path, "root", "correct horse battery", "R", "T", "r@x.test")
     conn = sqlite3.connect(master_path)
     try:
-        rows = conn.execute("SELECT id, code_hash FROM master_recovery").fetchall()
+        assert conn.execute("SELECT id, code_hash FROM master_recovery").fetchall() == before
+        assert conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0] == 0
     finally:
         conn.close()
-    assert len(rows) == 1
 
 
 def test_failed_logins_never_store_or_log_the_password(world, caplog):

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import modules.database as database
-from modules.services import passwords
+from modules.services import key_store, passwords
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, PermissionDeniedError, ValidationError,
 )
@@ -59,7 +59,9 @@ class Session:
     master_db_path: str
 
 
-FirstMaster = namedtuple("FirstMaster", "user_id recovery_code")
+FirstMaster = namedtuple("FirstMaster", "user_id recovery_code ledger_key_locked", defaults=(False,))
+
+
 class _Actor(namedtuple("_Actor", "user_id now")):
     """All write_transaction needs for audit_context. Authentication runs before any context exists,
     so the actor takes its time from auth._now() (the one allow-listed clock read in this file)."""
@@ -121,11 +123,15 @@ def master_setup_state(master_db_path):
 
 # --- First Master and recovery ---------------------------------------------------------------
 
-def create_first_master(master_db_path, username, password, first_name, last_name, email):
+def create_first_master(master_db_path, username, password, first_name, last_name, email, *, machine_wrap=None):
     """Create the installation's Master. Only while the master database has no users.
 
-    Returns FirstMaster(user_id, recovery_code). The recovery code is shown to the
+    Returns FirstMaster(user_id, recovery_code, ledger_key_locked). The recovery code is shown to the
     caller once; only its scrypt hash is stored, and it is never logged.
+
+    The installation key is made in the same transaction (Step 1c, key_store.create_installation_key), wrapped
+    with the recovery code and with `machine_wrap` (the app passes platform_support.DPAPI; services never call
+    the OS). Without a machine copy the Master is still created and `ledger_key_locked` is True.
     """
     check_username(username)
     passwords.check_password_policy(password)
@@ -146,8 +152,10 @@ def create_first_master(master_db_path, username, password, first_name, last_nam
                      "ON CONFLICT (id) DO UPDATE SET code_hash = excluded.code_hash, created_at = excluded.created_at",
                      (code_hash, _iso(_now())))
         _insert_event(conn, "First Master created", username=username, user_id=user_id, actor_user_id=user_id)
+        locked = key_store.create_installation_key(conn, code, machine_wrap, _iso(_now()))
+        _insert_event(conn, "Installation key created", user_id=user_id, actor_user_id=user_id)
     _logger.info("first Master created: user=%s", user_id)
-    return FirstMaster(user_id, code)
+    return FirstMaster(user_id, code, locked)
 
 
 def recover_master(master_db_path, code, new_password):
@@ -276,11 +284,12 @@ def _dummy():
     return _dummy_hash
 
 
-def _insert_event(conn, event_type, *, username=None, user_id=None, actor_user_id=None, permission_code=None):
+def _insert_event(conn, event_type, *, username=None, user_id=None, actor_user_id=None, permission_code=None,
+                  company_id=None):
     conn.execute(
-        "INSERT INTO auth_event (occurred_at, event_type, username, user_id, actor_user_id, permission_code) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (_iso(_now()), event_type, username, user_id, actor_user_id, permission_code),
+        "INSERT INTO auth_event (occurred_at, event_type, username, user_id, actor_user_id, permission_code, "
+        "company_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (_iso(_now()), event_type, username, user_id, actor_user_id, permission_code, company_id),
     )
 
 

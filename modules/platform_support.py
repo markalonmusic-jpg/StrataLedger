@@ -30,6 +30,7 @@ import logging
 import struct
 import sys
 import time
+from types import SimpleNamespace
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -262,3 +263,7 @@ def _call_dpapi(direction, data, entropy, flags):
             kernel32.LocalFree(ctypes.cast(out.pbData, ctypes.c_void_p))
     finally:
         ctypes.memset(data_buffer, 0, len(data))
+
+
+# The machine wrap the app hands to the key store at start-up and at first run (services never import this module).
+DPAPI = SimpleNamespace(protect=machine_protect, unprotect=machine_unprotect)

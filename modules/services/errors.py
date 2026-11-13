@@ -28,6 +28,11 @@ class KeyUnavailableError(PostingError):
     """
 
 
+class KeyStoreLockedError(KeyUnavailableError):
+    """The installation key is locked on this computer (DPAPI failed and the Master has not restored it with the
+    recovery code yet), so no new ledger key can be made: creating a company is refused (KS6)."""
+
+
 class PermissionDeniedError(ServiceError):
     """The acting user lacks the permission for this action."""
 

@@ -13,10 +13,11 @@ Services ask `get_provider()` for a key and never touch key storage themselves, 
 """
 import os
 
-from modules.services.errors import KeyUnavailableError
+from modules.services.errors import KeyStoreLockedError, KeyUnavailableError
 
 NO_KEY_MESSAGE = ("This computer cannot seal ledger entries right now. Ask the Master to sign in and restore the "
                   "ledger key with the recovery code.")
+KEY_STORE_LOCKED = "Ask the Master to restore the ledger key with the recovery code first."
 
 
 class SecretKey:
@@ -55,6 +56,15 @@ class KeyProvider:
 
     def get_key(self, company_id, key_id):
         raise NotImplementedError
+
+    def new_chain_key(self):
+        """A new random chain key for a company being created, or KeyStoreLockedError (KS6). Only the local
+        provider (key_store.LocalKeyProvider) can make one; the others always refuse."""
+        raise KeyStoreLockedError(KEY_STORE_LOCKED)
+
+    def store_chain_key(self, conn, company_id, key, now):
+        """Write the new key, wrapped, to the master (inside the caller's master transaction `conn`)."""
+        raise KeyStoreLockedError(KEY_STORE_LOCKED)
 
 
 class NullKeyProvider(KeyProvider):

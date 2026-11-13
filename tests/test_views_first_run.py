@@ -186,6 +186,19 @@ def test_submit_builds_the_master_and_shows_the_code_screen(setup):
     assert auth.master_setup_state(setup.master) == "ready"
 
 
+def test_submit_wraps_the_installation_key_with_dpapi(setup, monkeypatch):
+    """Step 1c: the screen hands the service the DPAPI machine wrap (services never call the OS themselves)."""
+    seen = []
+    real = auth.create_first_master
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("machine_wrap"))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(view.auth, "create_first_master", spy)
+    make_master(setup)
+    assert seen == [platform_support.DPAPI]
+
+
 def test_continue_is_refused_until_the_box_is_ticked(setup):
     make_master(setup)
     assert str(setup.wizard.continue_button.cget("state")) == "disabled"

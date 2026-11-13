@@ -223,6 +223,12 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-12: Step 1c sub-step 4: master baseline gains `installation_key` and `company_key` (no audit triggers,
   KS9), the key `auth_event` types and `auth_event.company_id`. The development master was rebuilt (the old file
   is in Backups/); `Companies/COMBUZZ.db` is untouched and no longer registered.
+- 2026-11-12: Step 1c sub-step 5: `auth.create_first_master` makes the installation key in the Master's
+  transaction (`key_store.create_installation_key`): a DPAPI copy through the `machine_wrap` the first-run screen
+  passes (`platform_support.DPAPI`) and a recovery-code copy. A DPAPI failure still creates the Master, with the
+  key locked (`FirstMaster.ledger_key_locked`); a failed recovery copy creates nothing. An installation that has a
+  key refuses a second first run (it used to upsert the recovery row after a wiped user table).
+  `key_store.LocalKeyProvider` unlocks at start-up; `KeyStoreLockedError` added.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

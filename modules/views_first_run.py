@@ -168,7 +168,7 @@ class FirstRunSetup:
         try:
             database.ensure_master_database(path)
             created = auth.create_first_master(path, d.username, model.sign_in_secret(d), d.first_name, d.last_name,
-                                               d.email)
+                                               d.email, machine_wrap=platform_support.DPAPI)
         except Exception as error:  # noqa: BLE001  (any failure becomes a plain dialog; no user is created)
             _logger.error("first-run setup failed: %s", type(error).__name__)
             title, message = model.explain_error(error)
