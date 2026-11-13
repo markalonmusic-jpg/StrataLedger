@@ -315,6 +315,37 @@ def _verify_and_record(context, mode):
     return _record(context, {**result, "checkpoint_id": None, "recorded_in": []}, kind="Verify")
 
 
+def check_before_key_change(context):
+    """A full verification of the ledger, described like verify_ledger's result but NOT recorded: the check a key
+    rotation signs once the new key is active (ledger_keys.py, which authorizes it as the Master)."""
+    conn = read_connection(context.company_db_path)
+    try:
+        result = _describe(conn, context, verify_connection(conn, _company_code(context), _key_for(context),
+                                                            mode="full", anchors=_master_anchors(context)))
+    finally:
+        conn.close()
+    return {**result, "checkpoint_id": None, "recorded_in": []}
+
+
+KEY_CHECKPOINT_NOT_SAVED = ("The ledger key was changed, but its checkpoint could not be saved. Run a ledger check "
+                            "to record one.")
+
+
+def record_key_checkpoint(context, verification, *, old_key_id):
+    """Sign `verification` (from check_before_key_change) as a 'Key rotation' checkpoint with the company's NEW
+    active key, in the file and the master mirror (ref: the retired ledger_chain_key). The key change has already
+    committed, so a failure is logged and reported in 'checkpoint_error', never raised."""
+    result = {**verification, "checkpoint_id": None, "recorded_in": []}
+    try:
+        _record(context, result, kind="Key rotation", ref_type="ledger_chain_key", ref_id=old_key_id)
+    except Exception:                       # noqa: BLE001  (logged and reported; the key change has committed)
+        _logger.exception("The key rotation checkpoint could not be written (company_id=%s)", context.company_id)
+        result["checkpoint_error"] = KEY_CHECKPOINT_NOT_SAVED
+        if not result["recorded_in"]:
+            result["no_checkpoint_reason"] = KEY_CHECKPOINT_NOT_SAVED
+    return result
+
+
 CLOSE_KINDS = {"Period close": "fiscal_period", "Year close": "fiscal_year"}
 CHECKPOINT_NOT_SAVED = ("The close is done, but its ledger checkpoint could not be saved. Run a ledger check to "
                         "record one.")

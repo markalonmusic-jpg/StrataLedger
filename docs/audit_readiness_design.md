@@ -256,6 +256,14 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
     `Recovery code issued`, `Password changed`, `Master recovered`.
   * Not changed: `auth.change_password` still lets the Master change the password without the code (no PW9
     screen exists yet); step 2.8 switches the Master's screen to `change_master_password`.
+* **As built in Step 1c sub-step 8 (rotation):** `ledger_keys.rotate_chain_key(session, company_id)`, Master only
+  (no new company permission, so the company baseline is unchanged). Order: the key store must be able to make a
+  key; a full check under the current key (refused with `ROTATION_NEEDS_KEY` when that key is not available here);
+  the new wrapped key and a `Ledger key rotated` auth_event in the master; the old key retired (`Rotation`) and the
+  new one active in the company file; then the check signed as a `Key rotation` checkpoint with the NEW key
+  (`ref_type` `ledger_chain_key`, `ref_id` the retired key), in the file and the mirror. A rotation over a Broken
+  ledger is allowed and its checkpoint says Broken. A checkpoint that cannot be saved never undoes the rotation
+  (`checkpoint_error`).
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).

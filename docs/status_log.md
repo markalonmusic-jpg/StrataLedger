@@ -243,7 +243,11 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   damaged), `change_master_password` (PW9: password and code) and `issue_recovery_code` (backlog 11: password,
   DPAPI copy opens the key; refused while locked). All return `CodeIssued`. The first-run code screen says
   plainly when the key could not be saved for this computer (`first_run_model.KEY_LOCKED_NOTICE`), and
-  `scripts/create_fresh_databases.py` now passes the DPAPI wrap too.
+  `scripts/create_fresh_databases.py` now passes the DPAPI wrap too (3cf790b).
+- 2026-11-12: Step 1c sub-step 8: `ledger_keys.rotate_chain_key` (Master only): full check under the current key,
+  new wrapped key in the master, old key retired as `Rotation`, new key active, `Key rotation` checkpoint signed
+  with the new key. Entries after it chain across keys and every entry still verifies. `ledger_verify` gains
+  `check_before_key_change` and `record_key_checkpoint`.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
