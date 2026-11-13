@@ -291,6 +291,13 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   removed is a Marker break; the preview needs the machine wrap; the mirror logger logs the error type only; tests
   for each, and the leak check covers a failing company and the finish. The new service relies on auth's one
   allowed clock read (H2 known issue).
+- 2026-11-13: Step 1d mutation check (mutation-tester): 126 mutations, 109 killed. Tests added for the 10 survivors
+  that mattered, each now killed: a non-Master cannot list the companies left behind; a mistyped phrase is refused
+  before the password (no failed sign-in); a failed mirror is named in that company's result; `_left_behind` needs
+  the company's own fingerprint and its own company id; a new recovery code after a replacement re-wraps row 2; a
+  company with no active key records no checkpoint; a Key lost row whose signing key does not match is a Marker
+  break (not a crash); the intact-range wording for several entries; retiring may not change the DPAPI copy alone.
+  Seven survivors are equivalent or defence in depth (docs/next_step.md). Suite 2162 passed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

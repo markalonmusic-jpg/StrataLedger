@@ -406,3 +406,91 @@ def test_the_lost_check_is_repeated_inside_the_write(installation, monkeypatch):
 def test_the_preview_needs_the_machine_wrap(lost):
     with pytest.raises(TypeError):
         installation_keys.replacement_preview(lost.root)
+
+
+# --- Mutation check of Step 1d: the survivors -----------------------------------------------------------------------
+
+def test_a_non_master_cannot_list_the_companies_left_behind(lost):
+    clerk = lost.session(lost.user("clerk"))
+    with pytest.raises(PermissionDeniedError):
+        installation_keys.remaining_companies(clerk)
+
+
+def test_a_wrong_phrase_is_refused_before_the_password_is_checked(lost):
+    """A mistyped phrase never counts as a failed sign-in, even with a wrong password too."""
+    before = _snapshot(lost)
+    with pytest.raises(ValidationError) as caught:
+        _replace(lost, password="not the password", phrase="new ledger key")
+    assert str(caught.value) == installation_keys.WRONG_PHRASE
+    assert _snapshot(lost) == before                                    # no failed sign-in, no throttle row
+
+
+def test_a_mirror_failure_is_named_in_that_companys_result(lost, monkeypatch):
+    def failing(*args, **kwargs):
+        raise RuntimeError("master busy")
+    monkeypatch.setattr(ledger_verify, "_insert_mirror", failing)
+    result = _replace(lost)
+    statuses = {c["company_id"]: c for c in result.companies}
+    for created in lost.companies:                    # the companies whose lost key leaves a Key lost record
+        assert statuses[created["company_id"]]["status"] == "done"
+        assert statuses[created["company_id"]]["message"].endswith(
+            " " + ledger_verify.KEY_LOST_CHECKPOINT_NOT_MIRRORED)
+
+
+def test_a_company_with_no_active_key_records_no_checkpoint(installation):
+    """The test world's own companies have no ledger key in their files: nothing was lost, nothing is recorded."""
+    from modules.services import ledger_keys
+    ours = {c["company_id"] for c in installation.companies}
+    parent = [c for c in _registry(installation) if c["company_id"] not in ours][0]
+    [stored] = _rows(installation.master, "SELECT database_file_path FROM company_registry WHERE company_id = ?",
+                     (parent["company_id"],))
+    path = Path(config.BASE_PROJECT_DIR) / stored["database_file_path"]
+    assert _rows(path, "SELECT key_id FROM ledger_chain_key WHERE is_active = 1") == []
+    result = ledger_keys.start_new_key_epoch(installation.root, parent["company_id"],
+                                             confirm_company_code=parent["company_code"])
+    assert (result["checkpoint_id"], result["recorded_in"]) == (None, [])
+    assert "checkpoint_error" not in result
+    assert _rows(path, "SELECT 1 FROM ledger_checkpoint WHERE kind = 'Key lost'") == []
+
+
+def _left_behind_by_one(lost, tmp_path):
+    """Replace the key while one company's file is away, then bring it back: it is left behind."""
+    away = lost.companies[1]
+    aside = tmp_path / "aside.db"
+    shutil.move(_path(away), aside)
+    _replace(lost)
+    shutil.move(aside, _path(away))
+    [active] = _rows(_path(away), "SELECT fingerprint FROM ledger_chain_key WHERE is_active = 1")
+    return away, active["fingerprint"]
+
+
+def _store_chain_row(lost, company_id, fingerprint):
+    _master_write(lost, ("INSERT INTO company_key (company_id, purpose, fingerprint, wrapped_key, "
+                         "installation_key_id, created_at) VALUES (?, 'chain', ?, ?, 2, 't')",
+                         (company_id, fingerprint, bytes(61))))
+
+
+def test_a_stored_key_with_another_fingerprint_does_not_finish_a_company(lost, tmp_path):
+    away, _ = _left_behind_by_one(lost, tmp_path)
+    _store_chain_row(lost, away["company_id"], "f" * 64)            # a chain row under the new key, not its own
+    assert away["company_id"] in {c["company_id"] for c in installation_keys.remaining_companies(lost.root)}
+
+
+def test_another_companys_stored_key_does_not_finish_a_company(lost, tmp_path):
+    away, fingerprint = _left_behind_by_one(lost, tmp_path)
+    _store_chain_row(lost, lost.companies[0]["company_id"], fingerprint)      # its fingerprint, another company
+    assert away["company_id"] in {c["company_id"] for c in installation_keys.remaining_companies(lost.root)}
+
+
+def test_a_new_code_after_a_replacement_rewraps_the_new_key(lost):
+    _replace(lost)
+    issued = auth.issue_recovery_code(lost.root, PASSWORD, machine_wrap=FakeMachineWrap())
+    conn = sqlite3.connect(lost.master)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = {r["id"]: r for r in conn.execute("SELECT * FROM installation_key")}
+        assert key_store.open_recovery_copy(rows[2], issued.recovery_code) is not None
+        assert key_store.open_recovery_copy(rows[1], issued.recovery_code) is None
+        assert key_store.open_with_recovery_code(conn, issued.recovery_code) is not None
+    finally:
+        conn.close()

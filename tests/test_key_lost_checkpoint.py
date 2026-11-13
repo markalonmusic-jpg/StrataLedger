@@ -539,3 +539,31 @@ def test_a_key_lost_row_naming_no_key_is_a_marker_break(world, lost):
     _post(_context(world), 3000)
     _forge_key_lost(world, ref_id=999, through=3)
     assert (_full(world)["status"], _full(world)["first_broken"]["reason"]) == ("Broken", "Marker")
+
+
+# --- Mutation check of Step 1d: the survivors -----------------------------------------------------------------------
+
+def test_a_key_lost_row_whose_signing_key_does_not_match_its_fingerprint_is_a_marker_break(world, lost,
+                                                                                         monkeypatch):
+    """The key handed back for the checkpoint's key_id is not the one the file names: never trusted."""
+    epoch = _epoch(world)
+    real = ledger_verify._key_for
+
+    def wrong_for_the_new_key(context):
+        key_for = real(context)
+        return lambda key_id: bytes(range(32)) if key_id == epoch["new_key_id"] else key_for(key_id)
+    monkeypatch.setattr(ledger_verify, "_key_for", wrong_for_the_new_key)
+    result = _full(world)
+    assert (result["status"], result["first_broken"]["reason"]) == ("Broken", "Marker")
+    assert result["first_broken"]["entry_number"] == 2
+
+
+def test_a_broken_message_names_several_intact_entries_after_the_range(world, lost):
+    _epoch(world)
+    for cents in (3000, 4000):
+        _post(_context(world), cents)
+    entry_id = _post(_context(world), 5000)
+    _tamper(world, ("UPDATE journal_line SET memo = 'changed' WHERE entry_id = ?", (entry_id,)))
+    message = _full(world)["message"]
+    assert "Ledger check failed at entry JE-000005" in message
+    assert "Entries JE-000003 to JE-000004 before it are intact." in message

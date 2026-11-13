@@ -125,6 +125,8 @@ def test_a_retired_key_cannot_change_or_come_back(fresh, assignment, params):
 
 @pytest.mark.parametrize("extra, params", [
     ("recovery_blob = ?", (b"\x01" + bytes(60),)), ("machine_blob = NULL, machine_wrapped_at = NULL", ()),
+    ("machine_blob = ?", (b"other blob",)), ("machine_wrapped_at = 'later'", ()),
+    ("recovery_salt = ?", (b"\x09" * 16,)), ("recovery_wrapped_at = 'later'", ()),
 ])
 def test_retiring_does_not_also_rewrap(fresh, extra, params):
     _installation(fresh)
