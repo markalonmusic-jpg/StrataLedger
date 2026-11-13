@@ -306,3 +306,26 @@ def test_a_result_holding_a_recovery_code_never_shows_it(result):
         with pytest.raises(TypeError):
             leak(result)
     assert result[result._fields.index("recovery_code")] == code      # the caller still gets it
+
+
+# --- Mutation-test gaps ---------------------------------------------------------------------------------------
+
+def test_every_rewrap_uses_a_new_salt(master_path):
+    """KS2: the recovery copy gets its own new salt each time the code changes."""
+    created = _first(master_path)
+    salts = [_row(master_path)["recovery_salt"]]
+    first = auth.recover_master(master_path, created.recovery_code, NEW, machine_wrap=FakeMachineWrap())
+    salts.append(_row(master_path)["recovery_salt"])
+    auth.change_master_password(_master_session(master_path, NEW), NEW, first.recovery_code, "yet another passphrase")
+    salts.append(_row(master_path)["recovery_salt"])
+    assert len(set(salts)) == 3
+
+
+def test_when_both_copies_fail_the_new_code_is_still_the_masters_code(master_path):
+    """The not-restored message says the new code is saved: it must work for the next recovery."""
+    created = _first(master_path)
+    _damage_the_recovery_copy(master_path)
+    result = auth.recover_master(master_path, created.recovery_code, NEW,
+                                 machine_wrap=FakeMachineWrap(fail_unprotect=True))
+    assert not result.ledger_key_restored
+    auth.recover_master(master_path, result.recovery_code, "yet another passphrase")

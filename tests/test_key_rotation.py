@@ -192,3 +192,35 @@ def test_a_rotation_checkpoint_that_cannot_be_saved_never_undoes_the_rotation(wo
     assert result["checkpoint"]["no_checkpoint_reason"] == ledger_verify.KEY_CHECKPOINT_NOT_SAVED
     [active] = _rows(world.company_path, "SELECT key_id FROM ledger_chain_key WHERE is_active = 1")
     assert active["key_id"] == result["new_key_id"]
+
+
+# --- Mutation-test gaps ---------------------------------------------------------------------------------------
+
+def test_the_rotation_checkpoint_names_the_retired_key(world, company):
+    result = ledger_keys.rotate_chain_key(world.root, company["company_id"])
+    [checkpoint] = _rows(world.company_path,
+                         "SELECT ref_type, ref_id FROM ledger_checkpoint WHERE kind = 'Key rotation'")
+    assert checkpoint == {"ref_type": "ledger_chain_key", "ref_id": result["old_key_id"]}
+
+
+def test_a_non_master_is_refused_before_anything_else_is_looked_at(world, company, monkeypatch):
+    """Rule 10: the Master check comes first, so even a company Admin with a locked key store gets a denial (not
+    the key store's refusal)."""
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    admin = world.session(world.user("company_admin"))
+    conn = sqlite3.connect(world.master)
+    conn.execute("INSERT INTO user_company_access (user_id, company_id, role_code, access_mode) "
+                 "VALUES (?, ?, 'Admin', 'Grant')", (admin.user_id, company["company_id"]))
+    conn.commit()
+    conn.close()
+    companies.open_company(admin, company["company_id"])                  # the Admin may open the company
+    with pytest.raises(PermissionDeniedError):
+        ledger_keys.rotate_chain_key(admin, company["company_id"])
+
+
+def test_the_key_switch_checks_the_master_itself(world, company, real_keys):
+    clerk = world.session(world.user("clerk"))
+    context = _context(world, company["company_id"])
+    with pytest.raises(PermissionDeniedError):
+        ledger_keys._switch_keys(clerk, context, real_keys, real_keys.new_chain_key(), None, event="Ledger key rotated",
+                                 retire_reason="Rotation")

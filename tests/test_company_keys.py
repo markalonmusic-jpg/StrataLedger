@@ -365,3 +365,40 @@ def test_a_locked_key_store_refuses_before_any_file_is_built(world, monkeypatch)
     with pytest.raises(KeyStoreLockedError):
         _create(root)
     assert (_master_rows(world, "SELECT * FROM audit_log"), _master_rows(world, "SELECT * FROM auth_event")) == audit
+
+
+# --- Mutation-test gaps ---------------------------------------------------------------------------------------
+
+def test_a_locked_provider_never_stores_a_key(world):
+    _installation(world, FakeMachineWrap(fail_protect=True))
+    locked = key_store.LocalKeyProvider(world.master, FakeMachineWrap())
+    conn = sqlite3.connect(world.master)
+    try:
+        with pytest.raises(KeyStoreLockedError):
+            locked.store_chain_key(conn, 1, CHAIN, NOW)
+    finally:
+        conn.close()
+
+
+def test_a_stored_key_that_is_not_the_one_its_fingerprint_names_is_refused(world, real_keys):
+    """Even with the right associated data, a wrapped key B filed under key A's fingerprint never opens as A."""
+    created = _create(world.root)
+    [row] = _company_rows(world, created, "SELECT key_id, fingerprint FROM ledger_chain_key")
+    other = key_wrap.wrap_key(real_keys._installation, CHAIN,
+                              key_store.company_key_associated_data(created["company_id"], "chain", row["fingerprint"]))
+    conn = sqlite3.connect(world.master)
+    conn.execute("DROP TRIGGER company_key_no_update")      # simulate tampering with the file outside the app
+    conn.execute("UPDATE company_key SET wrapped_key = ? WHERE company_id = ?", (other, created["company_id"]))
+    conn.commit()
+    conn.close()
+    with pytest.raises(KeyUnavailableError):
+        key_store.LocalKeyProvider(world.master, FakeMachineWrap()).get_key(created["company_id"], row["key_id"])
+
+
+def test_a_missing_company_file_gives_no_key(world, real_keys):
+    created = _create(world.root)
+    [row] = _company_rows(world, created, "SELECT key_id FROM ledger_chain_key")
+    path = Path(config.BASE_PROJECT_DIR) / created["database_file_path"]
+    path.rename(path.with_suffix(".moved"))
+    with pytest.raises(KeyUnavailableError):
+        real_keys.get_key(created["company_id"], row["key_id"])
