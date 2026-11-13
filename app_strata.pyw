@@ -11,7 +11,7 @@ from modules.database import (
     ensure_company_database as initialize_company_database,
     ensure_master_database as initialize_master_database,
 )
-from modules import first_run_model
+from modules import first_run_model, platform_support
 from modules.views_first_run import render_first_run, show_unreadable_master
 from modules.views_new_company import render_create_company_form
 from modules.views_new_user import render_new_user_form
@@ -21,7 +21,7 @@ from modules.views_user_profile import render_user_profile_view
 from modules.views_wizard import CustomerIntakeWizard
 from modules.font_loader import ensure_inter_font
 from modules.sidebar import NavItem, Sidebar
-from modules.services import auth, companies, ledger_verify
+from modules.services import auth, companies, key_store, keys, ledger_verify
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError,
 )
@@ -61,6 +61,7 @@ class App(ctk.CTk):
         self.upload_dir = UPLOAD_DIR
         self.logo_file_path = ""
         self.session = None   # auth.Session after login
+        self.key_provider = None   # key_store.LocalKeyProvider once the master has its installation key
         self.context = None   # ServiceContext of the open company
         self.is_copilot_visible = True
         self._breadcrumb_parts = ("PLATFORM", "OVERVIEW")
@@ -84,7 +85,16 @@ class App(ctk.CTk):
             show_unreadable_master(self, self.master_db_path, error_type)
         else:
             self.ensure_master_database()
+            self.start_key_store()
             self.show_no_company_open_screen()
+
+    def start_key_store(self):
+        """Step 1c: open the installation key with DPAPI and make it this process's key provider, so posting and
+        creating a company can get keys. A locked key (another computer or Windows account) refuses both with a
+        plain sentence until the Master restores it with the recovery code."""
+        self.key_provider = key_store.LocalKeyProvider(self.master_db_path, platform_support.DPAPI)
+        keys.set_provider(self.key_provider)
+        return self.key_provider
 
     def ensure_master_database(self):
         initialize_master_database(self.master_db_path)

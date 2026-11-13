@@ -228,7 +228,15 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   passes (`platform_support.DPAPI`) and a recovery-code copy. A DPAPI failure still creates the Master, with the
   key locked (`FirstMaster.ledger_key_locked`); a failed recovery copy creates nothing. An installation that has a
   key refuses a second first run (it used to upsert the recovery row after a wiped user table).
-  `key_store.LocalKeyProvider` unlocks at start-up; `KeyStoreLockedError` added.
+  `key_store.LocalKeyProvider` unlocks at start-up; `KeyStoreLockedError` added (2440664).
+- 2026-11-12: Step 1c sub-step 6: `create_company` asks the provider for the company's first chain key before it
+  builds anything (a locked or absent key store refuses with KS6's sentence and nothing is created), writes the
+  active `ledger_chain_key` row in the file, and stores the wrapped key (`company_key`) and a `Ledger key created`
+  auth_event in the registry's master transaction. `LocalKeyProvider.get_key` finds the key by the file's
+  fingerprint (KS3). The app calls `App.start_key_store()` before the launcher and after first-run sign-in.
+  The suite's test switch `key_store.use_test_key_for_new_companies` (only with STRATALEDGER_ALLOW_TEST_KEYS=1,
+  KS7) is on for every test via tests/conftest.py. Posting works through the service outside tests from here;
+  there is no posting screen yet. A real-DPAPI test runs first run, start-up, create company, post and verify.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

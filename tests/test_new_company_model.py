@@ -166,3 +166,12 @@ def test_unexpected_errors_do_not_leak_details():
     title, message = model.explain_error(RuntimeError("secret internals /path/to/file.py line 3"))
     assert "secret" not in message and "file.py" not in message
     assert "log" in message.lower() and "nothing" in message.lower()
+
+
+def test_a_locked_key_store_says_what_to_do_and_that_nothing_was_created():
+    """Step 1c, KS6: creating a company while the ledger key is locked on this computer."""
+    from modules.services.errors import KeyStoreLockedError
+    from modules.services.keys import KEY_STORE_LOCKED
+    title, message = model.explain_error(KeyStoreLockedError(KEY_STORE_LOCKED))
+    assert title == "Cannot create the company"
+    assert message == "Ask the Master to restore the ledger key with the recovery code first. Nothing was created."

@@ -8,26 +8,39 @@
 * `LocalKeyProvider(master_db_path, machine_wrap)` opens the machine copy once at start-up and checks it against
   the fingerprint. `status` is 'unlocked', 'locked' (no machine copy, the machine wrap failed, or it opened to
   another key) or 'missing' (no installation key). Only an unlocked provider gives or makes keys.
+* Company chain keys (`new_chain_key`, `store_chain_key`): random, wrapped by the installation key with AES-GCM
+  in the master's `company_key`, bound to the company, purpose and fingerprint by the associated data.
+  `get_key(company_id, key_id)` finds the stored key by the fingerprint of the company file's key row (KS3).
+* The test switch `use_test_key_for_new_companies` makes create_company use the suite's fixed key and store
+  nothing in the master; it works only while STRATALEDGER_ALLOW_TEST_KEYS is "1" (KS7).
 * The key rows are not audited (KS9); each change writes an auth_event without the blob. Python cannot reliably
   wipe bytes from memory: the unlocked key lives in the provider for the life of the process.
 """
 import hashlib
 import hmac
 import logging
+import os
 
-from modules.services import key_wrap
-from modules.services.errors import KeyUnavailableError, ValidationError
+from modules.services import key_wrap, ledger_chain
+from modules.services.errors import KeyStoreLockedError, KeyUnavailableError, ValidationError
 from modules.services.keys import KEY_STORE_LOCKED, NO_KEY_MESSAGE, KeyProvider, SecretKey
+from modules.services.paths import resolve_company_path
 from modules.services.tx import read_connection
 
 INSTALLATION_FINGERPRINT_LABEL = b"StrataLedger installation key fingerprint v1"
 ALREADY_HAS_A_KEY = ("This installation already has a ledger key. Restore the Master with the recovery code "
                      "instead of setting up again.")
 
-_logger = logging.getLogger("strataledger.keys")
+TEST_KEYS_FLAG = "STRATALEDGER_ALLOW_TEST_KEYS"
+TEST_ONLY = "The test key switch is for the test suite only"
+CHAIN = "chain"
 
-__all__ = ["KEY_STORE_LOCKED", "NO_KEY_MESSAGE", "LocalKeyProvider", "create_installation_key",
-           "installation_fingerprint", "recovery_associated_data"]
+_logger = logging.getLogger("strataledger.keys")
+_test_new_company_key = None
+
+__all__ = ["KEY_STORE_LOCKED", "NO_KEY_MESSAGE", "LocalKeyProvider", "company_key_associated_data",
+           "create_installation_key", "installation_fingerprint", "recovery_associated_data",
+           "switched_on_test_key", "use_test_key_for_new_companies"]
 
 
 def installation_fingerprint(key):
@@ -37,6 +50,32 @@ def installation_fingerprint(key):
 
 def recovery_associated_data(fingerprint):
     return key_wrap.associated_data("installation_key", 1, "recovery", fingerprint)
+
+
+def company_key_associated_data(company_id, purpose, fingerprint):
+    return key_wrap.associated_data("company_key", company_id, purpose, fingerprint)
+
+
+# --- The test switch (KS7) ------------------------------------------------------------------------------------
+
+def _require_test_flag():
+    if os.environ.get(TEST_KEYS_FLAG) != "1":
+        raise RuntimeError(TEST_ONLY)
+
+
+def use_test_key_for_new_companies(key):
+    """Tests only: new companies get this fixed chain key (bytes), or the real path again with None."""
+    global _test_new_company_key
+    _require_test_flag()
+    _test_new_company_key = None if key is None else SecretKey(key)
+
+
+def switched_on_test_key():
+    """The switched-on test key, or None. A switch left on without the flag is refused."""
+    if _test_new_company_key is None:
+        return None
+    _require_test_flag()
+    return _test_new_company_key
 
 
 def _machine_copy(machine_wrap, key):
@@ -77,6 +116,7 @@ class LocalKeyProvider(KeyProvider):
         self._master_db_path = master_db_path
         self._machine_wrap = machine_wrap
         self._installation = None
+        self._cache = {}
         self.status = "missing"
         self.unlock()
 
@@ -87,6 +127,7 @@ class LocalKeyProvider(KeyProvider):
     def unlock(self):
         """Open the machine copy. Sets `status`; never raises for a locked key."""
         self._installation = None
+        self._cache = {}
         conn = read_connection(self._master_db_path)
         try:
             row = conn.execute("SELECT fingerprint, machine_blob FROM installation_key WHERE id = 1").fetchone()
@@ -116,7 +157,61 @@ class LocalKeyProvider(KeyProvider):
 
     def get_key(self, company_id, key_id):
         self._require_unlocked(KeyUnavailableError(NO_KEY_MESSAGE))
-        raise KeyUnavailableError(f"Ledger key {key_id} is not available on this computer.")
+        cached = self._cache.get((company_id, key_id))
+        if cached is not None:
+            return cached
+        unavailable = KeyUnavailableError(f"Ledger key {key_id} is not available on this computer.")
+        fingerprint = self._company_fingerprint(company_id, key_id)
+        if fingerprint is None:
+            raise unavailable
+        conn = read_connection(self._master_db_path)
+        try:
+            row = conn.execute("SELECT wrapped_key FROM company_key WHERE company_id = ? AND purpose = ? "
+                               "AND fingerprint = ?", (company_id, CHAIN, fingerprint)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise unavailable
+        try:
+            key = key_wrap.unwrap_key(self._installation, bytes(row["wrapped_key"]),
+                                      company_key_associated_data(company_id, CHAIN, fingerprint))
+        except KeyUnavailableError:
+            raise unavailable from None
+        if not hmac.compare_digest(ledger_chain.fingerprint(key.use_for_hmac()), fingerprint):
+            raise unavailable
+        self._cache[(company_id, key_id)] = key
+        return key
+
+    def _company_fingerprint(self, company_id, key_id):
+        """The fingerprint of the company file's ledger_chain_key row `key_id`, or None."""
+        conn = read_connection(self._master_db_path)
+        try:
+            registry = conn.execute("SELECT database_file_path FROM company_registry WHERE company_id = ?",
+                                    (company_id,)).fetchone()
+        finally:
+            conn.close()
+        if registry is None:
+            return None
+        path = resolve_company_path(registry["database_file_path"])
+        if not os.path.isfile(path):
+            return None
+        conn = read_connection(path)
+        try:
+            row = conn.execute("SELECT fingerprint FROM ledger_chain_key WHERE key_id = ?", (key_id,)).fetchone()
+        finally:
+            conn.close()
+        return row["fingerprint"] if row else None
+
+    def new_chain_key(self):
+        self._require_unlocked(KeyStoreLockedError(KEY_STORE_LOCKED))
+        return SecretKey(ledger_chain.new_key())
+
+    def store_chain_key(self, conn, company_id, key, now):
+        self._require_unlocked(KeyStoreLockedError(KEY_STORE_LOCKED))
+        fingerprint = ledger_chain.fingerprint(key.use_for_hmac())
+        blob = key_wrap.wrap_key(self._installation, key, company_key_associated_data(company_id, CHAIN, fingerprint))
+        conn.execute("INSERT INTO company_key (company_id, purpose, fingerprint, wrapped_key, created_at) "
+                     "VALUES (?, ?, ?, ?, ?)", (company_id, CHAIN, fingerprint, blob, now))
 
     def __repr__(self):
         return f"<LocalKeyProvider {self.status}>"

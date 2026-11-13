@@ -11,6 +11,17 @@ import modules.database as database
 os.environ["STRATALEDGER_ALLOW_TEST_KEYS"] = "1"
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _companies_use_the_fixed_test_key():
+    """create_company gives every new company the suite's fixed chain key (TEST_CHAIN_KEY) and stores nothing in
+    the master (key_store test switch, KS7). Tests of the real key path turn it off for themselves."""
+    from modules.services import key_store
+    from tests.ledger_helpers import TEST_CHAIN_KEY
+    key_store.use_test_key_for_new_companies(TEST_CHAIN_KEY)
+    yield
+    key_store.use_test_key_for_new_companies(None)
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "live_clipboard: uses the real Windows clipboard; runs only when "
                                        "STRATALEDGER_LIVE_CLIPBOARD=1")

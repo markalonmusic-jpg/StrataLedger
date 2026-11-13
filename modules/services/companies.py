@@ -11,8 +11,8 @@ import unicodedata
 import uuid
 
 import modules.database as database
-from modules.services import (accounts, auth, authz, chart_templates, clock, company_settings, periods,
-                              role_templates, storage)
+from modules.services import (accounts, auth, authz, chart_templates, clock, company_settings, key_store, keys,
+                              ledger_chain, periods, role_templates, storage)
 from modules.services.context import ServiceContext
 from modules.services.errors import NotFoundError, ServiceError, ValidationError
 from modules.services.paths import resolve_company_path
@@ -123,6 +123,12 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
                    date_format=None, timezone=None, require_separate_approver=None, admin_user_id=None):
     """Create a company file and register it. Returns {'company_id', 'company_code', 'database_file_path'}.
 
+    The company's first ledger chain key is made here (Step 1c): the key provider makes it before anything is
+    built, so a locked key store refuses with KeyStoreLockedError (KS6) and nothing is created. The file gets the
+    active ledger_chain_key row (fingerprint only); the master gets the wrapped key in the same transaction as the
+    registry row. Under the test switch (key_store.use_test_key_for_new_companies, tests only, KS7) the suite's
+    fixed key is used and nothing is stored in the master.
+
     Top-level companies: the Master only. A subsidiary (parent_company_id): a user holding company.create in the
     parent. A subsidiary copies its parent's chart, roles, approval policies and controls unless a template or a
     chart CSV is given (S7). The Master may name a user to become the new company's Admin; an Admin who creates
@@ -191,6 +197,9 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
     if os.path.exists(final):
         raise ValidationError(f"A company file named {code}.db already exists")
     temp = storage.data_path(f"Companies/{code}.tmp-{uuid.uuid4().hex[:8]}.db")
+    test_key = key_store.switched_on_test_key()
+    provider = keys.get_provider()
+    chain_key = test_key if test_key is not None else provider.new_chain_key()   # KS6: refuse while locked
 
     # 2. Build the file under a temporary name, then rename and register in one master transaction.
     renamed = False
@@ -228,6 +237,8 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
                 _copy_roles_policies_controls(conn, parent_path)
             else:
                 role_templates.seed_starter_roles(conn, chart_key, actor.now)
+            conn.execute("INSERT INTO ledger_chain_key (fingerprint, created_at, created_by) VALUES (?, ?, ?)",
+                         (ledger_chain.fingerprint(chain_key.use_for_hmac()), actor.now, session.user_id))
         with write_transaction(session.master_db_path, auth._Actor(session.user_id)) as conn:
             if conn.execute("SELECT 1 FROM company_registry WHERE company_code = ?", (code,)).fetchone():
                 raise ValidationError(f"The company code {code} is already used")
@@ -235,6 +246,10 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
                 "INSERT INTO company_registry (company_code, legal_name, database_file_path, parent_company_id) "
                 "VALUES (?, ?, ?, ?) RETURNING company_id",
                 (code, legal_name, relative, parent_company_id)).fetchone()[0]
+            if test_key is None:
+                provider.store_chain_key(conn, company_id, chain_key, actor.now)
+            auth._insert_event(conn, "Ledger key created", user_id=session.user_id, actor_user_id=session.user_id,
+                               company_id=company_id)
             os.replace(temp, final)
             renamed = True
             _grant_admins(conn, company_id, admin_ids)

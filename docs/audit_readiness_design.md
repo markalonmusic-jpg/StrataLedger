@@ -232,6 +232,19 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   optional `company_id`. A wrapped key is `version | nonce | ciphertext | tag` (`key_wrap.py`); its associated
   data names the row (`associated_data("company_key", company_id, purpose, fingerprint)`), so a blob copied to
   another row does not open.
+* **As built in Step 1c sub-steps 5-6:**
+  * The installation key's fingerprint is `HMAC-SHA256(key, "StrataLedger installation key fingerprint v1")`;
+    the recovery copy's associated data is `("installation_key", 1, "recovery", fingerprint)`.
+  * `auth.create_first_master(..., machine_wrap=)` makes the key in the Master's transaction. The first-run screen
+    passes `platform_support.DPAPI`. Without a DPAPI copy the Master is created and `ledger_key_locked` is True;
+    without a recovery copy nothing is created. An installation that already has a key refuses a second first run.
+  * `LocalKeyProvider` is set by `App.start_key_store()` before the launcher and after first-run sign-in. It
+    holds the installation key in memory for the life of the process and caches unwrapped chain keys.
+  * `create_company` gets the chain key from the provider before building anything (KS6), then writes the file's
+    key row and, in the registry's master transaction, the `company_key` row and a `Ledger key created`
+    auth_event.
+  * Not built yet: no screen tells the Master at first run that the key is locked, and a locked key cannot be
+    restored until sub-step 7 (recovery re-wrap).
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).

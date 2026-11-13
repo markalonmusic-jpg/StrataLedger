@@ -231,6 +231,7 @@ class FirstRunSetup:
             return False
         self._drop_secrets()
         self.app.session = session
+        self.app.start_key_store()   # Step 1c: the new installation key becomes the key provider
         self.stage = "offer"
         self._set_close_handler(self.app.destroy)
         if ask_confirm(self.container, "Setup complete",

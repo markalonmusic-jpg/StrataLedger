@@ -99,7 +99,9 @@ in code (`tests/test_config_paths.py` fails on one).
   `key_wrap.py` (Step 1c) is the only importer of `cryptography`: AES-256-GCM key wrapping bound to its row by
   associated data, and the recovery-code key from scrypt (KS2, KS4). `key_store.py` (Step 1c) makes the
   installation key at first run (`auth.create_first_master(..., machine_wrap=)`; DPAPI copy plus recovery copy)
-  and holds `LocalKeyProvider`, which unlocks it at start-up (status unlocked, locked or missing).
+  and holds `LocalKeyProvider`, which unlocks it at start-up (status unlocked, locked or missing), makes and
+  stores each new company's chain key and finds it by fingerprint; `App.start_key_store()` sets it as the
+  provider. The test switch `use_test_key_for_new_companies` works only under STRATALEDGER_ALLOW_TEST_KEYS.
 - `tests/` - pytest suite. `scripts/` and `tools/` - developer tools. `.claude/agents/` - subagents.
 - `modules/` - screens and the database layer. LEGACY screens (the files in `CONNECT_ALLOW_LIST` in
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,

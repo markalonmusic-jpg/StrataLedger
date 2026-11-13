@@ -72,6 +72,9 @@ class FakeApp:
         self.calls.append(("reset",))
         self.session = None
 
+    def start_key_store(self):
+        self.calls.append(("key_store", self.session is not None))
+
 
 @pytest.fixture
 def tk_root(tk_app):
@@ -219,6 +222,17 @@ def finish(setup, answer=True):
     setup.wizard.vars["acknowledged"].set(True)
     setup.wizard.on_ack_changed()
     return setup.wizard.continue_()
+
+
+def test_continue_starts_the_key_store_before_offering_the_first_company(setup):
+    """Step 1c: the new installation key becomes the provider at once, so the first company can get its key."""
+    assert finish(setup) is True
+    assert setup.app.calls.index(("key_store", True)) < setup.app.calls.index(("new_company", True))
+
+
+def test_later_also_starts_the_key_store(setup):
+    assert finish(setup, answer=False) is True
+    assert ("key_store", True) in setup.app.calls
 
 
 def test_continue_signs_in_and_offers_the_first_company(setup):
