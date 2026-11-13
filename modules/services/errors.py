@@ -6,7 +6,21 @@ and 12). SchemaUpgradeBlockedError stays in modules/database.py.
 
 
 class ServiceError(Exception):
-    """Base class for every error a service function raises on purpose."""
+    """Base class for every error a service function raises on purpose.
+
+    log_message (decision R30): a fixed sentence the log file gets instead of the message, for a message that
+    quotes what a person typed (a rejection reason). The person still sees the full message.
+    """
+
+    def __init__(self, *args, log_message=None):
+        super().__init__(*args)
+        self.log_message = log_message
+
+
+def log_text(error):
+    """The text the log file gets for an error: its log_message when it has one, else the message."""
+    log_message = getattr(error, "log_message", None)
+    return log_message if log_message is not None else str(error)
 
 
 class ValidationError(ServiceError):

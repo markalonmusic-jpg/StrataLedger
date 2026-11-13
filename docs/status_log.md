@@ -339,6 +339,15 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   the last approval time, a self-approval in an earlier step, the changed-while-sending refusal,
   `App.action_context` with no company, the checker's lookalike call); the rest are equivalent or defence in depth
   (docs/next_step.md). New `tools/hand_check_step4.py` for the owner's hand check. Suite 2294 passed, 6 xfailed.
+- 2026-11-13: The owner's answers to the Step 4 questions, R27-R31. R27: refusals are plain sentences with no
+  permission code (`authz.denial_message` from the denial's reason; approval step order, role and limit sentences
+  that name who can approve; Master-only and user-management sentences); static scans in
+  tests/test_refusal_messages.py. R28: with separation on the submitter may not approve either. R29: the "only a
+  person" denial names the approve permission. R30: rejection reasons never reach the log file
+  (`ServiceError.log_message`, `logging_setup.LogMessageFilter`, a static ban on logging an error's text). R31:
+  `create_fresh_databases.py --no-prompt`, and early end of input exits cleanly. New `money.py`. step-reviewer
+  and secrets-auditor findings fixed (filter gaps, scan blind spots, the archived/missing-company oracle, the
+  agent sentence, three sentences without a next step). Suite 2386 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

@@ -733,3 +733,28 @@ def test_submit_refuses_an_entry_whose_project_changed_while_it_was_sent(team, m
     with pytest.raises(ValidationError, match="changed while it was being sent"):
         submit(team, entry_id)
     assert requests(team, entry_id) == []
+
+
+# --- R28: the submitter is barred from approving like the creator ------------------------------------------------
+
+def test_the_submitter_of_someone_elses_entry_cannot_approve_it(team):
+    settings(team, require_separate_approver=1)
+    _require_approval(team)
+    team.grant_permission("PARENT", "APPROVER", "je.create")
+    entry_id = make(team)                                               # the poster creates it
+    request_id = submit(team, entry_id, who="appr1")                    # appr1 sends it
+    with pytest.raises(PermissionDeniedError, match="the entry you sent for approval; ask a colleague"):
+        approvals.approve(as_(team, "appr1"), request_id)
+    approvals.approve(as_(team, "appr2"), request_id)
+    post(team, entry_id, who="poster2")
+
+
+def test_a_submitters_approval_made_while_separation_was_off_stops_counting(team):
+    settings(team, require_separate_approver=0)
+    _require_approval(team)
+    team.grant_permission("PARENT", "APPROVER", "je.create")
+    entry_id = make(team)
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id, who="appr1"))
+    settings(team, require_separate_approver=1)
+    refused(team, lambda: post(team, entry_id, who="poster2"), PostingError,
+            "approved by the person who created it or sent it for approval; send it for approval again")

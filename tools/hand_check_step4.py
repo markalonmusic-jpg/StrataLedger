@@ -121,7 +121,7 @@ def main():
                                 [(1, "APPROVER", 1), (2, "CONTROLLER", 1)])
         e = entry(200_000)
         request = show("send for approval", submit(e))
-        show("Carl approves first", lambda: approvals.approve(ctx("carl"), request), "Not permitted")
+        show("Carl approves first", lambda: approvals.approve(ctx("carl"), request), "must be approved first")
         show("Anna approves step 1", lambda: approvals.approve(ctx("anna"), request))
         show("post", post(e), "step 2 of 2")
         show("Carl approves step 2", lambda: approvals.approve(ctx("carl"), request))
@@ -130,7 +130,8 @@ def main():
         show("clerk edits the description", lambda: ledger.update_entry(ctx("clerk"), e, description="edited"))
         show("post", post(e), "cancelled because the entry was changed")
         request = show("send again", submit(e))
-        show("Carl approves (back at step 1)", lambda: approvals.approve(ctx("carl"), request), "Not permitted")
+        show("Carl approves (back at step 1)", lambda: approvals.approve(ctx("carl"), request),
+             "must be approved first")
         show("Ben approves step 1", lambda: approvals.approve(ctx("ben"), request))
         show("Carl approves step 2", lambda: approvals.approve(ctx("carl"), request))
         show("post", post(e))
@@ -138,7 +139,7 @@ def main():
         print("5. A rejection needs a reason and a change")
         e = entry(300_000)
         request = show("send for approval", submit(e))
-        show("reject with no reason", lambda: approvals.reject(ctx("anna"), request, " "), "reason is required")
+        show("reject with no reason", lambda: approvals.reject(ctx("anna"), request, " "), "Give a reason")
         show("reject", lambda: approvals.reject(ctx("anna"), request, "Wrong account."))
         show("post", post(e), "rejected")
         show("send again unchanged", submit(e), "Change the entry before sending it again")
@@ -155,10 +156,14 @@ def main():
         show("post the agent's entry", post(agent), "send it for approval first")
         request = show("the agent sends it", submit(agent, origin="Agent"))
         show("the agent approves it", lambda: approvals.approve(ctx("anna", "Agent"), request), "Only a person")
+        code = world.rows("PARENT", "SELECT permission_code FROM access_event ORDER BY event_id DESC LIMIT 1")[0]
+        print(f"     the denial log names {code['permission_code']} (the sentence above does not)")
+        if code["permission_code"] != "je.approve":
+            problems.append("the agent's approve denial does not name je.approve in the log")
         show("Anna approves step 1", lambda: approvals.approve(ctx("anna"), request))
         show("Carl approves step 2 (the two-step policy covers every journal entry)",
              lambda: approvals.approve(ctx("carl"), request))
-        show("the agent posts it", post(agent, origin="Agent"), "Not permitted")
+        show("the agent posts it", post(agent, origin="Agent"), "The AI assistant cannot post entries")
         show("the clerk posts it", post(agent))
         imported = entry(2_000, origin="Import", source="Import")
         request = show("the import sends it", submit(imported, origin="Import"))
@@ -168,11 +173,20 @@ def main():
         show("the import posts it", post(imported, origin="Import"), "posted by a person")
         show("the clerk posts it", post(imported))
 
-        print("7. Separation of duties on: the creator cannot post their own entry")
+        print("7. Separation of duties on: the creator cannot post, the submitter cannot approve")
         setting(require_separate_approver=1)
         e = entry(4_000)
         show("the clerk posts their own entry", post(e), "different person to post")
         show("clerk2 posts it", post(e, who="clerk2"))
+        setting(manual_entry_approval=1)
+        e = entry(500_000)                        # over the 1,000.00 threshold set in section 2
+        request = show("the Admin sends the clerk's entry", submit(e, who="admin"))
+        show("the Admin approves what they sent", lambda: approvals.approve(ctx("admin"), request),
+             "the entry you sent for approval")
+        show("Anna approves step 1", lambda: approvals.approve(ctx("anna"), request))
+        show("Carl approves step 2", lambda: approvals.approve(ctx("carl"), request))
+        show("clerk2 posts it", post(e, who="clerk2"))
+        setting(manual_entry_approval=0)
 
         print("8. The seal covers the approver")
         entries = []

@@ -147,7 +147,7 @@ def test_kwargs_for_csv_and_copy():
 # --- Errors say what to do next -------------------------------------------------------------------
 
 @pytest.mark.parametrize("error,fragment", [
-    (PermissionDeniedError("Not permitted: master"), "permission"),
+    (PermissionDeniedError("Only the Master can do this; ask the Master to sign in and do it."), "permission"),
     (ValidationError("The company code ACME is already used"), "different"),
     (ValidationError("Enter the company's legal name"), "correct"),
     (NotFoundError("No such company: 9"), "choose again"),

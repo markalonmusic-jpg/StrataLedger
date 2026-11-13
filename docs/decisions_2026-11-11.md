@@ -196,6 +196,11 @@ R. Phase 2.5 ledger and billing services:
 - R24 Posting records and seals the last approver
 - R25 The stale ledger xfails are rewritten in step 4
 - R26 The close checkpoint is signed with a fresh context
+- R27 Refusals are plain sentences; permission codes go to the log only
+- R28 With separation on, the submitter may not approve either
+- R29 The "only a person" denial names the approve permission
+- R30 Rejection reasons never reach the log file
+- R31 The rebuild script has a non-interactive mode
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1073,3 +1078,40 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
 - R26 (owner, STOP 2 answer 1) `App.close_company_ledger`, used at logout and app exit, signs its checkpoint with
   `action_context()`, so the checkpoint records the time the company was closed. Closing never blocks: a context
   that cannot be built is logged and the checkpoint skipped.
+- R27 (owner, Step 4 STOP answer 3) No message a person sees contains a permission code. Every refusal says why
+  and what to do next; the code is kept in the denial log (`access_event.permission_code`, `auth_event`) only.
+  `authz.denial_message(origin, permission, reason)` builds the default sentence from the permission's
+  description and the reason for the denial (role, project scope, no access, inactive role or user, archived
+  company, wrong file, agent). The AI assistant trying to post is told "The AI assistant cannot post entries; a
+  person posts the entry after it is approved." An approver out of step order is told which step comes first,
+  by which role, and when they can act; a role that fits no open step is told which role can; a missing or
+  exceeded approval limit names the roles whose limit covers the amount, and an Admin. A rejection without a
+  reason asks for one "so the preparer knows what to fix". Master-only actions and the user-management refusals
+  have their own sentences. tests/test_refusal_messages.py scans every service refusal for code-shaped words
+  (two lower-case words joined by a dot, two letters or more each side, so decimals and "e.g." pass; the only
+  allowed words are file names ending in .db or .sql) and for a permission put into an f-string, in refusal
+  calls, in module-level sentences and in what `*_message` functions return. The AI-assistant sentence is used
+  only for a code an agent may never use; an allowed code the user's role lacks gets the role sentence. A user
+  without access to a company is told only that (not whether it exists or is archived); the Master is told to
+  restore an archived company first.
+- R28 (owner, Step 4 STOP answer 1) With `require_separate_approver` on, neither the creator nor the submitter of
+  a document may approve or reject it (a logged denial: "...approve the entry you sent for approval; ask a
+  colleague..."). With it off, an approval by either is flagged `self_approved` (R3), so the posting gate's
+  self-approval check (step 4) also catches the submitter's approval once separation is turned on. Posting's
+  creator rule (R17) is unchanged. The baseline comment on `self_approved` is not edited (pre-release hash).
+- R29 (owner, Step 4 STOP answer 2) The "only a person may approve" denial (R23) reads the request first, so its
+  `access_event` row names the approve permission (`je.approve`, `import.approve`, ...); a missing request is
+  denied with no code. It is still denied before any write.
+- R30 (owner, Step 4 STOP answer 4) Rejection reasons are never written to the log file. A refusal that quotes the
+  reason (posting a rejected entry, resubmitting it unchanged) carries a fixed `log_message` without it
+  (`ServiceError(..., log_message=...)`, `errors.log_text`); the file handler's `LogMessageFilter` writes that
+  sentence instead of the error's text wherever the error object is logged: as the message, as an argument and
+  in the traceback, searching causes, contexts (also after `from None`) and exception groups, so an error that
+  quotes a hidden one is cleaned too. The filter cannot see an error's text logged as a string, so a static test
+  forbids logger calls that pass an f-string, `str()`, `repr()`, `.args`, `%`/`.format()` text,
+  `format_exc()` or a reason, in modules/ and app_strata.pyw. Another static test requires `log_message=` on
+  every service error that quotes a reason (any `reason_text(` call). The person still sees the reason; it stays
+  in `approval_action.reason`.
+- R31 (owner, Step 4 STOP answer 5) `scripts/create_fresh_databases.py --apply --no-prompt` rebuilds without
+  asking to create the first Master and exits 0. Input that ends early (a shell that reports a terminal but has
+  no input, as Git Bash run by a tool) ends with "No answer was read; no Master was created." and exit 0.

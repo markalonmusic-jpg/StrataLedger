@@ -26,6 +26,12 @@ from modules.services.tx import read_connection, write_transaction
 
 NEUTRAL_EMAIL = "This person may already have an account. Ask your Master to grant access."
 USERS_MANAGE = "company.users.manage"
+# The refusals a person sees (R27: the code goes to the denial log only).
+ADMIN_ROLE_IS_THE_MASTERS = "Only the Master can give someone the Admin role; ask the Master."
+BROADER_ROLE = "You can only assign a role whose permissions your own role also has; ask an Admin."
+ADMIN_CHANGE_IS_THE_MASTERS = "Only the Master can change or remove an Admin's access; ask the Master."
+RESET_MASTER_OR_ADMIN = "Only the Master can reset the password of the Master or an Admin; ask the Master."
+RESET_OUTSIDE = "You can reset passwords only for users in a company where you manage users; ask an Admin."
 
 
 # --- Users -------------------------------------------------------------------------------------
@@ -96,7 +102,7 @@ def authorize_reset(session, actor, target):
     if actor["is_master"] == 1:
         return
     if target["is_master"] == 1 or _holds_admin_anywhere(session, target["user_id"]):
-        auth._deny_master(session, USERS_MANAGE)
+        auth._deny_master(session, USERS_MANAGE, RESET_MASTER_OR_ADMIN)
     for company_id in _granted_companies(session, target["user_id"]):
         try:
             context = _company_context(session, company_id)
@@ -104,7 +110,7 @@ def authorize_reset(session, actor, target):
             continue
         if authz.is_allowed(context, USERS_MANAGE):
             return
-    auth._deny_master(session, USERS_MANAGE)
+    auth._deny_master(session, USERS_MANAGE, RESET_OUTSIDE)
 
 
 # --- Access ----------------------------------------------------------------------------------
@@ -222,13 +228,13 @@ def _check_assignable(actor, context, role_code):
     if actor["is_master"] == 1:
         return
     if role_code == "Admin":
-        authz.deny(context, USERS_MANAGE, record_type="role")
+        authz.deny(context, USERS_MANAGE, record_type="role", message=ADMIN_ROLE_IS_THE_MASTERS)
     actor_role = authz.current_access(context).role_code
     if actor_role == "Admin":
         return
     actor_info = _role_permissions(context, actor_role) if actor_role else None
     if actor_info is None or not codes <= actor_info[1]:
-        authz.deny(context, USERS_MANAGE, record_type="role")
+        authz.deny(context, USERS_MANAGE, record_type="role", message=BROADER_ROLE)
 
 
 def _guard_admin_removal(actor, context, target_user_id, *, new_role):
@@ -241,7 +247,8 @@ def _guard_admin_removal(actor, context, target_user_id, *, new_role):
     finally:
         conn.close()
     if current == "Admin":
-        authz.deny(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
+        authz.deny(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id,
+                   message=ADMIN_CHANGE_IS_THE_MASTERS)
 
 
 def _holds_admin_anywhere(session, user_id):

@@ -281,7 +281,8 @@ def test_all_scope_role_is_not_limited(world):
 def test_denial_is_logged_without_values(world, staff):
     with pytest.raises(PermissionDeniedError) as error:
         authz.authorize(world.ctx(staff, "PARENT"), "je.post", record_type="journal_entry", record_id=42)
-    assert str(error.value) == "Not permitted: je.post"
+    assert str(error.value) == ("Your role does not allow you to post journal entries; "
+                                "ask an Admin to add this to your role.")
     event = world.events("PARENT")[0]
     assert event == {
         "event_id": event["event_id"], "occurred_at": event["occurred_at"], "user_id": staff,

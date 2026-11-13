@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import modules.database as database
-from modules.services import key_store, passwords
+from modules.services import authz, key_store, passwords
 from modules.services.errors import (
     AuthenticationError, KeyStoreLockedError, LoginThrottledError, PasswordChangeRequiredError,
     PermissionDeniedError, ValidationError,
@@ -441,7 +441,7 @@ def active_user(session):
     finally:
         conn.close()
     if row is None or row["is_active"] != 1:
-        raise PermissionDeniedError("Not permitted")
+        raise PermissionDeniedError(authz.USER_INACTIVE_MESSAGE)
     if row["must_change_password"] == 1:
         raise PasswordChangeRequiredError("Change your password before continuing")
     return row
@@ -455,12 +455,18 @@ def require_master(session, permission_code="master"):
     return user
 
 
-def _deny_master(session, permission_code):
-    """Log an installation-level denial (no company file applies) and raise."""
+MASTER_ONLY = "Only the Master can do this; ask the Master to sign in and do it."
+
+
+def _deny_master(session, permission_code, message=MASTER_ONLY):
+    """Log an installation-level denial (no company file applies) and raise.
+
+    The code goes to auth_event; the person sees `message`, never the code (R27).
+    """
     _auth_write(session.master_db_path, lambda conn: _insert_event(
         conn, "Denied", username=session.username, user_id=session.user_id, actor_user_id=session.user_id,
         permission_code=permission_code))
-    raise PermissionDeniedError(f"Not permitted: {permission_code}")
+    raise PermissionDeniedError(message)
 
 
 # --- internals -----------------------------------------------------------------------------------

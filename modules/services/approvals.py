@@ -39,6 +39,8 @@ ALLOWED_STATUS_CHANGES = {
 }
 _CANCELLABLE = ("Pending", "Approved")
 ONLY_A_PERSON = "Only a person can approve or reject; sign in and do it yourself."
+REASON_NEEDED = "Give a reason for rejecting it, so the preparer knows what to fix."
+ALREADY_ACTED = "You have already acted on this approval request; another approver completes the open step."
 _NOUN = {"journal_entry": "entry"}    # how a refusal names the record; "document" otherwise
 
 Slot = namedtuple("Slot", "step_no role_code")
@@ -47,18 +49,25 @@ _Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privil
 
 # --- The separate-approver rule (shared by approvals and later services) ---------------------
 
+def separation_message(noun, *, submitted):
+    """The separate-approver refusal for an approver who created, or sent for approval, the record."""
+    did = "sent for approval" if submitted else "created"
+    return f"This company needs a different person to approve the {noun} you {did}; ask a colleague to approve it."
+
+
 def check_separate_approver(context, created_by_user_id, *, permission_code=None, record_type=None,
-                            record_id=None, message=None):
+                            record_id=None, message=None, submitted_by_user_id=None, submitter_message=None):
     """Apply require_separate_approver to an approval or posting by context.user_id.
 
-    Returns True when the approver is the creator and the company allows it (the
-    action must then be flagged self-approved), False when they differ. When the
-    setting is on (or no settings row exists: the safe default) and the approver
-    is the creator, logs a denial and raises PermissionDeniedError. Applies to
-    the Master and Admin too. Call it before opening a write transaction. `message` is the
-    sentence the denial shows (authz.deny's default otherwise).
+    Returns True when the approver is the creator, or the submitter when one is given (R28), and the company
+    allows it (the action must then be flagged self-approved), False otherwise. When the setting is on (or no
+    settings row exists: the safe default) and the approver is the creator or the submitter, logs a denial and
+    raises PermissionDeniedError. Applies to the Master and Admin too. Call it before opening a write
+    transaction. `message` / `submitter_message` are the sentences the denial shows for the creator / the
+    submitter (separation_message for a "document" otherwise).
     """
-    if created_by_user_id != context.user_id:
+    is_creator = created_by_user_id == context.user_id
+    if not is_creator and (submitted_by_user_id is None or submitted_by_user_id != context.user_id):
         return False
     conn = read_connection(context.company_db_path)
     try:
@@ -66,7 +75,11 @@ def check_separate_approver(context, created_by_user_id, *, permission_code=None
     finally:
         conn.close()
     if row is None or row["require_separate_approver"] == 1:
-        authz.deny(context, permission_code, record_type=record_type, record_id=record_id, message=message)
+        if is_creator:
+            sentence = message or separation_message("document", submitted=False)
+        else:
+            sentence = submitter_message or separation_message("document", submitted=True)
+        authz.deny(context, permission_code, record_type=record_type, record_id=record_id, message=sentence)
     return True
 
 
@@ -127,8 +140,10 @@ def submit_in_transaction(conn, context, document_type, record_type, record_id, 
     newest = request_state(conn, record_type, record_id)
     if (newest is not None and newest["status"] == "Rejected" and document_digest is not None
             and newest["document_digest"] == document_digest):
-        raise ValidationError(f"Change the {_NOUN.get(record_type, 'document')} before sending it again; "
-                              f"it was rejected: {reason_text(newest['reason'])}.")
+        noun = _NOUN.get(record_type, "document")
+        raise ValidationError(f"Change the {noun} before sending it again; it was rejected: "
+                              f"{reason_text(newest['reason'])}.",
+                              log_message=f"Change the {noun} before sending it again; it was rejected.")
     policy_id, chain = _chain_for(conn, document_type, amount_cents)
     try:
         return conn.execute(
@@ -163,7 +178,7 @@ def approve(context, request_id):
 def reject(context, request_id, reason):
     """Reject the request from this user's slot in the open step; ends the request."""
     if reason is None or not str(reason).strip():
-        raise ValidationError("A reason is required to reject")
+        raise ValidationError(REASON_NEEDED)
     _require_person(context, request_id)
     request = _load_request(context, request_id)
     check_approval_limit(context, request["document_type"], request["amount_cents"], request["project_id"],
@@ -220,7 +235,7 @@ def request_state(conn, record_type, record_id):
     Keys: request_id, status, document_type, amount_cents, document_digest, created_by, reason (the rejection's,
     else None), step and steps (the open step's position and the number of steps; step is None when every step
     is complete), approved_by and approved_at (the last Approve action, else None), self_approved (an
-    approval was made by the document's creator while separation was off).
+    approval was made by the document's creator or submitter while separation was off; R28).
     """
     row = conn.execute(
         "SELECT request_id, status, document_type, amount_cents, document_digest, created_by, chain_json "
@@ -322,9 +337,18 @@ def _check_request(document_type, record_type, record_id, amount_cents, created_
 
 
 def _require_person(context, request_id):
-    """R23: only a Human-origin context approves or rejects. Logged, before any read of the request."""
-    if context.origin != "Human":
-        authz.deny(context, record_type="approval_request", record_id=request_id, message=ONLY_A_PERSON)
+    """R23: only a Human-origin context approves or rejects. Logged before any write (R29: the request is read
+    first so the denial names its approve permission; a missing request is denied with no code)."""
+    if context.origin == "Human":
+        return
+    conn = read_connection(context.company_db_path)
+    try:
+        row = conn.execute("SELECT document_type FROM approval_request WHERE request_id = ?",
+                           (request_id,)).fetchone()
+    finally:
+        conn.close()
+    permission = permissions.APPROVE_PERMISSION.get(row["document_type"]) if row is not None else None
+    authz.deny(context, permission, record_type="approval_request", record_id=request_id, message=ONLY_A_PERSON)
 
 
 def _live_requests(conn, record_type, record_id):
@@ -442,6 +466,30 @@ def _open_slot(chain, actions, role_code, privileged):
     return None
 
 
+def _no_slot_message(conn, chain, actions, role_code):
+    """Why this user cannot fill the open step, and who can (R27). Steps are counted by position, as in
+    request_state, so the numbers match the posting refusal's "step X of Y"."""
+    step_nos = sorted({s["step_no"] for s in chain})
+    open_steps = [n for n in step_nos
+                  if any(_filled(s, actions) < s["required_count"] for s in chain if s["step_no"] == n)]
+    if not open_steps:
+        return "Every step of this approval is complete; refresh the list to see its status."
+    first = open_steps[0]
+    codes = sorted({s["role_code"] for s in chain if s["step_no"] == first and s["role_code"] is not None
+                    and _filled(s, actions) < s["required_count"]})
+    names = {r["role_code"]: r["name"] for r in conn.execute("SELECT role_code, name FROM role")}
+    roles = sorted(names.get(code, code) for code in codes)
+    who = " or ".join([", ".join(roles[:-1]), roles[-1]] if len(roles) > 1 else roles)
+    position = f"Step {step_nos.index(first) + 1} of {len(step_nos)}"
+    later = [n for n in open_steps[1:] if any(
+        s["step_no"] == n and (s["role_code"] is None or s["role_code"] == role_code)
+        and _filled(s, actions) < s["required_count"] for s in chain)]
+    if later:
+        return (f"{position} must be approved first by someone in the {who} role; "
+                f"you can approve step {step_nos.index(later[0]) + 1} once it is complete.")
+    return f"{position} needs approval by someone in the {who} role; ask them to approve it."
+
+
 def _complete(chain, actions):
     return all(_filled(slot, actions) >= slot["required_count"] for slot in chain)
 
@@ -450,20 +498,25 @@ def _plan(context, request):
     """Every check that can deny, done before the write transaction opens."""
     record = dict(record_type="approval_request", record_id=request["request_id"])
     permission = permissions.APPROVE_PERMISSION[request["document_type"]]
-    self_approved = check_separate_approver(context, request["created_by"], permission_code=permission, **record)
+    noun = _NOUN.get(request["record_type"], "document")
+    self_approved = check_separate_approver(
+        context, request["created_by"], permission_code=permission, submitted_by_user_id=request["submitted_by"],
+        message=separation_message(noun, submitted=False), submitter_message=separation_message(noun, submitted=True),
+        **record)
     access = authz.current_access(context)
     privileged = access.is_master or access.role_code == "Admin"
     chain = json.loads(request["chain_json"])
     conn = read_connection(context.company_db_path)
     try:
         actions = _actions(conn, request["request_id"])
+        slot = _open_slot(chain, actions, access.role_code, privileged)
+        no_slot = None if slot is not None else _no_slot_message(conn, chain, actions, access.role_code)
     finally:
         conn.close()
     if any(a["user_id"] == context.user_id for a in actions):
-        raise ValidationError("You have already acted on this approval request")
-    slot = _open_slot(chain, actions, access.role_code, privileged)
+        raise ValidationError(ALREADY_ACTED)
     if slot is None:
-        authz.deny(context, permission, **record)
+        authz.deny(context, permission, message=no_slot, **record)
     stored_role = slot.role_code or access.role_code or ("Master" if access.is_master else None)
     return _Plan(request, chain, slot, stored_role, self_approved, privileged, access.role_code)
 
@@ -476,7 +529,7 @@ def _record(conn, context, plan, decision, reason):
         raise ValidationError(f"The approval request is {status}")
     actions = _actions(conn, request_id)
     if any(a["user_id"] == context.user_id for a in actions):
-        raise ValidationError("You have already acted on this approval request")
+        raise ValidationError(ALREADY_ACTED)
     if _open_slot(plan.chain, actions, plan.role_code, plan.privileged) != plan.slot:
         raise ValidationError("The approval request changed; try again")
     now = context.now

@@ -26,7 +26,8 @@ def write_transaction(db_path, context):
     on its company file; it may still record in the master (a verification result, design section 6).
     """
     if getattr(context, "read_only", False) and str(db_path) == str(context.company_db_path):
-        raise PermissionDeniedError("This company is open read-only.")
+        raise PermissionDeniedError("This company is open read-only; open it with a role that can make changes, "
+                                    "or ask an Admin.")
     conn = database.get_connection(db_path)
     try:
         conn.isolation_level = None  # explicit transaction control

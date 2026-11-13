@@ -503,3 +503,78 @@ def test_status_changes_table_is_the_decided_one():
     assert approvals.ALLOWED_STATUS_CHANGES == {
         "Pending": {"Approved", "Rejected", "Cancelled"}, "Approved": {"Cancelled"},
         "Rejected": set(), "Cancelled": set()}
+
+
+# --- R28: with separation on, the submitter may not approve either -------------------------------------------
+
+def test_the_submitter_cannot_approve_when_separation_is_on(world, team):
+    request_id = submit(team, by="pm1", created_by="clerk")
+    with pytest.raises(PermissionDeniedError) as error:
+        approvals.approve(team["ctx"]("pm1"), request_id)
+    assert str(error.value) == ("This company needs a different person to approve the document you sent for "
+                                "approval; ask a colleague to approve it.")
+    assert actions(world, request_id) == []
+    assert world.events(CO)[-1]["permission_code"] == "bill.approve"
+    assert approvals.approve(team["ctx"]("pm2"), request_id) == "Approved"
+
+
+def test_the_submitter_cannot_reject_when_separation_is_on(world, team):
+    request_id = submit(team, by="pm1", created_by="clerk")
+    with pytest.raises(PermissionDeniedError, match="you sent for approval"):
+        approvals.reject(team["ctx"]("pm1"), request_id, "Wrong vendor")
+    assert request_row(world, request_id)["status"] == "Pending"
+
+
+def test_the_submitters_approval_is_flagged_when_separation_is_off(world, team):
+    world.settings(CO, require_separate_approver=0)
+    request_id = submit(team, by="pm1", created_by="clerk")
+    assert approvals.approve(team["ctx"]("pm1"), request_id) == "Approved"
+    assert actions(world, request_id)[0]["self_approved"] == 1
+
+
+def test_a_third_persons_approval_is_not_flagged(world, team):
+    world.settings(CO, require_separate_approver=0)
+    request_id = submit(team, by="pm1", created_by="clerk")
+    assert approvals.approve(team["ctx"]("pm2"), request_id) == "Approved"
+    assert actions(world, request_id)[0]["self_approved"] == 0
+
+
+def test_check_separate_approver_covers_the_submitter(world, team):
+    ctx = team["ctx"]("pm1")
+    assert approvals.check_separate_approver(ctx, team["clerk"], submitted_by_user_id=team["pm2"]) is False
+    with pytest.raises(PermissionDeniedError, match="you sent for approval"):
+        approvals.check_separate_approver(ctx, team["clerk"], submitted_by_user_id=team["pm1"])
+    world.settings(CO, require_separate_approver=0)
+    assert approvals.check_separate_approver(ctx, team["clerk"], submitted_by_user_id=team["pm1"]) is True
+
+
+# --- R29: the "only a person" denial names the approve permission ------------------------------------------
+
+@pytest.mark.parametrize("origin", ["Agent", "Import", "System"])
+def test_the_only_a_person_denial_names_the_approve_permission(world, team, origin):
+    request_id = submit(team)
+    for action in (lambda c: approvals.approve(c, request_id), lambda c: approvals.reject(c, request_id, "no")):
+        with pytest.raises(PermissionDeniedError, match="Only a person"):
+            action(team["ctx"]("pm1", origin=origin))
+        event = world.events(CO)[-1]
+        assert (event["permission_code"], event["record_type"], event["record_id"], event["origin"]) == (
+            "bill.approve", "approval_request", request_id, origin)
+    assert actions(world, request_id) == []
+    assert request_row(world, request_id)["status"] == "Pending"
+
+
+def test_the_only_a_person_denial_for_a_missing_request_has_no_code(world, team):
+    with pytest.raises(PermissionDeniedError, match="Only a person"):
+        approvals.approve(team["ctx"]("pm1", origin="Agent"), 999)
+    event = world.events(CO)[-1]
+    assert (event["permission_code"], event["record_id"]) == (None, 999)
+
+
+def test_the_only_a_person_denial_writes_nothing_but_the_denial(world, team, monkeypatch):
+    """Still denied before any write: no write transaction is opened."""
+    request_id = submit(team)
+    opened = []
+    monkeypatch.setattr(approvals, "write_transaction", lambda *a, **k: opened.append(a))
+    with pytest.raises(PermissionDeniedError):
+        approvals.approve(team["ctx"]("pm1", origin="Agent"), request_id)
+    assert opened == []

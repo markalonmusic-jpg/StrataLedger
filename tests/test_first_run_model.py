@@ -163,7 +163,7 @@ def test_unreadable_file_message_names_the_file_and_promises_no_changes():
 
 @pytest.mark.parametrize("error,fragment", [
     (ValidationError("The first Master can only be created while there are no users"), "no users"),
-    (PermissionDeniedError("Not permitted"), "permission"),
+    (PermissionDeniedError("Only the Master can do this; ask the Master to sign in and do it."), "permission"),
     (SchemaUpgradeBlockedError("x.db", "This database was built from a different schema baseline."), "older version"),
     (ServiceError("odd"), "odd"),
 ])

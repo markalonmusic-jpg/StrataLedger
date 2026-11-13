@@ -37,7 +37,7 @@ builds batch review (R18).
 import sqlite3
 from datetime import date
 
-from modules.services import approvals, keys, ledger_chain, periods
+from modules.services import approvals, keys, ledger_chain, money, periods
 from modules.services.authz import authorize, deny
 from modules.services.errors import (
     KeyUnavailableError, NotFoundError, PeriodClosedError, PostingError, ValidationError,
@@ -51,8 +51,10 @@ IMPORT_POSTED_BY_A_PERSON = ("An imported entry is posted by a person after revi
                              "approved entries.")
 CREATOR_CANNOT_POST = ("This company needs a different person to post an entry you created; ask a colleague to "
                        "post it.")
-SELF_APPROVED = ("This entry was approved by the person who created it; send it for approval again so someone else "
-                 "approves it.")
+SELF_APPROVED = ("This entry was approved by the person who created it or sent it for approval; send it for approval "
+                 "again so someone else approves it.")
+# R30: the log file gets this instead of the rejection refusal, which quotes the reason a person typed.
+REJECTED_LOG = "This entry was rejected; change it and send it for approval again."
 # Document sources whose document type has its own "requires approval" switch (decision 1.6).
 DOCUMENT_APPROVAL_TYPES = {"Bill": "Bill", "Payment": "Payment", "Import": "Import batch", "Payroll": "Import batch"}
 # A manual line to these controlled accounts must name the contact (A5): (contact flag, word).
@@ -328,12 +330,6 @@ class DateWarningsError(ValidationError):
         self.warnings = warnings
 
 
-def _money(cents):
-    sign = "-" if cents < 0 else ""
-    cents = abs(cents)
-    return f"{sign}{cents // 100:,}.{cents % 100:02d}"
-
-
 def _company_code(context):
     conn = read_connection(context.master_db_path)
     try:
@@ -395,7 +391,7 @@ def _approval_gate(state, needed, digest, debits, separate):
 
     A Pending request blocks every entry. An Approved request must match the entry now (digest, amount and, when
     approval is needed, the document type), whether or not approval is still needed. With separation on, an
-    approval the creator made while it was off no longer counts.
+    approval the creator or the submitter made while it was off no longer counts (R28).
     """
     status = state["status"] if state else None
     if status == "Pending":
@@ -412,7 +408,7 @@ def _approval_gate(state, needed, digest, debits, separate):
         return None, None
     if status == "Rejected":
         raise PostingError(f"This entry was rejected ({approvals.reason_text(state['reason'])}); change it and "
-                           "send it for approval again.")
+                           "send it for approval again.", log_message=REJECTED_LOG)
     if status == "Cancelled":
         raise PostingError("The approval was cancelled because the entry was changed; send it for approval again.")
     raise PostingError("This entry needs approval before it posts; send it for approval first.")
@@ -442,7 +438,7 @@ def _postable(conn, entry_id):
     debits = sum(r["debit_cents"] or 0 for r in rows)
     credits = sum(r["credit_cents"] or 0 for r in rows)
     if debits != credits or debits <= 0:
-        raise PostingError(f"This entry does not balance: debits {_money(debits)}, credits {_money(credits)}")
+        raise PostingError(f"This entry does not balance: debits {money.text(debits)}, credits {money.text(credits)}")
     overrides = _control_overrides(conn, rows, _settings(conn)) if entry["source"] in MANUAL_SOURCES else []
     return entry, period, rows, debits, overrides
 

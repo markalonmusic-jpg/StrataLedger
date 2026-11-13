@@ -17,6 +17,8 @@ After a successful --apply in a terminal, the script offers to create the
 first Master through modules/services/auth.create_first_master. The password
 is read with getpass (never echoed, printed or logged). The one-time recovery
 code is printed once, with a warning to store it safely; only its hash is kept.
+--no-prompt skips that question (for tools and scripts), and input that ends early
+ends with one sentence and exit code 0 (decision R31).
 
 The script refuses to run (exit code 2) while the app is running or a target
 file is locked, in dry run as well as apply.
@@ -179,20 +181,35 @@ def _interactive():
     return sys.stdin is not None and sys.stdin.isatty()
 
 
-def offer_first_master(master_path):
-    """Ask for the first Master's details and create it. Returns an exit code."""
+NO_ANSWER = "No answer was read; no Master was created. Run --apply in a terminal to create it."
+
+
+def offer_first_master(master_path, prompt=True):
+    """Ask for the first Master's details and create it. Returns an exit code.
+
+    R31: prompt=False (--no-prompt) skips the question; input that ends early (a shell that reports a terminal but
+    has no input, such as Git Bash run by a tool) ends with NO_ANSWER and exit 0, not an EOFError.
+    """
+    if not prompt:
+        print("--no-prompt: the first Master was not created. Run --apply in a terminal to create it.")
+        return 0
     if not _interactive():
         print("No terminal attached: the first Master was not created. Run --apply in a terminal to create it.")
         return 0
-    if input("Create the first Master now? [y/N] ").strip().lower() not in ("y", "yes"):
-        print("Skipped: no first Master was created.")
+    try:
+        if input("Create the first Master now? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Skipped: no first Master was created.")
+            return 0
+        username = input("Master username: ").strip()
+        first_name = input("First name: ").strip()
+        last_name = input("Last name: ").strip()
+        email = input("Email: ").strip()
+        secret = getpass.getpass("Password (at least 12 characters, not shown): ")
+        repeated = getpass.getpass("Repeat the password: ")
+    except EOFError:
+        print("")
+        print(NO_ANSWER)
         return 0
-    username = input("Master username: ").strip()
-    first_name = input("First name: ").strip()
-    last_name = input("Last name: ").strip()
-    email = input("Email: ").strip()
-    secret = getpass.getpass("Password (at least 12 characters, not shown): ")
-    repeated = getpass.getpass("Repeat the password: ")
     if secret != repeated:
         print("The passwords do not match; no Master was created.")
         return EXIT_FAILED
@@ -285,6 +302,8 @@ def main(argv=None):
     parser.add_argument("--sample-company", metavar="CODE",
                         help="create one construction-template company for testing with the existing Master "
                              "(does not rebuild the master; no questions asked)")
+    parser.add_argument("--no-prompt", action="store_true",
+                        help="with --apply: do not ask to create the first Master (for scripts and tools)")
     args = parser.parse_args(argv)
     if args.sample_company is not None:
         return sample_company(args.master_path, args.sample_company, args.apply)
@@ -303,7 +322,7 @@ def main(argv=None):
     result = apply_plan(plan)
     if result != 0:
         return result
-    return offer_first_master(args.master_path)
+    return offer_first_master(args.master_path, prompt=not args.no_prompt)
 
 
 if __name__ == "__main__":

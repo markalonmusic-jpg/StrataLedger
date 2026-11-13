@@ -163,6 +163,37 @@ def test_non_interactive_apply_skips_the_prompt(script, layout, monkeypatch, cap
     assert "first Master" in capsys.readouterr().out
 
 
+def test_no_prompt_skips_the_question_even_with_a_terminal(script, layout, monkeypatch, capsys):
+    """R31: --no-prompt rebuilds and exits cleanly without asking for the first Master."""
+    monkeypatch.setattr(script, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("prompted with --no-prompt"))
+    assert run(script, layout, "--apply", "--no-prompt") == 0
+    assert "--no-prompt: the first Master was not created" in capsys.readouterr().out
+    conn = sqlite3.connect(layout["master"])
+    assert conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0] == 0
+    conn.close()
+
+
+@pytest.mark.parametrize("ends_at", ["question", "details", "password"])
+def test_no_answer_read_exits_cleanly(script, layout, monkeypatch, capsys, ends_at):
+    """R31: a terminal that reports a tty but has no input (Git Bash) ends with a sentence, not an EOFError."""
+    replies = iter({"question": [], "details": ["y", "owner"], "password": ["y", "owner", "A", "O", "a@x.test"]}[ends_at])
+
+    def reply(prompt=""):
+        try:
+            return next(replies)
+        except StopIteration:
+            raise EOFError from None
+    monkeypatch.setattr(script, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", reply)
+    monkeypatch.setattr(script.getpass, "getpass", reply)
+    assert run(script, layout, "--apply") == 0
+    assert "No answer was read; no Master was created." in capsys.readouterr().out
+    conn = sqlite3.connect(layout["master"])
+    assert conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0] == 0
+    conn.close()
+
+
 # --- --sample-company CODE ------------------------------------------------------------------------------
 
 @pytest.fixture
