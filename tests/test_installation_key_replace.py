@@ -494,3 +494,26 @@ def test_a_new_code_after_a_replacement_rewraps_the_new_key(lost):
         assert key_store.open_with_recovery_code(conn, issued.recovery_code) is not None
     finally:
         conn.close()
+
+
+# --- The result holds the new code: no way to it but .recovery_code (before Step 4) ---------------------------------
+
+def test_the_result_exposes_the_code_only_through_its_attribute(lost):
+    import json
+    result = _replace(lost)
+    code = result.recovery_code
+    assert code and code not in str(result) and code not in repr(result) and code not in f"{result}"
+    with pytest.raises(TypeError):
+        vars(result)                                                    # no __dict__ to read the code from
+    for attempt in (lambda r: r[0], lambda r: list(r), lambda r: tuple(r), lambda r: dict(r), lambda r: r._asdict(),
+                    lambda r: json.dumps(r), lambda r: dataclasses.asdict(r)):
+        with pytest.raises((TypeError, AttributeError)):
+            attempt(result)
+    for attempt in (pickle.dumps, copy.copy, copy.deepcopy, lambda r: pickle.dumps(r, protocol=0),
+                    lambda r: r.__reduce_ex__(2)):
+        with pytest.raises(TypeError):
+            attempt(result)
+    with pytest.raises(AttributeError):
+        result.recovery_code = "something else"                         # read only
+    assert not isinstance(result, tuple)
+    assert (result.companies, result.message) and result.recovery_code == code

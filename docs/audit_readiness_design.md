@@ -387,9 +387,9 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   * **Once the master transaction commits, nothing raises** (review of Step 1d): the result is the only copy of
     the new recovery code. A bad company path fails that company only; any other failure after the commit marks
     the companies not reached as failed (`COMPANIES_NOT_REACHED`) and the code is still returned.
-  * The result is a namedtuple: `_asdict()`, indexing and `json.dumps` would expose the code. A screen reads only
-    `.recovery_code`, shows it once and never logs or serialises the result (a static test when the screen is
-    built).
+  * The result (`KeyReplaced`) is not a tuple: the code is reached only through `.recovery_code` (no indexing,
+    iteration, `_asdict`, `vars()` or JSON; redacted repr; not picklable or copyable; read only). A screen shows
+    it once and never logs the result.
   * The service takes its time from `auth._Actor`, so it uses auth's one allowed clock read (H2 known issue).
 
 ---

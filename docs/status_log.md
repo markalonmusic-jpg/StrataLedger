@@ -298,6 +298,9 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   company with no active key records no checkpoint; a Key lost row whose signing key does not match is a Marker
   break (not a crash); the intact-range wording for several entries; retiring may not change the DPAPI copy alone.
   Seven survivors are equivalent or defence in depth (docs/next_step.md). Suite 2162 passed.
+- 2026-11-13: `installation_keys.KeyReplaced` is no longer a namedtuple: the new code is reached only through
+  `.recovery_code` (no indexing, iteration, `_asdict`, `vars()` or JSON; redacted; not picklable or copyable).
+  `auth.CodeIssued` and `auth.FirstMaster` are still namedtuples (reported to the owner).
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

@@ -17,7 +17,7 @@ new installation key:
    events. The process's key provider then holds the new key (the app also calls App.start_key_store() again).
    Then each company enters a key-lost epoch (ledger_keys.start_new_key_epoch). That part is not atomic across
    files: each company is reported 'done' or 'failed' with one sentence, and the code is shown once (the result
-   redacts it everywhere else, like auth.CodeIssued).
+   redacts it everywhere else; see KeyReplaced).
 3. `remaining_companies(session)` finds the companies left behind (their active ledger key is not wrapped by the
    active installation key) and `finish_remaining_companies(session)` starts their epochs.
 
@@ -26,7 +26,6 @@ used in 1d). Old company_key rows are kept and never opened.
 """
 import logging
 import os
-from collections import namedtuple
 
 from modules.services import auth, key_store, keys, ledger_keys, passwords
 from modules.services.errors import KeyStoreLockedError, ServiceError, ValidationError
@@ -49,10 +48,49 @@ COMPANIES_NOT_REACHED = ("The remaining companies were not reached; use Finish t
 _logger = logging.getLogger("strataledger.keys")
 
 
-class KeyReplaced(auth._HoldsACode, namedtuple("KeyReplaced", "recovery_code companies message")):
+class KeyReplaced:
     """A new installation key: the new recovery code (shown once), one {'company_id', 'company_code', 'status'
-    ('done' or 'failed'), 'message'} per company, and a one-sentence summary. Redacted and not copyable."""
-    __slots__ = ()
+    ('done' or 'failed'), 'message'} per company, and a one-sentence summary.
+
+    Not a tuple: the code is reached only through `.recovery_code`. No indexing, iteration, `_asdict`, `vars()` or
+    JSON; repr and str show `<redacted>`; it cannot be pickled or copied; the fields are read only."""
+    __slots__ = ("_recovery_code", "companies", "message")
+
+    def __init__(self, recovery_code, companies, message):
+        object.__setattr__(self, "_recovery_code", recovery_code)
+        object.__setattr__(self, "companies", companies)
+        object.__setattr__(self, "message", message)
+
+    @property
+    def recovery_code(self):
+        return self._recovery_code
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"A {type(self).__name__} cannot be changed")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"A {type(self).__name__} cannot be changed")
+
+    def __repr__(self):
+        return (f"{type(self).__name__}(recovery_code=<redacted>, companies={self.companies!r}, "
+                f"message={self.message!r})")
+
+    __str__ = __repr__
+
+    def __reduce__(self):
+        raise TypeError(f"A {type(self).__name__} holds a recovery code and cannot be pickled or copied")
+
+    def __reduce_ex__(self, protocol):
+        return self.__reduce__()
+
+    def __getstate__(self):
+        return self.__reduce__()
+
+    def __copy__(self):
+        return self.__reduce__()
+
+    def __deepcopy__(self, memo):
+        return self.__reduce__()
 
 
 def _registry(master_db_path):
