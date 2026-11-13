@@ -58,6 +58,17 @@ def open_company(session, company_id):
     return context
 
 
+def action_context(context):
+    """A fresh context for one action: the same identity with a new `now` and company-local `today` (R19).
+
+    The context from open_company keeps the time the company was opened. Posting, approving, rejecting and
+    closing periods seal or record `now`, so a screen builds this for each such action. The clock is read only
+    by ServiceContext itself (H2); user, company, origin, agent run and the read-only flag are unchanged.
+    """
+    fresh = dataclasses.replace(context, now=None, today=None)
+    return dataclasses.replace(fresh, today=clock.local_today(fresh.now, _company_timezone(fresh.company_db_path)))
+
+
 def _company_timezone(path):
     conn = read_connection(path)
     try:

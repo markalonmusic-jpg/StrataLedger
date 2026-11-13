@@ -9,6 +9,11 @@ default chain is one approval by anyone holding the approve permission with a
 covering limit. The chain is copied onto the request at submit time, so policy
 changes never affect a request in progress. Any rejection ends the request.
 
+Only a Human-origin context approves or rejects (R23). Any edit or delete of the
+document cancels its Pending or Approved request (R21); document services call
+cancel_in_transaction inside their own write so the two are one change. Status
+changes follow ALLOWED_STATUS_CHANGES (R16; a service rule, not a trigger, H4).
+
 Every public writer authorizes before opening its write transaction (rule 10).
 All denials (permission, limit, slot, separate approver) are raised before the
 write transaction opens, so they are logged in their own transaction.
@@ -26,6 +31,14 @@ from modules.services.tx import read_connection, write_transaction
 
 _NO_UPPER_BOUND = 2 ** 63 - 1
 DEFAULT_CHAIN = [{"step_no": 1, "role_code": None, "required_count": 1}]
+ALLOWED_STATUS_CHANGES = {
+    "Pending": {"Approved", "Rejected", "Cancelled"},
+    "Approved": {"Cancelled"},
+    "Rejected": set(),
+    "Cancelled": set(),
+}
+_CANCELLABLE = ("Pending", "Approved")
+ONLY_A_PERSON = "Only a person can approve or reject; sign in and do it yourself."
 
 Slot = namedtuple("Slot", "step_no role_code")
 _Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privileged role_code")
@@ -108,6 +121,7 @@ def submit_for_approval(context, document_type, record_type, record_id, amount_c
 
 def approve(context, request_id):
     """Fill this user's slot in the request's open step. Returns the new status."""
+    _require_person(context, request_id)
     request = _load_request(context, request_id)
     check_approval_limit(context, request["document_type"], request["amount_cents"], request["project_id"],
                          record_type="approval_request", record_id=request_id)
@@ -120,6 +134,7 @@ def reject(context, request_id, reason):
     """Reject the request from this user's slot in the open step; ends the request."""
     if reason is None or not str(reason).strip():
         raise ValidationError("A reason is required to reject")
+    _require_person(context, request_id)
     request = _load_request(context, request_id)
     check_approval_limit(context, request["document_type"], request["amount_cents"], request["project_id"],
                          record_type="approval_request", record_id=request_id)
@@ -129,28 +144,35 @@ def reject(context, request_id, reason):
 
 
 def cancel_on_edit(context, record_type, record_id):
-    """Cancel the record's Pending request because the document was edited. Returns True if one was cancelled.
+    """Cancel the record's Pending or Approved request because the document was edited (R21).
 
-    The document must then be resubmitted and approved from step 1.
+    Returns True if one was cancelled. The document must then be resubmitted and approved from step 1.
+    A document service that edits in its own write transaction calls cancel_in_transaction instead.
     """
     conn = read_connection(context.company_db_path)
     try:
-        pending = conn.execute(
-            "SELECT request_id, document_type, project_id FROM approval_request "
-            "WHERE record_type = ? AND record_id = ? AND status = 'Pending'", (record_type, record_id),
-        ).fetchone()
+        live = _live_requests(conn, record_type, record_id)
     finally:
         conn.close()
-    if pending is None:
+    if not live:
         return False
-    authorize(context, permissions.SUBMIT_PERMISSION[pending["document_type"]], pending["project_id"],
+    authorize(context, permissions.SUBMIT_PERMISSION[live[0]["document_type"]], live[0]["project_id"],
               record_type=record_type, record_id=record_id)
     with write_transaction(context.company_db_path, context) as conn:
-        cursor = conn.execute(
-            "UPDATE approval_request SET status = 'Cancelled', completed_at = ? "
-            "WHERE request_id = ? AND status = 'Pending'", (context.now, pending["request_id"]),
-        )
-        return cursor.rowcount == 1
+        return cancel_in_transaction(conn, context, record_type, record_id)
+
+
+def cancel_in_transaction(conn, context, record_type, record_id):
+    """Inside the caller's write transaction: cancel the record's Pending or Approved requests (R21).
+
+    The caller has already authorized the edit (for a journal entry, je.create, which is also the submit
+    permission), so the cancel and the edit commit or roll back together. completed_at is the edit's now.
+    Returns True if a request was cancelled.
+    """
+    live = _live_requests(conn, record_type, record_id)
+    for request in live:
+        _change_status(conn, request["request_id"], "Cancelled", context.now)
+    return bool(live)
 
 
 def is_approved(conn, record_type, record_id):
@@ -224,6 +246,33 @@ def set_approval_limit(context, role_code, document_type, max_amount_cents):
 
 
 # --- internals ---------------------------------------------------------------------------------
+
+def _require_person(context, request_id):
+    """R23: only a Human-origin context approves or rejects. Logged, before any read of the request."""
+    if context.origin != "Human":
+        authz.deny(context, record_type="approval_request", record_id=request_id, message=ONLY_A_PERSON)
+
+
+def _live_requests(conn, record_type, record_id):
+    return [dict(r) for r in conn.execute(
+        "SELECT request_id, document_type, project_id FROM approval_request "
+        "WHERE record_type = ? AND record_id = ? AND status IN (?, ?) ORDER BY request_id",
+        (record_type, record_id, *_CANCELLABLE))]
+
+
+def _change_status(conn, request_id, new_status, now):
+    """Inside a write transaction: move a request to new_status if ALLOWED_STATUS_CHANGES permits it (R16)."""
+    row = conn.execute("SELECT status FROM approval_request WHERE request_id = ?", (request_id,)).fetchone()
+    if row is None:
+        raise NotFoundError(f"No such approval request: {request_id}")
+    if new_status not in ALLOWED_STATUS_CHANGES[row["status"]]:
+        raise ValidationError(f"An approval request that is {row['status']} cannot become {new_status}")
+    cursor = conn.execute(
+        "UPDATE approval_request SET status = ?, completed_at = ? WHERE request_id = ? AND status = ?",
+        (new_status, now, request_id, row["status"]))
+    if cursor.rowcount != 1:
+        raise ValidationError("The approval request changed; try again")
+
 
 def _check_document_type(document_type):
     if document_type not in permissions.DOCUMENT_TYPES:
@@ -371,6 +420,5 @@ def _record(conn, context, plan, decision, reason):
         status = "Approved"
     else:
         return "Pending"
-    conn.execute("UPDATE approval_request SET status = ?, completed_at = ? WHERE request_id = ?",
-                 (status, now, request_id))
+    _change_status(conn, request_id, status, now)
     return status

@@ -23,7 +23,7 @@ from modules.font_loader import ensure_inter_font
 from modules.sidebar import NavItem, Sidebar
 from modules.services import auth, companies, key_store, keys, ledger_verify
 from modules.services.errors import (
-    AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError,
+    AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError, ValidationError,
 )
 
 ctk.set_appearance_mode("Dark")
@@ -253,6 +253,15 @@ class App(ctk.CTk):
         self.db = context.company_db_path
         self.active_company_name = company_name
         self.build_master_layout_canvas()
+
+    def action_context(self):
+        """A fresh context for one post, approval, rejection or close of the open company (R19).
+
+        self.context keeps the time the company was opened; never pass it to those services.
+        """
+        if self.context is None:
+            raise ValidationError("Open a company first.")
+        return companies.action_context(self.context)
 
     def close_company_ledger(self):
         """Sign a ledger checkpoint for the open company before it closes (audit design 2.6). Never blocks closing."""

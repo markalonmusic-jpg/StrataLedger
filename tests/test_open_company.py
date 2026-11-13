@@ -122,3 +122,49 @@ def test_authorize_rejects_a_context_whose_file_is_not_the_registered_one(world)
     with pytest.raises(PermissionDeniedError):
         authz.authorize(swapped, "ledger.view")
     assert world.events("OTHER") == []  # nothing is written into the wrong file
+
+
+# --- R19: a fresh context for every post, approval and close -----------------------------------
+
+def _opened(world, monkeypatch, now, timezone=None):
+    from modules.services import clock
+    user_id = world.user("staff")
+    world.role("PARENT", "R", ["ledger.view"])
+    world.grant(user_id, "PARENT", "R")
+    if timezone:
+        world.settings("PARENT", require_separate_approver=0)
+        conn = sqlite3.connect(world.path("PARENT"))
+        conn.execute("UPDATE company_settings SET timezone = ? WHERE id = 1", (timezone,))
+        conn.commit()
+        conn.close()
+    monkeypatch.setattr(clock, "utc_now_iso", lambda: now)
+    return companies.open_company(world.session(user_id), world.company_id("PARENT"))
+
+
+def test_action_context_moves_now_and_keeps_the_identity(world, monkeypatch):
+    from modules.services import clock
+    opened = _opened(world, monkeypatch, "2026-01-05T09:00:00+00:00")
+    assert opened.now == "2026-01-05T09:00:00+00:00"
+    monkeypatch.setattr(clock, "utc_now_iso", lambda: "2026-03-02T10:15:00+00:00")
+    fresh = companies.action_context(opened)
+    assert (fresh.now, fresh.today) == ("2026-03-02T10:15:00+00:00", "2026-03-02")
+    for field in ("user_id", "company_id", "origin", "company_db_path", "master_db_path", "agent_run_id",
+                  "read_only"):
+        assert getattr(fresh, field) == getattr(opened, field), field
+    assert opened.now == "2026-01-05T09:00:00+00:00"  # the session context is unchanged
+
+
+def test_action_context_today_is_the_company_local_date(world, monkeypatch):
+    from modules.services import clock
+    opened = _opened(world, monkeypatch, "2026-01-05T09:00:00+00:00", timezone="America/Los_Angeles")
+    monkeypatch.setattr(clock, "utc_now_iso", lambda: "2026-03-01T07:30:00+00:00")  # 11:30 pm on 28 Feb in LA
+    fresh = companies.action_context(opened)
+    assert (fresh.now, fresh.today) == ("2026-03-01T07:30:00+00:00", "2026-02-28")
+
+
+def test_action_context_keeps_read_only_and_origin(world, monkeypatch):
+    import dataclasses
+    opened = _opened(world, monkeypatch, "2026-01-05T09:00:00+00:00")
+    special = dataclasses.replace(opened, read_only=True, origin="Import")
+    fresh = companies.action_context(special)
+    assert (fresh.read_only, fresh.origin) == (True, "Import")

@@ -157,9 +157,6 @@ key, KS12-KS21). Next: steps 4-7 (docs/next_step.md), then 2.7, 2.8 (PW1-PW11), 
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
-- The context from `open_company` is kept for the whole session, so its `now` and `today` are the time the
-  company was opened. A screen must get a fresh context for each action before it posts, closes a period or
-  approves (posted_at is sealed into the chain). Not built yet.
 - Nothing calls `logging_setup.configure_logging()` at start-up, so the running app writes no log file.
 - `views_billing.py` cannot load or save (its SQL names tables and columns that are not in the baseline);
   `views_wizard.py` inserts a customer without a code, which the baseline rejects. Phase 3.

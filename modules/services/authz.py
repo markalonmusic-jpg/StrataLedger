@@ -93,14 +93,15 @@ def _checked_decide(context, permission, project_id):
         raise PermissionDeniedError(f"Not permitted: {permission}" if permission else "Not permitted") from None
 
 
-def deny(context, permission=None, *, record_type=None, record_id=None):
+def deny(context, permission=None, *, record_type=None, record_id=None, message=None):
     """Log a denial decided by another service rule and raise PermissionDeniedError.
 
     Used for rules beyond the permission itself (an approval slot the user cannot
-    fill, the separate-approver rule). Call it before opening a write transaction.
+    fill, the separate-approver rule, a non-person approving). `message` replaces
+    the default "Not permitted" sentence. Call it before opening a write transaction.
     """
     is_master = False if context.origin == "Agent" else current_access(context).is_master
-    _deny(context, permission, _actor_type(context, is_master), record_type, record_id)
+    _deny(context, permission, _actor_type(context, is_master), record_type, record_id, message)
 
 
 def current_access(context):
@@ -238,13 +239,15 @@ def _actor_type(context, is_master):
     return "Master" if is_master else "User"
 
 
-def _deny(context, permission, actor_type, record_type, record_id):
+def _deny(context, permission, actor_type, record_type, record_id, message=None):
     _write_access_event(
         context.company_db_path, user_id=context.user_id, actor_type=actor_type, event_type="Denied",
         permission_code=permission, record_type=record_type, record_id=record_id, origin=context.origin,
         now=context.now,
     )
-    raise PermissionDeniedError(f"Not permitted: {permission}" if permission else "Not permitted")
+    if message is None:
+        message = f"Not permitted: {permission}" if permission else "Not permitted"
+    raise PermissionDeniedError(message)
 
 
 def _write_access_event(company_db_path, *, user_id, actor_type, event_type, now, permission_code=None,

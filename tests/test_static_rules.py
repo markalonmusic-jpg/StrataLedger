@@ -10,6 +10,8 @@ Outdated/ (the old prototype, not imported), Backups/ and Companies/.
 import ast
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".venv", "__pycache__", ".git", "Outdated", ".pytest_cache", "Backups", "Companies"}
 
@@ -241,3 +243,79 @@ def test_rule_10_checker_passes_a_correct_writer():
         "    conn = database.get_connection(ctx.company_db_path)\n"
     )
     assert rule_10_violations(source) == []
+
+
+# --- R19: screens pass a fresh context to every post, approval and close ----------------------
+
+FRESH_CONTEXT_CALLS = {
+    "ledger": {"post_journal_entry", "submit_entry_for_approval"},
+    "approvals": {"approve", "reject"},
+    "periods": {"close_period", "close_year", "set_books_closed_through"},
+}
+_FRESH_BARE_NAMES = {"post_journal_entry", "submit_entry_for_approval", "close_period", "close_year",
+                     "set_books_closed_through"}
+
+
+def _is_action_context_call(node):
+    return isinstance(node, ast.Call) and _call_name(node) == "action_context"
+
+
+def fresh_context_violations(source, filename="snippet.py"):
+    """Calls to a post, approval or close service whose first argument is not an action_context() call."""
+    problems = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            guarded = func.attr in FRESH_CONTEXT_CALLS.get(func.value.id, ())
+        else:
+            guarded = isinstance(func, ast.Name) and func.id in _FRESH_BARE_NAMES
+        if guarded and not (node.args and _is_action_context_call(node.args[0])):
+            problems.append(f"{filename}:{node.lineno}")
+    return problems
+
+
+def screen_sources():
+    yield ROOT / "app_strata.pyw"
+    yield from sorted((ROOT / "modules").glob("views_*.py"))
+
+
+def test_screens_pass_a_fresh_context_to_post_approve_and_close():
+    paths = list(screen_sources())
+    assert len(paths) > 5  # the scan sees the screens
+    problems = []
+    for path in paths:
+        problems += fresh_context_violations(path.read_text(encoding="utf-8"), path.name)
+    assert problems == [], f"pass self.app.action_context() (R19): {problems}"
+
+
+def test_screens_do_not_import_the_guarded_functions_under_other_names():
+    for path in screen_sources():
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module in {f"modules.services.{m}" for m in FRESH_CONTEXT_CALLS}:
+                guarded = FRESH_CONTEXT_CALLS[node.module.rsplit(".", 1)[1]]
+                for alias in node.names:
+                    assert alias.name not in guarded or alias.asname in (None, alias.name), (path.name, alias.name)
+                    assert alias.name not in {"approve", "reject"}, (path.name, alias.name)
+
+
+@pytest.mark.parametrize("call", [
+    "ledger.post_journal_entry(self.app.context, 5)", "approvals.approve(ctx, 1)",
+    "approvals.reject(self.context, 1, 'no')", "periods.close_period(self.app.context, 3)",
+    "periods.close_year(c, 1)", "periods.set_books_closed_through(c, '2026-01-31')",
+    "ledger.submit_entry_for_approval(c, 5)", "post_journal_entry(c, 5)", "ledger.post_journal_entry()",
+    "ledger.post_journal_entry(context=self.app.action_context(), entry_id=5)",
+])
+def test_fresh_context_checker_flags_a_stored_context(call):
+    assert fresh_context_violations(f"def f(self):\n    {call}\n") == ["snippet.py:2"]
+
+
+@pytest.mark.parametrize("call", [
+    "ledger.post_journal_entry(self.app.action_context(), 5)", "approvals.approve(self.app.action_context(), 1)",
+    "periods.close_period(app.action_context(), 3, acknowledge_warnings=True)",
+    "post_journal_entry(action_context(), 5)", "ledger.get_entry(self.app.context, 5)",
+    "self.approve(self.app.context)",
+])
+def test_fresh_context_checker_passes_a_fresh_context(call):
+    assert fresh_context_violations(f"def f(self):\n    {call}\n") == []

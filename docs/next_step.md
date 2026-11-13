@@ -1,11 +1,32 @@
 # Next step: Phase 2.5 Step 4 (approvals in posting)
 
-Written at the Step 4 planning STOP (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: PLAN APPROVED (2026-11-13) with the owner's answers (decisions R15-R24). STOP 1 done: the company
-baseline edit (tag `baseline-pre-2.5-4`, archive copy), waiting for the owner's word on the rebuild. Next: part A.
+Written at Step 4 STOP 2 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
+Status: PLAN APPROVED (2026-11-13) with the owner's answers (decisions R15-R24). STOP 1 done (company baseline:
+digest column, approval audit and no-delete; development databases rebuilt 2026-11-13, the old master moved to
+`Backups/20261113-024507/`). STOP 2 done: part A. Next: part B (STOP 3).
 
-**State at STOP 1:** suite **2184 passed, 7 deselected, 12 xfailed**. The master baseline did not change; the
-development master is empty (no users, companies or keys) and there are no company files.
+**State at STOP 2:** suite **2230 passed, 7 deselected, 12 xfailed**. The master is empty (no users,
+companies or keys) and there are no company files.
+
+**Part A, built (STOP 2):**
+- `companies.action_context(context)`: same identity, new `now`, company-local `today` (R19). `App.action_context()`
+  in app_strata.pyw. Static test `test_screens_pass_a_fresh_context_to_post_approve_and_close` (tests/test_static_rules.py):
+  in app_strata.pyw and `modules/views_*.py`, calls to `ledger.post_journal_entry`, `ledger.submit_entry_for_approval`,
+  `approvals.approve` / `reject`, `periods.close_period` / `close_year` / `set_books_closed_through` must pass an
+  `action_context()` call first (no screen calls them yet; checker tests prove it bites).
+- approvals.py: `cancel_on_edit` cancels Pending **or Approved** (G1, R21); `cancel_in_transaction(conn, context,
+  record_type, record_id)` for document services to call inside their own write (G2; the caller authorizes the edit);
+  `approve` / `reject` refuse any origin but Human, logged, before any read of the request (G4, R23, message
+  `ONLY_A_PERSON`); every status change goes through `_change_status` and `ALLOWED_STATUS_CHANGES` (R16).
+- `authz.deny(..., message=None)`: an optional sentence replacing "Not permitted".
+- CLAUDE.md: the stale-now known issue is removed.
+- D (AGENT_ALLOWED) was already enforced by tests/test_permissions_registry.py
+  `test_no_approve_or_post_permission_is_agent_allowed` (`.approve`, `.post`, `.reverse` and more); nothing added.
+
+**Next, part B (STOP 3):** section C below (ledger wiring: `submit_entry_for_approval`, `update_entry` /
+`delete_entry` call `approvals.cancel_in_transaction`, `post_journal_entry` gate, R17 separation at posting, R24),
+section E (the flipped xfails, 12 to 9), the tests in F not yet written, decisions index check, docs (status_log,
+roadmap, file_map, the "Where we are" paragraph). Then step-reviewer and mutation-tester, fixes, new next_step.md.
 
 **Owner answers (2026-11-13), built as decided:**
 1. Use the existing `approval_*` tables; change the baseline only for a gap the design shows (one edit, tag,
@@ -132,26 +153,19 @@ System context refused; the audit log records submit, approve, reject and cancel
 
 ## Open questions for the owner
 
-1. **B1 (digest column):** approve it? Without it, "resubmit only after an edit" cannot be enforced (any
-   resubmission is allowed) and posting relies on `cancel_on_edit` alone to keep the approved content.
-2. **B2 (audit triggers and no-delete on approval_request):** approve it? It is an integrity gap today (approvals
-   are not in the audit log). The status rules would stay in the service (H4).
-3. **Separation at posting:** docs/roles_permissions_design.md says that with `require_separate_approver` on, the
-   creator can neither approve nor post. Posting does not check that today. Add it in Step 4 for every entry
-   (proposed), only for entries that needed approval, or leave it for later?
-4. **Import origin:** Step 4 approves Import-origin entries one entry at a time (document type "Import batch").
-   The review of a whole batch (`import_batch`) comes with the Imports phase. Accept?
-5. **Period close:** include `periods.close_period` and `close_year` in the fresh-context static test (the known issue names it)?
-6. **The other stale xfails:** `test_cannot_post_to_header_or_inactive_account` (2 cases) and
+Questions 1-5 of the plan were answered (R15-R19, R18; see the decisions index). Still open:
+
+1. **The other stale xfails:** `test_cannot_post_to_header_or_inactive_account` (2 cases) and
    `test_manual_entry_to_controlled_account_is_blocked` test rules already built in steps 2-3 but still call the
    proposed API. The second one contradicts the decided default (manual entries to controlled accounts are allowed
    and flagged). Rewrite them in Step 4, or leave them for a later clean-up?
+2. **Checkpoint on close (found at STOP 2):** `App.close_company_ledger` passes the session context to
+   `ledger_verify.checkpoint_on_close`, so the closing checkpoint is signed with the time the company was
+   opened, not closed. R19 does not name it. Pass `self.action_context()` there too (proposed, part B), or leave it?
 
 ## Carried forward
 
 - Phase 3 screens: show the unverified range and the close check's warning; after a key replacement call
   `App.start_key_store()` again; show `KeyReplaced.recovery_code` once.
-- `auth.CodeIssued` and `auth.FirstMaster` are still namedtuples, so `_asdict()`, indexing and iteration expose
-  their codes; the same fix as KeyReplaced is proposed as a small separate change.
 - Whether retired installation keys keep their recovery copies is decided with KS18's key restore (backlog 16).
 - `auth._now()` remains the one allowed clock read in services (H2).

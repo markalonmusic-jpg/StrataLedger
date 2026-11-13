@@ -402,3 +402,101 @@ def test_non_admin_with_a_covering_limit_can_approve(world, team, document_type,
                                          created_by=estimator)
     with pytest.raises(PermissionDeniedError):
         approvals.approve(world.ctx(approver, CO), over)
+
+
+# --- Step 4 part A: edits after approval, one transaction, person only, status rules ---------
+
+def test_edit_after_approval_cancels_the_approval(world, team):
+    """R21 (G1): an approved document edited afterwards is no longer approved."""
+    request_id = submit(team)
+    approvals.approve(team["ctx"]("pm1"), request_id)
+    assert approved(world, 1) is True
+    edit = team["ctx"]("clerk")
+    assert approvals.cancel_on_edit(edit, "invoice", 1) is True
+    row = request_row(world, request_id)
+    assert (row["status"], row["completed_at"]) == ("Cancelled", edit.now)
+    assert approved(world, 1) is False
+    assert [a["decision"] for a in actions(world, request_id)] == ["Approve"]  # the approval stays on record
+
+
+def test_edit_after_rejection_leaves_the_rejection(world, team):
+    """R22: the rejected request stays Rejected with its reason; an edit has nothing to cancel."""
+    request_id = submit(team)
+    approvals.reject(team["ctx"]("pm1"), request_id, "wrong vendor")
+    assert approvals.cancel_on_edit(team["ctx"]("clerk"), "invoice", 1) is False
+    row = request_row(world, request_id)
+    assert row["status"] == "Rejected"
+    assert actions(world, request_id)[0]["reason"] == "wrong vendor"
+
+
+def test_cancel_in_transaction_is_part_of_the_callers_change(world, team):
+    """R21 (G2): the cancel and the edit commit or roll back together."""
+    from modules.services.tx import write_transaction
+    request_id = submit(team)
+    approvals.approve(team["ctx"]("pm1"), request_id)
+    ctx = team["ctx"]("clerk")
+    with pytest.raises(RuntimeError):
+        with write_transaction(ctx.company_db_path, ctx) as conn:
+            assert approvals.cancel_in_transaction(conn, ctx, "invoice", 1) is True
+            raise RuntimeError("the edit failed")
+    assert request_row(world, request_id)["status"] == "Approved"
+    with write_transaction(ctx.company_db_path, ctx) as conn:
+        assert approvals.cancel_in_transaction(conn, ctx, "invoice", 1) is True
+        assert approvals.cancel_in_transaction(conn, ctx, "invoice", 1) is False  # nothing left to cancel
+    assert request_row(world, request_id)["status"] == "Cancelled"
+
+
+def test_cancel_in_transaction_cancels_pending(world, team):
+    from modules.services.tx import write_transaction
+    request_id = submit(team)
+    ctx = team["ctx"]("clerk")
+    with write_transaction(ctx.company_db_path, ctx) as conn:
+        assert approvals.cancel_in_transaction(conn, ctx, "invoice", 1) is True
+    assert request_row(world, request_id)["status"] == "Cancelled"
+    assert approvals.cancel_on_edit(ctx, "invoice", 1) is False
+
+
+@pytest.mark.parametrize("origin", ["Import", "System"])
+@pytest.mark.parametrize("who", ["pm1", "admin", "master"])
+def test_only_a_person_approves_or_rejects(world, team, origin, who):
+    """R23 (G4): an Import or System context holding the approve permission is refused, and the denial logged."""
+    request_id = submit(team)
+    with pytest.raises(PermissionDeniedError, match="Only a person"):
+        approvals.approve(team["ctx"](who, origin=origin), request_id)
+    with pytest.raises(PermissionDeniedError, match="Only a person"):
+        approvals.reject(team["ctx"](who, origin=origin), request_id, "no")
+    assert actions(world, request_id) == []
+    assert request_row(world, request_id)["status"] == "Pending"
+    denials = world.rows(CO, "SELECT origin, record_type, record_id FROM access_event WHERE event_type = 'Denied'")
+    assert denials[-2:] == [{"origin": origin, "record_type": "approval_request", "record_id": request_id}] * 2
+
+
+@pytest.mark.parametrize("old, new, allowed", [
+    ("Pending", "Approved", True), ("Pending", "Rejected", True), ("Pending", "Cancelled", True),
+    ("Approved", "Cancelled", True),
+    ("Approved", "Pending", False), ("Approved", "Rejected", False),
+    ("Rejected", "Approved", False), ("Rejected", "Cancelled", False), ("Rejected", "Pending", False),
+    ("Cancelled", "Approved", False), ("Cancelled", "Pending", False), ("Cancelled", "Rejected", False),
+    ("Pending", "Pending", False), ("Approved", "Approved", False),
+])
+def test_request_status_changes(world, team, old, new, allowed):
+    """R16: the allowed status changes are a service rule (H4), checked on every write."""
+    from modules.services.tx import write_transaction
+    request_id = submit(team)
+    ctx = team["ctx"]("admin")
+    if old != "Pending":
+        with write_transaction(ctx.company_db_path, ctx) as conn:
+            approvals._change_status(conn, request_id, old, ctx.now)
+    with write_transaction(ctx.company_db_path, ctx) as conn:
+        if allowed:
+            approvals._change_status(conn, request_id, new, ctx.now)
+        else:
+            with pytest.raises(ValidationError):
+                approvals._change_status(conn, request_id, new, ctx.now)
+    assert request_row(world, request_id)["status"] == (new if allowed else old)
+
+
+def test_status_changes_table_is_the_decided_one():
+    assert approvals.ALLOWED_STATUS_CHANGES == {
+        "Pending": {"Approved", "Rejected", "Cancelled"}, "Approved": {"Cancelled"},
+        "Rejected": set(), "Cancelled": set()}
