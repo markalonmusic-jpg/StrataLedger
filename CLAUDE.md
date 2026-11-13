@@ -153,8 +153,8 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-12):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, and 2.5 steps 1, 2, 1b, 3, 3b
 (drafts, sealed posting, verification, signed checkpoints at close, logout and exit). Password recovery is
-decided (PW1-PW11; build step 2.8 after 2.5). Now: 2.5 step 1c (keystore, KS1-KS11), sub-steps 1-6 done (the
-service can post outside tests; no posting screen yet); then 1c sub-steps 7-9, steps 4-7, 2.7, Phase 3.
+decided (PW1-PW11; build step 2.8 after 2.5). Now: 2.5 step 1c (keystore, KS1-KS11) built, sub-steps 1-9 (the
+service can post outside tests; no posting screen yet), two key-lost points open; then steps 4-7, 2.7, Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an

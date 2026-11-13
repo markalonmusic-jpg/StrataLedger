@@ -1,4 +1,5 @@
-"""Changing a company's ledger chain key: rotation (Step 1c sub-step 8; docs/audit_readiness_design.md 2.7).
+"""Changing a company's ledger chain key: rotation (Step 1c sub-step 8) and a new key epoch when the key is lost
+(sub-step 9, `start_new_key_epoch`, below); docs/audit_readiness_design.md 2.7.
 
 Master only (a key change is an installation-level act, like export; no company permission is added, so the
 company baseline does not change). Old keys are never deleted: they stay wrapped in the master and retired in
@@ -67,3 +68,66 @@ def rotate_chain_key(session, company_id):
                               retire_reason="Rotation")
     checkpoint = ledger_verify.record_key_checkpoint(context, verification, old_key_id=old_key_id)
     return {"old_key_id": old_key_id, "new_key_id": new_key_id, "checkpoint": checkpoint}
+
+
+# --- Key lost: a new key epoch (sub-step 9, KS8) -------------------------------------------------------------------
+
+KEY_STILL_AVAILABLE = ("This company's ledger key is still available on this computer, so it is not lost. Rotate "
+                       "the key instead if it needs replacing.")
+
+
+def _typed_code_matches(session, company_id, confirm_company_code):
+    conn = read_connection(session.master_db_path)
+    try:
+        row = conn.execute("SELECT company_code FROM company_registry WHERE company_id = ?",
+                           (company_id,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise ValidationError("No such company")
+    if not isinstance(confirm_company_code, str) or confirm_company_code != row["company_code"]:
+        raise ValidationError(f"Type the company code exactly as shown ({row['company_code']}) to continue")
+
+
+def _last_entry_number(context):
+    conn = read_connection(context.company_db_path)
+    try:
+        return conn.execute("SELECT COALESCE(MAX(entry_number), 0) AS n FROM journal_entry "
+                            "WHERE is_posted = 1").fetchone()["n"]
+    finally:
+        conn.close()
+
+
+def start_new_key_epoch(session, company_id, *, confirm_company_code):
+    """Start a new ledger key for a company whose active key is lost on this computer (Master only; the company
+    code must be typed). The old key is retired as 'Key lost' and a new one becomes active, so posting can go on.
+    Entries sealed with the lost key stay readable but can no longer be verified. Returns {'old_key_id',
+    'new_key_id', 'unverifiable_through', 'message'}.
+
+    Needs the installation key (KeyStoreLockedError while it is locked). Refused while the active key can still
+    be opened here (KEY_STILL_AVAILABLE): that key is rotated instead. No checkpoint is signed: the schema has no
+    honest result for history that cannot be verified, and the verifier would need the lost key for its anchor
+    entry (audit design 2.7, "As built in Step 1c sub-step 9")."""
+    auth.require_master(session, "ledger.rotate_key")
+    _typed_code_matches(session, company_id, confirm_company_code)
+    context = companies.open_company(session, company_id)
+    provider = keys.get_provider()
+    new_key = provider.new_chain_key()                               # KeyStoreLockedError while locked
+    old_key_id = _active_key_id(context)
+    if old_key_id is not None:
+        try:
+            provider.get_key(company_id, old_key_id)
+        except KeyUnavailableError:
+            pass
+        else:
+            raise ValidationError(KEY_STILL_AVAILABLE)
+    through = _last_entry_number(context)
+    new_key_id = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key lost",
+                              retire_reason="Key lost")
+    if through:
+        message = (f"A new ledger key was started. Entries up to {ledger_verify.je_number(through)} were sealed "
+                   "with the lost key and can no longer be verified; their data is unchanged.")
+    else:
+        message = "A new ledger key was started. No entries were sealed with the lost key."
+    return {"old_key_id": old_key_id, "new_key_id": new_key_id, "unverifiable_through": through,
+            "message": message}

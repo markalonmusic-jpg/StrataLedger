@@ -247,7 +247,11 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-12: Step 1c sub-step 8: `ledger_keys.rotate_chain_key` (Master only): full check under the current key,
   new wrapped key in the master, old key retired as `Rotation`, new key active, `Key rotation` checkpoint signed
   with the new key. Entries after it chain across keys and every entry still verifies. `ledger_verify` gains
-  `check_before_key_change` and `record_key_checkpoint`.
+  `check_before_key_change` and `record_key_checkpoint` (4dabaa6).
+- 2026-11-12: Step 1c sub-step 9: `ledger_keys.start_new_key_epoch` (Master, company code typed): a lost company
+  key is retired as `Key lost` and a new one becomes active, so posting goes on; old entries stay readable and a
+  full check is Unavailable. Open for the owner: no epoch checkpoint (needs a new result or kind and a verifier
+  change), and a lost installation key cannot be replaced yet (audit design 2.7, sub-step 9).
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

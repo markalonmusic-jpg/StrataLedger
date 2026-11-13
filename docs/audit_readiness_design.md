@@ -264,6 +264,22 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   (`ref_type` `ledger_chain_key`, `ref_id` the retired key), in the file and the mirror. A rotation over a Broken
   ledger is allowed and its checkpoint says Broken. A checkpoint that cannot be saved never undoes the rotation
   (`checkpoint_error`).
+* **As built in Step 1c sub-step 9 (key lost):** `ledger_keys.start_new_key_epoch(session, company_id,
+  confirm_company_code=)`, Master only, the company code typed. For a company whose active key cannot be opened
+  here while the installation key can (refused with `KEY_STILL_AVAILABLE` when the key still opens: rotate it).
+  The old key is retired as `Key lost`, a new key becomes active (wrapped in the master, `Ledger key lost`
+  auth_event; the company file's audit trigger records the retirement), and posting goes on: the next entry
+  chains to the last stored hash. A full check stays Unavailable (never Broken) because the old entries need the
+  lost key; the result names the last entry sealed before the epoch. **Two open points (owner decision):**
+  1. **No epoch checkpoint is signed.** `ledger_checkpoint.result` allows only OK and Broken, and signing
+     unverified history as OK would claim a check that did not happen; the incremental verifier would also
+     re-check the anchor entry with the lost key. An honest epoch needs a new result or kind (for example
+     `Key lost` with result `Unverified`) and a verifier that starts after the epoch's entry. Both change the
+     company baseline.
+  2. **A lost installation key** (DPAPI unusable and the recovery code lost, or KS5's damaged copy) loses every
+     company key at once, and no new company key can be stored, because `installation_key` can never be replaced.
+     Recovering needs a new installation key epoch (replace the row, recorded, with every company then starting
+     a new key), which changes the master baseline's `installation_key_same_key` trigger.
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).
