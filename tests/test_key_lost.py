@@ -4,9 +4,9 @@ ledger_keys.start_new_key_epoch(session, company_id, confirm_company_code=...), 
 active key cannot be opened on this computer while the installation key can (a key store that is locked refuses,
 KS6). The company code must be typed. The old key is retired as 'Key lost', a new key becomes active (wrapped in
 the master, 'Ledger key lost' auth_event), and posting can go on: the next entry chains to the last stored hash.
-The data stays readable; entries sealed with the lost key can no longer be verified, so a full check is Unavailable
-(never Broken) and the result names the last such entry. No checkpoint is signed (an honest one needs a verifier
-change: see docs/audit_readiness_design.md 2.7, "As built in Step 1c sub-step 9").
+The data stays readable; entries sealed with the lost key can no longer be verified. Since Step 1d the epoch signs
+a 'Key lost' checkpoint and a full check is OK with that range reported as unverified (never Broken); see
+tests/test_key_lost_checkpoint.py.
 """
 import dataclasses
 import sqlite3
@@ -103,7 +103,7 @@ def test_the_epoch_is_recorded_as_an_auth_event_naming_the_company(world, lost):
     assert events == [{"user_id": world.root.user_id, "company_id": world.company["company_id"]}]
 
 
-def test_posting_goes_on_after_the_epoch_and_old_entries_are_unavailable_not_broken(world, lost):
+def test_posting_goes_on_after_the_epoch_and_old_entries_are_unverified_not_broken(world, lost):
     result = _epoch(world)
     context = _context(world, world.company["company_id"])
     _post(context, 3000)
@@ -111,7 +111,8 @@ def test_posting_goes_on_after_the_epoch_and_old_entries_are_unavailable_not_bro
                                         "ORDER BY entry_number")
     assert entries[2]["chain_key_id"] == result["new_key_id"]
     assert entries[2]["chain_prev_hash"] == entries[1]["chain_hash"]
-    assert ledger_verify.verify_ledger(context, mode="full")["status"] == "Unavailable"
+    result = ledger_verify.verify_ledger(context, mode="full")
+    assert (result["status"], result["unverified_through"]) == ("OK", 2)
     assert _rows(world.company_path, "SELECT * FROM ledger_checkpoint WHERE result = 'Broken'") == []
 
 
@@ -169,14 +170,15 @@ def test_a_locked_key_store_cannot_start_a_new_key(world, lost, monkeypatch):
 
 def test_after_an_epoch_the_new_key_can_be_rotated(world, lost):
     """Step 1c review: rotation needs only the CURRENT key, so the old lost key never blocks it (no loop between
-    'start a new ledger key' and 'rotate it instead'). The rotation signs nothing: the history is unverifiable."""
+    'start a new ledger key' and 'rotate it instead'). Since Step 1d (KS16) the rotation signs its checkpoint: the
+    check is OK with the unverified range."""
     epoch = _epoch(world)
     context = _context(world, world.company["company_id"])
     _post(context, 3000)
     rotated = ledger_keys.rotate_chain_key(world.root, world.company["company_id"])
     assert rotated["old_key_id"] == epoch["new_key_id"]
-    assert rotated["checkpoint"]["status"] == "Unavailable" and rotated["checkpoint"]["recorded_in"] == []
-    assert rotated["checkpoint"]["no_checkpoint_reason"]
+    assert rotated["checkpoint"]["status"] == "OK" and rotated["checkpoint"]["recorded_in"] == ["company", "master"]
+    assert rotated["checkpoint"]["unverified_through"] == 2
     rows = _rows(world.company_path, "SELECT retire_reason, is_active FROM ledger_chain_key ORDER BY key_id")
     assert rows == [{"retire_reason": "Key lost", "is_active": 0}, {"retire_reason": "Rotation", "is_active": 0},
                     {"retire_reason": None, "is_active": 1}]

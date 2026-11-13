@@ -8,8 +8,8 @@ the company file, because verification needs them for the entries they sealed.
 rotate_chain_key, in order:
 1. the key store must be able to make a key (KeyStoreLockedError while locked, KS6);
 2. the CURRENT key must open here, else rotation is refused (ROTATION_NEEDS_KEY): a lost key takes the key-lost
-   path instead. Then a full ledger check; after a key-lost epoch it is Unavailable (older entries need the lost
-   key), and the rotation goes on but signs no checkpoint (the result says why);
+   path instead. Then a full ledger check; after a key-lost epoch it is OK with the unverified range (Step 1d,
+   KS16), so the rotation signs its checkpoint as usual;
 3. the new key, wrapped, into the master with a 'Ledger key rotated' auth_event (one master transaction);
 4. the company file: the old key retired ('Rotation'), the new one active (one company transaction). A failure
    between 3 and 4 leaves an unused wrapped key in the master, never an active key that cannot be found;
@@ -34,9 +34,11 @@ def _active_key_id(context):
     return row["key_id"] if row else None
 
 
-def _switch_keys(session, context, provider, new_key, old_key_id, *, event, retire_reason):
+def _switch_keys(session, context, provider, new_key, old_key_id, *, event, retire_reason, in_company_tx=None):
     """Steps 3 and 4: store the new key in the master, then retire the old one and activate the new one in the
-    company file. Returns the new key_id. Checks the Master again itself, so no caller can skip it (rule 10)."""
+    company file. `in_company_tx(conn, new_key_id)`, when given, runs inside that same company transaction (the
+    key-lost checkpoint, so an epoch never exists without it). Returns (new key_id, what in_company_tx returned).
+    Checks the Master again itself, so no caller can skip it (rule 10)."""
     auth.require_master(session, "ledger.rotate_key")
     with write_transaction(context.master_db_path, context) as conn:
         provider.store_chain_key(conn, context.company_id, new_key, context.now)
@@ -46,9 +48,11 @@ def _switch_keys(session, context, provider, new_key, old_key_id, *, event, reti
         if old_key_id is not None:
             conn.execute("UPDATE ledger_chain_key SET is_active = 0, retired_at = ?, retire_reason = ? "
                          "WHERE key_id = ?", (context.now, retire_reason, old_key_id))
-        return conn.execute("INSERT INTO ledger_chain_key (fingerprint, created_at, created_by) VALUES (?, ?, ?) "
-                            "RETURNING key_id", (ledger_chain.fingerprint(new_key.use_for_hmac()), context.now,
-                                                 context.user_id)).fetchone()[0]
+        new_key_id = conn.execute("INSERT INTO ledger_chain_key (fingerprint, created_at, created_by) "
+                                  "VALUES (?, ?, ?) RETURNING key_id",
+                                  (ledger_chain.fingerprint(new_key.use_for_hmac()), context.now,
+                                   context.user_id)).fetchone()[0]
+        return new_key_id, (in_company_tx(conn, new_key_id) if in_company_tx is not None else None)
 
 
 def rotate_chain_key(session, company_id):
@@ -66,9 +70,9 @@ def rotate_chain_key(session, company_id):
         provider.get_key(company_id, old_key_id)                     # rotation needs the CURRENT key only
     except KeyUnavailableError:
         raise KeyUnavailableError(ROTATION_NEEDS_KEY) from None
-    verification = ledger_verify.check_before_key_change(context)   # Unavailable after a key-lost epoch
-    new_key_id = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key rotated",
-                              retire_reason="Rotation")
+    verification = ledger_verify.check_before_key_change(context)   # OK with its unverified range after an epoch
+    new_key_id, _ = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key rotated",
+                                 retire_reason="Rotation")
     checkpoint = ledger_verify.record_key_checkpoint(context, verification, old_key_id=old_key_id)
     return {"old_key_id": old_key_id, "new_key_id": new_key_id, "checkpoint": checkpoint}
 
@@ -92,25 +96,18 @@ def _typed_code_matches(session, company_id, confirm_company_code):
         raise ValidationError(f"Type the company code exactly as shown ({row['company_code']}) to continue")
 
 
-def _last_entry_number(context):
-    conn = read_connection(context.company_db_path)
-    try:
-        return conn.execute("SELECT COALESCE(MAX(entry_number), 0) AS n FROM journal_entry "
-                            "WHERE is_posted = 1").fetchone()["n"]
-    finally:
-        conn.close()
-
-
 def start_new_key_epoch(session, company_id, *, confirm_company_code):
     """Start a new ledger key for a company whose active key is lost on this computer (Master only; the company
     code must be typed). The old key is retired as 'Key lost' and a new one becomes active, so posting can go on.
     Entries sealed with the lost key stay readable but can no longer be verified. Returns {'old_key_id',
-    'new_key_id', 'unverifiable_through', 'message'}.
+    'new_key_id', 'unverifiable_through', 'message', 'checkpoint_id', 'recorded_in'} plus 'checkpoint_error' when
+    the master's copy of the checkpoint could not be saved.
 
     Needs the installation key (KeyStoreLockedError while it is locked). Refused while the active key can still
-    be opened here (KEY_STILL_AVAILABLE): that key is rotated instead. No checkpoint is signed: the schema has no
-    honest result for history that cannot be verified, and the verifier would need the lost key for its anchor
-    entry (audit design 2.7, "As built in Step 1c sub-step 9")."""
+    be opened here (KEY_STILL_AVAILABLE): that key is rotated instead. In the same company transaction as the key
+    switch it signs a 'Key lost' checkpoint (result 'Unverified') through the last sealed entry with the new key
+    (Step 1d, KS12); the verifier then reports entries up to it as unverified and checks the ones after it. The
+    master's copy is written afterwards: if it fails, the epoch stands and 'checkpoint_error' says so."""
     auth.require_master(session, "ledger.rotate_key")
     _typed_code_matches(session, company_id, confirm_company_code)
     context = companies.open_company(session, company_id)
@@ -124,13 +121,21 @@ def start_new_key_epoch(session, company_id, *, confirm_company_code):
             pass
         else:
             raise ValidationError(KEY_STILL_AVAILABLE)
-    through = _last_entry_number(context)
-    new_key_id = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key lost",
-                              retire_reason="Key lost")
+    def key_lost_checkpoint(conn, new_key_id):
+        if old_key_id is None:                                       # no key was lost: nothing to record
+            return None
+        return ledger_verify.insert_key_lost_checkpoint(conn, context, new_key=new_key, new_key_id=new_key_id,
+                                                        lost_key_id=old_key_id)
+
+    new_key_id, row = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key lost",
+                                   retire_reason="Key lost", in_company_tx=key_lost_checkpoint)
+    recorded = (ledger_verify.mirror_key_lost_checkpoint(session, context, row) if row is not None
+                else {"checkpoint_id": None, "recorded_in": []})
+    through = row["through_entry_number"] if row is not None else 0
     if through:
         message = (f"A new ledger key was started. Entries up to {ledger_verify.je_number(through)} were sealed "
                    "with the lost key and can no longer be verified; their data is unchanged.")
     else:
         message = "A new ledger key was started. No entries were sealed with the lost key."
     return {"old_key_id": old_key_id, "new_key_id": new_key_id, "unverifiable_through": through,
-            "message": message}
+            "message": message, **recorded}

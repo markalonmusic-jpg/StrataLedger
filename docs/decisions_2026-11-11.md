@@ -230,6 +230,16 @@ KS. Key store, Phase 2.5 step 1c:
 - KS9 Master key tables not audited
 - KS10 The master holds every company's keys
 - KS11 Export warning until the key bundle exists
+- KS12 Key-lost checkpoint (Key lost / Unverified) written with the epoch
+- KS13 A lost installation key can be replaced; installation_key keeps history
+- KS14 Status stays OK; every result shows the unverified range
+- KS15 Unverified range is a close warning, never a block, with no expiry
+- KS16 Rotation after an epoch signs its checkpoint again
+- KS17 Typed phrase NEW LEDGER KEY and the company count before replacing
+- KS18 A found lost key does not re-verify the old range in 1d
+- KS19 Archived companies get an epoch too
+- KS20 The replace service lives in installation_keys.py
+- KS21 Each installation key's copies are bound to its own row id
 
 ---
 
@@ -983,3 +993,34 @@ The step 1c plan was approved with these answers (design: docs/audit_readiness_d
 - KS11 Until the passphrase-protected key bundle exists (K8), `export_company` returns a warning that the exported
   file cannot be verified on another computer, and the export screen shows it. The bundle (Master only) is on the
   backlog for the backup step.
+
+## KS (continued). Key lost and a new installation key, Phase 2.5 step 1d (decided 2026-11-12)
+
+The step 1d plan was approved with these answers (design: docs/audit_readiness_design.md 2.6, 2.7).
+- KS12 A key-lost epoch writes a signed `Key lost` checkpoint (result `Unverified`) in the same company transaction
+  that retires the lost key and activates the new one: through the last entry sealed before it, with that entry's
+  stored hash as is, signed by the new key, naming the lost key. The master mirror is written afterwards; if it
+  fails the epoch stands and the result says so. The verifier reports the range up to it as Unverified (key lost),
+  never Broken, and verifies from the next entry. Only the latest epoch counts.
+- KS13 The Master can create a new installation key when the old one is lost (password and a typed confirmation, a
+  recorded event); every company then enters a key-lost epoch. `installation_key` is append-only history with one
+  active row; `company_key` names the installation key that wrapped it.
+- KS14 After an epoch the status stays `OK` (or Broken / Unavailable for the new epoch) with `unverified_through`
+  and `unverified_reason`. Every verification result shown on a screen, report or export shows the unverified range
+  next to it, and the message is never empty when `unverified_through` is set (a test proves it).
+- KS15 The unverified range is a warning in the `ledger_integrity` close check in every mode, never a block. The
+  note "entries JE-000001 to JE-N cannot be verified" has no expiry: it stays on every close report and export that
+  covers those periods, and on the Audit-ready page (replaces "until the next year close").
+- KS16 Rotation after an epoch signs its `Key rotation` checkpoint as usual (the full check is OK with the
+  unverified range). "Unavailable, no checkpoint" remains only for a key missing with no epoch.
+- KS17 Replacing the installation key needs the typed phrase `NEW LEDGER KEY`, after a screen that says every
+  company's history up to today will no longer be verifiable and shows how many companies get a new key epoch
+  (a Master-only read service returns that count, so the screen and the service agree).
+- KS18 A lost key found again later (an old master backup, a found recovery code) is not used to verify the old
+  range in 1d; the range stays Unverified. Restoring keys belongs to the backup and key-bundle work (backlog 16).
+- KS19 When the installation key is replaced, every company in the registry gets an epoch, archived included, and
+  the result lists each one.
+- KS20 The replace service is a new module, `modules/services/installation_keys.py`, calling auth's password and
+  recovery-code helpers, so auth.py does not grow.
+- KS21 Each installation key's recovery copy and DPAPI copy are bound to its own row id plus its fingerprint (key
+  id 1 keeps its current binding). A copy from one installation key row is refused on another row (tested).

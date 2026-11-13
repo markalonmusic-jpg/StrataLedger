@@ -20,11 +20,19 @@
 * A period, Books closed through or year close signs the full verification it ran as its close check as a
   'Period close' / 'Year close' checkpoint once the close has committed (`record_close_checkpoint`).
 * Messages are plain language and name the first broken entry; they never contain a hash or a key.
+* **After a key-lost epoch** (Step 1d, KS12, KS14): the latest 'Key lost' checkpoint E (file, or the master mirror
+  when it is further on) anchors the check. E's MAC must check under its key_id, its ref_id must be a key retired
+  as 'Key lost', and the stored hash of its entry N must be E's chain_hash; a failure is Broken (Marker, Hash or
+  Truncated), never Unverified. Entries 1..N are not hashed (they were sealed with the lost key, so a change there
+  is not found: a documented limit); checking starts at N+1 from E's hash. Checkpoints at or before N (made before
+  the epoch, possibly with the lost key) are ignored. The void cross-check and the entry counter still cover the
+  whole ledger. Every result carries `unverified_through` (N, or None) and `unverified_reason` ('Key lost' or
+  None), and its message names the unverified range (`unverified_note`).
 """
 import hmac
 import logging
 
-from modules.services import keys, ledger_chain
+from modules.services import auth, keys, ledger_chain
 from modules.services.authz import authorize
 from modules.services.errors import KeyUnavailableError, NotFoundError, ValidationError
 from modules.services.tx import read_connection, write_transaction
@@ -45,6 +53,7 @@ REASON_TEXT = {
     TRUNCATED: "it and any entries after it are missing from the end of the ledger",
     MARKER: "the record of an earlier verification no longer matches its signature",
 }
+KEY_LOST = "Key lost"
 UNAVAILABLE_MESSAGE = ("The ledger could not be checked on this computer because its key is not available; this "
                        "is not a sign of tampering. Ask the Master to sign in and restore the ledger key with the "
                        "recovery code.")
@@ -52,6 +61,12 @@ UNAVAILABLE_MESSAGE = ("The ledger could not be checked on this computer because
 
 def je_number(number):
     return f"JE-{number:06d}"
+
+
+def unverified_note(through):
+    """The sentence every verification result shown on a screen, report or export carries after a key-lost epoch
+    (KS14). It has no expiry (KS15)."""
+    return f"Entries {je_number(1)} to {je_number(through)} cannot be verified because their key was lost."
 
 
 # --- The check itself (pure over a connection) -------------------------------------------------------------------
@@ -63,19 +78,32 @@ def _grouped(conn, sql, start):
     return grouped
 
 
-def verify_connection(conn, company_code, key_for, *, mode="full", anchors=()):
+def verify_connection(conn, company_code, key_for, *, mode="full", anchors=(), epoch_mirror=None):
     """Check the chain over `conn`. `key_for(key_id)` returns key bytes or raises KeyUnavailableError; `anchors`
-    are extra checkpoint rows to hold the ledger to (the master's mirror). Returns {'status', 'scope',
-    'through_entry_number', 'chain_hash', 'first_broken': None | {'entry_number', 'reason', 'detail'}}."""
+    are extra checkpoint rows to hold the ledger to (the master's mirror); `epoch_mirror` is the master's latest
+    'Key lost' row for the company, or None. Returns {'status', 'scope', 'through_entry_number', 'chain_hash',
+    'first_broken': None | {'entry_number', 'reason', 'detail'}, 'unverified_through', 'unverified_reason'}."""
     scope = "Incremental" if mode == "incremental" else "Full"
     try:
-        return _check(conn, company_code, key_for, mode, anchors)
+        return _check(conn, company_code, key_for, mode, anchors, epoch_mirror)
     except KeyUnavailableError:
         return {"status": UNAVAILABLE, "scope": scope, "through_entry_number": None, "chain_hash": None,
-                "first_broken": None}
+                "first_broken": None, "unverified_through": None, "unverified_reason": None}
 
 
-def _check(conn, company_code, key_for, mode, anchors):
+def _epoch_anchor(conn, epoch_mirror):
+    """The latest 'Key lost' checkpoint to anchor on: the file's, or the mirror's when it is further on (the file
+    is then an older copy). Returns (source, row) or None."""
+    row = conn.execute("SELECT * FROM ledger_checkpoint WHERE kind = 'Key lost' "
+                       "ORDER BY checkpoint_id DESC LIMIT 1").fetchone()
+    held = ("company", dict(row)) if row else None
+    if epoch_mirror is not None and (held is None or
+                                     epoch_mirror["through_entry_number"] > held[1]["through_entry_number"]):
+        held = ("master", dict(epoch_mirror))
+    return held
+
+
+def _check(conn, company_code, key_for, mode, anchors, epoch_mirror=None):
     fingerprints = {r["key_id"]: r["fingerprint"] for r in conn.execute("SELECT key_id, fingerprint FROM ledger_chain_key")}
     checked = {}
 
@@ -88,6 +116,7 @@ def _check(conn, company_code, key_for, mode, anchors):
         return checked[key_id]
 
     scope = "Full"
+    unverified = {"unverified_through": None, "unverified_reason": None}
 
     def hash_at(number):
         if number <= 0:
@@ -99,12 +128,45 @@ def _check(conn, company_code, key_for, mode, anchors):
     def broken(number, reason, detail=None):
         return {"status": BROKEN, "scope": scope, "through_entry_number": number - 1,
                 "chain_hash": hash_at(number - 1), "first_broken": {"entry_number": number, "reason": reason,
-                                                                    "detail": detail}}
+                                                                    "detail": detail}, **unverified}
 
-    # Every checkpoint we rely on must carry a valid MAC (Marker).
+    def last_posted():
+        return conn.execute("SELECT COALESCE(MAX(entry_number), 0) AS n FROM journal_entry "
+                            "WHERE is_posted = 1").fetchone()["n"]
+
+    # A key-lost epoch: its anchor is trusted only once it checks out (KS14); otherwise the result is Broken.
+    epoch_through, epoch_hash = 0, None
+    epoch = _epoch_anchor(conn, epoch_mirror)
+    if epoch is not None:
+        source, anchor = epoch
+        through, when = anchor["through_entry_number"], (anchor["created_at"] or "")[:10]
+        place = "this computer's record" if source == "master" else "the company file's record"
+        raw = key(anchor["key_id"])
+        lost = conn.execute("SELECT is_active, retire_reason FROM ledger_chain_key WHERE key_id = ?",
+                            (anchor["ref_id"],)).fetchone()
+        if (raw is None or not hmac.compare_digest(ledger_chain.checkpoint_mac(raw, company_code, anchor),
+                                                   anchor["mac"] or "")
+                or anchor["ref_id"] == anchor["key_id"] or lost is None or lost["is_active"]
+                or lost["retire_reason"] != KEY_LOST):
+            return broken(max(1, through), MARKER, f"{place} of the ledger key replaced on {when}")
+        if through > 0:
+            stored, last = hash_at(through), last_posted()
+            if stored is None:
+                return broken(last + 1 if last < through else through, TRUNCATED if last < through else GAP,
+                              f"the ledger key was replaced after {je_number(through)} on {when}")
+            if stored != anchor["chain_hash"]:
+                return broken(through, HASH, f"it differs from the record made when the ledger key was replaced "
+                                             f"on {when}")
+            unverified = {"unverified_through": through, "unverified_reason": KEY_LOST}
+        epoch_through, epoch_hash = through, anchor["chain_hash"]
+
+    # Every checkpoint we rely on must carry a valid MAC (Marker). Those at or before an epoch are ignored.
     marker = conn.execute("SELECT * FROM ledger_checkpoint WHERE result = 'OK' "
                           "ORDER BY checkpoint_id DESC LIMIT 1").fetchone()
-    held = ([("company", dict(marker))] if marker else []) + [("master", dict(a)) for a in anchors]
+    if marker is not None and epoch is not None and marker["through_entry_number"] <= epoch_through:
+        marker = None
+    held = ([("company", dict(marker))] if marker else []) + [
+        ("master", dict(a)) for a in anchors if epoch is None or a["through_entry_number"] > epoch_through]
     for source, anchor in held:
         through = anchor["through_entry_number"]
         raw = key(anchor["key_id"]) if anchor["key_id"] is not None else None
@@ -114,14 +176,17 @@ def _check(conn, company_code, key_for, mode, anchors):
             return broken(max(1, through), MARKER, f"{place} of the check through {je_number(max(1, through))}")
 
     start, prev = 1, ledger_chain.GENESIS
+    if epoch is not None:
+        start, prev = epoch_through + 1, epoch_hash or ledger_chain.GENESIS
+        if mode == "incremental":
+            scope = "Incremental"
     if mode == "incremental" and marker is not None:
         scope = "Incremental"
         through = marker["through_entry_number"]
         if through > 0:
             stored = hash_at(through)
             if stored is None:
-                last = conn.execute("SELECT COALESCE(MAX(entry_number), 0) AS n FROM journal_entry "
-                                    "WHERE is_posted = 1").fetchone()["n"]
+                last = last_posted()
                 return broken(through if last >= through else last + 1, GAP if last >= through else TRUNCATED,
                               f"the ledger was verified through {je_number(through)} on {marker['created_at'][:10]}")
             if stored != marker["chain_hash"]:
@@ -197,7 +262,7 @@ def _check(conn, company_code, key_for, mode, anchors):
     if counter < last:
         return broken(counter + 1, GAP, "the entry counter is behind the ledger")
     return {"status": OK, "scope": scope, "through_entry_number": last, "chain_hash": prev if last else None,
-            "first_broken": None}
+            "first_broken": None, **unverified}
 
 
 # --- Context helpers -------------------------------------------------------------------------------------------
@@ -224,6 +289,22 @@ def _master_anchors(context):
     return [dict(row)] if row else []
 
 
+def _master_epoch(context):
+    """The master mirror's latest 'Key lost' row for the company, or None."""
+    conn = read_connection(context.master_db_path)
+    try:
+        row = conn.execute("SELECT * FROM chain_checkpoint WHERE company_id = ? AND kind = 'Key lost' "
+                           "ORDER BY mirror_id DESC LIMIT 1", (context.company_id,)).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
+
+
+def _verify(conn, context, mode):
+    return verify_connection(conn, _company_code(context), _key_for(context), mode=mode,
+                             anchors=_master_anchors(context), epoch_mirror=_master_epoch(context))
+
+
 def _key_for(context):
     provider = keys.get_provider()
     return lambda key_id: provider.get_key(context.company_id, key_id).use_for_hmac()
@@ -247,13 +328,21 @@ def _poster_name(context, user_id):
 def _describe(conn, context, core):
     """Add the entry details and the plain-language message to a core result."""
     result = dict(core)
+    result.setdefault("unverified_through", None)
+    result.setdefault("unverified_reason", None)
+    lost = result["unverified_through"]
     if core["status"] == UNAVAILABLE:
         result["message"] = UNAVAILABLE_MESSAGE
         return result
     if core["status"] == OK:
         last = core["through_entry_number"]
-        result["message"] = (f"The ledger checks out: entries {je_number(1)} to {je_number(last)} match their seals."
-                             if last else "There are no posted entries yet, so there is nothing to check.")
+        if lost:
+            result["message"] = unverified_note(lost) + (
+                f" Entries {je_number(lost + 1)} to {je_number(last)} were verified and match their seals."
+                if last > lost else " No entries have been posted since, so there was nothing else to check.")
+        else:
+            result["message"] = (f"The ledger checks out: entries {je_number(1)} to {je_number(last)} match their "
+                                 "seals." if last else "There are no posted entries yet, so there is nothing to check.")
         return result
     broken = dict(core["first_broken"])
     number = broken["entry_number"]
@@ -263,17 +352,27 @@ def _describe(conn, context, core):
                   posted_by=row["posted_by"] if row else None, posted_at=row["posted_at"] if row else None)
     broken["posted_by_name"] = _poster_name(context, broken["posted_by"])
     reason = REASON_TEXT[broken["reason"]] + (f" ({broken['detail']})" if broken["detail"] else "")
+    if not lost:
+        intact = " Entries before it are intact."
+    elif number - 1 > lost + 1:
+        intact = f" Entries {je_number(lost + 1)} to {je_number(number - 1)} before it are intact."
+    elif number - 1 == lost + 1:
+        intact = f" Entry {je_number(lost + 1)} before it is intact."
+    else:
+        intact = ""
     if broken["reason"] == MARKER:
         message = (f"Ledger check failed: {reason}. Run a full check; if it fails too, restore a recent backup or "
                    "ask your accountant to review.")
     elif row is not None:
         posted_day = (row["posted_at"] or "")[:10]
         message = (f"Ledger check failed at entry {broken['je_number']} (dated {row['entry_date']}, posted by "
-                   f"{broken['posted_by_name']} on {posted_day}): {reason}. Entries before it are intact. Restore a "
+                   f"{broken['posted_by_name']} on {posted_day}): {reason}.{intact} Restore a "
                    f"backup made before {posted_day}, or ask your accountant to review.")
     else:
-        message = (f"Ledger check failed at entry {broken['je_number']}: {reason}. Entries before it are intact. "
+        message = (f"Ledger check failed at entry {broken['je_number']}: {reason}.{intact} "
                    "Restore a recent backup, or ask your accountant to review.")
+    if lost:
+        message += " " + unverified_note(lost)
     result["first_broken"] = broken
     result["message"] = message
     return result
@@ -308,8 +407,7 @@ def checkpoint_on_close(context):
 def _verify_and_record(context, mode):
     conn = read_connection(context.company_db_path)
     try:
-        result = _describe(conn, context, verify_connection(conn, _company_code(context), _key_for(context),
-                                                            mode=mode, anchors=_master_anchors(context)))
+        result = _describe(conn, context, _verify(conn, context, mode))
     finally:
         conn.close()
     return _record(context, {**result, "checkpoint_id": None, "recorded_in": []}, kind="Verify")
@@ -320,8 +418,7 @@ def check_before_key_change(context):
     rotation signs once the new key is active (ledger_keys.py, which authorizes it as the Master)."""
     conn = read_connection(context.company_db_path)
     try:
-        result = _describe(conn, context, verify_connection(conn, _company_code(context), _key_for(context),
-                                                            mode="full", anchors=_master_anchors(context)))
+        result = _describe(conn, context, _verify(conn, context, "full"))
     finally:
         conn.close()
     return {**result, "checkpoint_id": None, "recorded_in": []}
@@ -434,20 +531,73 @@ def _record(context, result, *, kind, ref_type=None, ref_id=None):
     except KeyUnavailableError:
         result["no_checkpoint_reason"] = NO_CHECKPOINT_KEY_UNAVAILABLE
         return result
-    columns = ", ".join(checkpoint)
-    marks = ", ".join("?" * len(checkpoint))
     if not context.read_only:
         with write_transaction(context.company_db_path, context) as write:
-            result["checkpoint_id"] = write.execute(
-                f"INSERT INTO ledger_checkpoint ({columns}) VALUES ({marks}) RETURNING checkpoint_id",
-                tuple(checkpoint.values())).fetchone()[0]
+            result["checkpoint_id"] = _insert_checkpoint(write, checkpoint)
         result["recorded_in"].append("company")
-    mirror = {"company_id": context.company_id, "company_checkpoint_id": result["checkpoint_id"],
-              "recorded_from": "Read-only" if context.read_only else "Company file", **checkpoint}
+    mirror = _mirror_row(context, checkpoint, result["checkpoint_id"])
     with write_transaction(context.master_db_path, context) as master:
-        master.execute(f"INSERT INTO chain_checkpoint ({', '.join(mirror)}) VALUES ({', '.join('?' * len(mirror))})",
-                       tuple(mirror.values()))
+        _insert_mirror(master, mirror)
     result["recorded_in"].append("master")
+    return result
+
+
+def _insert_checkpoint(conn, checkpoint):
+    columns, marks = ", ".join(checkpoint), ", ".join("?" * len(checkpoint))
+    return conn.execute(f"INSERT INTO ledger_checkpoint ({columns}) VALUES ({marks}) RETURNING checkpoint_id",
+                        tuple(checkpoint.values())).fetchone()[0]
+
+
+def _mirror_row(context, checkpoint, company_checkpoint_id):
+    return {"company_id": context.company_id, "company_checkpoint_id": company_checkpoint_id,
+            "recorded_from": "Read-only" if context.read_only else "Company file", **checkpoint}
+
+
+def _insert_mirror(conn, mirror):
+    conn.execute(f"INSERT INTO chain_checkpoint ({', '.join(mirror)}) VALUES ({', '.join('?' * len(mirror))})",
+                 tuple(mirror.values()))
+
+
+# --- The key-lost checkpoint (Step 1d, KS12) ---------------------------------------------------------------------
+
+KEY_LOST_CHECKPOINT_NOT_MIRRORED = ("The new ledger key was started, but this computer's copy of its record could "
+                                    "not be saved; the record in the company file is used.")
+
+
+def insert_key_lost_checkpoint(conn, context, *, new_key, new_key_id, lost_key_id):
+    """Inside the company transaction that retires `lost_key_id` and activates `new_key_id` (ledger_keys only):
+    sign and insert the 'Key lost' checkpoint through the last entry sealed so far, its stored hash recorded as
+    is. Returns the row (with checkpoint_id) for `mirror_key_lost_checkpoint`."""
+    through = conn.execute("SELECT COALESCE(MAX(entry_number), 0) AS n FROM journal_entry "
+                           "WHERE is_posted = 1").fetchone()["n"]
+    stored = None
+    if through:
+        stored = conn.execute("SELECT chain_hash FROM journal_entry WHERE is_posted = 1 AND entry_number = ?",
+                              (through,)).fetchone()["chain_hash"]
+    checkpoint = {"created_at": context.now, "created_by": context.user_id, "kind": KEY_LOST, "scope": None,
+                  "result": "Unverified", "through_entry_number": through, "chain_hash": stored,
+                  "first_broken_entry_number": None, "key_id": new_key_id, "ref_type": "ledger_chain_key",
+                  "ref_id": lost_key_id}
+    checkpoint["mac"] = ledger_chain.checkpoint_mac(new_key.use_for_hmac(), _company_code(context), checkpoint)
+    checkpoint_id = _insert_checkpoint(conn, checkpoint)
+    return {**checkpoint, "checkpoint_id": checkpoint_id}
+
+
+def mirror_key_lost_checkpoint(session, context, row):
+    """After the epoch has committed: the master's copy of its 'Key lost' row, written as the Master (checked
+    again here, rule 10). Never raises (the epoch stands); returns {'checkpoint_id', 'recorded_in'} plus
+    'checkpoint_error' when the copy could not be saved."""
+    result = {"checkpoint_id": row["checkpoint_id"], "recorded_in": ["company"]}
+    mirror = _mirror_row(context, {k: v for k, v in row.items() if k != "checkpoint_id"}, row["checkpoint_id"])
+    try:
+        auth.require_master(session, "ledger.rotate_key")
+        with write_transaction(context.master_db_path, context) as master:
+            _insert_mirror(master, mirror)
+    except Exception:                       # noqa: BLE001  (logged and reported; the epoch has committed)
+        _logger.exception("The key-lost checkpoint could not be mirrored (company_id=%s)", context.company_id)
+        result["checkpoint_error"] = KEY_LOST_CHECKPOINT_NOT_MIRRORED
+    else:
+        result["recorded_in"].append("master")
     return result
 
 
@@ -456,16 +606,18 @@ def _record(context, result, *, kind, ref_type=None, ref_id=None):
 def full_verification(conn, context):
     """A FULL verification over the caller's connection, described but not recorded (the close keeps it and
     records it with record_close_checkpoint once the close has committed)."""
-    core = verify_connection(conn, _company_code(context), _key_for(context), mode="full",
-                             anchors=_master_anchors(context))
-    return _describe(conn, context, core)
+    return _describe(conn, context, _verify(conn, context, "full"))
 
 
 def integrity_check(conn, context, label, mode, verification=None):
     """The ledger_integrity close check from a full verification (run here unless `verification` is given).
     Broken follows the check's mode (warn or block); Unavailable is always a warning that says the check could
-    not run, never a failure."""
+    not run, never a failure. An unverified range after a key-lost epoch is always a warning, on every close, with
+    no expiry (KS15): it is not tampering."""
     described = verification if verification is not None else full_verification(conn, context)
+    if described["status"] == OK and described.get("unverified_through"):
+        return {"code": "ledger_integrity", "mode": "warn", "ok": False, "message": described["message"],
+                "period": label}
     if described["status"] == OK:
         return {"code": "ledger_integrity", "mode": mode, "ok": True, "message": None, "period": label}
     if described["status"] == UNAVAILABLE:

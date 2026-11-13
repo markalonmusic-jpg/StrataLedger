@@ -201,6 +201,31 @@ incremental check at company open is short and can stay in the foreground until 
 * **Close check:** `ledger_integrity` runs one full verification per close action, over the caller's connection,
   not recorded as a Verify checkpoint. Broken follows the check's mode (L2); Unavailable is always a warning.
 
+**After a key-lost epoch (built in Step 1d, KS12, KS14, KS15):**
+* **Anchor:** the latest `Key lost` checkpoint E, from the file, or from the master mirror when the mirror's is
+  further on (the file is then an older copy). E is trusted only when its MAC checks under its `key_id`, its
+  `ref_id` is a key retired as `Key lost` (not the signing key), and the stored hash of its entry N equals E's
+  `chain_hash`. A failure is Broken (`Marker`; `Hash` at N; `Truncated` or `Gap` when entry N is missing), never
+  Unverified.
+* **Range:** entries 1..N are not hashed. Full and incremental both start at N+1 with `prev` = E's `chain_hash`;
+  incremental may start later, at an OK checkpoint after N. Checkpoints and mirrors at or before N (made before the
+  epoch, perhaps with the lost key) are ignored for the MAC and truncation checks; those after N are checked as
+  before. The void cross-check and the entry counter still cover the whole ledger. Only the latest epoch counts.
+* **Documented limit:** a change to an entry in 1..N is not found (its key is lost). A test documents it.
+* **Result:** status as before (`OK`, or `Broken` / `Unavailable` for the new epoch) plus `unverified_through` = N
+  and `unverified_reason` = `Key lost` (both None without an epoch, or for an epoch through 0). The message starts
+  or ends with `ledger_verify.unverified_note(N)`: "Entries JE-000001 to JE-00000N cannot be verified because their
+  key was lost." An OK message then says which entries were verified; a Broken one names the intact range after N.
+  The message holds no hash or key and is never empty when `unverified_through` is set (KS14, tested over full,
+  incremental, the close check and the rotation result).
+* **Shown everywhere:** every verification result shown on a screen, report or export shows the unverified range
+  next to it (KS14). None of those screens or reports exist yet; each one built in Phase 3 or later must show it.
+* **Close check:** an OK result with an unverified range is a `ledger_integrity` warning in every mode, never a
+  block (it is not tampering), on every close, with no expiry (KS15). A Broken new epoch follows the check's mode
+  and its message carries the note.
+* A Verify checkpoint recorded after an epoch is OK through the head and means "verified from N+1": the range comes
+  from E, not from the row.
+
 **Screen** (Phase 3): Settings > Ledger integrity. It shows the last check (when, by whom, scope, result)
 and the current checkpoint. It has a "Verify now" button, a box to paste an auditor's checkpoint and
 compare it, and the history of checks. Running a check needs `ledger.verify` (K7).
@@ -299,8 +324,9 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   rotated` auth_event in the master; the old key retired (`Rotation`) and the new one active in the company file;
   then the check signed as a `Key rotation` checkpoint with the NEW key (`ref_type` `ledger_chain_key`, `ref_id` the
   retired key), in the file and the mirror. A rotation over a Broken ledger is allowed and its checkpoint says
-  Broken; when the full check is Unavailable (after a key-lost epoch) the rotation goes on, signs no checkpoint and
-  says why. A checkpoint that cannot be saved never undoes the rotation (`checkpoint_error`). The next entry is
+  Broken. After a key-lost epoch the full check is OK with its unverified range, so the rotation signs its
+  checkpoint as usual (KS16); only when the check is Unavailable (a key missing with no epoch) does the rotation go
+  on without a checkpoint, saying why. A checkpoint that cannot be saved never undoes the rotation (`checkpoint_error`). The next entry is
   sealed with the new key and chains to the old key's last hash. Old keys are kept, wrapped, forever, because
   verification needs them.
 * **Key lost** (DPAPI unusable and recovery code lost): the ledger data is still readable (the chain is not
@@ -309,17 +335,24 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
   be opened here while the installation key can (refused with `KEY_STILL_AVAILABLE` when the key still opens:
   rotate it). The old key is retired as `Key lost`, a new key becomes active (wrapped in the master, `Ledger key
   lost` auth_event; the company file's audit trigger records the retirement), and posting goes on: the next entry
-  chains to the last stored hash. Audit-ready mode shows "history before entry N cannot be verified" until the next
-  year close.
-* **Decided for Step 1d (2026-11-12, owner):**
-  1. The epoch is recorded honestly: a signed checkpoint that says the history before it is Unverified (key
-     lost), never OK and never Broken, and the verifier reports that range as Unverified and verifies the new
-     epoch from its first entry.
-  2. A lost installation key (DPAPI unusable and the recovery code lost, or both copies damaged) is recoverable:
-     the Master creates a new installation key (password plus a typed confirmation, a recorded event), and every
-     company then enters a key-lost epoch automatically. Data stays readable; posting continues under new keys.
-  Plan: docs/next_step.md. Until it is built, `start_new_key_epoch` signs no checkpoint and `installation_key`
-  can never be replaced.
+  chains to the last stored hash.
+  * **The key-lost checkpoint (built in Step 1d, KS12):** in the SAME company transaction as the key switch,
+    `ledger_verify.insert_key_lost_checkpoint` signs a `Key lost` row (result `Unverified`, scope empty):
+    `through_entry_number` = N, the last entry sealed before the epoch (0 when none); `chain_hash` = the stored
+    hash of entry N, recorded as is, not verified; `key_id` = the NEW key, which signs the MAC; `ref_type`
+    `ledger_chain_key`, `ref_id` = the key retired as lost. So an epoch never exists without its checkpoint. The
+    master mirror is written afterwards (`mirror_key_lost_checkpoint`, which checks the Master again); if it fails
+    the epoch stands and the result carries `KEY_LOST_CHECKPOINT_NOT_MIRRORED`. The schema allows `Key lost` only
+    with `Unverified`, and requires its key and its lost key. A company with no active key gets no checkpoint.
+  * The note "entries JE-000001 to JE-N cannot be verified" has **no expiry** (KS15): it stays on every close
+    report and export that covers those periods, and on the Audit-ready page.
+  * A lost key found again later is not used to re-verify the range in 1d (KS18; backlog 16).
+* **A lost installation key (Step 1d part B, KS13, KS17, KS19-KS21; not built yet):** when DPAPI is unusable and
+  the recovery code lost (or both copies damaged), the Master creates a new installation key (password plus the
+  typed phrase `NEW LEDGER KEY`, after a screen showing how many companies get a new key epoch), and every company
+  in the registry, archived included, then enters a key-lost epoch. `installation_key` is append-only history with
+  one active row (built in the baseline); `company_key.installation_key_id` names the key that wrapped each row.
+  Each installation key's copies are bound to its own row id plus its fingerprint. Plan: docs/next_step.md.
 
 ---
 
@@ -339,7 +372,8 @@ Screens show the first 16 hex characters in groups (`3f9a-1c2e-77b0-41d5`); expo
 * the footer of the period-close report and of every report export (the export design adds the footer
   hook).
 
-**Kinds:** Verify, Period close, Year close, Report export, Backup, Restore, Key rotation, Manual.
+**Kinds:** Verify, Period close, Year close, Report export, Backup, Restore, Key rotation, Manual, Key lost.
+Result is `OK` or `Broken`, or `Unverified` for (and only for) a `Key lost` row (2.7, KS12).
 
 **Close checkpoints (built):** a successful period close, Books closed through (one for the last month it
 closes) and year close each sign the full verification they ran as their close check, as a `Period close` or
@@ -490,7 +524,7 @@ Settings > Controls > **Audit readiness**, a checklist with a status per line (o
 | Document approvals | `document_approval_setting` for Bill and Payment |
 | Manual entries to controlled accounts | `allow_manual_control_je = 0` |
 | Close checks as blocks | `period_close_check` mode `block` for every check, including `ledger_integrity` and `control_overrides` |
-| Ledger verified | a full verification passed in the last 31 days |
+| Ledger verified | a full verification passed in the last 31 days; after a key-lost epoch the line also shows "history before JE-N cannot be verified (key lost)", permanently (KS15) |
 | Backups | nightly backups on, a second folder set (E7) |
 | Recovery code | the Master confirmed it is saved (backlog item 11) |
 | Restores with mismatched checksum | none, or each one reviewed (K5) |
@@ -592,6 +626,14 @@ be designed with that work.
 17. DPAPI round trip; the recovery-code wrap round trips; a wrong code fails cleanly; Master recovery
     re-wraps for a new machine (DPAPI simulated); backlog item 11 re-wraps.
 18. Rotation: entries across two key epochs verify; a retired key cannot seal.
+18a. Key lost (Step 1d, tests/test_key_lost_checkpoint.py): the epoch writes one signed Key lost / Unverified row
+    in the file and the mirror; a failure inside the transaction leaves the old key active and no row; a failed
+    mirror keeps the epoch and says so. Full and incremental are OK with `unverified_through` after an epoch; a
+    change after N is Broken at that entry; a change in 1..N is not found (documented limit); a changed hash at N,
+    an unsigned or forged Key lost row (file or mirror), or one naming an active key is Broken; two epochs, only the
+    latest counts; an older checkpoint signed with the lost key no longer makes it Unavailable; the message names
+    the range, holds no secret and is never empty (full, incremental, close check, rotation); the close check warns
+    in every mode; rotation after an epoch signs its checkpoint.
 
 **Checkpoints and backups (later phases):**
 19. A checkpoint row is append-only; its MAC detects a change; the master mirror matches.
@@ -706,7 +748,8 @@ SQLite-only constructs in the baseline that the PostgreSQL schema must rewrite. 
 | `json_object(...)` in audit triggers | every `audit_*` trigger, including Step 1b's `audit_ledger_chain_key_*` and `audit_ledger_checkpoint_insert` | `jsonb_build_object(...)` |
 | `INTEGER PRIMARY KEY AUTOINCREMENT` | every table, including `ledger_chain_key`, `ledger_checkpoint` | `GENERATED ALWAYS AS IDENTITY` |
 | `IS` / `IS NOT` comparing values | lock triggers (`NEW.x IS OLD.x`) | `IS NOT DISTINCT FROM` |
-| Partial unique indexes (`WHERE ...`) | `journal_entry_chain_hash_unique`, `ledger_chain_key_one_active`, the reversal slots | Supported as is |
+| Partial unique indexes (`WHERE ...`) | `journal_entry_chain_hash_unique`, `ledger_chain_key_one_active`, the reversal slots; Step 1d master `installation_key_one_active` | Supported as is |
+| Step 1d master `installation_key` triggers | `installation_key_retired_is_final`, `installation_key_retire_only` (RAISE with `WHEN` and `IS NOT` comparisons, as above); `installation_key.id` AUTOINCREMENT | As the rows above |
 | `BLOB` with `typeof(x) = 'blob'` and `length(x)` | Step 1c master `installation_key` (`machine_blob`, `recovery_salt`, `recovery_blob`) and `company_key.wrapped_key`; their `GLOB` fingerprints and RAISE triggers are as above | `bytea` with `octet_length(x)`; drop the `typeof` CHECK |
 
 The chain itself is unaffected: the canonical form (2.4) is defined on values, the golden vectors must pass

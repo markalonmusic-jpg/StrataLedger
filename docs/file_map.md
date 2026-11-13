@@ -105,6 +105,10 @@ in code (`tests/test_config_paths.py` fails on one).
   and holds `LocalKeyProvider`, which unlocks it at start-up (status unlocked, locked or missing), makes and
   stores each new company's chain key and finds it by fingerprint; `App.start_key_store()` sets it as the
   provider. The test switch `use_test_key_for_new_companies` works only under STRATALEDGER_ALLOW_TEST_KEYS.
+  Since Step 1d it reads the ACTIVE `installation_key` row (the table keeps history) and records which
+  installation key wrapped each company key. `ledger_keys.py` rotates a company key and starts a key-lost epoch,
+  whose `Key lost` checkpoint `ledger_verify.py` signs in the same transaction; `ledger_verify.py` then verifies
+  from the entry after it and reports the earlier range as unverified (`unverified_note`).
 - `tests/` - pytest suite. `scripts/` and `tools/` - developer tools. `.claude/agents/` - subagents.
 - `modules/` - screens and the database layer. LEGACY screens (the files in `CONNECT_ALLOW_LIST` in
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,

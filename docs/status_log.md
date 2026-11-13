@@ -265,6 +265,18 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   Unverified; a new installation key when the old one is lost), backlog 17 in the installer (Phase 5, required
   before v1.0), new backlog 18 (start-up warning when the data folder is readable by all users), and the Master's
   password change without the code stays until 2.8.
+- 2026-11-12: Step 1d STOP 1 (9b94fb2): both baselines edited once (tag `baseline-pre-2.5-1d`, copies in
+  archive/baseline_pre_2_5_1d/). `ledger_checkpoint` and the mirror gain kind `Key lost` with result
+  `Unverified` (only together; the row names its key and the lost key); `installation_key` becomes append-only
+  history with one active row; `company_key.installation_key_id`; auth_event `Installation key replaced`. The key
+  store reads the active row. Development databases rebuilt (old master and the unregistered COMBUZZ.db moved to
+  Backups/20261112-214913/). Suite 2077 passed, 7 deselected, 12 xfailed.
+- 2026-11-12: Step 1d part A (STOP 2): `start_new_key_epoch` signs a `Key lost` checkpoint in the same company
+  transaction as the key switch, then mirrors it (as the Master; a failed mirror keeps the epoch and says so). The
+  verifier anchors on the latest valid epoch, starts at the entry after it, ignores checkpoints at or before it,
+  and returns `unverified_through` / `unverified_reason`; messages name the range (`unverified_note`). The close
+  check warns on the range in every mode; rotation after an epoch signs its checkpoint again. Decisions KS12-KS21
+  recorded (with index rows). New tests/test_key_lost_checkpoint.py (36 tests).
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
