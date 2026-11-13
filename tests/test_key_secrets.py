@@ -56,7 +56,7 @@ def known(world, monkeypatch):
 def _text_forms(secret):
     if isinstance(secret, bytes):
         return [secret.hex(), secret.hex().upper()]
-    return [secret, secret.replace("-", ""), secret.lower()]
+    return [secret, secret.replace("-", ""), secret.lower(), secret.replace("-", "").lower()]
 
 
 def _byte_forms(secret):
@@ -120,6 +120,11 @@ def _key_lost(world, monkeypatch):
 def _replace(world, monkeypatch):
     """Step 1d: the installation key is lost (no DPAPI copy, code lost) and replaced; every company gets an epoch."""
     created = _create(world.root)
+    secrets, _ = _replace_flow(world, monkeypatch)
+    return secrets, [Path(config.BASE_PROJECT_DIR) / created["database_file_path"]]
+
+
+def _replace_flow(world, monkeypatch, *, expect_all_done=True):
     conn = sqlite3.connect(world.master)
     conn.execute("UPDATE installation_key SET machine_blob = NULL, machine_wrapped_at = NULL")
     conn.commit()
@@ -128,12 +133,29 @@ def _replace(world, monkeypatch):
     monkeypatch.setattr(key_wrap, "new_secret_key", lambda: REPLACEMENT)
     result = installation_keys.replace_installation_key(world.root, PASSWORD, confirm_text="NEW LEDGER KEY",
                                                         machine_wrap=FakeMachineWrap())
-    assert {c["status"] for c in result.companies} == {"done"}
-    return [CODE, result.recovery_code, PASSWORD], [Path(config.BASE_PROJECT_DIR) / created["database_file_path"]]
+    if expect_all_done:
+        assert {c["status"] for c in result.companies} == {"done"}
+    else:
+        assert "failed" in {c["status"] for c in result.companies}
+    return [CODE, result.recovery_code, PASSWORD], []
 
 
-@pytest.mark.parametrize("flow", ["recover", "change", "issue", "rotate", "key_lost", "replace"])
-def test_no_secret_from_a_key_flow_reaches_a_log_an_audit_row_or_a_file(known, monkeypatch, caplog, log_file, flow):
+def _replace_with_a_failure(world, monkeypatch, tmp_path):
+    """Step 1d review: one company file is away during the replacement (its failure is logged), then finished."""
+    created = _create(world.root)
+    path = Path(config.BASE_PROJECT_DIR) / created["database_file_path"]
+    aside = tmp_path / "aside.db"
+    path.rename(aside)
+    secrets, _ = _replace_flow(world, monkeypatch, expect_all_done=False)
+    aside.rename(path)
+    finished = installation_keys.finish_remaining_companies(world.root)
+    assert {c["status"] for c in finished} == {"done"}
+    return secrets, [path]
+
+
+@pytest.mark.parametrize("flow", ["recover", "change", "issue", "rotate", "key_lost", "replace", "replace_failing"])
+def test_no_secret_from_a_key_flow_reaches_a_log_an_audit_row_or_a_file(known, monkeypatch, caplog, log_file, flow,
+                                                                         tmp_path):
     monkeypatch.setattr(key_store, "_test_new_company_key", None)
     monkeypatch.setattr(keys, "_provider", key_store.LocalKeyProvider(known.master, FakeMachineWrap()))
     with caplog.at_level(logging.DEBUG):
@@ -141,6 +163,8 @@ def test_no_secret_from_a_key_flow_reaches_a_log_an_audit_row_or_a_file(known, m
             secrets, company_files = _key_lost(known, monkeypatch)
         elif flow == "replace":
             secrets, company_files = _replace(known, monkeypatch)
+        elif flow == "replace_failing":
+            secrets, company_files = _replace_with_a_failure(known, monkeypatch, tmp_path)
         else:
             secrets, company_files = {"recover": _recover, "change": _change, "issue": _issue,
                                       "rotate": _rotate}[flow](known)

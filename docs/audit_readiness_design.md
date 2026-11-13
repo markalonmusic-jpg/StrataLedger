@@ -203,17 +203,22 @@ incremental check at company open is short and can stay in the foreground until 
 
 **After a key-lost epoch (built in Step 1d, KS12, KS14, KS15):**
 * **Anchor:** the latest `Key lost` checkpoint E, from the file, or from the master mirror when the mirror's is
-  further on (the file is then an older copy). E is trusted only when its MAC checks under its `key_id`, its
-  `ref_id` is a key retired as `Key lost` (not the signing key), and the stored hash of its entry N equals E's
-  `chain_hash`. A failure is Broken (`Marker`; `Hash` at N; `Truncated` or `Gap` when entry N is missing), never
-  Unverified.
+  further on (the file is then an older copy). The checks that need no key run first: the stored hash of entry N
+  equals E's `chain_hash` (`Hash` at N; `Truncated` or `Gap` when entry N is missing), entries 1..N are all present
+  (`Gap` at the first missing number: a deletion inside the unverified range is found, a change is not), and E's
+  `key_id` exists in the file (else `Marker`, "an older copy of the company file"). Then E's MAC must check under
+  its `key_id` and its `ref_id` must be a key retired as `Key lost` (else `Marker`). A failure is Broken, never
+  Unverified. With no E at all but a key retired as `Key lost` in the file, the record was removed: `Marker` at
+  entry 1 (review of Step 1d).
 * **Range:** entries 1..N are not hashed. Full and incremental both start at N+1 with `prev` = E's `chain_hash`;
   incremental may start later, at an OK checkpoint after N. Checkpoints and mirrors at or before N (made before the
   epoch, perhaps with the lost key) are ignored for the MAC and truncation checks; those after N are checked as
   before. The void cross-check and the entry counter still cover the whole ledger. Only the latest epoch counts.
 * **Documented limit:** a change to an entry in 1..N is not found (its key is lost). A test documents it.
 * **Result:** status as before (`OK`, or `Broken` / `Unavailable` for the new epoch) plus `unverified_through` = N
-  and `unverified_reason` = `Key lost` (both None without an epoch, or for an epoch through 0). The message starts
+  and `unverified_reason` = `Key lost` (both None without an epoch, or for an epoch through 0). An Unavailable
+  result takes N from the latest `Key lost` row without checking it (no key is available) and its message, and
+  the close check's, carry the note too. The message starts
   or ends with `ledger_verify.unverified_note(N)`: "Entries JE-000001 to JE-00000N cannot be verified because their
   key was lost." An OK message then says which entries were verified; a Broken one names the intact range after N.
   The message holds no hash or key and is never empty when `unverified_through` is set (KS14, tested over full,
@@ -375,6 +380,17 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
     to another row does not open.
   * The provider opens only `company_key` rows wrapped by the active installation key (`installation_key_id`);
     older rows are kept and treated as unavailable. A retired installation key keeps its recovery copy (KS18).
+    That copy is only as safe as the old code: whoever finds the old code can open the old installation key, then
+    the old company keys, and could forge seals for entries 1..N only, which are reported as unverified anyway
+    (the Key lost checkpoint is signed with the new key). The old code no longer recovers the Master. Whether to
+    keep the retired copies is decided with KS18's key restore (backlog 16).
+  * **Once the master transaction commits, nothing raises** (review of Step 1d): the result is the only copy of
+    the new recovery code. A bad company path fails that company only; any other failure after the commit marks
+    the companies not reached as failed (`COMPANIES_NOT_REACHED`) and the code is still returned.
+  * The result is a namedtuple: `_asdict()`, indexing and `json.dumps` would expose the code. A screen reads only
+    `.recovery_code`, shows it once and never logs or serialises the result (a static test when the screen is
+    built).
+  * The service takes its time from `auth._Actor`, so it uses auth's one allowed clock read (H2 known issue).
 
 ---
 

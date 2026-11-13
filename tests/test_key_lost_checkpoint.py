@@ -14,6 +14,7 @@
 * The close check warns, never blocks, on the unverified range; rotation after an epoch signs its checkpoint again.
 """
 import dataclasses
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -472,3 +473,69 @@ def test_the_mirror_writer_checks_the_master_itself(world, lost):
     assert len(_key_lost_rows(world)[1]) == 1
     denied = _rows(world.master, "SELECT user_id FROM auth_event WHERE event_type = 'Denied'")
     assert {"user_id": clerk.user_id} in denied
+
+
+# --- Review of Step 1d ---------------------------------------------------------------------------------------------
+
+def test_an_unavailable_result_after_an_epoch_still_names_the_range(world, lost, monkeypatch):
+    _epoch(world)
+    _post(_context(world), 3000)
+    _lose_the_active_key(world, monkeypatch)
+    result = _full(world)
+    assert (result["status"], result["unverified_through"], result["unverified_reason"]) == (
+        "Unavailable", 2, "Key lost")
+    assert ledger_verify.unverified_note(2) in result["message"]
+    assert ledger_verify.unverified_note(2) in _close_check(world, "block")["message"]
+
+
+def test_an_older_copy_restored_after_an_epoch_is_broken_not_unavailable(world, lost, tmp_path):
+    older = tmp_path / "before_the_epoch.db"
+    shutil.copy2(world.company_path, older)
+    _epoch(world)
+    _post(_context(world), 3000)
+    shutil.copy2(older, world.company_path)                 # the mirror still holds the Key lost row
+    result = _full(world)
+    assert (result["status"], result["first_broken"]["reason"]) == ("Broken", "Marker")
+    assert "older copy" in result["first_broken"]["detail"]
+
+
+def test_deleting_every_key_lost_record_is_a_marker_break(world, lost):
+    _epoch(world)
+    _post(_context(world), 3000)
+    assert _full(world)["status"] == "OK"
+    _tamper(world, "DELETE FROM ledger_checkpoint WHERE kind = 'Key lost'")
+    conn = sqlite3.connect(world.master)
+    try:
+        conn.execute("DROP TRIGGER chain_checkpoint_no_delete")
+        conn.execute("DELETE FROM chain_checkpoint WHERE kind = 'Key lost'")
+        conn.commit()
+    finally:
+        conn.close()
+    for check in (_full, _incremental):
+        result = check(world)
+        assert (result["status"], result["first_broken"]["entry_number"], result["first_broken"]["reason"]) == (
+            "Broken", 1, "Marker")
+
+
+def test_a_deleted_entry_inside_the_unverified_range_is_a_gap(world, lost):
+    _epoch(world)
+    _tamper(world, "DELETE FROM journal_line WHERE entry_id = (SELECT entry_id FROM journal_entry "
+                   "WHERE entry_number = 1)", "DELETE FROM journal_entry WHERE entry_number = 1")
+    result = _full(world)
+    assert (result["status"], result["first_broken"]["entry_number"], result["first_broken"]["reason"]) == (
+        "Broken", 1, "Gap")
+
+
+def test_a_key_lost_row_naming_a_rotated_key_is_a_marker_break(world, lost):
+    epoch = _epoch(world)
+    _post(_context(world), 3000)
+    ledger_keys.rotate_chain_key(world.root, world.company["company_id"])     # the epoch key is now 'Rotation'
+    _forge_key_lost(world, ref_id=epoch["new_key_id"], through=3)
+    assert (_full(world)["status"], _full(world)["first_broken"]["reason"]) == ("Broken", "Marker")
+
+
+def test_a_key_lost_row_naming_no_key_is_a_marker_break(world, lost):
+    _epoch(world)
+    _post(_context(world), 3000)
+    _forge_key_lost(world, ref_id=999, through=3)
+    assert (_full(world)["status"], _full(world)["first_broken"]["reason"]) == ("Broken", "Marker")

@@ -43,6 +43,8 @@ NEW_KEY_NOT_PROTECTED = ("This computer could not protect a new ledger key, so n
 COMPANY_NOT_FINISHED = ("A new ledger key could not be started for this company; use Finish the remaining "
                         "companies to try again.")
 COMPANY_FILE_MISSING = "The company file is missing."
+COMPANIES_NOT_REACHED = ("The remaining companies were not reached; use Finish the remaining companies to start "
+                         "their new ledger keys.")
 
 _logger = logging.getLogger("strataledger.keys")
 
@@ -78,7 +80,7 @@ def _company_count(n):
     return f"{n} {'company' if n == 1 else 'companies'}"
 
 
-def replacement_preview(session, *, machine_wrap=None):
+def replacement_preview(session, *, machine_wrap):
     """What replacing the installation key would do (Master only, writes nothing): {'key_available_here',
     'company_count', 'companies': [{'company_id', 'company_code', 'legal_name', 'is_archived'}], 'message'}."""
     auth.require_master(session, PERMISSION)
@@ -119,8 +121,18 @@ def replace_installation_key(session, password, *, confirm_text, machine_wrap):
         auth._insert_event(conn, "Recovery code issued", username=row["username"], user_id=session.user_id,
                            actor_user_id=session.user_id)
     _logger.warning("the installation key was replaced: user=%s", session.user_id)
-    keys.set_provider(key_store.LocalKeyProvider(session.master_db_path, machine_wrap))
-    results = [_start_epoch(session, company) for company in _registry(session.master_db_path)]
+    # The new key and code have committed, so from here on nothing may raise: the result is the only copy of the
+    # new recovery code (review of Step 1d). A failure leaves the companies not reached as 'failed'.
+    results = []
+    try:
+        keys.set_provider(key_store.LocalKeyProvider(session.master_db_path, machine_wrap))
+        for company in _registry(session.master_db_path):
+            results.append(_start_epoch(session, company))
+    except Exception as error:              # noqa: BLE001  (logged by type; the result must still be returned)
+        _logger.error("the new key epochs stopped after the installation key was replaced: %s",
+                      type(error).__name__)
+        results.append({"company_id": None, "company_code": None, "status": "failed",
+                        "message": COMPANIES_NOT_REACHED})
     return KeyReplaced(new_code, results, _summary(results))
 
 
@@ -128,9 +140,9 @@ def _start_epoch(session, company):
     """One company's new key epoch; never raises. A typed service error's sentence is shown as is; anything else
     is logged (type only) and reported as COMPANY_NOT_FINISHED."""
     outcome = {"company_id": company["company_id"], "company_code": company["company_code"]}
-    if not os.path.isfile(resolve_company_path(company["database_file_path"])):
-        return {**outcome, "status": "failed", "message": COMPANY_FILE_MISSING}
     try:
+        if not os.path.isfile(resolve_company_path(company["database_file_path"])):
+            return {**outcome, "status": "failed", "message": COMPANY_FILE_MISSING}
         result = ledger_keys.start_new_key_epoch(session, company["company_id"],
                                                  confirm_company_code=company["company_code"])
     except ServiceError as error:
@@ -159,7 +171,10 @@ def _summary(results):
 def _left_behind(master_db_path, company):
     """True if the company's active ledger key is not wrapped by the active installation key (or its file cannot
     be read)."""
-    path = resolve_company_path(company["database_file_path"])
+    try:
+        path = resolve_company_path(company["database_file_path"])
+    except ServiceError:                    # a path outside the installation folder: it needs finishing
+        return True
     if not os.path.isfile(path):
         return True
     conn = read_connection(path)

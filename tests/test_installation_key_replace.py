@@ -12,6 +12,7 @@ installation_keys.replace_installation_key(session, password, *, confirm_text, m
 """
 import copy
 import dataclasses
+import os
 import pickle
 import shutil
 import sqlite3
@@ -129,7 +130,7 @@ def test_a_non_master_is_refused_before_anything_else(lost):
         _replace(lost, session=clerk, password="wrong", phrase="wrong")    # the denial comes first
     assert _snapshot(lost, with_auth=False) == before
     with pytest.raises(PermissionDeniedError):
-        installation_keys.replacement_preview(clerk)
+        installation_keys.replacement_preview(clerk, machine_wrap=FakeMachineWrap())
     with pytest.raises(PermissionDeniedError):
         installation_keys.finish_remaining_companies(clerk)
 
@@ -302,7 +303,7 @@ def test_a_missing_company_file_is_reported_and_can_be_finished_later(lost, tmp_
     assert installation_keys.finish_remaining_companies(lost.root) == []
 
 
-def test_a_company_file_that_fails_for_another_reason_says_so_in_one_sentence(lost, monkeypatch):
+def test_a_company_file_that_fails_for_another_reason_says_so_in_one_sentence(lost, monkeypatch, caplog):
     from modules.services import ledger_keys
     real = ledger_keys.start_new_key_epoch
     target = lost.companies[0]["company_id"]
@@ -315,7 +316,8 @@ def test_a_company_file_that_fails_for_another_reason_says_so_in_one_sentence(lo
     result = _replace(lost)
     [failed] = [c for c in result.companies if c["status"] == "failed"]
     assert failed["message"] == installation_keys.COMPANY_NOT_FINISHED
-    assert "secret" not in failed["message"]
+    assert "secret" not in failed["message"] and "secret" not in caplog.text
+    assert "RuntimeError" in caplog.text                                  # only the error's type is logged
 
 
 def test_before_any_replacement_no_company_with_a_stored_key_is_left_behind(installation):
@@ -351,3 +353,56 @@ def test_key_one_keeps_its_binding(installation):
     assert key_store.open_machine_copy(dict(row, id=2), FakeMachineWrap()) is None
     assert key_store.open_recovery_copy(dict(row, id=2), CODE) is None
     assert key_store.open_recovery_copy(row, CODE) is not None
+
+
+# --- Review of Step 1d: the new code is never lost once it has committed ------------------------------------------
+
+def test_a_registry_path_outside_the_folder_fails_that_company_only(lost):
+    outside = lost.companies[1]
+    elsewhere = os.path.abspath(os.sep + "outside_strataledger_install.db")      # never created
+    _master_write(lost, ("UPDATE company_registry SET database_file_path = ? WHERE company_id = ?",
+                         (elsewhere, outside["company_id"])))
+    result = _replace(lost)
+    statuses = {c["company_id"]: c for c in result.companies}
+    assert statuses[outside["company_id"]]["status"] == "failed"
+    assert statuses[outside["company_id"]]["message"] == "The company file is outside the installation folder"
+    assert statuses[lost.companies[0]["company_id"]]["status"] == "done"
+    conn = sqlite3.connect(lost.master)
+    conn.row_factory = sqlite3.Row
+    try:
+        assert key_store.open_with_recovery_code(conn, result.recovery_code) is not None
+    finally:
+        conn.close()
+    assert outside["company_id"] in {c["company_id"] for c in installation_keys.remaining_companies(lost.root)}
+
+
+def test_a_failure_after_the_commit_still_returns_the_new_code(lost, monkeypatch):
+    def failing(master_db_path):
+        raise RuntimeError("registry unreadable")
+    monkeypatch.setattr(installation_keys, "_registry", failing)
+    result = _replace(lost)
+    assert result.companies == [{"company_id": None, "company_code": None, "status": "failed",
+                                 "message": installation_keys.COMPANIES_NOT_REACHED}]
+    conn = sqlite3.connect(lost.master)
+    conn.row_factory = sqlite3.Row
+    try:
+        assert key_store.open_with_recovery_code(conn, result.recovery_code) is not None
+    finally:
+        conn.close()
+    monkeypatch.undo()
+    assert len(installation_keys.finish_remaining_companies(lost.root)) == 6
+
+
+def test_the_lost_check_is_repeated_inside_the_write(installation, monkeypatch):
+    """If the key opens again between the first check and the write, nothing is replaced."""
+    before = _snapshot(installation, with_auth=False)
+    monkeypatch.setattr(installation_keys, "_key_opens_here", lambda path, wrap: False)
+    with pytest.raises(ValidationError) as caught:
+        _replace(installation)
+    assert str(caught.value) == installation_keys.KEY_NOT_LOST
+    assert _snapshot(installation, with_auth=False) == before
+
+
+def test_the_preview_needs_the_machine_wrap(lost):
+    with pytest.raises(TypeError):
+        installation_keys.replacement_preview(lost.root)

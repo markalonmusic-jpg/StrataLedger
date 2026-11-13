@@ -284,6 +284,13 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   key store binds each installation key's copies to its row id (KS21; row 1 unchanged) and opens only company keys
   wrapped by the active installation key. New tests/test_installation_key_replace.py (24 tests); the leak check
   covers the flow.
+- 2026-11-12: Step 1d review fixes (step-reviewer, secrets-auditor): after the new installation key commits nothing
+  raises, so the new code is always returned (a path outside the folder fails that company only); an Unavailable
+  result after an epoch carries the range; the key-free anchor checks run first, so an older copy restored after an
+  epoch is Broken, not Unavailable; a deleted entry inside 1..N is a Gap; a lost key whose Key lost record was
+  removed is a Marker break; the preview needs the machine wrap; the mirror logger logs the error type only; tests
+  for each, and the leak check covers a failing company and the finish. The new service relies on auth's one
+  allowed clock read (H2 known issue).
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

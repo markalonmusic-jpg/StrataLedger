@@ -87,8 +87,11 @@ def verify_connection(conn, company_code, key_for, *, mode="full", anchors=(), e
     try:
         return _check(conn, company_code, key_for, mode, anchors, epoch_mirror)
     except KeyUnavailableError:
+        epoch = _epoch_anchor(conn, epoch_mirror)                    # informational: no key, so not verified
+        through = epoch[1]["through_entry_number"] if epoch else 0
         return {"status": UNAVAILABLE, "scope": scope, "through_entry_number": None, "chain_hash": None,
-                "first_broken": None, "unverified_through": None, "unverified_reason": None}
+                "first_broken": None, "unverified_through": through or None,
+                "unverified_reason": KEY_LOST if through else None}
 
 
 def _epoch_anchor(conn, epoch_mirror):
@@ -137,19 +140,13 @@ def _check(conn, company_code, key_for, mode, anchors, epoch_mirror=None):
     # A key-lost epoch: its anchor is trusted only once it checks out (KS14); otherwise the result is Broken.
     epoch_through, epoch_hash = 0, None
     epoch = _epoch_anchor(conn, epoch_mirror)
+    if epoch is None and conn.execute("SELECT 1 FROM ledger_chain_key WHERE retire_reason = 'Key lost'").fetchone():
+        return broken(1, MARKER, "the record of a replaced ledger key is missing")
     if epoch is not None:
         source, anchor = epoch
         through, when = anchor["through_entry_number"], (anchor["created_at"] or "")[:10]
         place = "this computer's record" if source == "master" else "the company file's record"
-        raw = key(anchor["key_id"])
-        lost = conn.execute("SELECT is_active, retire_reason FROM ledger_chain_key WHERE key_id = ?",
-                            (anchor["ref_id"],)).fetchone()
-        if (raw is None or not hmac.compare_digest(ledger_chain.checkpoint_mac(raw, company_code, anchor),
-                                                   anchor["mac"] or "")
-                or anchor["ref_id"] == anchor["key_id"] or lost is None or lost["is_active"]
-                or lost["retire_reason"] != KEY_LOST):
-            return broken(max(1, through), MARKER, f"{place} of the ledger key replaced on {when}")
-        if through > 0:
+        if through > 0:                                             # needs no key: an older copy is caught here
             stored, last = hash_at(through), last_posted()
             if stored is None:
                 return broken(last + 1 if last < through else through, TRUNCATED if last < through else GAP,
@@ -157,6 +154,23 @@ def _check(conn, company_code, key_for, mode, anchors, epoch_mirror=None):
             if stored != anchor["chain_hash"]:
                 return broken(through, HASH, f"it differs from the record made when the ledger key was replaced "
                                              f"on {when}")
+            numbers = [r["entry_number"] for r in conn.execute(
+                "SELECT entry_number FROM journal_entry WHERE is_posted = 1 AND entry_number <= ? "
+                "ORDER BY entry_number", (through,))]
+            if len(numbers) != through:                             # a deletion inside 1..N needs no key either
+                missing = next(n for n, found in enumerate(numbers + [None], start=1) if found != n)
+                return broken(missing, GAP, f"the ledger key was replaced after {je_number(through)} on {when}")
+        if anchor["key_id"] not in fingerprints:                    # its key is not in this file: an older copy
+            return broken(max(1, through), MARKER, f"{place} of the ledger key replaced on {when}; this looks like "
+                                                   "an older copy of the company file")
+        raw = key(anchor["key_id"])
+        lost = conn.execute("SELECT is_active, retire_reason FROM ledger_chain_key WHERE key_id = ?",
+                            (anchor["ref_id"],)).fetchone()
+        if (raw is None or not hmac.compare_digest(ledger_chain.checkpoint_mac(raw, company_code, anchor),
+                                                   anchor["mac"] or "")
+                or lost is None or lost["is_active"] or lost["retire_reason"] != KEY_LOST):
+            return broken(max(1, through), MARKER, f"{place} of the ledger key replaced on {when}")
+        if through > 0:
             unverified = {"unverified_through": through, "unverified_reason": KEY_LOST}
         epoch_through, epoch_hash = through, anchor["chain_hash"]
 
@@ -332,7 +346,7 @@ def _describe(conn, context, core):
     result.setdefault("unverified_reason", None)
     lost = result["unverified_through"]
     if core["status"] == UNAVAILABLE:
-        result["message"] = UNAVAILABLE_MESSAGE
+        result["message"] = UNAVAILABLE_MESSAGE + (" " + unverified_note(lost) if lost else "")
         return result
     if core["status"] == OK:
         last = core["through_entry_number"]
@@ -593,8 +607,9 @@ def mirror_key_lost_checkpoint(session, context, row):
         auth.require_master(session, "ledger.rotate_key")
         with write_transaction(context.master_db_path, context) as master:
             _insert_mirror(master, mirror)
-    except Exception:                       # noqa: BLE001  (logged and reported; the epoch has committed)
-        _logger.exception("The key-lost checkpoint could not be mirrored (company_id=%s)", context.company_id)
+    except Exception as error:              # noqa: BLE001  (logged and reported; the epoch has committed)
+        _logger.error("The key-lost checkpoint could not be mirrored (company_id=%s): %s", context.company_id,
+                      type(error).__name__)
         result["checkpoint_error"] = KEY_LOST_CHECKPOINT_NOT_MIRRORED
     else:
         result["recorded_in"].append("master")
@@ -621,7 +636,9 @@ def integrity_check(conn, context, label, mode, verification=None):
     if described["status"] == OK:
         return {"code": "ledger_integrity", "mode": mode, "ok": True, "message": None, "period": label}
     if described["status"] == UNAVAILABLE:
+        lost = described.get("unverified_through")
         return {"code": "ledger_integrity", "mode": "warn", "ok": False, "period": label,
                 "message": "Ledger verification could not run because the ledger key is not available on this "
-                           "computer (this is not a sign of tampering)"}
+                           "computer (this is not a sign of tampering)" + (". " + unverified_note(lost) if lost
+                                                                            else "")}
     return {"code": "ledger_integrity", "mode": mode, "ok": False, "message": described["message"], "period": label}
