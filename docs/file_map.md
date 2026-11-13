@@ -90,7 +90,10 @@ in code (`tests/test_config_paths.py` fails on one).
   every screen). Content is deferred to the end of v1.0. NOT BUILT.
 - Design docs are read before touching their areas. Where a design doc's
   PROPOSED migration numbers differ from section 7, section 7 wins.
-- `docs/decisions_2026-11-11.md` - the owner's decisions by code (A1, H2, K3, S10...). `docs/design.md` -
+- `docs/next_step.md` - the next step's plan, open questions, counts and HEAD, overwritten at each STOP; a new
+  session reads it first (CLAUDE.md section 8).
+- `docs/decisions_2026-11-11.md` - the owner's decisions by code, with an index of every code at the top (find
+  one by searching its code). `docs/design.md` -
   DRAFT visual spec (docs/CLAUDE_UI.md wins). `docs/role_templates.md`, `docs/csv_import_design.md`.
 - `modules/services/` - the service layer (rules 7, 10, 11, 15): every write and every protected read.
   `tx.py` (the write transaction and read connection), `context.py` (`ServiceContext`), `authz.py`
