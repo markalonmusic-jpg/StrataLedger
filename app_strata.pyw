@@ -276,7 +276,7 @@ class App(ctk.CTk):
             return
         try:
             ledger_verify.checkpoint_on_close(self.action_context())
-        except ServiceError:
+        except Exception:  # noqa: BLE001  (any failure, e.g. an unreadable file: closing must go on)
             _logger.exception("The ledger checkpoint on close was skipped (company_id=%s)", self.context.company_id)
 
     def on_app_exit(self):

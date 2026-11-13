@@ -38,7 +38,7 @@ import sqlite3
 from datetime import date
 
 from modules.services import approvals, keys, ledger_chain, periods
-from modules.services.authz import authorize
+from modules.services.authz import authorize, deny
 from modules.services.errors import (
     KeyUnavailableError, NotFoundError, PeriodClosedError, PostingError, ValidationError,
 )
@@ -49,6 +49,10 @@ POST = "je.post"
 RECORD_TYPE = "journal_entry"
 IMPORT_POSTED_BY_A_PERSON = ("An imported entry is posted by a person after review; sign in and post it from the "
                              "approved entries.")
+CREATOR_CANNOT_POST = ("This company needs a different person to post an entry you created; ask a colleague to "
+                       "post it.")
+SELF_APPROVED = ("This entry was approved by the person who created it; send it for approval again so someone else "
+                 "approves it.")
 # Document sources whose document type has its own "requires approval" switch (decision 1.6).
 DOCUMENT_APPROVAL_TYPES = {"Bill": "Bill", "Payment": "Payment", "Import": "Import batch", "Payroll": "Import batch"}
 # A manual line to these controlled accounts must name the contact (A5): (contact flag, word).
@@ -166,6 +170,12 @@ def check_entry_lines(conn, entry_id):
     _check_accounts(conn, rows)
 
 
+def _stored_lines(conn, entry_id):
+    """The entry's lines as check_lines returns them, in order (to spot a re-save of the same lines)."""
+    return [{field: row[field] for field in LINE_FIELDS} for row in conn.execute(
+        f"SELECT {', '.join(LINE_FIELDS)} FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
+
+
 def _insert_lines(conn, entry_id, lines):
     for line in lines:
         conn.execute(
@@ -244,6 +254,8 @@ def update_entry(context, entry_id, *, entry_date=_UNSET, description=_UNSET, re
             values["period_id"] = _open_period(conn, values["entry_date"], period_id)
         values["auto_reverse_date"] = _check_auto_reverse(values["entry_date"], values["auto_reverse_date"])
         cleaned = check_lines(conn, lines) if lines is not None else None
+        if cleaned is not None and cleaned == _stored_lines(conn, entry_id):
+            cleaned = None                     # the same lines again: not a change (R22 compares the digest)
         conn.execute(
             "UPDATE journal_entry SET entry_date = ?, period_id = ?, reference = ?, description = ?, source = ?, "
             "auto_reverse_date = ? WHERE entry_id = ?",
@@ -374,11 +386,16 @@ def _entry_digest(conn, entry):
     return ledger_chain.entry_digest(entry, entry_lines, dimensions)
 
 
-def _approval_gate(state, needed, digest, debits):
+def _separation_on(settings):
+    return settings is None or settings["require_separate_approver"] == 1      # no row: the safe default
+
+
+def _approval_gate(state, needed, digest, debits, separate):
     """Refuse posting unless the approvals allow it (R15, R20). Returns (approved_by, approved_at) or (None, None).
 
     A Pending request blocks every entry. An Approved request must match the entry now (digest, amount and, when
-    approval is needed, the document type), whether or not approval is still needed.
+    approval is needed, the document type), whether or not approval is still needed. With separation on, an
+    approval the creator made while it was off no longer counts.
     """
     status = state["status"] if state else None
     if status == "Pending":
@@ -388,11 +405,14 @@ def _approval_gate(state, needed, digest, debits):
         if (state["document_digest"] != digest or state["amount_cents"] != debits
                 or (needed is not None and state["document_type"] != needed)):
             raise PostingError("The approved entry does not match the entry now; send it for approval again.")
+        if separate and state["self_approved"]:
+            raise PostingError(SELF_APPROVED)
         return state["approved_by"], state["approved_at"]
     if needed is None:
         return None, None
     if status == "Rejected":
-        raise PostingError(f"This entry was rejected: {state['reason']}. Change it and send it for approval again.")
+        raise PostingError(f"This entry was rejected ({approvals.reason_text(state['reason'])}); change it and "
+                           "send it for approval again.")
     if status == "Cancelled":
         raise PostingError("The approval was cancelled because the entry was changed; send it for approval again.")
     raise PostingError("This entry needs approval before it posts; send it for approval first.")
@@ -487,27 +507,41 @@ def submit_entry_for_approval(context, entry_id):
     Runs every posting check that does not depend on approval, then submits the entry's document type, its
     total debits and its digest (R15). Refused for an entry that can be posted directly, while a request is
     waiting, once it is approved and unchanged, and after a rejection until the entry has changed (R22).
+    The checks, the digest and the new request are one write transaction, so the request is for the entry as
+    it is then; a first read only finds the document type whose submit permission is authorized (rule 10).
     """
     authorize(context, CREATE, record_type=RECORD_TYPE, record_id=entry_id)
     conn = read_connection(context.company_db_path)
     try:
-        entry, _, rows, debits, _ = _postable(conn, entry_id)
-        needed = approval_document_type(conn, entry, _settings(conn), debits)
-        digest = _entry_digest(conn, entry)
-        state = approvals.request_state(conn, RECORD_TYPE, entry_id)
+        needed, project_id = _submission(conn, entry_id)[:2]
     finally:
         conn.close()
+    approvals.authorize_submit(context, needed, project_id, record_type=RECORD_TYPE, record_id=entry_id)
+    with write_transaction(context.company_db_path, context) as conn:
+        now_needed, now_project, entry, debits, settings = _submission(conn, entry_id)
+        if (now_needed, now_project) != (needed, project_id):
+            raise ValidationError("The entry changed while it was being sent; send it for approval again.")
+        digest = _entry_digest(conn, entry)
+        state = approvals.request_state(conn, RECORD_TYPE, entry_id)
+        if state is not None and state["status"] == "Pending":
+            raise ValidationError("This entry is already waiting for approval.")
+        if (state is not None and state["status"] == "Approved" and state["document_digest"] == digest
+                and not (_separation_on(settings) and state["self_approved"])):
+            raise ValidationError("This entry is already approved; post it.")
+        return approvals.submit_in_transaction(conn, context, needed, RECORD_TYPE, entry_id, debits,
+                                               created_by=entry["created_by"], project_id=project_id,
+                                               document_digest=digest)
+
+
+def _submission(conn, entry_id):
+    """(document type, project, entry, debits, settings) for a submission; refuses one that needs no approval."""
+    entry, _, rows, debits, _ = _postable(conn, entry_id)
+    settings = _settings(conn)
+    needed = approval_document_type(conn, entry, settings, debits)
     if needed is None:
         raise ValidationError("This entry can be posted directly; it does not need approval.")
-    if state is not None and state["status"] == "Pending":
-        raise ValidationError("This entry is already waiting for approval.")
-    if state is not None and state["status"] == "Approved" and state["document_digest"] == digest:
-        raise ValidationError("This entry is already approved; post it.")
     projects = {r["project_id"] for r in rows}
-    project_id = projects.pop() if len(projects) == 1 else None
-    return approvals.submit_for_approval(context, needed, RECORD_TYPE, entry_id, debits,
-                                         created_by=entry["created_by"], project_id=project_id,
-                                         document_digest=digest)
+    return needed, (projects.pop() if len(projects) == 1 else None), entry, debits, settings
 
 
 def _check_creator_may_post(context, entry_id):
@@ -520,7 +554,7 @@ def _check_creator_may_post(context, entry_id):
     if row is None:
         raise NotFoundError("That journal entry does not exist")
     approvals.check_separate_approver(context, row["created_by"], permission_code=POST, record_type=RECORD_TYPE,
-                                      record_id=entry_id)
+                                      record_id=entry_id, message=CREATOR_CANNOT_POST)
 
 
 def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_warnings=False):
@@ -532,15 +566,16 @@ def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_war
     authorize(context, POST, record_type=RECORD_TYPE, record_id=entry_id)
     if context.origin == "Human" and confirm is not True:
         raise ValidationError("Confirm the posting first; a posted entry can only be corrected by reversing it")
-    if context.origin == "Import":
-        raise PostingError(IMPORT_POSTED_BY_A_PERSON)
+    if context.origin == "Import":                     # R18: logged like any other denial
+        deny(context, POST, record_type=RECORD_TYPE, record_id=entry_id, message=IMPORT_POSTED_BY_A_PERSON)
     _check_creator_may_post(context, entry_id)
     company_code = _company_code(context)
     with write_transaction(context.company_db_path, context) as conn:
         entry, period, rows, debits, overrides = _postable(conn, entry_id)
-        needed = approval_document_type(conn, entry, _settings(conn), debits)
+        settings = _settings(conn)
+        needed = approval_document_type(conn, entry, settings, debits)
         approved_by, approved_at = _approval_gate(approvals.request_state(conn, RECORD_TYPE, entry_id), needed,
-                                                  _entry_digest(conn, entry), debits)
+                                                  _entry_digest(conn, entry), debits, _separation_on(settings))
         warnings = []
         if context.origin == "Human" and not period["is_adjustment_period"]:
             warnings = [w for w in periods.entry_date_warnings(conn, entry["entry_date"], context.today)

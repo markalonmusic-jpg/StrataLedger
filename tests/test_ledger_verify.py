@@ -946,13 +946,19 @@ def test_the_close_checkpoint_uses_the_time_of_closing(env, ctx, monkeypatch):
     assert (seen[0].user_id, seen[0].company_id, seen[0].origin) == (ctx.user_id, ctx.company_id, ctx.origin)
 
 
-def test_the_close_checkpoint_never_blocks_closing(env, ctx, monkeypatch, caplog):
+@pytest.mark.parametrize("failure", ["time zone", "file"])
+def test_the_close_checkpoint_never_blocks_closing(env, ctx, monkeypatch, caplog, failure):
+    import sqlite3
     from modules.services.errors import InstallationError
     module = _app_class()
     seen = []
     monkeypatch.setattr(module.ledger_verify, "checkpoint_on_close", seen.append)
+
     def broken(_context):
+        if failure == "file":
+            raise sqlite3.OperationalError("unable to open database file")
         raise InstallationError("Time zone data is missing")
+
     monkeypatch.setattr(module.companies, "action_context", broken)
     module.App.close_company_ledger(_fake_app(module, ctx))        # does not raise
     assert seen == [] and "checkpoint on close was skipped" in caplog.text

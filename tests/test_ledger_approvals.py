@@ -134,7 +134,7 @@ def _origin_needs_a_human_approval(team, origin):
         approvals.approve(as_(team, "appr1", origin), request_id)       # never the agent or the import itself
     approvals.approve(as_(team, "appr1"), request_id)
     if origin == "Import":
-        refused(team, lambda: post(team, entry_id, origin="Import"), PostingError, "posted by a person")
+        refused(team, lambda: post(team, entry_id, origin="Import"), PermissionDeniedError, "posted by a person")
     post(team, entry_id)
     row = entry_row(team, entry_id)
     assert (row["is_posted"], row["origin"], row["approved_by"]) == (1, origin, team.people["appr1"])
@@ -308,7 +308,7 @@ def test_a_rejected_entry_must_change_before_it_is_sent_again(team):
     entry_id = make(team)
     request_id = submit(team, entry_id)
     approvals.reject(as_(team, "appr1"), request_id, "wrong account")
-    refused(team, lambda: post(team, entry_id), PostingError, "rejected: wrong account")
+    refused(team, lambda: post(team, entry_id), PostingError, r"rejected \(wrong account\)")
     with pytest.raises(ValidationError, match="Change the entry before sending it again; it was rejected: "
                                               "wrong account"):
         submit(team, entry_id)
@@ -439,3 +439,155 @@ def test_entry_digest_ignores_the_posting_fields():
     assert ledger_chain.entry_digest(dict(header, description="x"), [line]) != base
     assert ledger_chain.entry_digest(header, [dict(line, debit_cents=11)]) != base
     assert len(base) == 64 and int(base, 16) >= 0
+
+
+# --- Step 4 review fixes ---------------------------------------------------------------------------------------
+
+def test_a_self_approval_made_before_separation_was_turned_on_must_be_redone(team):
+    """No dead end: separation turned on after the run-as human approved their own agent entry."""
+    settings(team, require_separate_approver=0)
+    team.grant_permission("PARENT", "APPROVER", "je.create")
+    entry_id = make(team, who="appr1", origin="Agent")
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id, who="appr1", origin="Agent"))
+    settings(team, require_separate_approver=1)
+    refused(team, lambda: post(team, entry_id), PostingError, "approved by the person who created it")
+    second = submit(team, entry_id, who="appr1", origin="Agent")             # allowed again
+    approvals.approve(as_(team, "appr2"), second)
+    post(team, entry_id)
+    assert entry_row(team, entry_id)["approved_by"] == team.people["appr2"]
+
+
+def test_an_unchanged_line_resave_keeps_a_rejected_entry_blocked(team):
+    """R22: re-saving the same lines is not a change."""
+    _require_approval(team)
+    entry_id = make(team)
+    approvals.reject(as_(team, "appr1"), submit(team, entry_id), "check it")
+    sql = "SELECT line_id FROM journal_line WHERE entry_id = ? ORDER BY line_id"
+    before = team.rows("PARENT", sql, (entry_id,))
+    ledger.update_entry(as_(team, "poster"), entry_id, lines=lines(team, 1000))
+    assert team.rows("PARENT", sql, (entry_id,)) == before
+    with pytest.raises(ValidationError, match="Change the entry"):
+        submit(team, entry_id)
+    ledger.update_entry(as_(team, "poster"), entry_id, lines=lines(team, 1200))     # a real change
+    submit(team, entry_id)
+
+
+def test_a_rejection_reason_ending_in_a_period_is_not_doubled(team):
+    _require_approval(team)
+    entry_id = make(team)
+    approvals.reject(as_(team, "appr1"), submit(team, entry_id), "Wrong account.")
+    with pytest.raises(PostingError) as posting:
+        post(team, entry_id)
+    with pytest.raises(ValidationError) as resubmit:
+        submit(team, entry_id)
+    for error in (posting.value, resubmit.value):
+        assert ".." not in str(error) and "Wrong account" in str(error)
+
+
+def test_submit_reads_the_entry_inside_its_own_transaction(team, monkeypatch):
+    """An edit that lands between the first read and the write is caught: the request carries the new digest."""
+    _require_approval(team)
+    entry_id = make(team)
+    real = approvals.authorize_submit
+
+    def edit_in_between(context, *args, **kwargs):
+        real(context, *args, **kwargs)
+        ledger.update_entry(as_(team, "poster"), entry_id, description="edited meanwhile")
+
+    monkeypatch.setattr(approvals, "authorize_submit", edit_in_between)
+    submit(team, entry_id)
+    monkeypatch.setattr(approvals, "authorize_submit", real)
+    header = entry_row(team, entry_id)
+    entry_lines = team.rows("PARENT", "SELECT * FROM journal_line WHERE entry_id = ?", (entry_id,))
+    assert header["description"] == "edited meanwhile"
+    assert requests(team, entry_id)[0]["document_digest"] == ledger_chain.entry_digest(header, entry_lines)
+
+
+@pytest.mark.parametrize("action", ["update", "delete"])
+def test_the_edit_and_the_cancel_are_one_transaction(team, monkeypatch, action):
+    """R21: if the cancel fails, the edit is rolled back too."""
+    _require_approval(team)
+    entry_id = make(team)
+    submit(team, entry_id)
+    real = approvals.cancel_in_transaction
+
+    def cancel_then_fail(*args):
+        real(*args)
+        raise RuntimeError("the cancel failed")
+
+    monkeypatch.setattr(approvals, "cancel_in_transaction", cancel_then_fail)
+    with pytest.raises(RuntimeError):
+        if action == "update":
+            ledger.update_entry(as_(team, "poster"), entry_id, description="changed")
+        else:
+            ledger.delete_entry(as_(team, "poster"), entry_id)
+    assert entry_row(team, entry_id)["description"] != "changed"
+    assert requests(team, entry_id)[0]["status"] == "Pending"
+
+
+def test_refused_submits_leave_no_request(team):
+    entry_id = make(team)
+    with pytest.raises(ValidationError):
+        submit(team, entry_id)                                              # can be posted directly
+    _require_approval(team)
+    request_id = submit(team, entry_id)
+    with pytest.raises(ValidationError):
+        submit(team, entry_id)                                              # already waiting
+    approvals.approve(as_(team, "appr1"), request_id)
+    with pytest.raises(ValidationError):
+        submit(team, entry_id)                                              # already approved
+    assert [r["request_id"] for r in requests(team, entry_id)] == [request_id]
+
+
+def test_the_creator_posting_denial_says_what_to_do(team):
+    settings(team, require_separate_approver=1)
+    entry_id = make(team)
+    with pytest.raises(PermissionDeniedError, match="different person to post"):
+        post(team, entry_id)
+
+
+def test_an_import_context_posting_is_a_logged_denial(team):
+    entry_id = make(team, origin="Import")
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id, origin="Import"))
+    with pytest.raises(PermissionDeniedError, match="posted by a person"):
+        post(team, entry_id, origin="Import")
+    denial = team.rows("PARENT", "SELECT * FROM access_event WHERE event_type = 'Denied' ORDER BY rowid DESC")[0]
+    assert (denial["user_id"], denial["origin"], denial["permission_code"], denial["record_type"],
+            denial["record_id"]) == (team.people["poster"], "Import", "je.post", "journal_entry", entry_id)
+    assert entry_row(team, entry_id)["is_posted"] == 0
+
+
+def test_the_approval_flow_never_logs_the_chain_key(team, caplog, tmp_path):
+    """secrets-auditor finding 1: submit, approve, refuse and post with DEBUG logging on."""
+    import base64
+    import logging
+    handler = logging.FileHandler(tmp_path / "debug.log", encoding="utf-8")
+    logging.getLogger().addHandler(handler)
+    caplog.set_level(logging.DEBUG)
+    errors = []
+    try:
+        _require_approval(team)
+        entry_id = make(team)
+        request_id = submit(team, entry_id)
+        for attempt in (lambda: post(team, entry_id), lambda: submit(team, entry_id)):
+            try:
+                attempt()
+            except Exception as error:  # noqa: BLE001  (collected to check their text)
+                errors.append(error)
+        approvals.approve(as_(team, "appr1"), request_id)
+        tamper(team, "UPDATE approval_request SET amount_cents = 1 WHERE request_id = ?", (request_id,))
+        try:
+            post(team, entry_id)
+        except PostingError as error:
+            errors.append(error)
+        tamper(team, "UPDATE approval_request SET amount_cents = 1000 WHERE request_id = ?", (request_id,))
+        post(team, entry_id)
+    finally:
+        logging.getLogger().removeHandler(handler)
+        handler.close()
+    assert len(errors) == 3 and entry_row(team, entry_id)["is_posted"] == 1
+    key = lh.TEST_CHAIN_KEY
+    forms = {key.hex(), key.hex().upper(), base64.b64encode(key).decode(), key.hex()[:16]}
+    text = (tmp_path / "debug.log").read_text(encoding="utf-8") + caplog.text + "".join(
+        str(e) + repr(e) for e in errors)
+    assert [form for form in forms if form in text] == []

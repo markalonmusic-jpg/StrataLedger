@@ -467,8 +467,11 @@ def test_only_a_person_approves_or_rejects(world, team, origin, who):
         approvals.reject(team["ctx"](who, origin=origin), request_id, "no")
     assert actions(world, request_id) == []
     assert request_row(world, request_id)["status"] == "Pending"
-    denials = world.rows(CO, "SELECT origin, record_type, record_id FROM access_event WHERE event_type = 'Denied'")
-    assert denials[-2:] == [{"origin": origin, "record_type": "approval_request", "record_id": request_id}] * 2
+    denials = world.rows(CO, "SELECT user_id, actor_type, origin, record_type, record_id FROM access_event "
+                             "WHERE event_type = 'Denied'")
+    expected = {"user_id": team[who], "actor_type": "Master" if who == "master" else "User", "origin": origin,
+                "record_type": "approval_request", "record_id": request_id}
+    assert denials[-2:] == [expected] * 2
 
 
 @pytest.mark.parametrize("old, new, allowed", [

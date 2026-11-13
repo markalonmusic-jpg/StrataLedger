@@ -48,14 +48,15 @@ _Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privil
 # --- The separate-approver rule (shared by approvals and later services) ---------------------
 
 def check_separate_approver(context, created_by_user_id, *, permission_code=None, record_type=None,
-                            record_id=None):
+                            record_id=None, message=None):
     """Apply require_separate_approver to an approval or posting by context.user_id.
 
     Returns True when the approver is the creator and the company allows it (the
     action must then be flagged self-approved), False when they differ. When the
     setting is on (or no settings row exists: the safe default) and the approver
     is the creator, logs a denial and raises PermissionDeniedError. Applies to
-    the Master and Admin too. Call it before opening a write transaction.
+    the Master and Admin too. Call it before opening a write transaction. `message` is the
+    sentence the denial shows (authz.deny's default otherwise).
     """
     if created_by_user_id != context.user_id:
         return False
@@ -65,7 +66,7 @@ def check_separate_approver(context, created_by_user_id, *, permission_code=None
     finally:
         conn.close()
     if row is None or row["require_separate_approver"] == 1:
-        authz.deny(context, permission_code, record_type=record_type, record_id=record_id)
+        authz.deny(context, permission_code, record_type=record_type, record_id=record_id, message=message)
     return True
 
 
@@ -100,33 +101,52 @@ def submit_for_approval(context, document_type, record_type, record_id, amount_c
     document_digest (R15): the document's content digest; a document whose newest request was Rejected with
     the same digest is refused until it changes (R22). Required by the baseline for journal entries.
     """
-    _check_document_type(document_type)
-    _check_cents(amount_cents, "amount_cents")
-    if not record_type or record_id is None:
-        raise ValidationError("record_type and record_id are required")
-    if isinstance(created_by, bool) or not isinstance(created_by, int):
-        raise ValidationError("created_by must be a user id")
+    _check_request(document_type, record_type, record_id, amount_cents, created_by)
     authorize(context, permissions.SUBMIT_PERMISSION[document_type], project_id,
               record_type=record_type, record_id=record_id)
     with write_transaction(context.company_db_path, context) as conn:
-        newest = request_state(conn, record_type, record_id)
-        if (newest is not None and newest["status"] == "Rejected" and document_digest is not None
-                and newest["document_digest"] == document_digest):
-            raise ValidationError(f"Change the {_NOUN.get(record_type, 'document')} before sending it again; "
-                                  f"it was rejected: {newest['reason']}.")
-        policy_id, chain = _chain_for(conn, document_type, amount_cents)
-        try:
-            return conn.execute(
-                "INSERT INTO approval_request (document_type, record_type, record_id, amount_cents, policy_id, "
-                "created_by, project_id, chain_json, status, submitted_by, submitted_at, document_digest) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?) RETURNING request_id",
-                (document_type, record_type, record_id, amount_cents, policy_id, created_by, project_id,
-                 json.dumps(chain), context.user_id, context.now, document_digest),
-            ).fetchone()[0]
-        except sqlite3.IntegrityError as error:
-            if "approval_request.record_type" in str(error):
-                raise ValidationError("This record already has a pending approval request") from error
-            raise
+        return submit_in_transaction(conn, context, document_type, record_type, record_id, amount_cents,
+                                     created_by=created_by, project_id=project_id, document_digest=document_digest)
+
+
+def authorize_submit(context, document_type, project_id=None, *, record_type=None, record_id=None):
+    """Authorize the document type's submit permission (rule 10: before the write transaction)."""
+    _check_document_type(document_type)
+    authorize(context, permissions.SUBMIT_PERMISSION[document_type], project_id,
+              record_type=record_type, record_id=record_id)
+
+
+def submit_in_transaction(conn, context, document_type, record_type, record_id, amount_cents, *, created_by,
+                          project_id=None, document_digest=None):
+    """Inside the caller's write transaction: create the Pending request. The caller has called authorize_submit.
+
+    A document service uses this so that it reads the document and submits it in one transaction (the digest
+    is then the document as it is when the request is made). Returns the request_id.
+    """
+    _check_request(document_type, record_type, record_id, amount_cents, created_by)
+    newest = request_state(conn, record_type, record_id)
+    if (newest is not None and newest["status"] == "Rejected" and document_digest is not None
+            and newest["document_digest"] == document_digest):
+        raise ValidationError(f"Change the {_NOUN.get(record_type, 'document')} before sending it again; "
+                              f"it was rejected: {reason_text(newest['reason'])}.")
+    policy_id, chain = _chain_for(conn, document_type, amount_cents)
+    try:
+        return conn.execute(
+            "INSERT INTO approval_request (document_type, record_type, record_id, amount_cents, policy_id, "
+            "created_by, project_id, chain_json, status, submitted_by, submitted_at, document_digest) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?) RETURNING request_id",
+            (document_type, record_type, record_id, amount_cents, policy_id, created_by, project_id,
+             json.dumps(chain), context.user_id, context.now, document_digest),
+        ).fetchone()[0]
+    except sqlite3.IntegrityError as error:
+        if "approval_request.record_type" in str(error):
+            raise ValidationError("This record already has a pending approval request") from error
+        raise
+
+
+def reason_text(reason):
+    """A rejection reason ready to sit inside a sentence (no trailing full stop)."""
+    return (reason or "").strip().rstrip(".").strip() or "no reason given"
 
 
 def approve(context, request_id):
@@ -199,7 +219,8 @@ def request_state(conn, record_type, record_id):
 
     Keys: request_id, status, document_type, amount_cents, document_digest, created_by, reason (the rejection's,
     else None), step and steps (the open step's position and the number of steps; step is None when every step
-    is complete), approved_by and approved_at (the last Approve action, else None).
+    is complete), approved_by and approved_at (the last Approve action, else None), self_approved (an
+    approval was made by the document's creator while separation was off).
     """
     row = conn.execute(
         "SELECT request_id, status, document_type, amount_cents, document_digest, created_by, chain_json "
@@ -210,7 +231,8 @@ def request_state(conn, record_type, record_id):
     state = dict(row)
     chain = json.loads(state.pop("chain_json"))
     acted = [dict(r) for r in conn.execute(
-        "SELECT step_no, role_code, user_id, decision, reason, acted_at FROM approval_action WHERE request_id = ? "
+        "SELECT step_no, role_code, user_id, decision, reason, acted_at, self_approved FROM approval_action "
+        "WHERE request_id = ? "
         "ORDER BY action_id", (state["request_id"],))]
     step_nos = sorted({slot["step_no"] for slot in chain})
     open_steps = [n for n in step_nos if any(_filled(slot, acted) < slot["required_count"]
@@ -222,6 +244,7 @@ def request_state(conn, record_type, record_id):
         reason=rejections[-1]["reason"] if rejections else None,
         approved_by=approvals_made[-1]["user_id"] if approvals_made else None,
         approved_at=approvals_made[-1]["acted_at"] if approvals_made else None,
+        self_approved=any(a["self_approved"] for a in approvals_made),
     )
     return state
 
@@ -288,6 +311,15 @@ def set_approval_limit(context, role_code, document_type, max_amount_cents):
 
 
 # --- internals ---------------------------------------------------------------------------------
+
+def _check_request(document_type, record_type, record_id, amount_cents, created_by):
+    _check_document_type(document_type)
+    _check_cents(amount_cents, "amount_cents")
+    if not record_type or record_id is None:
+        raise ValidationError("record_type and record_id are required")
+    if isinstance(created_by, bool) or not isinstance(created_by, int):
+        raise ValidationError("created_by must be a user id")
+
 
 def _require_person(context, request_id):
     """R23: only a Human-origin context approves or rejects. Logged, before any read of the request."""

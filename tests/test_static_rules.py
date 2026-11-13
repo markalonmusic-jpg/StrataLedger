@@ -280,6 +280,7 @@ def fresh_context_violations(source, filename="snippet.py"):
 def screen_sources():
     yield ROOT / "app_strata.pyw"
     yield from sorted((ROOT / "modules").glob("views_*.py"))
+    yield from sorted((ROOT / "modules").glob("*_model.py"))      # a screen's model may call services too
 
 
 def test_screens_pass_a_fresh_context_to_post_approve_and_close():

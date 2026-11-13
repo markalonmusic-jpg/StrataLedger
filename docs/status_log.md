@@ -326,6 +326,14 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   `approvals.request_state`; `submit_for_approval` stores the digest and refuses an unchanged rejected document
   (R22). The close checkpoint uses `action_context()` (R26). Six pending xfails rewritten against the real
   services (R25): 12 xfailed became 6. New tests/test_ledger_approvals.py. Suite 2269 passed, 6 xfailed.
+- 2026-11-13: Step 4 review fixes (step-reviewer, secrets-auditor): closing never blocks on any error (an unreadable
+  file too); submit checks, digests and inserts in one write transaction (`approvals.authorize_submit`,
+  `submit_in_transaction`), so a request is for the entry as it is then; re-saving the same lines is not a change
+  (R22); with separation on, an approval the creator made while it was off no longer counts and the entry can be
+  sent again (no dead end); an Import-context post is a logged denial; the creator-posting denial says what to do;
+  a reason ending in a full stop is not doubled. Tests for each, the denial row's user and actor, rollback of the
+  edit with its cancel, refused submits, a DEBUG-log check for the chain key, and the R19 checker scans
+  `*_model.py`. Suite 2280 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

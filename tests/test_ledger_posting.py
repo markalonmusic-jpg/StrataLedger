@@ -81,7 +81,8 @@ def entry_row(env, entry_id):
 
 def snapshot(env):
     return {t: env.rows("PARENT", f"SELECT * FROM {t} ORDER BY 1") for t in
-            ("journal_entry", "journal_line", "audit_log", "entry_number_sequence", "ledger_checkpoint")}
+            ("journal_entry", "journal_line", "audit_log", "entry_number_sequence", "ledger_checkpoint",
+             "approval_request", "approval_action")}
 
 
 def settings(env, **values):
@@ -354,8 +355,8 @@ def test_an_agent_drafted_entry_waits_for_the_approval_step(env, ctx):
 def test_an_import_entry_waits_for_the_approval_step(env, ctx):
     entry_id = draft(env, ctx_for(env, "Import"), source="Import")
     refused(env, lambda: ledger.post_journal_entry(ctx, entry_id, confirm=True), PostingError, APPROVAL_MESSAGE)
-    refused(env, lambda: ledger.post_journal_entry(ctx_for(env, "Import"), entry_id), PostingError,
-            ledger.IMPORT_POSTED_BY_A_PERSON)
+    refused(env, lambda: ledger.post_journal_entry(ctx_for(env, "Import"), entry_id), PermissionDeniedError,
+            "posted by a person")
 
 
 @pytest.mark.parametrize("threshold, amount, posts", [
