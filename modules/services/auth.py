@@ -61,13 +61,45 @@ class Session:
 
 
 class _HoldsACode:
-    """A result that carries a recovery code: its repr and str show `<redacted>` in place of the code, and it
-    cannot be pickled or copied, so a log line, a traceback or a test failure never prints the code."""
+    """A result that carries a recovery code. Not a tuple: each field is a read-only attribute, so the code is
+    reached only through `.recovery_code` (no indexing, iteration, `_asdict`, `vars()` or JSON). Its repr and str
+    show `<redacted>` in place of the code, and it cannot be pickled or copied, so a log line, a traceback or a test
+    failure never prints the code.
+
+    A subclass lists `_FIELDS` (in order), optional `_DEFAULTS`, and `__slots__` = each field with a leading "_"."""
     __slots__ = ()
+    _FIELDS = ()
+    _DEFAULTS = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if tuple(cls.__dict__.get("__slots__", ())) != tuple("_" + name for name in cls._FIELDS):
+            raise TypeError(f"{cls.__name__}.__slots__ must name each field with a leading underscore")
+        for name in cls._FIELDS:
+            setattr(cls, name, property(lambda self, _slot="_" + name: object.__getattribute__(self, _slot)))
+
+    def __init__(self, *args, **kwargs):
+        if len(args) > len(self._FIELDS):
+            raise TypeError(f"{type(self).__name__} takes {len(self._FIELDS)} values")
+        values = dict(zip(self._FIELDS, args))
+        for name, value in kwargs.items():
+            if name not in self._FIELDS or name in values:
+                raise TypeError(f"{type(self).__name__} got an unexpected or repeated value for {name!r}")
+            values[name] = value
+        for name in self._FIELDS:
+            if name not in values and name not in self._DEFAULTS:
+                raise TypeError(f"{type(self).__name__} needs a value for {name!r}")
+            object.__setattr__(self, "_" + name, values.get(name, self._DEFAULTS.get(name)))
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"A {type(self).__name__} cannot be changed")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"A {type(self).__name__} cannot be changed")
 
     def __repr__(self):
-        shown = ", ".join(f"{name}=<redacted>" if name == "recovery_code" else f"{name}={value!r}"
-                          for name, value in zip(self._fields, self))
+        shown = ", ".join(f"{name}=<redacted>" if name == "recovery_code" else f"{name}={getattr(self, name)!r}"
+                          for name in self._FIELDS)
         return f"{type(self).__name__}({shown})"
 
     __str__ = __repr__
@@ -78,6 +110,9 @@ class _HoldsACode:
     def __reduce_ex__(self, protocol):
         return self.__reduce__()
 
+    def __getstate__(self):
+        return self.__reduce__()
+
     def __copy__(self):
         return self.__reduce__()
 
@@ -85,16 +120,19 @@ class _HoldsACode:
         return self.__reduce__()
 
 
-class FirstMaster(_HoldsACode, namedtuple("FirstMaster", "user_id recovery_code ledger_key_locked",
-                                          defaults=(False,))):
-    __slots__ = ()
+class FirstMaster(_HoldsACode):
+    """The first Master: its user id, the recovery code (shown once) and whether the ledger key is locked here."""
+    _FIELDS = ("user_id", "recovery_code", "ledger_key_locked")
+    _DEFAULTS = {"ledger_key_locked": False}
+    __slots__ = ("_user_id", "_recovery_code", "_ledger_key_locked")
 
 
-class CodeIssued(_HoldsACode, namedtuple("CodeIssued", "recovery_code ledger_key_restored message")):
+class CodeIssued(_HoldsACode):
     """A new Master recovery code (recover_master, change_master_password, issue_recovery_code).
     `ledger_key_restored` is False when the installation key could not be re-wrapped for this computer; `message`
     then says why."""
-    __slots__ = ()
+    _FIELDS = ("recovery_code", "ledger_key_restored", "message")
+    __slots__ = ("_recovery_code", "_ledger_key_restored", "_message")
 
 LEDGER_KEY_NOT_RESTORED = ("The new recovery code is saved, but the ledger key could not be restored: neither its "
                            "recovery copy nor this computer's copy opens. Nothing can be posted on this "

@@ -48,49 +48,12 @@ COMPANIES_NOT_REACHED = ("The remaining companies were not reached; use Finish t
 _logger = logging.getLogger("strataledger.keys")
 
 
-class KeyReplaced:
+class KeyReplaced(auth._HoldsACode):
     """A new installation key: the new recovery code (shown once), one {'company_id', 'company_code', 'status'
-    ('done' or 'failed'), 'message'} per company, and a one-sentence summary.
-
-    Not a tuple: the code is reached only through `.recovery_code`. No indexing, iteration, `_asdict`, `vars()` or
-    JSON; repr and str show `<redacted>`; it cannot be pickled or copied; the fields are read only."""
-    __slots__ = ("_recovery_code", "companies", "message")
-
-    def __init__(self, recovery_code, companies, message):
-        object.__setattr__(self, "_recovery_code", recovery_code)
-        object.__setattr__(self, "companies", companies)
-        object.__setattr__(self, "message", message)
-
-    @property
-    def recovery_code(self):
-        return self._recovery_code
-
-    def __setattr__(self, name, value):
-        raise AttributeError(f"A {type(self).__name__} cannot be changed")
-
-    def __delattr__(self, name):
-        raise AttributeError(f"A {type(self).__name__} cannot be changed")
-
-    def __repr__(self):
-        return (f"{type(self).__name__}(recovery_code=<redacted>, companies={self.companies!r}, "
-                f"message={self.message!r})")
-
-    __str__ = __repr__
-
-    def __reduce__(self):
-        raise TypeError(f"A {type(self).__name__} holds a recovery code and cannot be pickled or copied")
-
-    def __reduce_ex__(self, protocol):
-        return self.__reduce__()
-
-    def __getstate__(self):
-        return self.__reduce__()
-
-    def __copy__(self):
-        return self.__reduce__()
-
-    def __deepcopy__(self, memo):
-        return self.__reduce__()
+    ('done' or 'failed'), 'message'} per company, and a one-sentence summary. Read only; the code is reached only
+    through `.recovery_code` and is redacted everywhere else (auth._HoldsACode)."""
+    _FIELDS = ("recovery_code", "companies", "message")
+    __slots__ = ("_recovery_code", "_companies", "_message")
 
 
 def _registry(master_db_path):

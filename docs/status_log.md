@@ -301,6 +301,9 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-13: `installation_keys.KeyReplaced` is no longer a namedtuple: the new code is reached only through
   `.recovery_code` (no indexing, iteration, `_asdict`, `vars()` or JSON; redacted; not picklable or copyable).
   `auth.CodeIssued` and `auth.FirstMaster` are still namedtuples (reported to the owner).
+- 2026-11-13: `auth.CodeIssued` and `auth.FirstMaster` are read-only classes too: `auth._HoldsACode` is now a
+  slotted base (fields as read-only attributes; redacted repr and str; no indexing, iteration, `_asdict`,
+  `vars()` or JSON; no pickling or copying), shared with `installation_keys.KeyReplaced`. Tests first.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

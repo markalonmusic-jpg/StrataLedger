@@ -305,7 +305,52 @@ def test_a_result_holding_a_recovery_code_never_shows_it(result):
     for leak in (pickle.dumps, copy.copy, copy.deepcopy):
         with pytest.raises(TypeError):
             leak(result)
-    assert result[result._fields.index("recovery_code")] == code      # the caller still gets it
+    assert result.recovery_code == code                               # the caller still gets it
+
+
+@pytest.mark.parametrize("make", [
+    lambda: auth.FirstMaster(7, "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", False),
+    lambda: auth.FirstMaster(7, "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567"),
+    lambda: auth.CodeIssued("ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", True, None),
+    lambda: auth.CodeIssued(recovery_code="ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", ledger_key_restored=False,
+                            message="why"),
+], ids=["FirstMaster", "FirstMaster-default", "CodeIssued", "CodeIssued-keywords"])
+def test_a_result_holding_a_recovery_code_is_not_a_tuple(make):
+    """The code is reached only through .recovery_code: no index, iteration, _asdict, vars() or JSON (before
+    Step 4; the same rule as installation_keys.KeyReplaced)."""
+    import copy
+    import dataclasses
+    import json
+    import pickle
+    result = make()
+    assert not isinstance(result, tuple)
+    with pytest.raises(TypeError):
+        vars(result)
+    for attempt in (lambda r: r[0], lambda r: r[1], lambda r: list(r), lambda r: tuple(r), lambda r: dict(r),
+                    lambda r: r._asdict(), lambda r: json.dumps(r), lambda r: dataclasses.asdict(r)):
+        with pytest.raises((TypeError, AttributeError)):
+            attempt(result)
+    for attempt in (pickle.dumps, copy.copy, copy.deepcopy, lambda r: pickle.dumps(r, protocol=0),
+                    lambda r: r.__reduce_ex__(2)):
+        with pytest.raises(TypeError):
+            attempt(result)
+    with pytest.raises(AttributeError):
+        result.recovery_code = "something else"
+    with pytest.raises(AttributeError):
+        del result.recovery_code
+    assert result.recovery_code == "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567"
+
+
+def test_the_other_fields_keep_their_names_and_defaults():
+    first = auth.FirstMaster(7, "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567")
+    assert (first.user_id, first.ledger_key_locked) == (7, False)
+    issued = auth.CodeIssued("ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", False, "why")
+    assert (issued.ledger_key_restored, issued.message) == (False, "why")
+    for bad in (lambda: auth.CodeIssued("X", True), lambda: auth.CodeIssued("X", True, None, 4),
+                lambda: auth.CodeIssued("X", True, None, colour="red"),
+                lambda: auth.CodeIssued("X", True, recovery_code="Y")):
+        with pytest.raises(TypeError):
+            bad()
 
 
 # --- Mutation-test gaps ---------------------------------------------------------------------------------------
