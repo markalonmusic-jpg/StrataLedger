@@ -242,3 +242,56 @@ def test_every_reason_text_call_is_inside_an_error_with_a_log_message():
             if isinstance(node, ast.Call) and any(k.arg == "log_message" for k in node.keywords):
                 covered |= {id(n) for n in ast.walk(node)}
         assert [c.lineno for c in calls if id(c) not in covered] == [], path.name
+
+
+# --- Mutation-test gaps (db67342) ---------------------------------------------------------------------------
+
+def _hidden_error():
+    return PostingError(f"Rejected ({MARKER})", log_message="Rejected.")
+
+
+def _filtered(record):
+    logging_setup.LogMessageFilter().filter(record)
+    return record
+
+
+def _record(msg, args=None, exc_info=None):
+    return logging.LogRecord("strataledger", logging.ERROR, __file__, 1, msg, args, exc_info)
+
+
+def test_dict_arguments_are_cleaned():
+    record = _filtered(_record("refused: %(e)s", ({"e": _hidden_error()},)))
+    assert record.getMessage() == "refused: Rejected."
+
+
+def test_a_cause_set_without_a_context_is_cleaned():
+    outer = RuntimeError(f"wrapped: {_hidden_error()}")
+    outer.__cause__ = _hidden_error()
+    outer.__cause__.args = (f"Rejected ({MARKER})",)
+    assert outer.__context__ is None
+    assert MARKER not in _filtered(_record("x %s", (outer,))).getMessage()
+
+
+def test_an_exception_group_member_is_cleaned():
+    group = ExceptionGroup("several", [_hidden_error(), ValueError("other")])
+    assert group.__context__ is None and group.__cause__ is None
+    record = _filtered(_record("failed", None, (ExceptionGroup, group, None)))
+    assert MARKER not in record.exc_text and "Rejected." in record.exc_text
+
+
+def test_a_cycle_of_linked_errors_ends():
+    first, second = _hidden_error(), RuntimeError("second")
+    first.__context__, second.__context__ = second, first
+    import threading
+    record = _record("x %s", (second,))
+    worker = threading.Thread(target=_filtered, args=(record,), daemon=True)
+    worker.start()
+    worker.join(10)
+    assert not worker.is_alive(), "the filter loops on a cycle of linked errors"
+    assert MARKER not in record.getMessage()
+
+
+def test_the_cleaned_traceback_has_no_trailing_newline():
+    error = _hidden_error()
+    record = _filtered(_record("failed", None, (PostingError, error, None)))
+    assert record.exc_text and not record.exc_text.endswith("\n") and MARKER not in record.exc_text

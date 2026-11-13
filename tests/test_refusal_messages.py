@@ -428,3 +428,121 @@ def test_acting_twice_on_a_request_says_what_happens_next(world, team):
         approvals.approve(team["ctx"]("pm1"), request_id)
     assert str(error.value) == ("You have already acted on this approval request; another approver completes "
                                 "the open step.")
+
+
+# --- Mutation-test gaps (db67342) ---------------------------------------------------------------------------
+
+def _approver(world, code, name=None, cents=10_000_000):
+    world.role(CO, code, ["bill.approve"])
+    world.limit(CO, code, "Bill", cents)
+    if name:
+        with world._company(CO) as c:
+            c.execute("UPDATE role SET name = ? WHERE role_code = ?", (name, code))
+    user = world.user(code.lower())
+    world.grant(user, CO, code)
+    return world.ctx(user, CO)
+
+
+def test_the_master_learns_that_a_company_is_missing(world, team):
+    import dataclasses
+    context = dataclasses.replace(team["ctx"]("master"), company_id=9999)
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(context, "ledger.view")
+    assert str(error.value) == ("This company is no longer in the company list; close it and open a company "
+                                "from the list.")
+
+
+def test_an_access_row_naming_a_missing_role_is_no_access(world, team):
+    ghost = world.user("ghost")
+    world.grant(ghost, CO, "GhostRole")
+    message, _ = _denied(world, lambda: authz.authorize(world.ctx(ghost, CO), "ledger.view"))
+    assert message == "You do not have access to this company; ask an Admin to give you access."
+
+
+def test_deny_without_a_code_or_message_is_the_no_access_sentence(world, team):
+    message, event = _denied(world, lambda: authz.deny(team["ctx"]("clerk")))
+    assert message == "You do not have access to this company; ask an Admin to give you access."
+    assert event["permission_code"] is None
+
+
+def test_the_admin_role_is_never_listed_as_a_role_that_can_approve(world, team):
+    assert world.rows(CO, "SELECT 1 FROM role_permission WHERE role_code = 'Admin' "
+                          "AND permission_code = 'bill.approve'")      # the Admin role holds it
+    world.limit(CO, "Admin", "Bill", 10 ** 12)
+    request_id = submit(team, amount=200_000)
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm1"), request_id))
+    assert message.endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+def test_a_limit_equal_to_the_amount_can_approve(world, team):
+    request_id = submit(team, amount=10_000_000)              # exactly the Controller limit
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm1"), request_id))
+    assert message.endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+def test_the_default_separation_sentence_for_the_creator(world, team):
+    with pytest.raises(PermissionDeniedError) as error:
+        approvals.check_separate_approver(team["ctx"]("pm1"), team["pm1"])
+    assert str(error.value) == ("This company needs a different person to approve the document you created; "
+                                "ask a colleague to approve it.")
+
+
+def test_acting_again_on_a_later_step_is_already_acted_not_the_step_sentence(world, team):
+    policy(team, [(1, "PM", 1), (2, "Controller", 1)])
+    request_id = submit(team)
+    approvals.approve(team["ctx"]("pm1"), request_id)
+    with pytest.raises(ValidationError) as error:
+        approvals.approve(team["ctx"]("pm1"), request_id)
+    assert str(error.value) == approvals.ALREADY_ACTED
+
+
+def test_the_in_transaction_recheck_says_already_acted(world, team):
+    from modules.services.tx import write_transaction
+    policy(team, [(1, "PM", 2)])
+    request_id = submit(team)
+    ctx = team["ctx"]("pm1")
+    plan = approvals._plan(ctx, approvals._load_request(ctx, request_id))   # planned before the user acts
+    approvals.approve(ctx, request_id)
+    with pytest.raises(ValidationError) as error:
+        with write_transaction(ctx.company_db_path, ctx) as conn:
+            approvals._record(conn, ctx, plan, "Approve", None)
+    assert str(error.value) == approvals.ALREADY_ACTED
+
+
+def test_after_step_one_the_sentence_names_step_two(world, team):
+    policy(team, [(1, "PM", 1), (2, "Controller", 1)])
+    request_id = submit(team)
+    approvals.approve(team["ctx"]("pm1"), request_id)
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm2"), request_id))
+    assert message == "Step 2 of 2 needs approval by someone in the Controller role; ask them to approve it."
+
+
+def test_only_the_unfilled_role_of_a_step_is_named(world, team):
+    outsider = _approver(world, "Auditor")
+    policy(team, [(1, "PM", 1), (1, "Controller", 1)])
+    request_id = submit(team)
+    approvals.approve(team["ctx"]("pm1"), request_id)
+    message, _ = _denied(world, lambda: approvals.approve(outsider, request_id))
+    assert message == "Step 1 of 1 needs approval by someone in the Controller role; ask them to approve it."
+
+
+def test_roles_are_named_by_their_names_in_name_order(world, team):
+    outsider = _approver(world, "Auditor")
+    with world._company(CO) as c:
+        c.execute("UPDATE role SET name = 'Alpha PMs' WHERE role_code = 'PM'")
+        c.execute("UPDATE role SET name = 'Zeta Controllers' WHERE role_code = 'Controller'")
+    policy(team, [(1, "PM", 1), (1, "Controller", 1)])
+    request_id = submit(team)
+    message, _ = _denied(world, lambda: approvals.approve(outsider, request_id))
+    assert message == ("Step 1 of 1 needs approval by someone in the Alpha PMs or Zeta Controllers role; "
+                       "ask them to approve it.")
+
+
+def test_three_roles_in_a_step_are_listed_with_commas(world, team):
+    _approver(world, "Treasurer")
+    outsider = _approver(world, "Auditor")
+    policy(team, [(1, "PM", 1), (1, "Controller", 1), (1, "Treasurer", 1)])
+    request_id = submit(team)
+    message, _ = _denied(world, lambda: approvals.approve(outsider, request_id))
+    assert message == ("Step 1 of 1 needs approval by someone in the Controller, PM or Treasurer role; "
+                       "ask them to approve it.")

@@ -348,6 +348,9 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   `create_fresh_databases.py --no-prompt`, and early end of input exits cleanly. New `money.py`. step-reviewer
   and secrets-auditor findings fixed (filter gaps, scan blind spots, the archived/missing-company oracle, the
   agent sentence, three sentences without a next step). Suite 2386 passed, 6 xfailed.
+- 2026-11-13: R27-R31 mutation check (mutation-tester, db67342): 116 mutations, 88 killed. Tests added for the
+  20 real gaps; 19 re-run and killed, the 20th unreachable (a policy step always names a role); the rest are
+  equivalent (docs/next_step.md). Suite 2403 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
