@@ -1,10 +1,12 @@
 # Next step: Phase 2.5 Step 1d (key-lost checkpoint and a new installation key)
 
 Written at the STOP after Step 1c was accepted (2026-11-12). Overwritten at each STOP (CLAUDE.md section 8).
-Status: PLAN, not started. The owner starts it in a fresh session.
+Status: PLAN APPROVED (2026-11-12), not started. The owner starts it in a fresh session. The seven open questions
+below are answered as proposed, with the owner's additions to Q1-Q3; record all seven as decisions KS12 and up
+(with index rows) when building.
 
-**State at this STOP:** HEAD is the commit that adds this file, on top of `ebf8e98` (docs: decisions index,
-audit design trim). Last code commit `e725506`. Suite on the committed tree: **2033 passed, 7 deselected,
+**State at this STOP:** HEAD is the commit that records the approval in this file, on top of `c191c1f` (the
+plan) and `ebf8e98` (docs: decisions index, audit design trim). Last code commit `e725506`. Suite on the committed tree: **2033 passed, 7 deselected,
 12 xfailed** (about 10 minutes). Working tree clean, `main` pushed.
 
 **Read first (by search, not whole files):** docs/audit_readiness_design.md 2.6 (verification rules), 2.7
@@ -50,7 +52,9 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
   - Result: status `OK` (or `Broken` or `Unavailable` for the new epoch, as today), plus
     `unverified_through` = N and `unverified_reason` = `Key lost`, both None when there is no epoch. The
     message names the range: "Entries JE-000001 to JE-000N cannot be verified because their key was lost;
-    entries after it were verified." It contains no hash or key.
+    entries after it were verified." It contains no hash or key, and it is never empty when
+    `unverified_through` is set (Q1).
+  - Every verification result shown on a screen, report or export shows the unverified range next to it (Q1).
   - A Verify checkpoint recorded after an epoch is OK through the head and means "verified from N+1".
 - Only the latest epoch counts: a second epoch moves N forward.
 - `rotate_chain_key` after an epoch: the full check is now OK with an unverified range, so rotation signs its
@@ -58,6 +62,9 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
   epoch.
 - The close check `ledger_integrity` treats an unverified range as a warning in every mode (it is not
   tampering); the verified part follows the check's mode (L2). See question 2.
+- The note "history before JE-N cannot be verified (key lost)" has no expiry. It stays, permanently, on every
+  close report and export that covers those periods, and on the Audit-ready page (Q2). This replaces "until the
+  next year close" in audit design 2.7 ("Key lost").
 
 ### B. A new installation key (master baseline)
 - `installation_key` becomes append-only history with one active row, the same pattern as
@@ -80,7 +87,11 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
   - Refused while the installation key opens on this computer (DPAPI copy opens): "The ledger key is still
     available on this computer, so it is not lost."
   - When the key is locked (no DPAPI copy), it goes ahead only on the typed confirmation that the recovery code
-    is lost.
+    is lost. The confirmation is the phrase `NEW LEDGER KEY` (Q3).
+  - The confirmation screen says every company's history up to today will no longer be verifiable, and shows how
+    many companies will get a new key epoch (Q3). A read service (for example
+    `installation_keys.replacement_preview(session)`, Master only) returns that count, so the screen and the
+    service agree on it.
   - In one master transaction: retire the old row (`Key lost`), insert the new key with a NEW recovery code
     (shown once, like PW9; it also replaces the `master_recovery` hash) and this computer's DPAPI copy, and
     write the `Installation key replaced` event.
@@ -117,7 +128,8 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
 - `scripts/create_fresh_databases.py`: only if the first-run key row shape changes its inserts.
 - Tests (below).
 - Docs:
-  - audit design 2.6, 2.7, 3 (kinds) and 11 (test plan);
+  - audit design 2.6, 2.7 (including the Q2 change to "until the next year close"), 3 (kinds), 8 (the
+    Audit-ready line) and 11 (test plan);
   - decisions: new codes for this step's answers, each with an index row;
   - roadmap, status_log, file_map;
   - CLAUDE.md "Where we are";
@@ -141,7 +153,8 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
   - a changed hash at N, a forged or unsigned Key lost row, or a Key lost row naming an active key is Broken;
   - two epochs: only the latest counts;
   - an older OK checkpoint signed with the lost key no longer makes the result Unavailable;
-  - the message has no hash or key;
+  - the message has no hash or key, and is never empty when `unverified_through` is set (Q1; parametrized over
+    full, incremental, the close check and the rotation result);
   - the close check warns, never blocks, on the unverified range.
 - **Rotation after an epoch**: signs its checkpoint again (update `tests/test_key_rotation.py`).
 - **Replace installation key** (new `tests/test_installation_key_replace.py`):
@@ -155,6 +168,7 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
     - old `company_key` rows are kept and are not opened;
   - partial failure: one company file missing is reported, and finishing it later works;
   - the result redacts the code;
+  - the preview's company count matches the companies that get an epoch (archived included, Q5);
   - no key or code in logs, `audit_log`, `auth_event` or exceptions (extend `tests/test_key_secrets.py`).
 - Static rules stay green (rule 10 order in the new service; no new allow-list entries).
 
@@ -165,15 +179,20 @@ K18, KS5, KS6, KS8-KS10; `modules/services/ledger_verify.py` (`_check`, `_record
 3. After part B (replace installation key): commit, push, then run step-reviewer, secrets-auditor and
    mutation-tester. Report each agent's findings and what was fixed, then write the next docs/next_step.md.
 
-## Open questions (proposed answers)
+## Questions (answered 2026-11-12: approved as proposed, with the owner's additions marked "Owner")
 1. **Overall status after an epoch:** `OK` with `unverified_through`, or a fourth status such as "Partly
    verified"? *Proposed:* `OK` plus `unverified_through`, so close checks, rotation and the K16 rules keep
    their meaning, and the screen shows the unverified range next to the result.
+   **Owner:** every verification result shown on a screen, report or export shows the unverified range next to
+   it; a test proves the message is never empty when `unverified_through` is set.
 2. **Close check and Audit-ready mode:** does an unverified range block a close when `ledger_integrity` is
    set to block? *Proposed:* no; it is always a warning (it is not tampering). Audit-ready mode shows "history
    before JE-N cannot be verified" until the next year close, as the design already says.
+   **Owner:** no expiry. The note stays permanently on every close report and export that covers those periods
+   (not "until the next year close").
 3. **Typed confirmation for a new installation key:** what is typed? *Proposed:* the phrase `NEW LEDGER KEY`,
    after a screen that says every company's history up to today will no longer be verifiable.
+   **Owner:** the confirmation screen also shows how many companies will get a new key epoch.
 4. **A lost key found again** (an old master backup, a found recovery code): may the verifier use it to verify
    the old range? *Proposed:* not in 1d. The range stays Unverified; restoring keys is part of the backup and
    key-bundle work (backlog 16).
