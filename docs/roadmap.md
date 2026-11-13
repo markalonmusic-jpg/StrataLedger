@@ -174,6 +174,9 @@ See docs/crm_pm_design.md section 11.
 16. With the backup step (Phase 5): the passphrase-protected company key bundle (Master only, K8), so an exported
     or backed-up company can be verified on another computer; then drop the `EXPORT_NOT_VERIFIABLE` warning
     (KS11). Every company backup also backs up `system_master.db` (KS10).
+17. Restrict the data folder (`%PROGRAMDATA%\StrataLedger`) at install or first run so other local accounts
+    cannot read `system_master.db`: today it keeps the inherited permissions, and the machine-scope DPAPI copy of
+    the installation key opens for any local user who can read it (secrets audit of Step 1c; audit design 1).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned

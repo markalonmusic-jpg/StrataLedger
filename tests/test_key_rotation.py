@@ -117,6 +117,13 @@ def _unchanged(world, company):
             _rows(world.company_path, "SELECT checkpoint_id FROM ledger_checkpoint"))
 
 
+def _audit(world):
+    """Every audit row of both files and every auth_event: a refused rotation that is not a permission denial adds
+    none (a denial adds only its own 'Denied' record)."""
+    return (_rows(world.company_path, "SELECT * FROM audit_log"), _rows(world.master, "SELECT * FROM audit_log"),
+            _rows(world.master, "SELECT * FROM auth_event"), _rows(world.master, "SELECT * FROM chain_checkpoint"))
+
+
 def test_only_the_master_rotates(world, company):
     before = _unchanged(world, company)
     clerk = world.session(world.user("clerk"))
@@ -127,12 +134,15 @@ def test_only_the_master_rotates(world, company):
 
 
 def test_rotation_is_refused_while_the_key_store_is_locked(world, company, monkeypatch):
-    before = _unchanged(world, company)
+    before, audit = _unchanged(world, company), _audit(world)
     monkeypatch.setattr(keys, "_provider", key_store.LocalKeyProvider(world.master, FakeMachineWrap(
         fail_unprotect=True)))
     with pytest.raises(KeyStoreLockedError):
         ledger_keys.rotate_chain_key(world.root, company["company_id"])
     assert _unchanged(world, company) == before
+    assert _audit(world)[1:] == audit[1:]
+    assert [r for r in _audit(world)[0] if r["table_name"] != "access_event"] == [
+        r for r in audit[0] if r["table_name"] != "access_event"]
 
 
 def test_rotation_is_refused_when_the_current_key_is_not_available_here(world, company, monkeypatch):
@@ -149,3 +159,36 @@ def test_rotation_is_refused_when_the_current_key_is_not_available_here(world, c
     assert str(caught.value) == ledger_keys.ROTATION_NEEDS_KEY
     after = _unchanged(world, company)
     assert after[0] == before[0] and after[2] == before[2]
+
+
+def test_a_failure_in_the_company_file_after_the_master_write_leaves_the_old_key_active(world, company, monkeypatch):
+    """The design's worst case: an unused wrapped key in the master, never an active key that cannot be found."""
+    real = ledger_keys.write_transaction
+
+    def failing(path, context):
+        if str(path) == str(context.company_db_path):
+            raise RuntimeError("the company file is busy")
+        return real(path, context)
+    monkeypatch.setattr(ledger_keys, "write_transaction", failing)
+    [old] = _rows(world.company_path, "SELECT key_id FROM ledger_chain_key")
+    with pytest.raises(RuntimeError):
+        ledger_keys.rotate_chain_key(world.root, company["company_id"])
+    monkeypatch.setattr(ledger_keys, "write_transaction", real)
+    assert _rows(world.company_path, "SELECT key_id, is_active FROM ledger_chain_key") == [
+        {"key_id": old["key_id"], "is_active": 1}]
+    assert len(_rows(world.master, "SELECT * FROM company_key")) == 2          # one unused, harmless
+    context = _context(world, company["company_id"])
+    _post(context, 500)                                                         # posting still works
+    assert ledger_verify.verify_ledger(context, mode="full")["status"] == "OK"
+    assert ledger_keys.rotate_chain_key(world.root, company["company_id"])["checkpoint"]["status"] == "OK"
+
+
+def test_a_rotation_checkpoint_that_cannot_be_saved_never_undoes_the_rotation(world, company, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(ledger_verify, "_record", broken)
+    result = ledger_keys.rotate_chain_key(world.root, company["company_id"])
+    assert result["checkpoint"]["checkpoint_error"] == ledger_verify.KEY_CHECKPOINT_NOT_SAVED
+    assert result["checkpoint"]["no_checkpoint_reason"] == ledger_verify.KEY_CHECKPOINT_NOT_SAVED
+    [active] = _rows(world.company_path, "SELECT key_id FROM ledger_chain_key WHERE is_active = 1")
+    assert active["key_id"] == result["new_key_id"]

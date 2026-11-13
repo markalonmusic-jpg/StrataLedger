@@ -43,13 +43,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
 import modules.database as database  # noqa: E402
 from modules import first_run_model, platform_support  # noqa: E402
-from modules.services import auth, companies  # noqa: E402
+from modules.services import auth, companies, key_store, keys  # noqa: E402
 from modules.services.errors import ServiceError  # noqa: E402
 
 APP_ENTRY = "app_strata.pyw"
 LOCK_SIBLINGS = ("-journal", "-wal", "-shm")
 EXIT_REFUSED = 2
 EXIT_FAILED = 1
+KEY_LOCKED = ("Not created: the ledger key is locked on this computer. Restore it with the Master recovery code "
+              "first.")
 
 
 def app_is_running():
@@ -257,6 +259,11 @@ def sample_company(master_path, code, apply):
     if not apply:
         print("Dry run complete; nothing was written. Add --apply to create it.")
         return 0
+    provider = key_store.LocalKeyProvider(str(master_path), platform_support.DPAPI)   # as the app does at start-up
+    if not provider.is_unlocked:
+        print(KEY_LOCKED)
+        return EXIT_FAILED
+    keys.set_provider(provider)
     session = auth.Session(user_id=user_id, username=username, first_name=first_name, is_master=True,
                            legacy_role="Master", must_change_password=False, master_db_path=str(master_path))
     try:

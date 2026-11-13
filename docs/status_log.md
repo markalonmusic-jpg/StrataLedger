@@ -251,7 +251,12 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-12: Step 1c sub-step 9: `ledger_keys.start_new_key_epoch` (Master, company code typed): a lost company
   key is retired as `Key lost` and a new one becomes active, so posting goes on; old entries stay readable and a
   full check is Unavailable. Open for the owner: no epoch checkpoint (needs a new result or kind and a verifier
-  change), and a lost installation key cannot be replaced yet (audit design 2.7, sub-step 9).
+  change), and a lost installation key cannot be replaced yet (audit design 2.7, sub-step 9) (896f54d).
+- 2026-11-12: Step 1c review fixes (step-reviewer, secrets-auditor): `--sample-company` sets the key provider;
+  rotation needs only the current key (no loop after a key-lost epoch); KS5 rebuilds a damaged recovery copy from
+  this computer's DPAPI copy; `FirstMaster` / `CodeIssued` redact the code; the provider's cache follows the
+  file's fingerprint; tests for the associated-data bindings, rotation failure paths, KS6's order and a
+  log/audit/file leak check over five key flows. Backlog 17: restrict the data folder's permissions.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

@@ -7,8 +7,9 @@ the company file, because verification needs them for the entries they sealed.
 
 rotate_chain_key, in order:
 1. the key store must be able to make a key (KeyStoreLockedError while locked, KS6);
-2. a full ledger check under the current key; if that key is not available here, rotation is refused
-   (ROTATION_NEEDS_KEY) because a lost key takes the key-lost path instead;
+2. the CURRENT key must open here, else rotation is refused (ROTATION_NEEDS_KEY): a lost key takes the key-lost
+   path instead. Then a full ledger check; after a key-lost epoch it is Unavailable (older entries need the lost
+   key), and the rotation goes on but signs no checkpoint (the result says why);
 3. the new key, wrapped, into the master with a 'Ledger key rotated' auth_event (one master transaction);
 4. the company file: the old key retired ('Rotation'), the new one active (one company transaction). A failure
    between 3 and 4 leaves an unused wrapped key in the master, never an active key that cannot be found;
@@ -61,9 +62,11 @@ def rotate_chain_key(session, company_id):
     old_key_id = _active_key_id(context)
     if old_key_id is None:
         raise ValidationError(NO_ACTIVE_KEY)
-    verification = ledger_verify.check_before_key_change(context)
-    if verification["status"] == ledger_verify.UNAVAILABLE:
-        raise KeyUnavailableError(ROTATION_NEEDS_KEY)
+    try:
+        provider.get_key(company_id, old_key_id)                     # rotation needs the CURRENT key only
+    except KeyUnavailableError:
+        raise KeyUnavailableError(ROTATION_NEEDS_KEY) from None
+    verification = ledger_verify.check_before_key_change(context)   # Unavailable after a key-lost epoch
     new_key_id = _switch_keys(session, context, provider, new_key, old_key_id, event="Ledger key rotated",
                               retire_reason="Rotation")
     checkpoint = ledger_verify.record_key_checkpoint(context, verification, old_key_id=old_key_id)

@@ -266,3 +266,18 @@ def test_services_never_import_the_platform_module():
 def test_the_platform_module_offers_the_dpapi_machine_wrap():
     assert platform_support.DPAPI.protect is platform_support.machine_protect
     assert platform_support.DPAPI.unprotect is platform_support.machine_unprotect
+
+
+def test_the_recovery_copy_is_bound_to_its_row_by_the_associated_data(master_path, known_key):
+    """Step 1c review: the right code and salt still refuse the recovery copy under any other associated data."""
+    created = _first_master(master_path, FakeMachineWrap())
+    row = _row(master_path)
+    kek = key_wrap.recovery_kek(created.recovery_code, row["recovery_salt"])
+    assert key_store.recovery_associated_data(row["fingerprint"]) == key_wrap.associated_data(
+        "installation_key", 1, "recovery", row["fingerprint"])
+    for other in (key_wrap.associated_data("installation_key", 1, "recovery", "0" * 64),
+                  key_wrap.associated_data("installation_key", 2, "recovery", row["fingerprint"]),
+                  key_wrap.associated_data("installation_key", 1, "machine", row["fingerprint"]),
+                  key_wrap.associated_data("company_key", 1, "recovery", row["fingerprint"]), b""):
+        with pytest.raises(KeyUnavailableError):
+            key_wrap.unwrap_key(kek, row["recovery_blob"], other)

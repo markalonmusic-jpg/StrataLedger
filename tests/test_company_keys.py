@@ -305,3 +305,63 @@ def test_end_to_end_with_real_dpapi_first_run_create_company_post_and_verify(tmp
         {"account_id": debit, "debit_cents": 500}, {"account_id": credit, "credit_cents": 500}])
     ledger.post_journal_entry(context, entry_id, confirm=True, acknowledge_date_warnings=True)
     assert ledger_verify.verify_ledger(context, mode="full")["status"] == "OK"
+
+
+def test_a_cached_key_is_not_used_for_a_company_file_that_was_replaced(world, real_keys):
+    """Step 1c review: a file restored or replaced in the same session (Phase 5) must not get a key cached for the
+    file it replaced; the provider matches the file's current fingerprint every time."""
+    import shutil
+    first, second = _create(world.root, "Acme Builders"), _create(world.root, "Bravo Homes")
+    [row] = _company_rows(world, first, "SELECT key_id FROM ledger_chain_key")
+    real_keys.get_key(first["company_id"], row["key_id"])                 # now cached
+    base = Path(config.BASE_PROJECT_DIR)
+    shutil.copy2(base / second["database_file_path"], base / first["database_file_path"])
+    with pytest.raises(KeyUnavailableError):
+        real_keys.get_key(first["company_id"], row["key_id"])
+
+
+def test_the_same_key_stored_for_two_companies_does_not_open_for_the_wrong_one(world, real_keys):
+    """The associated data binds a wrapped key to its company: with the SAME key and fingerprint stored for two
+    companies, swapping the two wrapped blobs makes both refuse (the fingerprint check alone would pass)."""
+    first, second = _create(world.root, "Acme Builders"), _create(world.root, "Bravo Homes")
+    shared = keys.SecretKey(bytes(range(90, 122)))
+    fingerprint = ledger_chain.fingerprint(shared.use_for_hmac())
+    for created in (first, second):
+        path = Path(config.BASE_PROJECT_DIR) / created["database_file_path"]
+        conn = sqlite3.connect(path)
+        conn.execute("UPDATE ledger_chain_key SET is_active = 0, retired_at = 't', retire_reason = 'Rotation'")
+        conn.execute("INSERT INTO ledger_chain_key (fingerprint, created_at) VALUES (?, 't')", (fingerprint,))
+        conn.commit()
+        conn.close()
+        master = sqlite3.connect(world.master)
+        real_keys.store_chain_key(master, created["company_id"], shared, NOW)
+        master.commit()
+        master.close()
+    conn = sqlite3.connect(world.master)
+    conn.execute("DROP TRIGGER company_key_no_update")      # simulate tampering with the file outside the app
+    blobs = dict(conn.execute("SELECT company_id, wrapped_key FROM company_key WHERE fingerprint = ?",
+                              (fingerprint,)).fetchall())
+    for company_id, other in ((first["company_id"], second["company_id"]), (second["company_id"], first["company_id"])):
+        conn.execute("UPDATE company_key SET wrapped_key = ? WHERE company_id = ? AND fingerprint = ?",
+                     (blobs[other], company_id, fingerprint))
+    conn.commit()
+    conn.close()
+    fresh = key_store.LocalKeyProvider(world.master, FakeMachineWrap())
+    for created in (first, second):
+        [row] = _company_rows(world, created, "SELECT key_id FROM ledger_chain_key WHERE is_active = 1")
+        with pytest.raises(KeyUnavailableError):
+            fresh.get_key(created["company_id"], row["key_id"])
+
+
+def test_a_locked_key_store_refuses_before_any_file_is_built(world, monkeypatch):
+    """KS6's order: the refusal comes before the company file is built, not only at the master write."""
+    import modules.database as database
+    monkeypatch.setattr(key_store, "_test_new_company_key", None)
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    monkeypatch.setattr(database, "ensure_company_database",
+                        lambda path: pytest.fail("a company file was built while the key store was locked"))
+    root = world.session(world.user("root", master=True))
+    audit = (_master_rows(world, "SELECT * FROM audit_log"), _master_rows(world, "SELECT * FROM auth_event"))
+    with pytest.raises(KeyStoreLockedError):
+        _create(root)
+    assert (_master_rows(world, "SELECT * FROM audit_log"), _master_rows(world, "SELECT * FROM auth_event")) == audit

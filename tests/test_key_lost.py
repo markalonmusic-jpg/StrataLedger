@@ -62,6 +62,12 @@ def lost(world, monkeypatch):
     return created
 
 
+def _audit(world):
+    """Every audit row of both files and every auth_event (a refusal that is not a permission denial adds none)."""
+    return (_rows(world.company_path, "SELECT * FROM audit_log"), _rows(world.master, "SELECT * FROM audit_log"),
+            _rows(world.master, "SELECT * FROM auth_event"))
+
+
 def _epoch(world, session=None, code=None):
     return ledger_keys.start_new_key_epoch(session or world.root, world.company["company_id"],
                                            confirm_company_code=code if code is not None else
@@ -137,10 +143,10 @@ def test_a_key_that_is_still_available_is_rotated_instead(world, monkeypatch):
 
 @pytest.mark.parametrize("code", ["", "WRONG", "acme"])
 def test_the_company_code_must_be_typed(world, lost, code):
-    before = _snapshot(world)
+    before, audit = _snapshot(world), _audit(world)
     with pytest.raises(ValidationError):
         _epoch(world, code=code)
-    assert _snapshot(world) == before
+    assert _snapshot(world) == before and _audit(world) == audit
 
 
 def test_only_the_master_starts_a_new_key(world, lost):
@@ -153,9 +159,25 @@ def test_only_the_master_starts_a_new_key(world, lost):
 
 def test_a_locked_key_store_cannot_start_a_new_key(world, lost, monkeypatch):
     """The installation key itself is locked or lost: no new company key can be stored (decision pending)."""
-    before = _snapshot(world)
+    before, audit = _snapshot(world), _audit(world)
     monkeypatch.setattr(keys, "_provider", key_store.LocalKeyProvider(world.master, FakeMachineWrap(
         fail_unprotect=True)))
     with pytest.raises(KeyStoreLockedError):
         _epoch(world)
-    assert _snapshot(world) == before
+    assert _snapshot(world) == before and _audit(world)[1:] == audit[1:]
+
+
+def test_after_an_epoch_the_new_key_can_be_rotated(world, lost):
+    """Step 1c review: rotation needs only the CURRENT key, so the old lost key never blocks it (no loop between
+    'start a new ledger key' and 'rotate it instead'). The rotation signs nothing: the history is unverifiable."""
+    epoch = _epoch(world)
+    context = _context(world, world.company["company_id"])
+    _post(context, 3000)
+    rotated = ledger_keys.rotate_chain_key(world.root, world.company["company_id"])
+    assert rotated["old_key_id"] == epoch["new_key_id"]
+    assert rotated["checkpoint"]["status"] == "Unavailable" and rotated["checkpoint"]["recorded_in"] == []
+    assert rotated["checkpoint"]["no_checkpoint_reason"]
+    rows = _rows(world.company_path, "SELECT retire_reason, is_active FROM ledger_chain_key ORDER BY key_id")
+    assert rows == [{"retire_reason": "Key lost", "is_active": 0}, {"retire_reason": "Rotation", "is_active": 0},
+                    {"retire_reason": None, "is_active": 1}]
+    _post(_context(world, world.company["company_id"]), 4000)

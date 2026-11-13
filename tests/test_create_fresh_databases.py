@@ -167,14 +167,45 @@ def test_non_interactive_apply_skips_the_prompt(script, layout, monkeypatch, cap
 
 @pytest.fixture
 def sample_layout(tmp_path, backup_dir, monkeypatch):
-    """A real fresh master with one Master user, and the data folder pointed at tmp_path."""
+    """A real fresh master with one Master user, and the data folder pointed at tmp_path. Its installation key has a
+    machine copy made by a fake DPAPI, which the script's platform_support.DPAPI is pointed at."""
     import config
-    from modules.services import auth
+    from modules import platform_support
+    from modules.services import auth, keys
+    from tests.test_key_store import FakeMachineWrap
     monkeypatch.setattr(config, "BASE_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setattr(platform_support, "DPAPI", FakeMachineWrap())
+    monkeypatch.setattr(keys, "_provider", keys.get_provider())       # the script sets the provider; undo it after
     master = tmp_path / "system_master.db"
     database.ensure_master_database(master)
-    auth.create_first_master(str(master), "root", "correct horse battery", "Root", "User", "r@x.test")
+    auth.create_first_master(str(master), "root", "correct horse battery", "Root", "User", "r@x.test",
+                             machine_wrap=platform_support.DPAPI)
     return {"master": master, "root": tmp_path, "backups": tmp_path / "Backups"}
+
+
+def test_sample_company_uses_the_real_key_store_outside_the_suite(script, sample_layout, monkeypatch):
+    """Step 1c review: the script sets the LocalKeyProvider itself, so it works without the suite's test switch."""
+    from modules.services import key_store, keys
+    monkeypatch.setattr(key_store, "_test_new_company_key", None)
+    monkeypatch.setattr(keys, "_provider", keys.NullKeyProvider())
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply") == 0
+    assert registry_codes(sample_layout["master"]) == ["TESTCO"]
+    conn = sqlite3.connect(sample_layout["master"])
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM company_key").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_sample_company_says_so_when_the_key_is_locked(script, sample_layout, monkeypatch, capsys):
+    from modules import platform_support
+    from modules.services import key_store
+    from tests.test_key_store import FakeMachineWrap
+    monkeypatch.setattr(key_store, "_test_new_company_key", None)
+    monkeypatch.setattr(platform_support, "DPAPI", FakeMachineWrap(fail_unprotect=True))
+    assert run_sample(script, sample_layout, "--sample-company", "TESTCO", "--apply") == script.EXIT_FAILED
+    assert registry_codes(sample_layout["master"]) == []
+    assert script.KEY_LOCKED in capsys.readouterr().out
 
 
 def run_sample(script, layout, *extra):

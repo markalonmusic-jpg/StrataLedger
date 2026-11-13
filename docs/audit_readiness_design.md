@@ -20,7 +20,7 @@ Screens, help pages and marketing use only these words.
 | Who | What they can do | What stops it or reveals it |
 |---|---|---|
 | **Outsider with a copied company file** (stolen laptop, copied backup, cloud-synced second folder) | Read everything in v1, because files are not encrypted (U5). Edit the copy. | Reading: Windows BitLocker (recommended in the setup guide), and encryption at rest after v1 (section 4). Editing: the chain key is not in the file, so a changed entry cannot be resealed and verification names it (section 2). |
-| **Another Windows user on the same computer** | Read and copy files in the shared data folder (P1 puts it in `%PROGRAMDATA%`, shared by every account). Run code as themselves. | Folder permissions set by the installer. **Limit, stated plainly:** the installation key is wrapped with machine-scope DPAPI (K1), so any local user who can run code can unwrap it. DPAPI protects the key from a copied disk or file, not from another account on the same running computer. |
+| **Another Windows user on the same computer** | Read and copy files in the shared data folder (P1 puts it in `%PROGRAMDATA%`, shared by every account). Run code as themselves. | Folder permissions set by the installer (**not built yet**: today the data folder keeps the permissions it inherits, which let every local user read it; roadmap backlog 17). **Limit, stated plainly:** the installation key is wrapped with machine-scope DPAPI (K1), so any local user who can run code can unwrap it. DPAPI protects the key from a copied disk or file, not from another account on the same running computer. |
 | **Curious staff** (an app user looking at data they should not) | Use screens and reports. | Permissions in services (rule 10), masking of tax IDs, bank details and wages, project scope, denials logged in `access_event`. |
 | **A user trying to change history through the app** | Edit or delete posted entries; backdate; reopen periods. | Posted records are locked (baseline triggers); corrections are reversals; closed periods refuse posting; reopening needs a permission, a reason and a confirmation (L7); every change is in `audit_log`. |
 | **A user editing the file with an outside tool** (DB Browser, a script) | Drop triggers, edit or delete posted rows, flip `is_void`, renumber entries. | The keyed chain: they do not hold the key, so verification fails at the first changed entry (section 2). The cross-check catches an `is_void` flip. The check runs at every company open and before backups. |
@@ -280,6 +280,20 @@ compare it, and the history of checks. Running a check needs `ledger.verify` (K7
      company key at once, and no new company key can be stored, because `installation_key` can never be replaced.
      Recovering needs a new installation key epoch (replace the row, recorded, with every company then starting
      a new key), which changes the master baseline's `installation_key_same_key` trigger.
+* **Changed after the Step 1c review:**
+  * Rotation needs only the CURRENT key to open here (not the whole history): after a key-lost epoch the full
+    check is Unavailable, the rotation goes on and signs no checkpoint, and its result says why. This removes a
+    loop in which rotation sent the user to the epoch and the epoch sent them back to rotation.
+  * KS5: when the recovery copy is damaged but this computer's DPAPI copy opens, `recover_master` and
+    `change_master_password(..., machine_wrap=)` rebuild the recovery copy from it with the new code.
+    `LEDGER_KEY_NOT_RESTORED` now means both copies failed (open point 2 above).
+  * `LocalKeyProvider` reads the company file's fingerprint on every `get_key` and caches by fingerprint, so a
+    company file replaced in the same session (restore, Phase 5) never gets the key cached for the file it
+    replaced.
+  * `FirstMaster` and `CodeIssued` show `<redacted>` for the code and cannot be pickled or copied.
+  * `scripts/create_fresh_databases.py --sample-company` sets the `LocalKeyProvider` itself.
+  * For step 2.8: after a recovery restores the key, the running app must call `App.start_key_store()` again,
+    or it stays locked until the next start.
 * **The master holds every company's keys** (KS10): `system_master.db` stores each company's wrapped chain keys,
   so losing it makes every company's ledger unverifiable, though the data stays readable. Every company backup
   must therefore also back up the master (section 9).

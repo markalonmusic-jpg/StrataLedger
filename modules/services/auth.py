@@ -60,14 +60,45 @@ class Session:
     master_db_path: str
 
 
-FirstMaster = namedtuple("FirstMaster", "user_id recovery_code ledger_key_locked", defaults=(False,))
-# A new Master recovery code (recover_master, change_master_password, issue_recovery_code). `ledger_key_restored`
-# is False when the installation key could not be re-wrapped for this computer; `message` then says why.
-CodeIssued = namedtuple("CodeIssued", "recovery_code ledger_key_restored message")
+class _HoldsACode:
+    """A result that carries a recovery code: its repr and str show `<redacted>` in place of the code, and it
+    cannot be pickled or copied, so a log line, a traceback or a test failure never prints the code."""
+    __slots__ = ()
 
-LEDGER_KEY_NOT_RESTORED = ("The Master password was reset, but the ledger key could not be restored: its saved "
-                           "copy does not open with this recovery code. Nothing can be posted until the Master "
-                           "starts a new ledger key.")
+    def __repr__(self):
+        shown = ", ".join(f"{name}=<redacted>" if name == "recovery_code" else f"{name}={value!r}"
+                          for name, value in zip(self._fields, self))
+        return f"{type(self).__name__}({shown})"
+
+    __str__ = __repr__
+
+    def __reduce__(self):
+        raise TypeError(f"A {type(self).__name__} holds a recovery code and cannot be pickled or copied")
+
+    def __reduce_ex__(self, protocol):
+        return self.__reduce__()
+
+    def __copy__(self):
+        return self.__reduce__()
+
+    def __deepcopy__(self, memo):
+        return self.__reduce__()
+
+
+class FirstMaster(_HoldsACode, namedtuple("FirstMaster", "user_id recovery_code ledger_key_locked",
+                                          defaults=(False,))):
+    __slots__ = ()
+
+
+class CodeIssued(_HoldsACode, namedtuple("CodeIssued", "recovery_code ledger_key_restored message")):
+    """A new Master recovery code (recover_master, change_master_password, issue_recovery_code).
+    `ledger_key_restored` is False when the installation key could not be re-wrapped for this computer; `message`
+    then says why."""
+    __slots__ = ()
+
+LEDGER_KEY_NOT_RESTORED = ("The new recovery code is saved, but the ledger key could not be restored: neither its "
+                           "recovery copy nor this computer's copy opens. Nothing can be posted on this "
+                           "installation until the ledger key is replaced; keep the new code and ask for help.")
 LEDGER_KEY_LOCKED_HERE = ("The Master password was reset, but this computer could not protect the ledger key, so "
                           "it stays locked here. Keep the new recovery code and try again on this computer.")
 NEW_CODE_NEEDS_KEY = ("A new recovery code cannot be issued while the ledger key is locked on this computer. "
@@ -206,9 +237,10 @@ def recover_master(master_db_path, code, new_password, *, machine_wrap=None):
     return CodeIssued(new_code, True, None)
 
 
-def change_master_password(session, current_password, code, new_password):
+def change_master_password(session, current_password, code, new_password, *, machine_wrap=None):
     """The Master's password change (PW9): the current password AND the recovery code. Issues a new code at once
-    and re-wraps the installation key's recovery copy with it, in the same transaction. Returns CodeIssued."""
+    and re-wraps the installation key's recovery copy with it, in the same transaction (opened with the old code,
+    or with this computer's DPAPI copy through `machine_wrap` if the code's copy is damaged). Returns CodeIssued."""
     require_master(session, "master.change_password")
     passwords.check_password_policy(new_password)
     row = _verify_own_password(session, current_password)
@@ -219,7 +251,7 @@ def change_master_password(session, current_password, code, new_password):
     with write_transaction(session.master_db_path, _Actor(session.user_id)) as conn:
         conn.execute("UPDATE app_user SET password_hash = ?, must_change_password = 0 WHERE user_id = ?",
                      (passwords.hash_password(new_password), session.user_id))
-        opened, _here = _replace_code(conn, session.user_id, code, new_code, None)
+        opened, _here = _replace_code(conn, session.user_id, code, new_code, machine_wrap)
         _insert_event(conn, "Recovery code issued", username=row["username"], user_id=session.user_id,
                       actor_user_id=session.user_id)
         _insert_event(conn, "Password changed", username=row["username"], user_id=session.user_id,
@@ -254,16 +286,20 @@ def _set_code_hash(conn, new_code):
 
 
 def _replace_code(conn, user_id, old_code, new_code, machine_wrap):
-    """Inside the caller's master transaction: open the installation key with the old code, re-wrap it with the
-    new one (and for this computer when `machine_wrap` is given), and store the new code's hash.
-    Returns (opened, protected_here)."""
+    """Inside the caller's master transaction: open the installation key with the old code (or, if that copy is
+    damaged, with this computer's DPAPI copy through `machine_wrap`), re-wrap it with the new code (and for this
+    computer when `machine_wrap` is given), and store the new code's hash. Returns (opened, protected_here)."""
     key = key_store.open_with_recovery_code(conn, old_code)
+    if key is None:
+        key = key_store.open_with_machine_wrap(conn, machine_wrap)
+        if key is not None:
+            _logger.warning("the ledger key's recovery copy did not open; it was rebuilt from this computer's copy")
     here = False
     if key is not None:
         here = key_store.rewrap_installation_key(conn, key, new_code, machine_wrap, _iso(_now()))
         _insert_event(conn, "Installation key rewrapped", user_id=user_id, actor_user_id=user_id)
     else:
-        _logger.error("the Master recovery code is valid but the ledger key's recovery copy did not open")
+        _logger.error("the Master recovery code is valid but neither copy of the ledger key opened")
     _set_code_hash(conn, new_code)
     return key is not None, here
 

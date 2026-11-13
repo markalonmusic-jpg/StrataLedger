@@ -138,11 +138,12 @@ def test_recovery_where_dpapi_still_fails_resets_the_password_and_says_the_key_s
     assert _master_session(master_path, NEW).is_master
 
 
-def test_recovery_with_a_damaged_copy_still_resets_the_password_and_says_the_key_was_not_restored(master_path):
+def test_recovery_with_both_copies_unusable_still_resets_the_password_and_says_the_key_was_not_restored(master_path):
     created = _first(master_path)
     _damage_the_recovery_copy(master_path)
     damaged = _row(master_path)
-    result = auth.recover_master(master_path, created.recovery_code, NEW, machine_wrap=FakeMachineWrap())
+    result = auth.recover_master(master_path, created.recovery_code, NEW,
+                                 machine_wrap=FakeMachineWrap(fail_unprotect=True))
     assert not result.ledger_key_restored and result.message == auth.LEDGER_KEY_NOT_RESTORED
     assert "the ledger key could not be restored" in result.message
     assert _master_session(master_path, NEW).is_master
@@ -218,6 +219,28 @@ def test_only_the_master_changes_the_master_password_this_way(master_path):
     assert _opens_with(master_path, created.recovery_code)
 
 
+def test_a_damaged_recovery_copy_is_rebuilt_from_this_computers_copy(master_path):
+    """Step 1c review: when the code's copy is damaged but DPAPI still opens the key, the new code re-wraps it."""
+    created = _first(master_path)
+    _damage_the_recovery_copy(master_path)
+    result = auth.recover_master(master_path, created.recovery_code, NEW, machine_wrap=FakeMachineWrap())
+    assert result.ledger_key_restored and result.message is None
+    assert _opens_with(master_path, result.recovery_code)
+
+
+def test_a_master_password_change_rebuilds_a_damaged_recovery_copy_from_this_computers_copy(master_path):
+    created = _first(master_path)
+    _damage_the_recovery_copy(master_path)
+    result = auth.change_master_password(_master_session(master_path), PASSWORD, created.recovery_code, NEW,
+                                         machine_wrap=FakeMachineWrap())
+    assert result.ledger_key_restored and _opens_with(master_path, result.recovery_code)
+
+
+def test_the_not_restored_message_says_what_happened_without_claiming_a_reset():
+    assert "could not be restored" in auth.LEDGER_KEY_NOT_RESTORED
+    assert "reset" not in auth.LEDGER_KEY_NOT_RESTORED and "start a new ledger key" not in auth.LEDGER_KEY_NOT_RESTORED
+
+
 def test_a_master_password_change_with_a_damaged_copy_says_the_key_was_not_restored(master_path):
     created = _first(master_path)
     _damage_the_recovery_copy(master_path)
@@ -263,3 +286,23 @@ def test_only_the_master_issues_a_recovery_code(master_path):
                       last_name="L", email="c@x.test")
     with pytest.raises(PermissionDeniedError):
         auth.issue_recovery_code(auth.login(master_path, "clerk", PASSWORD), PASSWORD, machine_wrap=FakeMachineWrap())
+
+
+# --- The results never show the code (step-reviewer and secrets-auditor finding) -----------------------------------
+
+@pytest.mark.parametrize("result", [
+    auth.FirstMaster(7, "ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", False),
+    auth.CodeIssued("ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567", True, None),
+], ids=["FirstMaster", "CodeIssued"])
+def test_a_result_holding_a_recovery_code_never_shows_it(result):
+    import copy
+    import pickle
+    code = result.recovery_code
+    for text in (repr(result), str(result), f"{result}", "%s %r" % (result, result), repr([result])):
+        for form in (code, code.replace("-", ""), code.lower()):
+            assert form not in text
+        assert "<redacted>" in text
+    for leak in (pickle.dumps, copy.copy, copy.deepcopy):
+        with pytest.raises(TypeError):
+            leak(result)
+    assert result[result._fields.index("recovery_code")] == code      # the caller still gets it

@@ -207,13 +207,13 @@ class LocalKeyProvider(KeyProvider):
 
     def get_key(self, company_id, key_id):
         self._require_unlocked(KeyUnavailableError(NO_KEY_MESSAGE))
-        cached = self._cache.get((company_id, key_id))
-        if cached is not None:
-            return cached
         unavailable = KeyUnavailableError(f"Ledger key {key_id} is not available on this computer.")
-        fingerprint = self._company_fingerprint(company_id, key_id)
+        fingerprint = self._company_fingerprint(company_id, key_id)     # read every time: the file may be replaced
         if fingerprint is None:
             raise unavailable
+        cached = self._cache.get((company_id, fingerprint))
+        if cached is not None:
+            return cached
         conn = read_connection(self._master_db_path)
         try:
             row = conn.execute("SELECT wrapped_key FROM company_key WHERE company_id = ? AND purpose = ? "
@@ -229,7 +229,7 @@ class LocalKeyProvider(KeyProvider):
             raise unavailable from None
         if not hmac.compare_digest(ledger_chain.fingerprint(key.use_for_hmac()), fingerprint):
             raise unavailable
-        self._cache[(company_id, key_id)] = key
+        self._cache[(company_id, fingerprint)] = key
         return key
 
     def _company_fingerprint(self, company_id, key_id):
