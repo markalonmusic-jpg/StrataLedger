@@ -94,7 +94,7 @@ def _machine_copy(machine_wrap, key):
 def create_installation_key(conn, recovery_code, machine_wrap, now):
     """Make the installation key inside the caller's master transaction. Returns True if it is locked (no DPAPI
     copy). Raises ValidationError if the installation already has one: it can never be replaced."""
-    if conn.execute("SELECT 1 FROM installation_key WHERE id = 1").fetchone() is not None:
+    if conn.execute("SELECT 1 FROM installation_key WHERE is_active = 1").fetchone() is not None:
         raise ValidationError(ALREADY_HAS_A_KEY)
     key = key_wrap.new_secret_key()
     fingerprint = installation_fingerprint(key)
@@ -103,8 +103,8 @@ def create_installation_key(conn, recovery_code, machine_wrap, now):
                                       recovery_associated_data(fingerprint))
     machine_blob = _machine_copy(machine_wrap, key)
     conn.execute(
-        "INSERT INTO installation_key (id, fingerprint, machine_blob, machine_wrapped_at, recovery_salt, "
-        "recovery_blob, recovery_wrapped_at, created_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO installation_key (fingerprint, machine_blob, machine_wrapped_at, recovery_salt, "
+        "recovery_blob, recovery_wrapped_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (fingerprint, machine_blob, now if machine_blob else None, salt, recovery_blob, now, now))
     return machine_blob is None
 
@@ -127,7 +127,7 @@ def open_machine_copy(row, machine_wrap):
 
 def _installation_row(conn):
     return conn.execute("SELECT fingerprint, machine_blob, recovery_salt, recovery_blob FROM installation_key "
-                        "WHERE id = 1").fetchone()
+                        "WHERE is_active = 1").fetchone()
 
 
 def open_with_recovery_code(conn, code):
@@ -157,10 +157,10 @@ def rewrap_installation_key(conn, key, new_code, machine_wrap, now):
     salt = key_wrap.new_salt()
     blob = key_wrap.wrap_key(key_wrap.recovery_kek(new_code, salt), key, recovery_associated_data(fingerprint))
     conn.execute("UPDATE installation_key SET recovery_salt = ?, recovery_blob = ?, recovery_wrapped_at = ? "
-                 "WHERE id = 1", (salt, blob, now))
+                 "WHERE is_active = 1", (salt, blob, now))
     machine_blob = _machine_copy(machine_wrap, key)
     if machine_blob is not None:
-        conn.execute("UPDATE installation_key SET machine_blob = ?, machine_wrapped_at = ? WHERE id = 1",
+        conn.execute("UPDATE installation_key SET machine_blob = ?, machine_wrapped_at = ? WHERE is_active = 1",
                      (machine_blob, now))
     return machine_blob is not None
 
@@ -173,6 +173,7 @@ class LocalKeyProvider(KeyProvider):
         self._master_db_path = master_db_path
         self._machine_wrap = machine_wrap
         self._installation = None
+        self._installation_id = None
         self._cache = {}
         self.status = "missing"
         self.unlock()
@@ -184,10 +185,12 @@ class LocalKeyProvider(KeyProvider):
     def unlock(self):
         """Open the machine copy. Sets `status`; never raises for a locked key."""
         self._installation = None
+        self._installation_id = None
         self._cache = {}
         conn = read_connection(self._master_db_path)
         try:
-            row = conn.execute("SELECT fingerprint, machine_blob FROM installation_key WHERE id = 1").fetchone()
+            row = conn.execute("SELECT id, fingerprint, machine_blob FROM installation_key "
+                               "WHERE is_active = 1").fetchone()
         finally:
             conn.close()
         if row is None:
@@ -198,6 +201,7 @@ class LocalKeyProvider(KeyProvider):
         if key is None:
             return self.status
         self._installation = key
+        self._installation_id = row["id"]
         self.status = "unlocked"
         return self.status
 
@@ -260,8 +264,9 @@ class LocalKeyProvider(KeyProvider):
         self._require_unlocked(KeyStoreLockedError(KEY_STORE_LOCKED))
         fingerprint = ledger_chain.fingerprint(key.use_for_hmac())
         blob = key_wrap.wrap_key(self._installation, key, company_key_associated_data(company_id, CHAIN, fingerprint))
-        conn.execute("INSERT INTO company_key (company_id, purpose, fingerprint, wrapped_key, created_at) "
-                     "VALUES (?, ?, ?, ?, ?)", (company_id, CHAIN, fingerprint, blob, now))
+        conn.execute("INSERT INTO company_key (company_id, purpose, fingerprint, wrapped_key, installation_key_id, "
+                     "created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                     (company_id, CHAIN, fingerprint, blob, self._installation_id, now))
 
     def __repr__(self):
         return f"<LocalKeyProvider {self.status}>"

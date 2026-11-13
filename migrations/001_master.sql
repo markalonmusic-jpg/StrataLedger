@@ -106,7 +106,7 @@ CREATE TABLE auth_event (
     event_type TEXT NOT NULL CHECK (event_type IN ('Login', 'Login failed', 'Locked', 'Password changed',
         'Password reset', 'First Master created', 'Master recovered', 'Recovery failed', 'Denied', 'Company exported',
         'Installation key created', 'Installation key rewrapped', 'Recovery code issued', 'Ledger key created',
-        'Ledger key rotated', 'Ledger key lost')),
+        'Ledger key rotated', 'Ledger key lost', 'Installation key replaced')),
     username TEXT,
     user_id INTEGER,
     actor_user_id INTEGER,
@@ -413,7 +413,8 @@ END;
 -- Phase 2.5 step 3b: a mirror of every ledger checkpoint, kept outside the company file, so restoring an older
 -- copy of a company cannot erase what this computer saw (docs/audit_readiness_design.md 3). A read-only
 -- (Auditor) verification is recorded here only. Same fields and MAC as the company's ledger_checkpoint;
--- key_id refers to the company file's ledger_chain_key. Append-only.
+-- key_id refers to the company file's ledger_chain_key. Append-only. Step 1d (KS12): also mirrors the 'Key lost'
+-- checkpoint (result 'Unverified') that starts a new key epoch.
 CREATE TABLE chain_checkpoint (
     mirror_id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL REFERENCES company_registry(company_id),
@@ -422,9 +423,9 @@ CREATE TABLE chain_checkpoint (
     created_at TEXT NOT NULL,
     created_by INTEGER,
     kind TEXT NOT NULL CHECK (kind IN ('Verify', 'Period close', 'Year close', 'Report export', 'Backup', 'Restore',
-                                       'Key rotation', 'Manual')),
+                                       'Key rotation', 'Manual', 'Key lost')),
     scope TEXT CHECK (scope IN ('Incremental', 'Full')),
-    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken')),
+    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken', 'Unverified')),
     through_entry_number INTEGER NOT NULL
         CHECK (typeof(through_entry_number) = 'integer' AND through_entry_number >= 0),
     chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*')),
@@ -436,7 +437,10 @@ CREATE TABLE chain_checkpoint (
     CHECK ((recorded_from = 'Company file') = (company_checkpoint_id IS NOT NULL)),
     CHECK ((kind = 'Verify') = (scope IS NOT NULL)),
     CHECK ((result = 'Broken') = (first_broken_entry_number IS NOT NULL)),
-    CHECK ((through_entry_number = 0) = (chain_hash IS NULL))
+    CHECK ((through_entry_number = 0) = (chain_hash IS NULL)),
+    CHECK ((kind = 'Key lost') = (result = 'Unverified')),
+    CHECK (kind <> 'Key lost' OR (key_id IS NOT NULL AND ref_type IS NOT NULL AND ref_type = 'ledger_chain_key'
+                                  AND ref_id IS NOT NULL))
 );
 
 CREATE INDEX chain_checkpoint_company ON chain_checkpoint (company_id, result, mirror_id);
@@ -465,28 +469,55 @@ BEGIN
 END;
 
 -- Phase 2.5 step 1c: the key store (docs/audit_readiness_design.md 2.7; decisions KS3, KS9, KS10).
--- installation_key: one row. The installation key itself is never stored; only its public fingerprint and two
--- wrapped copies: machine_blob (DPAPI, machine scope; NULL while this computer has no DPAPI copy, which locks the
--- key until the Master restores it with the recovery code) and recovery_blob (AES-256-GCM under the key scrypt
--- derives from the recovery code with recovery_salt). Re-wrapping rewrites the blobs; the key never changes and
--- the row is never deleted. Not audited, so no blob reaches audit_log: each change writes an auth_event instead.
+-- installation_key: the installation key's history, one active row (Step 1d, KS13). The key itself is never
+-- stored; each row holds only its public fingerprint and two wrapped copies: machine_blob (DPAPI, machine scope;
+-- NULL while this computer has no DPAPI copy, which locks the key until the Master restores it with the recovery
+-- code) and recovery_blob (AES-256-GCM under the key scrypt derives from the recovery code with recovery_salt).
+-- The active row's blobs may be re-wrapped. When the key is lost (no DPAPI copy and no recovery code) the Master
+-- retires it ('Key lost') and a new row becomes active; a retired row never changes again and keeps its recovery
+-- copy. The key (id, fingerprint, created_at) never changes and no row is deleted. Not audited, so no blob reaches
+-- audit_log: each change writes an auth_event instead.
 CREATE TABLE installation_key (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint TEXT NOT NULL UNIQUE CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
     machine_blob BLOB CHECK (machine_blob IS NULL OR (typeof(machine_blob) = 'blob' AND length(machine_blob) > 0)),
     machine_wrapped_at TEXT,
     recovery_salt BLOB NOT NULL CHECK (typeof(recovery_salt) = 'blob' AND length(recovery_salt) = 16),
     recovery_blob BLOB NOT NULL CHECK (typeof(recovery_blob) = 'blob' AND length(recovery_blob) = 61),
     recovery_wrapped_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    CHECK ((machine_blob IS NULL) = (machine_wrapped_at IS NULL))
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    retired_at TEXT,
+    retire_reason TEXT CHECK (retire_reason IN ('Key lost')),
+    CHECK ((machine_blob IS NULL) = (machine_wrapped_at IS NULL)),
+    CHECK ((is_active = 1) = (retired_at IS NULL)),
+    CHECK ((retired_at IS NULL) = (retire_reason IS NULL))
 );
+
+CREATE UNIQUE INDEX installation_key_one_active ON installation_key (is_active) WHERE is_active = 1;
 
 CREATE TRIGGER installation_key_same_key
 BEFORE UPDATE OF id, fingerprint, created_at ON installation_key
 WHEN NEW.id IS NOT OLD.id OR NEW.fingerprint IS NOT OLD.fingerprint OR NEW.created_at IS NOT OLD.created_at
 BEGIN
-    SELECT RAISE(ABORT, 'The installation key cannot be replaced, only re-wrapped');
+    SELECT RAISE(ABORT, 'An installation key cannot be replaced in place, only re-wrapped or retired');
+END;
+
+CREATE TRIGGER installation_key_retired_is_final
+BEFORE UPDATE ON installation_key
+WHEN OLD.is_active = 0
+BEGIN
+    SELECT RAISE(ABORT, 'A retired installation key cannot be changed');
+END;
+
+CREATE TRIGGER installation_key_retire_only
+BEFORE UPDATE ON installation_key
+WHEN OLD.is_active = 1 AND NEW.is_active = 0
+     AND (NEW.machine_blob IS NOT OLD.machine_blob OR NEW.machine_wrapped_at IS NOT OLD.machine_wrapped_at
+          OR NEW.recovery_salt IS NOT OLD.recovery_salt OR NEW.recovery_blob IS NOT OLD.recovery_blob
+          OR NEW.recovery_wrapped_at IS NOT OLD.recovery_wrapped_at)
+BEGIN
+    SELECT RAISE(ABORT, 'Retiring an installation key changes nothing else about it');
 END;
 
 CREATE TRIGGER installation_key_no_delete
@@ -497,16 +528,18 @@ END;
 
 -- company_key: every company's keys (purpose 'chain'; 'encryption' is for section 4), each wrapped by the
 -- installation key with AES-256-GCM (61 bytes; the associated data names the company, purpose and fingerprint).
--- The fingerprint matches the company file's ledger_chain_key row. Append-only: retired keys are kept forever,
--- because verification needs them; retirement is recorded in the company file. No ON DELETE: a company with keys
--- cannot leave the registry. Not audited (see installation_key). Losing this file makes every company's ledger
--- unverifiable, so it is backed up with every company (KS10).
+-- installation_key_id names the installation key that wrapped it (Step 1d): only rows wrapped by the active one
+-- can be opened. The fingerprint matches the company file's ledger_chain_key row. Append-only: retired keys are
+-- kept forever, because verification needs them; retirement is recorded in the company file. No ON DELETE: a
+-- company with keys cannot leave the registry. Not audited (see installation_key). Losing this file makes every
+-- company's ledger unverifiable, so it is backed up with every company (KS10).
 CREATE TABLE company_key (
     company_key_id INTEGER PRIMARY KEY AUTOINCREMENT,
     company_id INTEGER NOT NULL REFERENCES company_registry(company_id),
     purpose TEXT NOT NULL CHECK (purpose IN ('chain', 'encryption')),
     fingerprint TEXT NOT NULL CHECK (length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^0-9a-f]*'),
     wrapped_key BLOB NOT NULL CHECK (typeof(wrapped_key) = 'blob' AND length(wrapped_key) = 61),
+    installation_key_id INTEGER NOT NULL REFERENCES installation_key(id),
     created_at TEXT NOT NULL,
     UNIQUE (company_id, purpose, fingerprint)
 );

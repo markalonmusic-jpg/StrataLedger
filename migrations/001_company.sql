@@ -495,14 +495,17 @@ CREATE TABLE ledger_chain_key (
 
 -- 2.5 step 1b: checkpoints of the chain head (verification results, close, export, backup, restore, rotation).
 -- Append-only; `mac` is an HMAC over the row so a forged "verified through N" marker is detected.
+-- Step 1d (KS12): a 'Key lost' checkpoint, result 'Unverified', starts a new key epoch. It records the last entry
+-- sealed with the lost key (through_entry_number, its stored hash as is), is signed by the new key (key_id) and
+-- names the key retired as lost (ref_type 'ledger_chain_key', ref_id). Entries up to it cannot be verified.
 CREATE TABLE ledger_checkpoint (
     checkpoint_id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
     created_by INTEGER,
     kind TEXT NOT NULL CHECK (kind IN ('Verify', 'Period close', 'Year close', 'Report export', 'Backup', 'Restore',
-                                       'Key rotation', 'Manual')),
+                                       'Key rotation', 'Manual', 'Key lost')),
     scope TEXT CHECK (scope IN ('Incremental', 'Full')),
-    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken')),
+    result TEXT NOT NULL CHECK (result IN ('OK', 'Broken', 'Unverified')),
     through_entry_number INTEGER NOT NULL
         CHECK (typeof(through_entry_number) = 'integer' AND through_entry_number >= 0),
     chain_hash TEXT CHECK (chain_hash IS NULL OR (length(chain_hash) = 64 AND chain_hash NOT GLOB '*[^0-9a-f]*')),
@@ -513,7 +516,10 @@ CREATE TABLE ledger_checkpoint (
     mac TEXT NOT NULL CHECK (length(mac) = 64 AND mac NOT GLOB '*[^0-9a-f]*'),
     CHECK ((kind = 'Verify') = (scope IS NOT NULL)),
     CHECK ((result = 'Broken') = (first_broken_entry_number IS NOT NULL)),
-    CHECK ((through_entry_number = 0) = (chain_hash IS NULL))
+    CHECK ((through_entry_number = 0) = (chain_hash IS NULL)),
+    CHECK ((kind = 'Key lost') = (result = 'Unverified')),
+    CHECK (kind <> 'Key lost' OR (key_id IS NOT NULL AND ref_type IS NOT NULL AND ref_type = 'ledger_chain_key'
+                                  AND ref_id IS NOT NULL))
 );
 
 CREATE TABLE journal_line_dimension (

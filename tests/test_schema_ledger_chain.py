@@ -291,6 +291,36 @@ def test_an_empty_ledger_checkpoint_has_no_hash(conn, through, chain_hash, rejec
     assert rejects(conn, *checkpoint_sql(through_entry_number=through, chain_hash=chain_hash)) is rejected
 
 
+# Step 1d (KS12): the key-lost checkpoint. Kind 'Key lost' exactly when result is 'Unverified'; it names the new key
+# that signs it and the key retired as lost, and it is never Broken (no first_broken_entry_number).
+
+def key_lost_sql(conn, **overrides):
+    key_id = lh.ensure_test_chain_key(conn)
+    values = {"kind": "Key lost", "scope": None, "result": "Unverified", "key_id": key_id,
+              "ref_type": "ledger_chain_key", "ref_id": key_id, **overrides}
+    return checkpoint_sql(**values)
+
+
+def test_a_key_lost_checkpoint_is_unverified(conn):
+    assert not rejects(conn, *key_lost_sql(conn))
+    assert not rejects(conn, *key_lost_sql(conn, through_entry_number=0, chain_hash=None))
+
+
+@pytest.mark.parametrize("kind, scope, result, first_broken", [
+    ("Key lost", None, "OK", None), ("Key lost", None, "Broken", 2), ("Verify", "Full", "Unverified", None),
+    ("Key rotation", None, "Unverified", None), ("Key lost", None, "Unverified", 2), ("Key lost", "Full", "Unverified", None),
+])
+def test_key_lost_goes_with_unverified_and_nothing_else(conn, kind, scope, result, first_broken):
+    assert rejects(conn, *key_lost_sql(conn, kind=kind, scope=scope, result=result,
+                                       first_broken_entry_number=first_broken))
+
+
+@pytest.mark.parametrize("overrides", [{"key_id": None}, {"ref_type": None}, {"ref_type": "journal_entry"},
+                                       {"ref_id": None}])
+def test_a_key_lost_checkpoint_names_its_new_key_and_the_lost_one(conn, overrides):
+    assert rejects(conn, *key_lost_sql(conn, **overrides))
+
+
 @pytest.mark.parametrize("column", ["mac", "chain_hash"])
 @pytest.mark.parametrize("bad", ["B" * 64, "b" * 63, "x" * 64])
 def test_checkpoint_hex_formats(conn, column, bad):
