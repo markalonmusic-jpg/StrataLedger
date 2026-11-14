@@ -412,12 +412,13 @@ def test_an_agent_context_cannot_become_system_or_import(env, method):
 
 # --- Step 6 review: closing the narrow path -------------------------------------------------------------------
 
-@pytest.mark.parametrize("source", ["Import", "Payroll"])
+@pytest.mark.parametrize("source, article", [("Import", "An"), ("Payroll", "A")])
 @pytest.mark.parametrize("post", [False, True])
-def test_an_import_or_payroll_entry_comes_only_from_an_importer(rnd, source, post):
+def test_an_import_or_payroll_entry_comes_only_from_an_importer(rnd, source, article, post):
     # Section 0: import-origin batches always need one human review. As System they would post unreviewed.
     refused(rnd, lambda: doc(rnd, source, lines(rnd), context=ctx_for(rnd).as_system(), post=post),
-            ValidationError, rf"^An? {source.lower()} entry is saved by its importer \(origin Import\)")
+            ValidationError, rf"^{article} {source.lower()} entry is saved by its importer \(origin Import\), so a "
+                             r"person reviews it before it posts; save it as an import and send it for review\.$")
 
 
 # --- R55 final (owner, 2026-11-14): Conversion entries also come only from an importer -------------------------
