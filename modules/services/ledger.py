@@ -47,7 +47,8 @@ Rounding and document entries (step 6, L8, R1, R49-R54): `create_document_entry`
 import, payroll or conversion entry is made, inside the caller's write transaction (audit design section 13). An
 Import, Payroll or Conversion entry out of balance by exactly 1 cent gets one flagged 1-cent line to the rounding
 account when it is saved, worked out again on every save; 2 cents or more is refused when it is saved, naming the
-entry, its file rows and the difference. Posting checks every rounding line again (R53).
+entry, its file rows and the difference. Posting checks every rounding line again (R53). Import, Payroll and
+Conversion entries are saved only with origin Import, so each is reviewed by a person before it posts (R55).
 
 Approvals (step 4, R15-R24): an entry needs an Approved request before it posts when its origin is Agent or
 Import, when it is a manual entry over the manual-entry approval threshold, or when its document type requires
@@ -90,8 +91,9 @@ OTHER_SOURCES = ("Invoice", "Bill", "Payment", "Payroll", "Import", "Deferral", 
 # L8, R1: only these may carry the one-cent rounding line (R49-R53).
 ROUNDING_SOURCES = ("Import", "Payroll", "Conversion")
 ROUNDING_MEMO = "Rounding (1 cent)"
-# Saved only with origin Import, so they always need one human review (CLAUDE.md section 0, R18, R55).
-IMPORTER_SOURCES = ("Import", "Payroll")
+# Saved only with origin Import, so they always need one human review (CLAUDE.md section 0, R18, R55). Typed opening
+# balances are Conversion entries too (R55).
+IMPORTER_SOURCES = ("Import", "Payroll", "Conversion")
 LINE_FIELDS = ("account_id", "debit_cents", "credit_cents", "memo", "contact_id", "project_id", "cost_code_id",
                "external_ref")
 STATES = ("draft", "posted")
@@ -437,10 +439,10 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
     context's origin is System or Import (`context.as_system()` / `as_import()`); a static test fixes which modules
     may call this and with which literal source. Import, Payroll and Conversion entries give `source_rows` (the
     file rows they came from) and are rounded by one cent or refused (R49, R51); for other sources source_rows is
-    not used. Import and Payroll entries need origin Import (R55). post=True posts at once, as one action of the
-    document's service: an imported entry is posted by a person after its review (R18), an entry whose document
-    type needs approval is refused, and the R17 creator rule does not apply (it is for a draft a person posts
-    later; a document's separation is its own approval).
+    not used. Import, Payroll and Conversion entries need origin Import (R55). post=True posts at once, as one
+    action of the document's service: an imported entry is posted by a person after its review (R18), an entry
+    whose document type needs approval is refused, and the R17 creator rule does not apply (it is for a draft a
+    person posts later; a document's separation is its own approval).
 
     Returns {'entry_id', 'entry_number' (None unless posted), 'rounding_cents'}: the difference (debits - credits)
     the rounding line balanced, 1 (a 1-cent credit), -1 (a 1-cent debit) or 0.
@@ -454,7 +456,7 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
     if source in IMPORTER_SOURCES and context.origin != "Import":         # section 0: always one human review
         article = "An" if source == "Import" else "A"
         raise ValidationError(f"{article} {source.lower()} entry is saved by its importer (origin Import), so a "
-                              "person reviews it before it posts.")
+                              "person reviews it before it posts; save it as an import and send it for review.")
     if post and context.origin == "Import":
         raise ValidationError("An imported entry is posted by a person after its review; save it without "
                               "posting.")

@@ -154,9 +154,9 @@ there at the end of each step, and update the paragraph below).
 **Where we are (2026-11-14):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
 KS1-KS11; the service can post, no posting screen yet), 1d (key-lost checkpoint, replacing a lost installation
 key, KS12-KS21), 4 (approvals in posting, R15-R26; owner follow-ups R27-R39), 5 (reversals and automatic
-reversals, R40-R48; R48 final) and 6 (rounding and `create_document_entry`, R49-R55; R55 provisional). Design
+reversals, R40-R48; R48 final) and 6 (rounding and `create_document_entry`, R49-R55; R55 final, Conversion added). Design
 batch accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1; gaps placed by step in docs/roadmap.md). Next: step 7
-(the five xfails and payment allocation; plan in docs/next_step.md after the owner's check), then 2.7, 2.8
+(the five xfails and payment allocation; plan in docs/next_step.md, waiting for approval), then 2.7, 2.8
 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**

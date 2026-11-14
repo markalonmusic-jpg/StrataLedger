@@ -21,7 +21,7 @@ from tests.test_ledger_posting import (  # noqa: F401  (fixtures and helpers)
 )
 
 ROUNDING_SOURCES = ("Import", "Payroll", "Conversion")
-ORIGIN_FOR = {"Import": "Import", "Payroll": "Import", "Conversion": "System"}
+ORIGIN_FOR = {"Import": "Import", "Payroll": "Import", "Conversion": "Import"}           # R55
 
 
 @pytest.fixture
@@ -48,6 +48,26 @@ def doc(env, source, entry_lines, *, context=None, source_rows=(2, 3), **kwargs)
     with write_transaction(context.company_db_path, context) as conn:
         return ledger.create_document_entry(conn, context, source=source, entry_date="2026-03-15",
                                             lines=entry_lines, source_rows=source_rows, **kwargs)
+
+
+def post_after_review(env, entry_id):
+    """R18, R55: the importer sends the entry for review, the same person approves it (separation off, the default)
+    and posts it. Returns the entry number."""
+    reviewer_rights(env)
+    request_id = ledger.submit_entry_for_approval(ctx_for(env, "Import"), entry_id)
+    approvals.approve(ctx_for(env), request_id)
+    return ledger.post_journal_entry(ctx_for(env), entry_id, confirm=True)["entry_number"]
+
+
+def reviewer_rights(env):
+    """The poster may run imports, send them for review and approve an Import batch of any amount."""
+    held = {r["permission_code"] for r in env.rows("PARENT", "SELECT permission_code FROM role_permission WHERE "
+                                                             "role_code = 'POSTER'")}
+    for permission in {"import.run", "import.approve"} - held:
+        env.grant_permission("PARENT", "POSTER", permission)
+    if not env.rows("PARENT", "SELECT 1 FROM approval_limit WHERE role_code = 'POSTER' AND "
+                              "document_type = 'Import batch'"):
+        env.limit("PARENT", "POSTER", "Import batch", 10 ** 12)
 
 
 def lines_of(env, entry_id):
@@ -104,12 +124,10 @@ def test_a_manual_entry_has_zero_tolerance(rnd):
             r"^This entry does not balance: debits 10\.01, credits 10\.00")
 
 
-def test_a_rounded_conversion_entry_posts_and_verifies(rnd):
-    system = ctx_for(rnd, "System")
-    result = doc(rnd, "Conversion", off_by(rnd, -1), context=system, post=True)
-    row = entry_row(rnd, result["entry_id"])
-    assert (row["is_posted"], row["entry_number"], result["entry_number"]) == (1, 1, 1)
-    assert len(rounding_lines(rnd, result["entry_id"])) == 1
+def test_a_rounded_conversion_entry_posts_after_its_review_and_verifies(rnd):
+    entry_id = doc(rnd, "Conversion", off_by(rnd, -1))["entry_id"]
+    assert post_after_review(rnd, entry_id) == 1
+    assert (entry_row(rnd, entry_id)["is_posted"], len(rounding_lines(rnd, entry_id))) == (1, 1)
     assert verify(rnd)["ok"]
 
 
@@ -205,7 +223,7 @@ def test_create_document_entry_takes_document_sources_only(env, source):
     refused(env, lambda: doc(env, source, lines(env)), ValidationError, "is not a document or import source")
 
 
-@pytest.mark.parametrize("origin, source", [("Import", "Import"), ("Import", "Payroll"), ("System", "Conversion"),
+@pytest.mark.parametrize("origin, source", [("Import", "Import"), ("Import", "Payroll"), ("Import", "Conversion"),
                                             ("System", "Invoice"), ("System", "Deferral")])
 def test_document_entries_keep_their_source_origin_and_person(rnd, origin, source):
     entry_id = doc(rnd, source, lines(rnd), context=ctx_for(rnd, origin), description="March payroll",
@@ -358,7 +376,8 @@ def test_a_manual_entry_with_the_flag_forced_is_refused(rnd):
 # --- Reversals of a rounded entry (R45) -----------------------------------------------------------------------------
 
 def test_a_void_of_a_rounded_entry_mirrors_its_rounding_line(rnd):
-    entry_id = doc(rnd, "Conversion", off_by(rnd, 1), post=True)["entry_id"]
+    entry_id = doc(rnd, "Conversion", off_by(rnd, 1))["entry_id"]
+    post_after_review(rnd, entry_id)
     result = ledger.void_entry(ctx_for(rnd), entry_id, note="wrong file", confirm=True)
     mirror = rounding_lines(rnd, result["entry_id"])
     assert [(l["account_id"], l["debit_cents"], l["credit_cents"]) for l in mirror] == [(A(rnd, "rounding"), 1, 0)]
@@ -366,7 +385,8 @@ def test_a_void_of_a_rounded_entry_mirrors_its_rounding_line(rnd):
 
 
 def test_a_void_still_works_after_the_rounding_account_changed(rnd):
-    entry_id = doc(rnd, "Conversion", off_by(rnd, 1), post=True)["entry_id"]
+    entry_id = doc(rnd, "Conversion", off_by(rnd, 1))["entry_id"]
+    post_after_review(rnd, entry_id)
     with rnd._company("PARENT") as c:
         new = lh.make_account(c, "8030")
     settings(rnd, rounding_variance_acct_id=new)
@@ -398,6 +418,67 @@ def test_an_import_or_payroll_entry_comes_only_from_an_importer(rnd, source, pos
     # Section 0: import-origin batches always need one human review. As System they would post unreviewed.
     refused(rnd, lambda: doc(rnd, source, lines(rnd), context=ctx_for(rnd).as_system(), post=post),
             ValidationError, rf"^An? {source.lower()} entry is saved by its importer \(origin Import\)")
+
+
+# --- R55 final (owner, 2026-11-14): Conversion entries also come only from an importer -------------------------
+#
+# Conversion entries, typed opening balances among them (a future wizard: create_document_entry, source Conversion,
+# origin Import), always need one human review. With separation of duties off (the default) the person who entered
+# them may review and post them; with it on, someone else must.
+
+def test_a_system_context_cannot_save_a_conversion_entry(rnd):
+    for post in (False, True):
+        refused(rnd, lambda: doc(rnd, "Conversion", lines(rnd), context=ctx_for(rnd).as_system(), post=post),
+                ValidationError,
+                r"^A conversion entry is saved by its importer \(origin Import\), so a person reviews it before it "
+                r"posts; save it as an import and send it for review\.$")
+
+
+def test_an_import_origin_conversion_entry_posts_only_after_one_review(rnd):
+    reviewer_rights(rnd)
+    importer = ctx_for(rnd, "Import")
+    refused(rnd, lambda: doc(rnd, "Conversion", off_by(rnd, 1), context=importer, post=True), ValidationError,
+            r"^An imported entry is posted by a person after its review")
+    result = doc(rnd, "Conversion", off_by(rnd, 1), context=importer)
+    entry_id = result["entry_id"]
+    assert (result["entry_number"], entry_row(rnd, entry_id)["origin"]) == (None, "Import")
+    assert len(rounding_lines(rnd, entry_id)) == 1
+    refused(rnd, lambda: ledger.post_journal_entry(ctx_for(rnd), entry_id, confirm=True), PostingError,
+            "needs approval")
+    request_id = ledger.submit_entry_for_approval(importer, entry_id)
+    approvals.approve(ctx_for(rnd), request_id)              # separation off: the same person reviews
+    posted = ledger.post_journal_entry(ctx_for(rnd), entry_id, confirm=True)
+    row = entry_row(rnd, entry_id)
+    assert (posted["entry_number"], row["approved_by"], row["posted_by"]) == (1, rnd.user_id, rnd.user_id)
+    assert verify(rnd)["ok"]
+
+
+def test_with_separation_on_the_person_who_entered_a_conversion_cannot_review_or_post_it(team):
+    from modules.services.errors import PermissionDeniedError
+    settings(team, require_separate_approver=1)
+    reviewer_rights(team)
+    importer = as_(team, "poster", "Import")
+    entry_id = doc(team, "Conversion", lines(team), context=importer)["entry_id"]
+    request_id = ledger.submit_entry_for_approval(importer, entry_id)
+    refused(team, lambda: approvals.approve(as_(team, "poster"), request_id), PermissionDeniedError,
+            r"^This company needs a different person to approve the .* you (created|sent for approval);")
+    approvals.approve(as_(team, "appr1"), request_id)
+    refused(team, lambda: ledger.post_journal_entry(as_(team, "poster"), entry_id, confirm=True),
+            PermissionDeniedError, rf"^{ledger.CREATOR_CANNOT_POST}$")                  # R17: not the creator
+    ledger.post_journal_entry(as_(team, "poster2"), entry_id, confirm=True)
+    row = entry_row(team, entry_id)
+    assert (row["is_posted"], row["approved_by"], row["posted_by"]) == (
+        1, team.people["appr1"], team.people["poster2"])
+
+
+@pytest.mark.parametrize("switch", [0, 1])
+def test_a_conversion_entry_always_needs_its_review(rnd, switch):
+    with rnd._company("PARENT") as c:
+        c.execute("UPDATE document_approval_setting SET requires_approval = ? WHERE document_type = 'Import batch'",
+                  (switch,))
+    entry_id = doc(rnd, "Conversion", lines(rnd))["entry_id"]
+    refused(rnd, lambda: ledger.post_journal_entry(ctx_for(rnd), entry_id, confirm=True), PostingError,
+            "needs approval")
 
 
 @pytest.mark.parametrize("switch", [0, 1])
@@ -482,10 +563,12 @@ def test_an_edited_import_draft_two_cents_off_says_save_again(rnd):
             r"automatically, so nothing was saved\. Correct the amounts and save again\.$")
 
 
-@pytest.mark.parametrize("source", ["Conversion", "Deferral"])
+@pytest.mark.parametrize("source", ["Invoice", "Deferral"])       # not Conversion: it is reviewed first (R55)
 def test_a_document_entry_posted_on_save_with_separation_on(rnd, source):
     # R54: create and post are one action of the document's service; R17 (the creator may not post) is for a draft
     # posted later by a person, and a document's separation is its own approval.
     rnd.settings("PARENT", require_separate_approver=1)
-    result = doc(rnd, source, off_by(rnd, 1 if source == "Conversion" else 0), post=True)
-    assert entry_row(rnd, result["entry_id"])["posted_by"] == rnd.user_id
+    result = doc(rnd, source, off_by(rnd, 0), post=True)
+    row = entry_row(rnd, result["entry_id"])
+    assert (result["entry_number"], row["entry_number"], row["is_posted"], row["posted_by"]) == (1, 1, 1, rnd.user_id)
+    assert verify(rnd)["ok"]

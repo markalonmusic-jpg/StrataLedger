@@ -729,7 +729,9 @@ get one narrow function:
   its own permission (`invoice.send`, `bill.approve`, `payroll.import`, ...), so an AR clerk does not need
   `je.create`.
 * **It requires origin System or Import.** The caller builds that context with `context.as_system()` (or
-  `as_import()`), which keeps the human's `user_id`, so the audit trail still names the person.
+  `as_import()`), which keeps the human's `user_id`, so the audit trail still names the person. Import,
+  Payroll and Conversion entries (typed opening balances included) need `as_import()`, so each is reviewed by a
+  person before it posts, and none is posted on save (decision R55).
 * **Allowed callers and their sources** are fixed in a static test (AST scan of `modules/`):
 
   | Module | Sources it may pass (literal) |

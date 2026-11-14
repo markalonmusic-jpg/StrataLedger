@@ -226,7 +226,7 @@ R. Phase 2.5 ledger and billing services:
 - R52 A missing or unusable rounding account refuses a one-cent entry
 - R53 Posting checks every rounding line again (integrity)
 - R54 create_document_entry, as_system and as_import: the narrow path and its callers
-- R55 Import and Payroll entries only from the importer; document drafts changed only through their document
+- R55 Import, Payroll, Conversion (opening balances too) only from the importer; document drafts via their document
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1387,13 +1387,18 @@ Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
   built outside context.py with an origin other than a literal "Human". post=True is one action of the document's
   service, so the R17 creator rule (for a draft a person posts later) does not apply; a document's separation is
   its own approval, as for the automatic reversal (R47). For sources other than the three, source_rows is not used.
+  The three are saved only with origin Import and never posted on save (R55).
 - R55 (Step 6 review, 2026-11-14; follows the section 0 integrity rule "import-origin batches always need one human
-  review", PROVISIONAL until the owner confirms) Import and Payroll entries are saved by create_document_entry only
-  with origin Import, so they always need one human review whatever the Import batch switch says (before this, a
-  System context could save and post them unreviewed). A document's draft (Invoice, Bill, Payment, Deferral,
-  Completion) cannot be changed or deleted through update_entry or delete_entry ("This entry was made by an
-  invoice; change the invoice instead."), so its lines never escape the manual-entry rules (A5, R5). Import,
-  Payroll and Conversion drafts may be corrected during their review (R49); a rounding line sent back exactly as
-  read is recognised as the rounding line and worked out again, and an edit that is 2 cents or more off ends
-  "Correct the amounts and save again."
+  review"; confirmed by the owner 2026-11-14 with Conversion added) Import, Payroll and Conversion entries are saved
+  by create_document_entry only with origin Import, so they always need one human review whatever the Import batch
+  switch says, and post=True is refused for them as R18 refuses it for Import origin (before this, a System context
+  could save and post them unreviewed). Typed opening balances (a future wizard, not built) take the same path:
+  create_document_entry, source Conversion, origin Import (as_import). Their one review may be done by the person
+  who entered them unless separation of duties is on (require_separate_approver, a control, OFF by default); with
+  it on, someone else approves and someone other than the creator posts (R17, R28). A document's draft (Invoice,
+  Bill, Payment, Deferral, Completion) cannot be changed or deleted through update_entry or delete_entry ("This
+  entry was made by an invoice; change the invoice instead."), so its lines never escape the manual-entry rules (A5,
+  R5). Import, Payroll and Conversion drafts may be corrected during their review (R49); a rounding line sent back
+  exactly as read is recognised as the rounding line and worked out again, and an edit that is 2 cents or more off
+  ends "Correct the amounts and save again."
 

@@ -681,3 +681,11 @@ Rotation and key-lost text as it stood before the trim:
   0695522. Mutation check: 53 mutants, 48 killed; the 5 survivors (the rounding line's recognition and its empty
   fields) now have tests (suite 2740 passed, 7 deselected, 5 xfailed; test_ledger_rounding.py: as-read over the three sources, nothing copied from other
   lines, four look-alike lines), and each kills its mutant. Hand check tools/hand_check_step6.py passes.
+
+- 2026-11-14: R55 made final by the owner, with Conversion added. Conversion entries, like Import and Payroll, are
+  saved by `create_document_entry` only with origin Import, so they always need one human review and post=True is
+  refused for them (a System context could save and post them unreviewed before). Typed opening balances (a future
+  wizard) take the same path; with separation of duties off (the default) the person who entered them may review
+  them. Five new tests in tests/test_ledger_rounding.py; Conversion tests that saved as System moved to origin
+  Import plus a review. Suite 2745 passed, 7 deselected, 5 xfailed. Step 7 planned in docs/next_step.md; waiting
+  for approval.
