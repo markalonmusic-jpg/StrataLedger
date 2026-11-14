@@ -273,6 +273,10 @@ CB, CF. Cash basis and cash flow (section "Reports, dimensions, cloud move and b
 JD. Job-driven dimensions (same section):
 - JD1 A line's job sets its dimensions; locked while the job is on the line (task name J1; J1 is taken)
 
+CM. Moving a company to the cloud (same section; docs/cloud_migration_design.md):
+- CM1 "Move to the cloud / Invite your team" keeps every record and a verifiable history
+- CM2 Sign-ins move: hashes upgraded at first cloud sign-in, email login, verify once, 2FA for Admins and Master
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
@@ -1243,4 +1247,19 @@ doc that carries the detail.
     resolves a line's dimensions; screens only display the result.
   - Clearing the job unlocks the dimensions and keeps the previous values as a starting point.
   - "Require dimensions on lines without a job" is a future control, off by default (section 0).
+
+### CM. Moving a company to the cloud
+
+Design: docs/cloud_migration_design.md.
+- CM1 (owner, 2026-11-13) The desktop app offers "Move to the cloud / Invite your team", which moves a company into
+  the hosted version (PostgreSQL on Azure, P5), keeping every journal entry, contact, job and attachment, with the
+  history still verifiable. Easy to find but never nagging (section 0b).
+- CM2 (owner, 2026-11-13) Sign-ins move as seamlessly as possible.
+  - Accounts, roles, company access and approval limits move automatically.
+  - The desktop password keeps working: the scrypt hash is moved and upgraded to the cloud scheme at the first
+    cloud sign-in. Users sign in with their email address.
+  - Each user verifies their email once. Two-factor sign-in is required for Admins and the Master and offered to
+    everyone else.
+  - Recovery codes, backup codes and temporary passwords do not move; the cloud uses normal account recovery.
+  - The pre-flight lists any user without an email address and blocks the move until each has one.
 

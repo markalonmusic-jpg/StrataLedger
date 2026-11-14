@@ -88,6 +88,9 @@ in code (`tests/test_config_paths.py` fails on one).
   temporary password (72 h, forced change), personal backup codes for regular users, the Master's recovery
   code for every change (re-wraps the installation key, Step 1c), abuse limits, session end after a reset,
   optional email (last), TOTP hook (v1.1). NOT BUILT; decided (PW1-PW11).
+- `docs/cloud_migration_design.md` - design for moving a desktop company to the hosted version (CM1, CM2): the
+  user's flow, pre-flight, the portable company package shared with backups and exports, the key bundle and Key
+  Vault, import and proof, the read-only desktop afterwards, users and password hashes. NOT BUILT.
 - `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
   articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
   every screen). Content is deferred to the end of v1.0. NOT BUILT.

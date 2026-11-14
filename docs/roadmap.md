@@ -211,6 +211,8 @@ See docs/crm_pm_design.md section 11.
 16. With the backup step (Phase 5): the passphrase-protected company key bundle (Master only, K8), so an exported
     or backed-up company can be verified on another computer; then drop the `EXPORT_NOT_VERIFIABLE` warning
     (KS11). Every company backup also backs up `system_master.db` (KS10).
+   The key bundle is part of one portable company package that serves backups, exports and the cloud move
+   (docs/cloud_migration_design.md section 3).
 17. Restrict the data folder (`%PROGRAMDATA%\StrataLedger`) at install or first run so other local accounts
     cannot read `system_master.db`: today it keeps the inherited permissions, and the machine-scope DPAPI copy of
     the installation key opens for any local user who can read it (secrets audit of Step 1c; audit design 1).
@@ -219,6 +221,10 @@ See docs/crm_pm_design.md section 11.
     backlog 17, so a folder copied or created outside the installer is caught).
 19. Support bundles (when built) redact absolute paths and the Windows profile name from the log files before
     they leave the computer (owner, 2026-11-13; the log itself keeps them; R38).
+20. Move a company to the cloud (CM1, CM2; docs/cloud_migration_design.md). Phase 5, with backlog 16: the
+    portable company package, the key bundle, attachment hashes at upload, the email rules for users (present,
+    valid, unique) and the desktop pre-flight. The rest (cloud import and proof, Key Vault, user sign-in, the
+    read-only desktop state) waits for the hosted product (P5), whose own design comes first.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
