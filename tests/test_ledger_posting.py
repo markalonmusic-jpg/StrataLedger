@@ -83,8 +83,8 @@ def entry_row(env, entry_id):
 
 def snapshot(env):
     return {t: env.rows("PARENT", f"SELECT * FROM {t} ORDER BY 1") for t in
-            ("journal_entry", "journal_line", "audit_log", "entry_number_sequence", "ledger_checkpoint",
-             "approval_request", "approval_action")}
+            ("journal_entry", "journal_line", "journal_line_dimension", "audit_log", "entry_number_sequence",
+             "ledger_checkpoint", "approval_request", "approval_action")}
 
 
 def settings(env, **values):

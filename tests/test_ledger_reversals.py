@@ -562,3 +562,116 @@ def test_get_entry_of_an_ordinary_entry_shows_its_description(rev):
     entry_id, _ = posted(rev)
     assert ledger.get_entry(ctx(rev), entry_id)["display_description"] == "Rent"
 
+
+
+# --- Review of step 5: adjustment periods (R48), errors and gaps ---------------------------------------------
+
+def period_13(env):
+    settings(env, adjustment_periods_enabled=1)
+    return env.rows("PARENT", "SELECT period_id FROM fiscal_period WHERE period_number = 13 "
+                              "AND start_date = '2026-12-31'")[0]["period_id"]
+
+
+def test_a_void_of_a_period_13_entry_stays_in_period_13(rev):
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13)
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close(rev, "2026-12-31")                                # period 12 is closed, period 13 open: the usual case
+    result = void(rev, entry_id)
+    reversal = entry_row(rev, result["entry_id"])
+    assert (reversal["period_id"], reversal["entry_date"]) == (p13, "2026-12-31")
+    assert result["warnings"] == []                         # R12: no date warnings in period 13
+    assert verify(rev)["ok"]
+
+
+def test_a_void_of_a_period_13_entry_on_a_later_date_takes_that_month(rev):
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13)
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    reversal_id = void(rev, entry_id, entry_date="2027-01-05", acknowledge_date_warnings=True)["entry_id"]
+    assert entry_row(rev, reversal_id)["period_id"] == period_of(rev, "2027-01-05")
+
+
+def test_a_period_13_accrual_is_voided_as_a_pair_with_period_12_closed(rev):
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13, auto_reverse_date="2027-01-01")
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close(rev, "2026-12-31")
+    auto_id = reversal_of(rev, entry_id, "Accrual reversal")["entry_id"]
+    void(rev, entry_id, acknowledge_date_warnings=True)
+    assert reversal_of(rev, entry_id, "Void")["period_id"] == p13
+    assert reversal_of(rev, auto_id, "Void")["period_id"] == period_of(rev, "2027-01-01")
+    assert verify(rev)["ok"]
+
+
+def test_an_automatic_reversal_into_the_next_fiscal_year(rev):
+    entry_id = draft(rev, entry_date="2026-12-31", auto_reverse_date="2027-01-01")
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True, acknowledge_date_warnings=True)
+    reversal = reversal_of(rev, entry_id, "Accrual reversal")
+    assert reversal["period_id"] == period_of(rev, "2027-01-01")
+    assert verify(rev)["ok"]
+
+
+def test_a_correction_with_no_period_for_today_says_what_to_do(rev):
+    entry_id, _ = posted(rev)
+    refused(rev, lambda: correct(rev, entry_id, context=ctx(rev, today="2031-01-01", now="2031-01-01T09:00:00+00:00")),
+            PostingError, r"^There is no fiscal period for 2031-01-01 yet; add the fiscal year or choose another "
+                          r"date\.$")
+
+
+def test_a_correction_into_a_closed_period_is_refused(rev):
+    entry_id, _ = posted(rev)
+    close(rev, TODAY)
+    refused(rev, lambda: correct(rev, entry_id), PeriodClosedError, "is closed")
+
+
+def test_a_person_voids_an_imported_entry(team):
+    team.grant_permission("PARENT", "POSTER", "je.reverse")
+    entry_id = ledger.create_entry(as_(team, "poster", "Import"), entry_date="2026-03-15", lines=lines(team),
+                                   source="Import")
+    request_id = ledger.submit_entry_for_approval(as_(team, "poster", "Import"), entry_id)
+    approvals.approve(as_(team, "appr1"), request_id)
+    ledger.post_journal_entry(as_(team, "poster"), entry_id, confirm=True)
+    result = ledger.void_entry(as_(team, "poster"), entry_id, note=NOTE, confirm=True)
+    reversal = entry_row(team, result["entry_id"])
+    assert (reversal["origin"], reversal["source"]) == ("Human", "Import")
+    assert entry_row(team, entry_id)["is_void"] == 1
+
+
+def test_reversals_carry_no_approval_with_separation_on(rev):
+    first, _ = posted(rev)
+    second, _ = posted(rev)
+    rev.settings("PARENT", require_separate_approver=1)        # after posting: the creator may not post (R17)
+    for result in (void(rev, first), correct(rev, second)):
+        row = entry_row(rev, result["entry_id"])
+        assert (row["approved_by"], row["approved_at"]) == (None, None)
+
+
+def test_another_database_error_on_the_reversal_is_not_called_a_race(rev, monkeypatch):
+    from modules.services.errors import SaveFailedError
+    entry_id, _ = posted(rev)
+    real = ledger._reversal_period
+
+    def wrong_period(conn, day, target):
+        period_id, period = real(conn, day, target)
+        return 99999, dict(period, period_id=99999)            # a period that does not exist: a foreign key error
+
+    monkeypatch.setattr(ledger, "_reversal_period", wrong_period)
+    refused(rev, lambda: void(rev, entry_id), SaveFailedError)
+
+
+def test_every_journal_line_column_is_mirrored_or_named():
+    # R45: a new journal_line column must be added to MIRRORED_LINE_FIELDS (or here, with a reason).
+    import modules.database as database
+    import tempfile, os
+    from pathlib import Path
+    path = Path(tempfile.mkdtemp()) / "c.db"
+    database.ensure_company_database(path)
+    conn = sqlite3.connect(path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(journal_line)")}
+    finally:
+        conn.close()
+        os.remove(path)
+    not_copied = {"line_id", "entry_id", "debit_cents", "credit_cents", "recon_id"}   # keys, swapped sides, B10
+    assert columns == set(ledger.MIRRORED_LINE_FIELDS) | not_copied

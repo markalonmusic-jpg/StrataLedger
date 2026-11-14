@@ -35,7 +35,7 @@ Reversals (step 5, L5, R4, R40-R47):
   manual, Import, Payroll and Conversion entries (R40); never a reversal (R43). A Void defaults to the original's
   date, a Correction to today, and neither may be dated before the original (R41). Voiding an accrual that has an
   automatic reversal voids both, each on its target's date, or nothing (R4); such an accrual cannot be corrected
-  (R44).
+  (R44). A reversal dated its target's own date in period 13 or 14 stays in that period (R48).
 * A reversal mirrors its original line by line: debit and credit swapped, every other line field and flag and
   every dimension copied (R45). The account rules and the A5 control are not applied again: a correction must
   stay possible after an account is closed or the control is turned off.
@@ -704,7 +704,13 @@ def _insert_reversal(conn, context, target, target_number, kind, *, entry_date, 
              _reversal_description(kind, target_number, target["description"]), target["source"], context.user_id,
              origin, target["entry_id"], kind, note)).fetchone()[0]
     except sqlite3.IntegrityError:
-        raise PostingError(f"{_je(target_number)} has already been voided or corrected.") from None
+        # Lost the race for the slot (another Void or Correction committed after the plan's check): say so.
+        # Anything else is a real database error, left to write_transaction (R35).
+        taken = conn.execute("SELECT 1 FROM journal_entry WHERE reverses_entry_id = ? AND reversal_reason IN "
+                             "('Void', 'Correction')", (target["entry_id"],)).fetchone()
+        if kind != "Accrual reversal" and taken is not None:
+            raise PostingError(f"{_je(target_number)} has already been voided or corrected.") from None
+        raise
     columns = ("entry_id", "debit_cents", "credit_cents") + MIRRORED_LINE_FIELDS
     insert = (f"INSERT INTO journal_line ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))}) "
               "RETURNING line_id")
@@ -753,10 +759,21 @@ def _slot_taken(conn, entry_id):
                         "AND reversal_reason IN ('Void', 'Correction')", (entry_id,)).fetchone() is not None
 
 
-def _reversal_period(conn, entry_date):
-    """(period id, period row) for a reversal's date: the month period that holds it."""
-    period_id = periods.resolve_entry_period(conn, entry_date)
-    period = conn.execute("SELECT name, is_closed FROM fiscal_period WHERE period_id = ?", (period_id,)).fetchone()
+def _reversal_period(conn, entry_date, target):
+    """(period id, period row) for a reversal of target dated entry_date. A reversal dated its target's own date in
+    adjustment period 13 or 14 belongs to that period, so every report basis nets to zero (A1, R48); any other date
+    takes the month period that holds it."""
+    target_period = conn.execute("SELECT period_id, name, is_closed, is_adjustment_period FROM fiscal_period "
+                                 "WHERE period_id = ?", (target["period_id"],)).fetchone()
+    if entry_date == target["entry_date"] and target_period["is_adjustment_period"]:
+        return target_period["period_id"], target_period
+    try:
+        period_id = periods.resolve_entry_period(conn, entry_date)
+    except NotFoundError:
+        raise PostingError(f"There is no fiscal period for {entry_date} yet; add the fiscal year or choose another "
+                           "date.") from None
+    period = conn.execute("SELECT period_id, name, is_closed, is_adjustment_period FROM fiscal_period "
+                          "WHERE period_id = ?", (period_id,)).fetchone()
     return period_id, period
 
 
@@ -795,24 +812,26 @@ def _reverse(context, entry_id, kind, note, entry_date, confirm, acknowledge_dat
         target = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
         plan = _reversal_plan(conn, context, target, kind, word, entry_date)
         warnings = []
-        for _, _, day in plan:
+        for _, _, day, period in plan:
+            if period["is_adjustment_period"]:             # R12: no date warnings in period 13 or 14
+                continue
             for warning in _date_warnings(conn, day, context, acknowledge_date_warnings):
                 if warning not in warnings:
                     warnings.append(warning)
         key_id, key = _active_key(conn, context)
         posted = []
-        for row, row_number, day in plan:
-            period_id, _ = _reversal_period(conn, day)
+        for row, row_number, day, period in plan:
             reversal_id = _insert_reversal(conn, context, row, row_number, kind, entry_date=day,
-                                           period_id=period_id, note=note, origin="Human")
+                                           period_id=period["period_id"], note=note, origin="Human")
             posted.append((reversal_id, _seal_and_post(conn, context, reversal_id, company_code, key_id, key)))
-    voided = [row["entry_id"] for row, _, _ in plan] if kind == "Void" else []
+    voided = [row["entry_id"] for row, _, _, _ in plan] if kind == "Void" else []
     return {"entry_id": posted[0][0], "entry_number": posted[0][1], "voided_entry_ids": voided,
             "warnings": warnings}
 
 
 def _reversal_plan(conn, context, target, kind, word, entry_date):
-    """Every check on the target, then [(row to reverse, its number, the reversal's date)] in posting order."""
+    """Every check on the target, then [(row to reverse, its number, the reversal's date, its period row)] in
+    posting order."""
     if target is None:
         raise NotFoundError("That journal entry does not exist")
     if not target["is_posted"]:
@@ -837,22 +856,23 @@ def _reversal_plan(conn, context, target, kind, word, entry_date):
         day = entry_date or (target["entry_date"] if kind == "Void" else context.today)
         if day < target["entry_date"]:
             raise ValidationError(f"A {word} cannot be dated before the entry it reverses ({target['entry_date']}).")
-        _, period = _reversal_period(conn, day)
+        _, period = _reversal_period(conn, day, target)
         if period["is_closed"]:
             raise PeriodClosedError(f"{period['name']} is closed; reopen it or choose a date in an open period")
-        return [(target, number, day)]
+        return [(target, number, day, period)]
     if kind == "Correction":                                                                            # R44
         raise PostingError(f"{_je(number)} has an automatic reversal ({_je(auto['entry_number'])}); void "
                            f"{_je(number)} and both are voided together, then enter a new accrual.")
     if entry_date is not None:
         raise ValidationError("An accrual and its automatic reversal are each voided on their own date; leave the "
                               "date empty.")
-    plan = [(target, number, target["entry_date"]), (auto, auto["entry_number"], auto["entry_date"])]   # R4, R41
-    for _, _, day in plan:
-        _, period = _reversal_period(conn, day)
+    plan = []                                                                                  # R4, R41
+    for row, row_number in ((target, number), (auto, auto["entry_number"])):
+        _, period = _reversal_period(conn, row["entry_date"], row)
         if period["is_closed"]:
             raise PeriodClosedError(f"{_je(number)} and its automatic reversal {_je(auto['entry_number'])} are "
                                     f"voided together, and {period['name']} is closed; reopen it first.")
+        plan.append((row, row_number, row["entry_date"], period))
     return plan
 
 
