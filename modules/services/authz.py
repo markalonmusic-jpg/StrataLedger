@@ -218,8 +218,11 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
     finally:
         company.close()
     if row is None or amount_cents > row["max_amount_cents"]:
-        who = _who_can_approve(context, permission, document_type, amount_cents, not_counted)
-        if row is None and who is None:
+        names = _roles_that_can_approve(context, permission, document_type, amount_cents, not_counted)
+        who = _ask_target(names, _admin_target(context, not_counted))
+        if who is None:
+            message = NO_ONE_ELSE_CAN_APPROVE
+        elif row is None and who == "an Admin":
             message = (f"Your role has no approval limit for {_with_article(document_type.lower())}; ask an Admin "
                        f"to set one or to approve it.")
         elif row is None:
@@ -227,14 +230,54 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
                        f"to set one, or ask {who} to approve it.")
         else:
             message = (f"This amount ({money.text(amount_cents)}) is over your approval limit "
-                       f"({money.text(row['max_amount_cents'])}); ask {who or 'an Admin'} to approve it.")
+                       f"({money.text(row['max_amount_cents'])}); ask {who} to approve it.")
         _deny(context, permission, "User", record_type, record_id, message)
 
 
-def _who_can_approve(context, permission, document_type, amount_cents, not_counted=frozenset()):
-    """'someone in the Controller or PM role, or an Admin': the active roles holding the permission whose limit
-    covers the amount, by name, and only those at least one active user holds here (R34), users in not_counted
-    aside (R37). None when no such role is held: only an Admin is left (an Admin can always approve)."""
+# R39: with separation on, the creator and submitter are left out, and no one else (no role holder, no other
+# Admin, not the Master) can approve.
+NO_ONE_ELSE_CAN_APPROVE = ("No one else in this company can approve it; add another approver, or turn off "
+                           "separation of duties in Settings > Controls.")
+
+
+def _ask_target(names, admin):
+    """'someone in the Controller or PM role, or an Admin,' from the role names and the Admin target (R34, R39).
+    None when there is no one to ask."""
+    if not names:
+        return admin
+    roles = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
+    if admin is None:
+        return f"someone in the {roles} role"
+    if len(names) == 1:
+        return f"someone in the {roles} role or {admin}"
+    return f"someone in the {roles} role, or {admin},"     # "...role, or an Admin, to approve it"
+
+
+def _admin_target(context, not_counted):
+    """Who beyond the role holders can approve (R39). 'an Admin' when no one is left out (separation off) or no
+    one left out is an Admin; 'another Admin' when one left out is an Admin and another active Admin holds the
+    role here; else 'the Master' when the Master is active and not left out; else None."""
+    if not not_counted:
+        return "an Admin"
+    master = database.get_readonly_connection(context.master_db_path)
+    try:
+        users = master.execute("SELECT user_id, is_master FROM app_user WHERE is_active = 1 "
+                               "ORDER BY user_id").fetchall()
+        admins = {u["user_id"] for u in users if u["is_master"] == 0
+                  and _access_role(master, u["user_id"], context.company_id) == "Admin"}
+    finally:
+        master.close()
+    available = admins - set(not_counted)
+    if available:
+        return "another Admin" if admins & set(not_counted) else "an Admin"
+    if any(u["is_master"] == 1 and u["user_id"] not in not_counted for u in users):
+        return "the Master"
+    return None
+
+
+def _roles_that_can_approve(context, permission, document_type, amount_cents, not_counted=frozenset()):
+    """The names of the active roles holding the permission whose limit covers the amount, and only those at least
+    one active user holds here (R34), users in not_counted aside (R37). Admin is never listed (_admin_target)."""
     company = database.get_readonly_connection(context.company_db_path)
     try:
         candidates = [(r["role_code"], r["name"]) for r in company.execute(
@@ -247,12 +290,7 @@ def _who_can_approve(context, permission, document_type, amount_cents, not_count
     finally:
         company.close()
     held = _held_roles(context, {code for code, _ in candidates}, not_counted) if candidates else set()
-    names = [name for code, name in candidates if code in held]
-    if not names:
-        return None
-    if len(names) == 1:
-        return f"someone in the {names[0]} role or an Admin"
-    return f"someone in the {', '.join(names[:-1])} or {names[-1]} role, or an Admin,"   # "...or an Admin, to approve it"
+    return [name for code, name in candidates if code in held]
 
 
 def _held_roles(context, role_codes, not_counted=frozenset()):

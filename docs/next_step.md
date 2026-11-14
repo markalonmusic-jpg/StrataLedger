@@ -1,12 +1,23 @@
 # Next step: Phase 2.5 Step 5 (reversals and automatic reversals)
 
-Written at the end of the Step 4 follow-up 3 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **Step 4 and three rounds of owner follow-ups (R27-R31, R32-R36, R37-R38) done; the owner accepted the hand check.**
+Written at the end of the Step 4 follow-up 4 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
+Status: **Step 4 and four rounds of owner follow-ups (R27-R31, R32-R36, R37-R38, R39) done; the owner accepted the hand check.**
 Step 5 is not planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
 
-**State:** suite **2455 passed, 7 deselected, 6 xfailed**. HEAD: the R37-R38 commit. The development master was
+**State:** suite **2466 passed, 7 deselected, 6 xfailed**. HEAD: the R39 commit. The development master was
 rebuilt from the edited baseline (it gained `throttle_secret`, R32); it is empty (no users, companies or keys) and
 there are no company files. The previous empty master is in Backups\.
+
+## Follow-up 4 (owner answer to the follow-up-3 question, R39)
+
+- **R39:** with separation on, the limit refusal's "ask" target leaves out the creator and submitter: "another
+  Admin" when one of them is an Admin and another active Admin exists; "an Admin" when neither is an Admin
+  (unchanged wording); else "the Master" if the Master is neither; else, with no role holder left, the whole
+  refusal is "No one else in this company can approve it; add another approver, or turn off separation of duties
+  in Settings > Controls." `authz._admin_target` and `authz._ask_target` build it; `_who_can_approve` became
+  `_roles_that_can_approve` (names only). Tests in tests/test_refusal_messages.py (R39 section), written first.
+- The hand check (`STRATALEDGER_ALLOW_TEST_KEYS=1 python tools/hand_check_step4.py`) still ends "Every step behaved
+  as decided."
 
 ## Follow-up 3 (owner answers to the three follow-up-2 questions, R37-R38)
 
@@ -170,11 +181,7 @@ first-Master question (it is a real rebuild: run the dry run first, as always).
 
 ## Open questions for the owner
 
-The three follow-up-2 questions were answered (R37, R38, backlog 19). New, from the review:
-
-1. **The only Admin is the creator** (step-reviewer): with separation on, a limit refusal still ends "ask an
-   Admin" even when the company's only Admin created or sent the request and so may not approve it. Leave the
-   wording as it is, or say "ask the Master" (or "another Admin") in that case?
+None. The follow-up-3 question was answered (R39).
 
 ## Step 5, to plan next session
 

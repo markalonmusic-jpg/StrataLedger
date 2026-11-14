@@ -364,6 +364,9 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   refusal does not count the request's creator or submitter as a holder (no one left: ask an Admin). R38: every
   logger is under `strataledger` (font_loader moved; static test). Backlog 19: support bundles redact paths and
   the profile name. Suite 2455 passed, 6 xfailed.
+- 2026-11-13: Owner answer to the follow-up-3 question, R39: with separation on, the limit refusal's "ask"
+  target leaves out the creator and submitter ("another Admin", else "the Master", else "No one else in this
+  company can approve it; ..."). Suite 2466 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

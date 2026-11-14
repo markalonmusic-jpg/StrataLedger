@@ -676,6 +676,98 @@ def test_a_missing_settings_row_counts_as_separation_on_for_the_count(world, tea
     assert message.endswith("ask an Admin to approve it.")
 
 
+# --- R39: with separation on, the "ask" target leaves out the creator and submitter ------------------------
+
+NO_ONE_ELSE = ("No one else in this company can approve it; add another approver, or turn off separation of duties "
+               "in Settings > Controls.")
+
+
+def _no_controllers(world, team):
+    for name in ("ctrl1", "ctrl2"):
+        world.revoke(team[name], CO)
+
+
+def _over_limit(world, team, *, by, created_by, approver="pm1"):
+    request_id = submit(team, amount=200_000, by=by, created_by=created_by)
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"](approver), request_id))
+    return message
+
+
+@pytest.mark.parametrize("by, created_by", [("clerk", "admin"), ("admin", "clerk")])
+def test_the_only_admin_as_creator_or_submitter_leaves_the_master(world, team, by, created_by):
+    _no_controllers(world, team)
+    assert _over_limit(world, team, by=by, created_by=created_by) == (
+        "This amount (2,000.00) is over your approval limit (1,000.00); ask the Master to approve it.")
+
+
+def test_another_active_admin_is_asked(world, team):
+    _no_controllers(world, team)
+    world.grant(world.user("admin2"), CO, "Admin")
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith("; ask another Admin to approve it.")
+
+
+def test_an_inactive_or_denied_other_admin_does_not_count(world, team):
+    _no_controllers(world, team)
+    inactive, denied = world.user("admin2"), world.user("admin3")
+    world.grant(inactive, CO, "Admin")
+    world.set_user_active(inactive, False)
+    world.grant(denied, CO, "Admin", mode="Deny")
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith("; ask the Master to approve it.")
+
+
+def test_a_role_holder_is_named_with_the_master(world, team):
+    world.revoke(team["ctrl1"], CO)                                  # ctrl2 still holds Controller
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith(
+        "; ask someone in the Controller role or the Master to approve it.")
+
+
+def test_a_role_holder_alone_when_the_admin_and_the_master_are_left_out(world, team):
+    world.revoke(team["ctrl1"], CO)
+    assert _over_limit(world, team, by="admin", created_by="master").endswith(
+        "; ask someone in the Controller role to approve it.")
+
+
+def test_no_one_else_when_the_admin_and_the_master_are_both_left_out(world, team):
+    _no_controllers(world, team)
+    assert _over_limit(world, team, by="admin", created_by="master") == NO_ONE_ELSE
+
+
+def test_no_one_else_with_no_limit_row_either(world, team):
+    _no_controllers(world, team)
+    for name in ("pm1", "pm2", "pm3"):
+        world.revoke(team[name], CO)
+    world.role(CO, "Helper", ["bill.approve"])
+    helper = world.user("helper")
+    world.grant(helper, CO, "Helper")
+    request_id = submit(team, amount=5_000, by="admin", created_by="master")
+    message, _ = _denied(world, lambda: approvals.approve(world.ctx(helper, CO), request_id))
+    assert message == NO_ONE_ELSE
+
+
+def test_no_limit_row_with_the_admin_left_out_asks_the_master_to_approve(world, team):
+    _no_controllers(world, team)
+    for name in ("pm1", "pm2", "pm3"):
+        world.revoke(team[name], CO)
+    world.role(CO, "Helper", ["bill.approve"])
+    helper = world.user("helper")
+    world.grant(helper, CO, "Helper")
+    request_id = submit(team, amount=5_000, by="clerk", created_by="admin")
+    message, _ = _denied(world, lambda: approvals.approve(world.ctx(helper, CO), request_id))
+    assert message == ("Your role has no approval limit for a bill; ask an Admin to set one, or ask the Master to "
+                       "approve it.")
+
+
+def test_with_separation_off_the_admin_creator_is_still_asked(world, team):
+    _no_controllers(world, team)
+    world.settings(CO, require_separate_approver=0)
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith("; ask an Admin to approve it.")
+
+
+def test_an_admin_not_left_out_is_still_an_admin(world, team):
+    _no_controllers(world, team)                                    # the clerk created it; the Admin may approve
+    assert _over_limit(world, team, by="clerk", created_by="clerk").endswith("; ask an Admin to approve it.")
+
+
 # --- R36: access is checked before the file ---------------------------------------------------------------------
 
 def _wrong_file(context, world):

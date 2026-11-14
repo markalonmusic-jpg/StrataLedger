@@ -208,6 +208,7 @@ R. Phase 2.5 ledger and billing services:
 - R36 Access is checked before the company file
 - R37 With separation on, a limit refusal does not count the creator or submitter
 - R38 Every logger is under the app logger
+- R39 With separation on, a limit refusal's "ask" target leaves out the creator and submitter
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1162,3 +1163,12 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
   file and pass the R30 filter; `modules/font_loader.py` moved to `strataledger.fonts`. A static test checks
   every `getLogger` call in `app_strata.pyw` and `modules/`. Paths in the log are not redacted now; support
   bundles redact them (roadmap backlog 19).
+- R39 (owner, 2026-11-13, answer to the R37 question) With separation on, the approval-limit refusal's "ask"
+  target also leaves out the request's creator and submitter (R37 already leaves them out of the role holders).
+  In order: "another Admin" when one of them is an Admin and another active Admin holds the Admin role in the
+  company (by the nearest-row rule; a Deny row holds nothing); "an Admin" when neither of them is an Admin and an
+  active Admin exists (the wording is unchanged); otherwise "the Master" when the Master is active and is neither
+  of them; otherwise, if no role holder is left either, the whole refusal is "No one else in this company can
+  approve it; add another approver, or turn off separation of duties in Settings > Controls." (also when the role
+  has no limit row). Role holders who are left are still named ("someone in the Controller role or the Master";
+  "someone in the Controller role" when no Admin or Master is left). With separation off, nothing changes.
