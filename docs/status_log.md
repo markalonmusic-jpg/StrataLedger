@@ -374,6 +374,12 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-13: step-reviewer on the R39 commit: approve with changes (tests only). Five R39 tests added (no Admin
   asks the Master, inactive Master, reject, missing settings row, two role holders), each proven against a mutant.
   Step 5 planned (docs/next_step.md), waiting for approval. Suite 2471 passed, 6 xfailed.
+- 2026-11-13: Phase 2.5 Step 5, reversals and automatic reversals (R40-R47 recorded from the owner's answers; backlog
+  21, the second-person control for voids, not built). One posting core; posting an accrual posts its automatic
+  reversal in the same transaction; `void_entry` and `reverse_entry`; pair void; mirrors include dimensions;
+  `display_description` shows the person's note. step-reviewer: approve with changes, fixed (period 13/14
+  reversals, R48 provisional; race mapping; a period sentence; tests). mutation-tester: 92 mutations, 79 killed;
+  the 5 real gaps now have tests that kill them, and 8 are equivalent. Suite 2561 passed, 5 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

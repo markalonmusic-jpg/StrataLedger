@@ -675,3 +675,45 @@ def test_every_journal_line_column_is_mirrored_or_named():
         os.remove(path)
     not_copied = {"line_id", "entry_id", "debit_cents", "credit_cents", "recon_id"}   # keys, swapped sides, B10
     assert columns == set(ledger.MIRRORED_LINE_FIELDS) | not_copied
+
+
+# --- Mutation check of step 5: the gaps it found -------------------------------------------------------------
+
+def test_the_person_who_voids_is_the_creator_and_poster_of_the_void(rev):
+    entry_id, _ = posted(rev)                                     # created and posted by the poster
+    other = rev.user("reverser")
+    rev.grant(other, "PARENT", "POSTER")
+    result = void(rev, entry_id, context=ctx_for(rev, user=other))
+    row = entry_row(rev, result["entry_id"])
+    assert (row["created_by"], row["posted_by"]) == (other, other)
+    assert entry_row(rev, entry_id)["created_by"] == rev.user_id
+
+
+@pytest.mark.parametrize("action", ["void", "correct"])
+@pytest.mark.parametrize("confirm", [False, None, 1, "yes"])
+def test_only_confirm_true_confirms(rev, action, confirm):
+    entry_id, _ = posted(rev)
+    refused(rev, lambda: (void if action == "void" else correct)(rev, entry_id, confirm=confirm), ValidationError,
+            r"^Confirm the (void|correction) first")
+
+
+@pytest.mark.parametrize("bad", ["next week", "2026-3-16", "2026-13-01", 20260316])
+def test_a_reversal_date_must_be_an_iso_date(rev, bad):
+    entry_id, _ = posted(rev)
+    refused(rev, lambda: void(rev, entry_id, entry_date=bad), ValidationError)
+
+
+def test_a_pair_void_shows_each_date_warning_once(rev):
+    entry_id, _ = accrual(rev)                               # 31 March and 1 April, both far behind in September
+    late = ctx(rev, today="2026-09-30", now="2026-09-30T10:00:00+00:00")
+    with pytest.raises(ledger.DateWarningsError) as error:
+        void(rev, entry_id, context=late)
+    assert [w["code"] for w in error.value.warnings] == ["past"]
+    result = void(rev, entry_id, context=late, acknowledge_date_warnings=True)
+    assert [w["code"] for w in result["warnings"]] == ["past"]
+
+
+def test_display_description_without_a_description():
+    assert ledger.display_description({"description": None, "reversal_note": "typo"}) == "(note: typo)"
+    assert ledger.display_description({"description": "Rent", "reversal_note": None}) == "Rent"
+    assert ledger.display_description({"description": None, "reversal_note": None}) is None
