@@ -211,6 +211,14 @@ R. Phase 2.5 ledger and billing services:
 - R37 With separation on, a limit refusal does not count the creator or submitter
 - R38 Every logger is under the app logger
 - R39 With separation on, a limit refusal's "ask" target leaves out the creator and submitter
+- R40 Which posted entries a person may void or correct (manual, Import, Payroll, Conversion)
+- R41 Void and Correction dates
+- R42 Voids and corrections need no second person (a backlog control may add one)
+- R43 A reversal cannot be reversed
+- R44 An accrual with an automatic reversal cannot be corrected, only voided as a pair
+- R45 Reversals mirror dimensions too (service check)
+- R46 Generated reversal descriptions; the person's note shown with them
+- R47 How the automatic reversal is posted
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1299,4 +1307,32 @@ Each doc's question section holds the answers; read them there.
   confirmation above 50,000, CSV streamed; `SUBTOTAL(9, ...)` totals; Excel dates in the company format and CSV
   in ISO; a `Report export` checkpoint for journal-based reports only; the Auditor gets `report.export` when its
   template exists, Viewer does not; full-width trigger characters neutralized.
+
+Added with Phase 2.5 step 5 (reversals and automatic reversals), 2026-11-13 (owner's answers to the Step 5 plan, all
+as proposed):
+- R40 A person may void or correct a posted entry whose source is manual (none, Manual, Adjustment), Import, Payroll
+  or Conversion. An entry from a document (Invoice, Bill, Payment, Deferral, Completion) is refused with a sentence
+  that says to void the document instead; the documents' own void services (Phase 4; B14 for payments) use the
+  narrow ledger path (docs/audit_readiness_design.md section 13).
+- R41 A Void is dated the original's date by default and may be any later date in an open period, never earlier. In
+  a pair void (R4) each Void is dated its own target's date, so if either period is closed nothing is written. A
+  Correction is dated today by default and may be any date on or after the original's.
+- R42 A void or correction needs only `je.reverse` (and `confirm=True`, R2), not a second person: separation of
+  duties (R17) does not apply to the reversal actions, which create and post in one audited action. A control
+  "voids and corrections need a second person" (off by default, listed on the Audit-ready page) is on the backlog
+  (roadmap item 21), not built.
+- R43 A reversal of any kind cannot itself be voided or corrected; a person enters a new entry to change its effect.
+- R44 An entry that has an automatic (Accrual) reversal cannot be corrected: void it (both are voided together, R4)
+  and enter a new accrual.
+- R45 A reversal mirrors its original line by line, dimensions included. The service checks the dimensions and a
+  test proves it; the baseline trigger, which compares accounts, contacts, projects, cost codes and deferrals but
+  not dimensions, is not changed (H4).
+- R46 Generated descriptions: "Automatic reversal of JE-000012: <original description>", "Void of JE-000012: ..."
+  and "Correction of JE-000012: ...", with the original's reference. The person's reversal note is kept in
+  `reversal_note` and shown with the generated description: `get_entry` and `list_entries` return a
+  `display_description` that holds both ("Void of JE-000012: Rent (note: wrong account)").
+- R47 The automatic reversal (L5) is posted in the same transaction as its original, right after it: origin System,
+  created and posted by the person who posted the original, the original's source, no approval fields and no
+  confirm (R2); the original's approval covers it because the digest includes `auto_reverse_date`. If the reversal
+  date has no period, or its period is closed, the whole post is refused before anything is numbered.
 

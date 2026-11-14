@@ -561,6 +561,7 @@ Settings > Controls > **Audit readiness**, a checklist with a status per line (o
 | Journal entry approval | `manual_entry_approval = 1` (threshold as chosen) |
 | Document approvals | `document_approval_setting` for Bill and Payment |
 | Manual entries to controlled accounts | `allow_manual_control_je = 0` |
+| Second person for voids and corrections | the backlog control (roadmap item 21, R42; not built) |
 | Close checks as blocks | `period_close_check` mode `block` for every check, including `ledger_integrity` and `control_overrides` |
 | Ledger verified | a full verification passed in the last 31 days; after a key-lost epoch the line also shows "history before JE-N cannot be verified (key lost)", permanently (KS15) |
 | Backups | nightly backups on, a second folder set (E7) |

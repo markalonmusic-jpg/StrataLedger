@@ -232,6 +232,9 @@ See docs/crm_pm_design.md section 11.
     portable company package, the key bundle, attachment hashes at upload, the email rules for users (present,
     valid, unique) and the desktop pre-flight. The rest (cloud import and proof, Key Vault, user sign-in, the
     read-only desktop state) waits for the hosted product (P5), whose own design comes first.
+21. Control "voids and corrections need a second person" (R42; owner, 2026-11-13): off by default, a line on the
+    Audit-ready page (docs/audit_readiness_design.md section 8). When on, `void_entry` and `reverse_entry` make a
+    reversal that another person posts. Not built.
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned
