@@ -768,6 +768,43 @@ def test_an_admin_not_left_out_is_still_an_admin(world, team):
     assert _over_limit(world, team, by="clerk", created_by="clerk").endswith("; ask an Admin to approve it.")
 
 
+def test_no_admin_in_the_company_and_none_left_out_asks_the_master(world, team):
+    # Review of R39: "an Admin" only when an active Admin exists; with none, the Master.
+    _no_controllers(world, team)
+    world.revoke(team["admin"], CO)
+    assert _over_limit(world, team, by="clerk", created_by="clerk").endswith("; ask the Master to approve it.")
+
+
+def test_an_inactive_master_is_not_asked(world, team):
+    _no_controllers(world, team)
+    world.set_user_active(team["master"], False)
+    assert _over_limit(world, team, by="clerk", created_by="admin") == NO_ONE_ELSE
+
+
+def test_reject_also_leaves_out_the_admin_creator(world, team):
+    _no_controllers(world, team)
+    request_id = submit(team, amount=200_000, by="clerk", created_by="admin")
+    message, _ = _denied(world, lambda: approvals.reject(team["ctx"]("pm1"), request_id, "wrong vendor"))
+    assert message == ("This amount (2,000.00) is over your approval limit (1,000.00); ask the Master to approve "
+                       "it.")
+
+
+def test_a_missing_settings_row_leaves_out_the_admin_creator(world, team):
+    _no_controllers(world, team)
+    with world._company(CO) as c:
+        c.execute("DELETE FROM company_settings")
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith("; ask the Master to approve it.")
+
+
+def test_two_role_holders_are_named_with_the_master(world, team):
+    world.revoke(team["ctrl1"], CO)                                  # ctrl2 still holds Controller
+    world.role(CO, "Treasurer", ["bill.approve"])
+    world.limit(CO, "Treasurer", "Bill", 10_000_000)
+    world.grant(world.user("treasurer"), CO, "Treasurer")
+    assert _over_limit(world, team, by="clerk", created_by="admin").endswith(
+        "; ask someone in the Controller or Treasurer role, or the Master, to approve it.")
+
+
 # --- R36: access is checked before the file ---------------------------------------------------------------------
 
 def _wrong_file(context, world):
