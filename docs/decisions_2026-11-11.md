@@ -270,6 +270,9 @@ CB, CF. Cash basis and cash flow (section "Reports, dimensions, cloud move and b
 - CB1 Cash basis is a report view; books stay on accrual
 - CF1 Direct-method cash flow statement with account cash flow categories
 
+JD. Job-driven dimensions (same section):
+- JD1 A line's job sets its dimensions; locked while the job is on the line (task name J1; J1 is taken)
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
@@ -1225,3 +1228,19 @@ doc that carries the detail.
   - Every line drills down to its entries and documents. The statement exports to Excel with its basis and
     period labelled, and supports period comparison. A GAAP indirect-method statement is a possible later
     report.
+
+### JD. Job-driven dimensions
+
+- JD1 (owner, 2026-11-13; the owner's task called it J1, renamed because J1 is the KPI calc mode decision) Job-driven
+  dimensions. When a document line has a job (project), the line's dimensions are taken from the job's dimension
+  settings and cannot be edited; with no job, the line's dimensions are editable.
+  - Only the dimension types the job defines are locked; the others stay editable.
+  - The job is per line. A document may carry a default job that fills new lines.
+  - Drafts follow changes to the job's dimensions; sent or posted documents keep the values they were posted
+    with.
+  - No override: to change a job line's dimensions, change the job's settings or remove the job from the line.
+  - Applies to invoices, bills, journal entry lines and time entries, through one shared service function that
+    resolves a line's dimensions; screens only display the result.
+  - Clearing the job unlocks the dimensions and keeps the previous values as a starting point.
+  - "Require dimensions on lines without a job" is a future control, off by default (section 0).
+

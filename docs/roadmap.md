@@ -123,6 +123,15 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 - **Phase 4 - Double-entry posting:** posting an invoice with status `'Sent'`
   generates balanced `journal_entry` and `journal_line` rows in the same
   transaction (`invoice.entry_id`).
+  Job-driven dimensions (JD1, decided 2026-11-13): invoice, bill, journal entry and time entry lines get their
+  dimensions from one shared service function (a job's dimension types locked, the rest editable); posting
+  stores the resolved values on the line, so a posted document keeps them. The job dimension settings
+  themselves come with the project / CRM work (backlog 2 and 9). Not in the baseline today (report only):
+  (a) no table for a job's dimension settings (a `project_dimension` of project, dimension type and value);
+  (b) `invoice_line` has no `project_id` (only `invoice.project_id`, which can serve as the document's default
+  job); (c) `time_entry` and `staged_line` have `project_id` but no dimension table (only `invoice_line_dimension`
+  and `journal_line_dimension` exist); (d) `invoice_line.department_tag` is free text beside the dimension
+  tables and should go when dimensions are wired.
 - **Phase 5 - Cleanup and security:** fix package `__init__.py` imports and
   remove empty scripts. (Password hashing and removing the hardcoded token were
   done in Phase 2.3.)
@@ -176,7 +185,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 7. Backup/export, installer, licensing.
 8. (Done in Phase 2.6: customer and vendor codes.) Still open: the wizard
    shows the code (Phase 3).
-9. After Phase 4, unscheduled: (a) pipeline, stages, stage history and the
+9. After Phase 4, unscheduled (each job carries its dimension settings, JD1): (a) pipeline, stages, stage history and the
    signing function; (b) CRM basics and collaboration; (c) service cases and
    the Customer Support pipeline; (d) throughput and profit views.
 See docs/crm_pm_design.md section 11.

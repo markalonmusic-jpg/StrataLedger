@@ -340,3 +340,15 @@ before building; the database wins on naming.
   an audit entry. The tie-out is checked, never forced: an Unclassified line with drill-down, and a non-zero
   Unclassified line is a close warning. Lines drill down; Excel export (docs/export_design.md); period
   comparison. A GAAP indirect-method statement is a possible later report.
+
+**Job-driven dimensions (DECIDED 2026-11-13, decision JD1)**
+- A line with a job takes the dimensions the job defines and they cannot be edited on the line; types the job
+  does not define stay editable; a line with no job is fully editable. No override: change the job's settings
+  or take the job off the line (the previous values stay as a starting point).
+- The job is per line; a document's default job fills new lines.
+- Drafts follow later changes to the job's dimensions; sent and posted documents keep what they were posted
+  with.
+- One shared service function resolves a line's dimensions for invoices, bills, journal entry lines and time
+  entries; screens only show its result.
+- "Require dimensions on lines without a job" is a future control, off by default.
+
