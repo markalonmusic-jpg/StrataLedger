@@ -7,13 +7,21 @@ support schema work), so origin is validated on the context but not stored here.
 Services call authorize() BEFORE opening a write transaction (rule 10, static
 test): a denial is then logged in its own transaction and never waits on, or is
 rolled back with, the caller's.
+
+A database error that reaches write_transaction (one the service did not turn into
+its own sentence) is logged with its details and raised as SaveFailedError, whose
+plain sentence is all the person sees (decision R35).
 """
+import logging
 import socket
+import sqlite3
 from contextlib import contextmanager
 
 import config
 import modules.database as database
-from modules.services.errors import PermissionDeniedError
+from modules.services.errors import PermissionDeniedError, SaveFailedError
+
+_logger = logging.getLogger("strataledger")
 
 
 @contextmanager
@@ -28,8 +36,9 @@ def write_transaction(db_path, context):
     if getattr(context, "read_only", False) and str(db_path) == str(context.company_db_path):
         raise PermissionDeniedError("This company is open read-only; open it with a role that can make changes, "
                                     "or ask an Admin.")
-    conn = database.get_connection(db_path)
+    conn = None
     try:
+        conn = database.get_connection(db_path)
         conn.isolation_level = None  # explicit transaction control
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -48,8 +57,15 @@ def write_transaction(db_path, context):
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
             raise
+    except sqlite3.Error as error:     # R35: rolled back above; the details go to the log only
+        # Only this error: an earlier one it interrupted (a service sentence that may quote typed text) is not
+        # printed with it.
+        error.__suppress_context__ = True
+        _logger.error("a database error stopped a save; nothing was saved", exc_info=error)
+        raise SaveFailedError() from None
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def read_connection(db_path):

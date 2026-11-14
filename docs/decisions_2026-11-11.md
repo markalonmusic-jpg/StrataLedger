@@ -201,6 +201,11 @@ R. Phase 2.5 ledger and billing services:
 - R29 The "only a person" denial names the approve permission
 - R30 Rejection reasons never reach the log file
 - R31 The rebuild script has a non-interactive mode
+- R32 A failed sign-in never logs or stores the typed username
+- R33 The app starts its log file at start-up
+- R34 A limit refusal names only roles someone holds
+- R35 Database errors in a save are a plain sentence; details go to the log
+- R36 Access is checked before the company file
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1115,3 +1120,35 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
 - R31 (owner, Step 4 STOP answer 5) `scripts/create_fresh_databases.py --apply --no-prompt` rebuilds without
   asking to create the first Master and exits 0. Input that ends early (a shell that reports a terminal but has
   no input, as Git Bash run by a tool) ends with "No answer was read; no Master was created." and exit 0.
+- R32 (owner, Step 4 follow-up answer 1) A failed sign-in never writes the typed username. The log line and
+  auth_event name the user id when the typed name matches an account; otherwise the log says "unknown username"
+  and the auth_event row has neither a username nor a user id (the event type says what happened). Successful
+  events keep the account's own name. The per-username throttle key is HMAC-SHA256 of the stripped, case-folded
+  name under a 32-byte installation secret (`throttle_secret` in the master, made on the first failure), so
+  case variants share one counter, and a new username may not match an existing one ignoring case (two accounts
+  differing only in case would share a counter); Master recovery keeps the fixed key '#recovery'. Limit, stated: the secret
+  is in the same file, so someone holding the master file can test guesses against a stored key, and an HMAC
+  guess is cheap (unlike scrypt); the names are not readable and cannot be matched against a ready-made list. To
+  keep that window short, a throttle row with no failure and no lock for a day is deleted (on the next failure
+  or successful sign-in), so a password typed into the username box stays as a hash only until a day has passed and someone
+  next signs in or fails.
+  The secret is held as a `SecretKey` (redacted repr, no pickling). The DPAPI-held installation key was not used
+  because sign-in must stay throttled while the key store is locked (KS12).
+- R33 (owner, Step 4 follow-up answer 2) `app_strata.pyw` calls `start_logging()` before the window: the log
+  file is `DATA_DIR\Logs\strataledger.log`, rotating at 1 MB with five backups, with the R30 filter. If it cannot
+  be opened the app still starts and says so once: "The log file could not be opened, so errors will not be
+  recorded; check that the data folder can be written."
+- R34 (owner, Step 4 follow-up answer 3) An approval-limit refusal names only roles whose limit covers the amount
+  and that at least one active user other than the Master holds in the company (the nearest access row, as in
+  the access check; Deny holds nothing). If none is left it says to ask an Admin ("...ask an Admin to set one or
+  to approve it." / "...ask an Admin to approve it.").
+- R35 (owner, Step 4 follow-up answer 4) A database error that reaches `tx.write_transaction` (any service
+  write, posting included) is rolled back, logged with its details, and raised as `SaveFailedError` with no
+  cause attached: "Something went wrong saving this; nothing was saved. The details are in the log." Services
+  that turn a known database error into their own sentence still do so inside the transaction. Service errors
+  and programming errors pass through unchanged.
+- R36 (owner, Step 4 follow-up answer 5) For anyone but the Master, access decides the sentence before the file
+  does: a user without access (no row, or a Deny row) is told only that they have no access, even when the
+  company file is also the wrong one. A user with access, and the Master, are told the file is not the registered one. The file check
+  still comes before anything reads or writes the company file: a wrong file is never given an access_event row
+  (the log line records it), whichever sentence the user gets.

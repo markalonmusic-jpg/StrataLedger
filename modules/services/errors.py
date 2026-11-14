@@ -47,6 +47,19 @@ class KeyStoreLockedError(KeyUnavailableError):
     recovery code yet), so no new ledger key can be made: creating a company is refused (KS6)."""
 
 
+class SaveFailedError(ServiceError):
+    """An unexpected database error stopped a write; everything was rolled back (decision R35).
+
+    The person sees MESSAGE only. The database's own text goes to the log file (tx.write_transaction logs it
+    before raising this, with no cause attached).
+    """
+
+    MESSAGE = "Something went wrong saving this; nothing was saved. The details are in the log."
+
+    def __init__(self):
+        super().__init__(self.MESSAGE)
+
+
 class PermissionDeniedError(ServiceError):
     """The acting user lacks the permission for this action."""
 

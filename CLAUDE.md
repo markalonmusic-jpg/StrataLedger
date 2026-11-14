@@ -153,12 +153,11 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-13):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
 KS1-KS11; the service can post, no posting screen yet), 1d (key-lost checkpoint, replacing a lost installation
-key, KS12-KS21) and 4 (approvals in posting, R15-R26; owner follow-ups R27-R31). Next: steps 5-7
+key, KS12-KS21) and 4 (approvals in posting, R15-R26; owner follow-ups R27-R36). Next: steps 5-7
 (docs/next_step.md), then 2.7, 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
-- Nothing calls `logging_setup.configure_logging()` at start-up, so the running app writes no log file.
 - `views_billing.py` cannot load or save (its SQL names tables and columns that are not in the baseline);
   `views_wizard.py` inserts a customer without a code, which the baseline rejects. Phase 3.
 - The launcher's "Open Existing Ledger File" button cannot work (it passes a path as a company id) and the

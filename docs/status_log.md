@@ -351,6 +351,15 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-13: R27-R31 mutation check (mutation-tester, db67342): 116 mutations, 88 killed. Tests added for the
   20 real gaps; 19 re-run and killed, the 20th unreachable (a policy step always names a role); the rest are
   equivalent (docs/next_step.md). Suite 2403 passed, 6 xfailed.
+- 2026-11-13: The owner's answers to the four follow-up questions, R32-R36. R32: a failed sign-in never writes
+  the typed username (log and auth_event name the user id or "unknown username"); the throttle key is an HMAC of
+  the case-folded name under the master's new `throttle_secret` (baseline edited, empty development master
+  rebuilt); idle throttle rows are purged after a day; usernames unique ignoring case. R33: `app_strata.pyw`
+  starts the log file before the window. R34: a limit refusal names only roles an active user holds. R35: a
+  database error in any write is `SaveFailedError` with a plain sentence; details go to the log only. R36: a
+  user without access is told only that, and a wrong file is never written to. step-reviewer and
+  secrets-auditor findings fixed (the wrong-file access_event row, case-variant accounts, the stored hash's
+  lifetime, SecretKey, the R35 log chain). Suite 2443 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

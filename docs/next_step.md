@@ -1,11 +1,52 @@
 # Next step: Phase 2.5 Step 5 (reversals and automatic reversals)
 
-Written at the end of the Step 4 follow-up (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **Step 4 and the owner's follow-up answers (R27-R31) done, waiting for the owner's hand check.** Step 5 is
-not planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
+Written at the end of the Step 4 follow-up 2 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
+Status: **Step 4 and both rounds of owner follow-ups (R27-R31, R32-R36) done; the owner accepted the hand check.**
+Step 5 is not planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
 
-**State:** suite **2403 passed, 7 deselected, 6 xfailed**. HEAD: the commit that adds this file (after db67342).
-The development master is empty (no users, companies or keys) and there are no company files.
+**State:** suite **2443 passed, 7 deselected, 6 xfailed**. HEAD: the R32-R36 commit. The development master was
+rebuilt from the edited baseline (it gained `throttle_secret`, R32); it is empty (no users, companies or keys) and
+there are no company files. The previous empty master is in Backups\.
+
+## Follow-up 2 (owner answers to the four questions, R32-R36)
+
+- **R32 (question 1):** a failed sign-in never writes the typed username. The log says `user=<id>` or
+  `user=unknown username`; `auth_event` keeps the user id only (no username) for `Login failed` / `Locked`. The
+  throttle key is `auth.throttle_key(secret, name)`, HMAC-SHA256 of the stripped, case-folded name under the
+  master's `throttle_secret` (32 random bytes, made on the first failure). Case variants share one lock. The
+  limit is written into the decision: the secret is in the same file.
+- **R33 (question 2):** `app_strata.pyw` calls `start_logging()` before the window (`DATA_DIR\Logs\strataledger.log`,
+  1 MB x 5, R30 filter). If it cannot open, the app starts and says so once. The CLAUDE.md known issue is gone.
+- **R34 (question 3):** a limit refusal names only roles that an active user (not the Master) holds in the
+  company, by the nearest access row; otherwise "ask an Admin".
+- **R35 (question 4):** a database error in any service write is rolled back, logged with its details and shown
+  as "Something went wrong saving this; nothing was saved. The details are in the log." (`SaveFailedError`, no
+  cause attached).
+- **R36 (question 4):** a user without access is told only that, before any wrong-file check.
+- Not changed: the Windows `getpass` note (use `--no-prompt` from tools, R31).
+
+To see R32 by hand: sign in with a password typed into the username box five times, then look at
+`Logs\strataledger.log` and the master's `auth_event` and `login_throttle`: the text you typed is in none of them.
+
+Reviews of follow-up 2:
+- **step-reviewer:** approve with changes. Fixed:
+  - the R36 reorder wrote the denial row into the unchecked (wrong) company file. Now the file is still compared
+    first; a wrong file gets only the log line, with the no-access sentence when the user has no access;
+  - "Ann" and "ann" could be two accounts sharing one throttle counter, so a sign-in as one reset the other's
+    lock. New usernames must now be unique ignoring case.
+
+  Left as notes:
+  - a missing secret row disables existing locks (needs the master file in hand, which is R32's limit; commented);
+  - question 1 below.
+- **secrets-auditor:** no Critical or High. Fixed:
+  - (Medium) a password typed into the username box stayed forever as an HMAC that is cheap to guess against
+    with the master file in hand. Rows idle for a day are now purged, and the R32 limit is reworded;
+  - the secret is a `SecretKey`;
+  - the R35 log line no longer prints an earlier error it interrupted (it may quote typed text);
+  - tests for the upper-case marker, the typed password, the secret's hex and a temporary password when the save
+    fails.
+
+  Left as notes: questions 2 and 3 below.
 
 ## Hand check for the owner (Step 4 and R27-R31)
 
@@ -111,22 +152,14 @@ first-Master question (it is a real rebuild: run the dry run first, as always).
 
 ## Open questions for the owner
 
-1. **Typed usernames in the log** (secrets-auditor; this existing code was not changed here): a failed sign-in
-   logs the typed username to the log file and `auth_event`. Someone who types their password into the username
-   box leaves it there in clear text. Log the user id, or "unknown user", instead?
-2. **The log filter is not active in the running app yet:** nothing calls `logging_setup.configure_logging()` at
-   start-up (a CLAUDE.md known issue), so the app writes no log file at all today. Wire it at start-up now (a
-   small change), or with the Phase 3 shell?
-3. **Who can approve:** a limit refusal names every active role whose limit covers the amount, even when no
-   user holds that role. Keep it as a hint, or name only roles that someone holds (one more read of the
-   master)?
-4. **Smaller notes:**
-   - a context pointing at the wrong company file is told so before the access check (only a hand-built context
-     can do that);
-   - an unexpected database error at posting still shows SQLite's own text ("UNIQUE constraint failed: ...");
-   - Windows `getpass` without a console may wait for input instead of ending (use `--no-prompt` from tools).
+Questions 1-4 of the previous STOP were answered (R32-R36 above). New, from the reviews:
 
-   Fix any of these now?
+1. **R34 and the submitter** (step-reviewer): the limit refusal can name a role whose only holder is the person
+   who sent the request, who may not approve it when separation is on (R28). Leave it out of the count too?
+2. **Paths in the log** (secrets-auditor): the log file now runs, and tracebacks and one first-run line hold
+   absolute paths with the Windows profile name. Redact them only when a support bundle is built, or now?
+3. **`modules/font_loader.py`** logs to `modules.font_loader`, outside the `strataledger` logger, so its warnings
+   never reach the file (rule 12). Move it under `strataledger` now (one line), or with Phase 3?
 
 ## Step 5, to plan next session
 
@@ -147,3 +180,4 @@ sentence quoting typed text carries a `log_message` (R30).
   - log an error by passing the error object, never its text (R30, static test).
 - Whether retired installation keys keep their recovery copies is decided with KS18's key restore (backlog 16).
 - `auth._now()` remains the one allowed clock read in services (H2).
+- Phase 3 screens show `SaveFailedError` like any service error (its sentence only) and never log typed text.

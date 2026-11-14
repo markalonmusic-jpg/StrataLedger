@@ -22,12 +22,29 @@ from modules.views_user_profile import render_user_profile_view
 from modules.views_wizard import CustomerIntakeWizard
 from modules.font_loader import ensure_inter_font
 from modules.sidebar import NavItem, Sidebar
-from modules.services import auth, companies, key_store, keys, ledger_verify
+import config
+from modules.services import auth, companies, key_store, keys, ledger_verify, logging_setup
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError, ValidationError,
 )
 
 _logger = logging.getLogger("strataledger.app")
+
+LOG_UNAVAILABLE = ("The log file could not be opened, so errors will not be recorded; "
+                   "check that the data folder can be written.")
+
+
+def start_logging():
+    """Open the rotating log file DATA_DIR\\Logs\\strataledger.log with the R30 filter (decision R33).
+
+    Called first, before the window. Returns None, or LOG_UNAVAILABLE when the file cannot be opened: the app
+    still starts and shows that sentence once.
+    """
+    try:
+        logging_setup.configure_logging(config.LOG_FILE)
+    except OSError:
+        return LOG_UNAVAILABLE
+    return None
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -752,6 +769,9 @@ class App(ctk.CTk):
 
 
 if __name__ == "__main__":
+    log_warning = start_logging()
     app = App()
     if not app.startup_failed:
+        if log_warning:
+            app.after(0, lambda: messagebox.showwarning("Log file", log_warning, parent=app))
         app.mainloop()

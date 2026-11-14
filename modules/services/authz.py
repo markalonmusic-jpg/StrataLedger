@@ -102,7 +102,14 @@ def _action_words(permission):
 
 
 class _WrongCompanyFile(Exception):
-    """The context's company_db_path is not the file registered for its company."""
+    """The context's company_db_path is not the file registered for its company.
+
+    no_access: the user has no access either; they are told only that (R36), and nothing is written to the file.
+    """
+
+    def __init__(self, no_access=False):
+        super().__init__()
+        self.no_access = no_access
 
 
 def authorize(context, permission, project_id=None, *, record_type=None, record_id=None):
@@ -144,10 +151,12 @@ def check_company_access(context):
 def _checked_decide(context, permission, project_id):
     try:
         return _decide(context, permission, project_id)
-    except _WrongCompanyFile:
+    except _WrongCompanyFile as wrong:
         _logger.error("context company file does not match the registry: company_id=%s user=%s permission=%s",
                       context.company_id, context.user_id, permission)
-        raise PermissionDeniedError(_FIXED_MESSAGES[WRONG_FILE]) from None
+        # Not _deny: its access_event row would go into the unchecked file. The log line above is the record.
+        sentence = _FIXED_MESSAGES[NO_ACCESS] if wrong.no_access else _FIXED_MESSAGES[WRONG_FILE]
+        raise PermissionDeniedError(sentence) from None
 
 
 def deny(context, permission=None, *, record_type=None, record_id=None, message=None):
@@ -208,22 +217,26 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
         company.close()
     if row is None or amount_cents > row["max_amount_cents"]:
         who = _who_can_approve(context, permission, document_type, amount_cents)
-        if row is None:
+        if row is None and who is None:
+            message = (f"Your role has no approval limit for {_with_article(document_type.lower())}; ask an Admin "
+                       f"to set one or to approve it.")
+        elif row is None:
             message = (f"Your role has no approval limit for {_with_article(document_type.lower())}; ask an Admin "
                        f"to set one, or ask {who} to approve it.")
         else:
             message = (f"This amount ({money.text(amount_cents)}) is over your approval limit "
-                       f"({money.text(row['max_amount_cents'])}); ask {who} to approve it.")
+                       f"({money.text(row['max_amount_cents'])}); ask {who or 'an Admin'} to approve it.")
         _deny(context, permission, "User", record_type, record_id, message)
 
 
 def _who_can_approve(context, permission, document_type, amount_cents):
     """'someone in the Controller or PM role, or an Admin': the active roles holding the permission whose limit
-    covers the amount, by name. An Admin can always approve."""
+    covers the amount, by name, and only those at least one active user holds here (R34). None when no such role
+    is held: only an Admin is left (an Admin can always approve)."""
     company = database.get_readonly_connection(context.company_db_path)
     try:
-        names = [r["name"] for r in company.execute(
-            "SELECT role.name FROM role "
+        candidates = [(r["role_code"], r["name"]) for r in company.execute(
+            "SELECT role.role_code, role.name FROM role "
             "JOIN role_permission ON role_permission.role_code = role.role_code "
             "AND role_permission.permission_code = ? "
             "JOIN approval_limit ON approval_limit.role_code = role.role_code AND approval_limit.document_type = ? "
@@ -231,11 +244,29 @@ def _who_can_approve(context, permission, document_type, amount_cents):
             "ORDER BY role.name", (permission, document_type, amount_cents))]
     finally:
         company.close()
+    held = _held_roles(context, {code for code, _ in candidates}) if candidates else set()
+    names = [name for code, name in candidates if code in held]
     if not names:
-        return "an Admin"
+        return None
     if len(names) == 1:
         return f"someone in the {names[0]} role or an Admin"
     return f"someone in the {', '.join(names[:-1])} or {names[-1]} role, or an Admin,"   # "...or an Admin, to approve it"
+
+
+def _held_roles(context, role_codes):
+    """The role codes among `role_codes` that at least one active user other than the Master holds in the
+    context's company, by the same nearest-row rule as the access check (a Deny row holds nothing)."""
+    master = database.get_readonly_connection(context.master_db_path)
+    try:
+        held = set()
+        for user in master.execute("SELECT user_id FROM app_user WHERE is_active = 1 AND is_master = 0 "
+                                   "ORDER BY user_id").fetchall():
+            role_code = _access_role(master, user["user_id"], context.company_id)
+            if role_code in role_codes:
+                held.add(role_code)
+        return held
+    finally:
+        master.close()
 
 
 def _with_article(noun):
@@ -261,28 +292,29 @@ def _decide(context, permission, project_id):
         ).fetchone()
         if company is None:     # only the Master learns that the company is missing (no oracle for others)
             return False, is_master, NO_COMPANY if is_master else NO_ACCESS
+        # R36: a user without access learns only that, never whether the file is the registered one. The file is
+        # still compared first, so a denial is never written into a file that is not the company's.
+        role_code = None if is_master else _access_role(master, context.user_id, context.company_id)
+        no_access = not is_master and role_code is None
         try:
             registered = resolve_company_path(company["database_file_path"])
         except ValidationError:
-            raise _WrongCompanyFile() from None
+            raise _WrongCompanyFile(no_access) from None
         if not same_file(registered, context.company_db_path):
-            raise _WrongCompanyFile()
+            raise _WrongCompanyFile(no_access)
+        if no_access:
+            return False, False, NO_ACCESS
         if company["is_active"] != 1:
             allowed = is_master and (permission is None or permission in _MASTER_ONLY_WHEN_INACTIVE)
             if allowed:
                 return True, True, None
             if is_master:
                 return False, True, ARCHIVED_MASTER
-            # Only a user with access to the company learns that it is archived.
-            has_access = _access_role(master, context.user_id, context.company_id) is not None
-            return False, False, ARCHIVED if has_access else NO_ACCESS
+            return False, False, ARCHIVED     # only a user with access gets here (R36)
         if is_master:
             return True, True, None
-        role_code = _access_role(master, context.user_id, context.company_id)
     finally:
         master.close()
-    if role_code is None:
-        return False, False, NO_ACCESS
 
     company = database.get_readonly_connection(context.company_db_path)
     try:

@@ -596,13 +596,11 @@ def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_war
             "WHERE l.entry_id = ?", (entry_id,))]
         chain_hash = ledger_chain.seal(key.use_for_hmac(), company_code, prev_hash,
                                        ledger_chain.canonical_entry(header, sealed_lines, dimensions))
-        try:
-            conn.execute(
-                "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
-                "approved_by = ?, approved_at = ?, chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
-                "chain_hash = ? WHERE entry_id = ?",
-                (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
-                 prev_hash, chain_hash, entry_id))
-        except sqlite3.IntegrityError as exc:
-            raise PostingError(f"The entry could not be posted: {exc}") from None
+        # A database error here reaches write_transaction: logged, shown as SaveFailedError (R35).
+        conn.execute(
+            "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
+            "approved_by = ?, approved_at = ?, chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
+            "chain_hash = ? WHERE entry_id = ?",
+            (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
+             prev_hash, chain_hash, entry_id))
     return {"entry_id": entry_id, "entry_number": number, "warnings": warnings}

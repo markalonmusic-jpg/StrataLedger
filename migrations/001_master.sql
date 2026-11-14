@@ -90,13 +90,22 @@ CREATE TABLE audit_context (
     set_at DATETIME
 );
 
--- Login throttling (modules/services/auth.py). Keyed by the username typed, so
--- unknown usernames are throttled exactly like real ones. Not audited.
+-- Login throttling (modules/services/auth.py). Keyed by an HMAC of the username typed
+-- (stripped, case-folded) under throttle_secret, so unknown usernames are throttled
+-- exactly like real ones and no typed name is stored in clear text (R32). Master
+-- recovery uses the fixed key '#recovery'. Not audited.
 CREATE TABLE login_throttle (
     throttle_key TEXT PRIMARY KEY,
     failed_count INTEGER NOT NULL CHECK (failed_count >= 0),
     last_failed_at TEXT,
     locked_until TEXT
+);
+
+-- The installation's throttle secret (R32): 32 random bytes made on the first failed
+-- sign-in. One row. Not audited.
+CREATE TABLE throttle_secret (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    secret BLOB NOT NULL CHECK (length(secret) = 32)
 );
 
 -- Authentication events. Append-only. Never holds a password, hash or code.

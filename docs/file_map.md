@@ -99,7 +99,8 @@ in code (`tests/test_config_paths.py` fails on one).
   one by searching its code). `docs/design.md` -
   DRAFT visual spec (docs/CLAUDE_UI.md wins). `docs/role_templates.md`, `docs/csv_import_design.md`.
 - `modules/services/` - the service layer (rules 7, 10, 11, 15): every write and every protected read.
-  `tx.py` (the write transaction and read connection), `context.py` (`ServiceContext`), `authz.py`
+  `tx.py` (the write transaction and read connection; a database error in a write is logged and raised as
+  `SaveFailedError`, R35), `context.py` (`ServiceContext`), `authz.py`
   (`authorize`), `errors.py` (typed exceptions), then one module per area (auth, users, companies, accounts,
   contacts, periods, approvals, ledger, ledger_chain, ledger_verify, keys...). Section 7 says what each step built.
   `key_wrap.py` (Step 1c) is the only importer of `cryptography`: AES-256-GCM key wrapping bound to its row by

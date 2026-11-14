@@ -5,7 +5,7 @@ import pytest
 import config
 import modules.database as database
 from modules.services.context import ServiceContext
-from modules.services.errors import ValidationError
+from modules.services.errors import SaveFailedError, ValidationError
 from modules.services.tx import read_connection, write_transaction
 
 
@@ -50,7 +50,7 @@ def test_rollback_on_exception(fresh_company):
 
 
 def test_rollback_on_constraint_error(fresh_company):
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(SaveFailedError):                 # R35: the database's text goes to the log only
         with write_transaction(fresh_company, make_context()) as conn:
             insert_account(conn)
             insert_account(conn)  # duplicate code

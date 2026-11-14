@@ -55,7 +55,9 @@ def create_user(session, username, password, first_name, last_name, email, *, co
         if conn.execute("SELECT 1 FROM app_user WHERE lower(email) = lower(?)", (email.strip(),)).fetchone():
             raise ValidationError("That email address is already used by another user"
                                   if actor["is_master"] == 1 else NEUTRAL_EMAIL)
-        if conn.execute("SELECT 1 FROM app_user WHERE username = ?", (username,)).fetchone():
+        # Case-insensitive (usernames are ASCII): the throttle key folds case, so "Ann" and "ann" may not
+        # both exist (R32).
+        if conn.execute("SELECT 1 FROM app_user WHERE lower(username) = lower(?)", (username,)).fetchone():
             raise ValidationError("That username is not available")
         user_id = conn.execute(
             "INSERT INTO app_user (username, password_hash, first_name, last_name, email, role) "
@@ -91,7 +93,7 @@ def reset_password(session, target_user_id, new_password):
     with write_transaction(session.master_db_path, _Actor(session.user_id)) as conn:
         conn.execute("UPDATE app_user SET password_hash = ?, must_change_password = 1 WHERE user_id = ?",
                      (passwords.hash_password(new_password), target_user_id))
-        conn.execute("DELETE FROM login_throttle WHERE throttle_key = ?", (target["username"],))
+        auth.clear_throttle(conn, target["username"])
         auth._insert_event(conn, "Password reset", username=target["username"], user_id=target_user_id,
                            actor_user_id=session.user_id)
 

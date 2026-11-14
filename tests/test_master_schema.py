@@ -253,3 +253,14 @@ def test_login_throttle_and_recovery_tables(fresh):
     assert rejects(fresh, "INSERT INTO master_recovery (id, code_hash, created_at) VALUES (2, 'scrypt$h', 't')")
     triggers = {r[0] for r in fresh.execute("SELECT tbl_name FROM sqlite_master WHERE type = 'trigger'")}
     assert "master_recovery" not in triggers and "login_throttle" not in triggers  # never audited
+
+
+def test_throttle_secret_table(fresh):
+    """R32: one row, 32 bytes, never audited (the throttle key is an HMAC under it)."""
+    fresh.execute("INSERT INTO throttle_secret (id, secret) VALUES (1, ?)", (b"k" * 32,))
+    assert rejects(fresh, "INSERT INTO throttle_secret (id, secret) VALUES (2, ?)", (b"k" * 32,))
+    fresh.execute("DELETE FROM throttle_secret")
+    assert rejects(fresh, "INSERT INTO throttle_secret (id, secret) VALUES (1, ?)", (b"k" * 31,))
+    assert rejects(fresh, "INSERT INTO throttle_secret (id, secret) VALUES (1, NULL)")
+    triggers = {r[0] for r in fresh.execute("SELECT tbl_name FROM sqlite_master WHERE type = 'trigger'")}
+    assert "throttle_secret" not in triggers

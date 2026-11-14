@@ -13,7 +13,8 @@ import pytest
 
 from modules.services import keys, ledger, ledger_chain, periods
 from modules.services.errors import (
-    KeyUnavailableError, PeriodClosedError, PermissionDeniedError, PostingError, ValidationError,
+    KeyUnavailableError, PeriodClosedError, PermissionDeniedError, PostingError, SaveFailedError,
+    ValidationError,
 )
 from tests import ledger_helpers as lh
 from tests.authz_world import world  # noqa: F401  (fixture)
@@ -542,7 +543,7 @@ def test_a_failed_post_returns_the_number_and_leaves_the_chain_unchanged(env, ct
     first_hash = entry_row(env, first)["chain_hash"]
     with monkeypatch.context() as patch:
         patch.setattr(ledger_chain, "seal", lambda *args, **kwargs: first_hash)   # collides at the final UPDATE
-        refused(env, lambda: ledger.post_journal_entry(ctx, second, confirm=True), PostingError)
+        refused(env, lambda: ledger.post_journal_entry(ctx, second, confirm=True), SaveFailedError)   # R35
     ledger.post_journal_entry(ctx, second, confirm=True)
     assert entry_row(env, second)["entry_number"] == 2
     assert verify(env)["ok"]

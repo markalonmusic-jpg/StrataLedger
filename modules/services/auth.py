@@ -6,13 +6,16 @@ CLAUDE.md rule 13 and docs/roles_permissions_design.md section 9.
   not in its format never verifies (no plaintext fallback).
 * Every login failure gives the same message. An unknown username still runs
   one scrypt verification against a dummy hash, so it takes as long.
-* Throttling is keyed by the username typed (unknown names included): from the
+* Throttling is keyed by the username typed (unknown names included), stored only as
+  an HMAC of the stripped, case-folded name under the master's throttle_secret (R32): from the
   LOCK_AFTER-th consecutive failure the key is locked for
   BASE_LOCK_SECONDS * 2^(failures - LOCK_AFTER), capped at MAX_LOCK_SECONDS.
   While locked, attempts are refused without checking the password and do not
   extend the lock. A success clears the key. Master recovery is throttled the
   same way under RECOVERY_KEY.
-* auth_event and the log file record who and what, never a password, hash or code.
+* auth_event and the log file record who and what, never a password, hash or code. A failed
+  sign-in names the user id when the typed name matches an account, otherwise "unknown
+  username"; the typed name itself is never written (R32).
 * A session whose password was reset (must_change_password) may only call
   change_password; every other service raises PasswordChangeRequiredError.
 
@@ -20,6 +23,8 @@ Login and the first Master cannot be permission-checked (there is no user yet,
 or the user is proving who they are); they are excluded from the rule-10 static
 test by name.
 """
+import hashlib
+import hmac
 import logging
 import math
 import os
@@ -31,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 
 import modules.database as database
 from modules.services import authz, key_store, passwords
+from modules.services.keys import SecretKey
 from modules.services.errors import (
     AuthenticationError, KeyStoreLockedError, LoginThrottledError, PasswordChangeRequiredError,
     PermissionDeniedError, ValidationError,
@@ -40,6 +46,10 @@ from modules.services.tx import read_connection, write_transaction
 LOCK_AFTER = 5
 BASE_LOCK_SECONDS = 30
 MAX_LOCK_SECONDS = 900
+# A throttle row idle this long (no failure, no lock) is deleted (R32): a password typed into the username box
+# stays as a keyed hash only while it can still matter. A day is far longer than the longest lock, so the
+# growing delay is kept for anyone still trying.
+THROTTLE_RETENTION_SECONDS = 86_400
 RECOVERY_KEY = "#recovery"  # '#' is not allowed in usernames, so this key never collides with one
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._@-]{3,64}$")
 INVALID_LOGIN = "Invalid username or password"
@@ -248,7 +258,7 @@ def recover_master(master_db_path, code, new_password, *, machine_wrap=None):
     password is still reset and the result says the ledger key could not be restored.
     """
     passwords.check_password_policy(new_password)
-    _check_throttle(master_db_path, RECOVERY_KEY)
+    _check_throttle(master_db_path, recovery=True)
     conn = read_connection(master_db_path)
     try:
         stored = conn.execute("SELECT code_hash FROM master_recovery WHERE id = 1").fetchone()
@@ -257,14 +267,15 @@ def recover_master(master_db_path, code, new_password, *, machine_wrap=None):
         conn.close()
     valid = passwords.verify_recovery_code(code, stored["code_hash"] if stored else _dummy())
     if not (valid and stored and master):
-        _record_failure(master_db_path, RECOVERY_KEY, "Recovery failed", username=None, user_id=None)
+        _record_failure(master_db_path, "Recovery failed", recovery=True)
         raise AuthenticationError("The recovery code is not valid")
     new_code = passwords.generate_recovery_code()
     with write_transaction(master_db_path, _Actor(master["user_id"])) as conn:
         conn.execute("UPDATE app_user SET password_hash = ?, must_change_password = 0 WHERE user_id = ?",
                      (passwords.hash_password(new_password), master["user_id"]))
         opened, here = _replace_code(conn, master["user_id"], code, new_code, machine_wrap)
-        conn.execute("DELETE FROM login_throttle WHERE throttle_key IN (?, ?)", (RECOVERY_KEY, master["username"]))
+        conn.execute("DELETE FROM login_throttle WHERE throttle_key = ?", (RECOVERY_KEY,))
+        clear_throttle(conn, master["username"])
         _insert_event(conn, "Master recovered", username=master["username"], user_id=master["user_id"],
                       actor_user_id=master["user_id"])
     _logger.warning("Master password recovered with the recovery code: user=%s", master["user_id"])
@@ -353,15 +364,14 @@ def _verify_own_password(session, password):
         conn.close()
     verified = passwords.verify_password(password, row["password_hash"] if row else _dummy())
     if row is None or row["is_active"] != 1 or not verified:
-        _record_failure(session.master_db_path, session.username, "Login failed", username=session.username,
-                        user_id=session.user_id)
+        _record_failure(session.master_db_path, "Login failed", name=session.username, user_id=session.user_id)
         raise AuthenticationError("The current password is not correct")
     return row
 
 
 def _verify_master_code(master_db_path, code):
     """Check the Master recovery code (throttled under RECOVERY_KEY); AuthenticationError if it is not valid."""
-    _check_throttle(master_db_path, RECOVERY_KEY)
+    _check_throttle(master_db_path, recovery=True)
     conn = read_connection(master_db_path)
     try:
         stored = conn.execute("SELECT code_hash FROM master_recovery WHERE id = 1").fetchone()
@@ -369,7 +379,7 @@ def _verify_master_code(master_db_path, code):
         conn.close()
     valid = passwords.verify_recovery_code(code, stored["code_hash"] if stored else _dummy())
     if not (valid and stored):
-        _record_failure(master_db_path, RECOVERY_KEY, "Recovery failed", username=None, user_id=None)
+        _record_failure(master_db_path, "Recovery failed", recovery=True)
         raise AuthenticationError("The recovery code is not valid")
 
 
@@ -389,14 +399,14 @@ def login(master_db_path, username, password):
         conn.close()
     verified = passwords.verify_password(password, row["password_hash"] if row else _dummy())
     if row is None or not verified or row["is_active"] != 1:
-        _record_failure(master_db_path, username, "Login failed", username=username,
-                        user_id=row["user_id"] if row else None)
+        _record_failure(master_db_path, "Login failed", name=username, user_id=row["user_id"] if row else None)
         raise AuthenticationError(INVALID_LOGIN)
     rehash = passwords.needs_rehash(row["password_hash"])
 
     def succeed(conn):
-        conn.execute("DELETE FROM login_throttle WHERE throttle_key = ?", (username,))
-        _insert_event(conn, "Login", username=username, user_id=row["user_id"])
+        clear_throttle(conn, username)
+        _purge_idle_throttles(conn, _now())
+        _insert_event(conn, "Login", username=row["username"], user_id=row["user_id"])
         if rehash:
             conn.execute("UPDATE app_user SET password_hash = ? WHERE user_id = ?",
                          (passwords.hash_password(password), row["user_id"]))
@@ -418,8 +428,7 @@ def change_password(session, old_password, new_password):
         conn.close()
     verified = passwords.verify_password(old_password, row["password_hash"] if row else _dummy())
     if row is None or row["is_active"] != 1 or not verified:
-        _record_failure(session.master_db_path, session.username, "Login failed", username=session.username,
-                        user_id=session.user_id)
+        _record_failure(session.master_db_path, "Login failed", name=session.username, user_id=session.user_id)
         raise AuthenticationError("The current password is not correct")
     if old_password == new_password:
         raise ValidationError("Choose a password different from the current one")
@@ -498,10 +507,55 @@ def _auth_write(master_db_path, work, actor_user_id=None):
         work(conn)
 
 
-def _check_throttle(master_db_path, key):
+def throttle_key(secret, name):
+    """The login_throttle key for a typed name (R32): HMAC-SHA256 of the stripped, case-folded name under the
+    SecretKey `secret`, in hex."""
+    return hmac.new(secret.use_for_hmac(), str(name or "").strip().casefold().encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def _purge_idle_throttles(conn, now):
+    """Delete throttle rows with no failure and no lock in the last THROTTLE_RETENTION_SECONDS (R32)."""
+    cutoff = _iso(now - timedelta(seconds=THROTTLE_RETENTION_SECONDS))
+    conn.execute("DELETE FROM login_throttle WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)",
+                 (cutoff, cutoff))
+
+
+def clear_throttle(conn, name):
+    """Remove the throttle row of a name (a success, a reset). Inside the caller's master transaction."""
+    secret = _throttle_secret(conn)
+    if secret is not None:
+        conn.execute("DELETE FROM login_throttle WHERE throttle_key = ?", (throttle_key(secret, name),))
+
+
+def _throttle_secret(conn, create=False):
+    """The installation's throttle secret; made on the first failure (create=True, in a write transaction)."""
+    row = conn.execute("SELECT secret FROM throttle_secret WHERE id = 1").fetchone()
+    if row is None and create:
+        conn.execute("INSERT INTO throttle_secret (id, secret) VALUES (1, ?) ON CONFLICT (id) DO NOTHING",
+                     (os.urandom(32),))
+        row = conn.execute("SELECT secret FROM throttle_secret WHERE id = 1").fetchone()
+    return None if row is None else SecretKey(bytes(row["secret"]))
+
+
+def _key(conn, name, recovery, create=False):
+    """RECOVERY_KEY for Master recovery; otherwise the HMAC of the typed name (None before any secret exists).
+
+    No secret means no failure was ever recorded, so there is nothing to check. Deleting the row by hand would
+    orphan the existing locks; that needs the master file in hand, which is R32's stated limit.
+    """
+    if recovery:
+        return RECOVERY_KEY
+    secret = _throttle_secret(conn, create)
+    return None if secret is None else throttle_key(secret, name)
+
+
+def _check_throttle(master_db_path, name=None, *, recovery=False):
     conn = read_connection(master_db_path)
     try:
-        row = conn.execute("SELECT locked_until FROM login_throttle WHERE throttle_key = ?", (key,)).fetchone()
+        key = _key(conn, name, recovery)
+        row = None if key is None else conn.execute(
+            "SELECT locked_until FROM login_throttle WHERE throttle_key = ?", (key,)).fetchone()
     finally:
         conn.close()
     if row is None or not row["locked_until"]:
@@ -517,11 +571,19 @@ def _lock_seconds(failures):
     return min(BASE_LOCK_SECONDS * 2 ** (failures - LOCK_AFTER), MAX_LOCK_SECONDS)
 
 
-def _record_failure(master_db_path, key, event_type, *, username, user_id):
+def _record_failure(master_db_path, event_type, *, name=None, recovery=False, user_id=None):
+    """Count a failure under the name's key. auth_event and the log name the user id, never the typed name (R32)."""
+    if recovery:
+        who = "recovery code"
+    else:
+        who = "user=unknown username" if user_id is None else "user=" + str(user_id)
+
     def work(conn):
+        key = _key(conn, name, recovery, create=True)
+        now = _now()
+        _purge_idle_throttles(conn, now)       # first: a row idle for a day starts again at one failure
         row = conn.execute("SELECT failed_count FROM login_throttle WHERE throttle_key = ?", (key,)).fetchone()
         failures = (row["failed_count"] if row else 0) + 1
-        now = _now()
         seconds = _lock_seconds(failures)
         locked_until = _iso(now + timedelta(seconds=seconds)) if seconds else None
         conn.execute(
@@ -530,8 +592,8 @@ def _record_failure(master_db_path, key, event_type, *, username, user_id):
             "last_failed_at = excluded.last_failed_at, locked_until = excluded.locked_until",
             (key, failures, _iso(now), locked_until),
         )
-        _insert_event(conn, event_type, username=username, user_id=user_id)
+        _insert_event(conn, event_type, user_id=user_id)
         if seconds:
-            _insert_event(conn, "Locked", username=username, user_id=user_id)
-        _logger.warning("%s: username=%s failures=%d lock_seconds=%d", event_type, username, failures, seconds)
+            _insert_event(conn, "Locked", user_id=user_id)
+        _logger.warning("%s: %s failures=%d lock_seconds=%d", event_type, who, failures, seconds)
     _auth_write(master_db_path, work)

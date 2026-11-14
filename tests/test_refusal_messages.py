@@ -546,3 +546,125 @@ def test_three_roles_in_a_step_are_listed_with_commas(world, team):
     message, _ = _denied(world, lambda: approvals.approve(outsider, request_id))
     assert message == ("Step 1 of 1 needs approval by someone in the Controller, PM or Treasurer role; "
                        "ask them to approve it.")
+
+
+# --- R34: a limit refusal names only roles someone holds -------------------------------------------------------
+
+def _limit_refusal(world, team, amount=200_000, by="pm1"):
+    request_id = submit(team, amount=amount)
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"](by), request_id))
+    return message
+
+
+def test_a_role_with_a_covering_limit_but_no_holder_is_not_named(world, team):
+    world.role(CO, "Treasurer", ["bill.approve"])
+    world.limit(CO, "Treasurer", "Bill", 10_000_000)        # covers the amount, but nobody holds it
+    assert _limit_refusal(world, team).endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+@pytest.mark.parametrize("how", ["inactive", "denied", "revoked", "master"])
+def test_a_role_whose_only_holders_cannot_act_is_not_named(world, team, how):
+    for name in ("ctrl1", "ctrl2"):
+        if how == "inactive":
+            world.set_user_active(team[name], False)
+        elif how == "denied":
+            world.grant(team[name], CO, "Controller", mode="Deny")
+        else:
+            world.revoke(team[name], CO)
+    if how == "master":                                     # the Master is not counted as a role holder
+        world.grant(team["master"], CO, "Controller")
+    assert _limit_refusal(world, team) == ("This amount (2,000.00) is over your approval limit (1,000.00); "
+                                           "ask an Admin to approve it.")
+
+
+def test_one_active_holder_is_enough(world, team):
+    world.set_user_active(team["ctrl1"], False)
+    assert _limit_refusal(world, team).endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+def test_no_limit_and_no_holder_says_ask_an_admin(world, team):
+    world.role(CO, "Helper", ["bill.approve"])
+    helper = world.user("helper")
+    world.grant(helper, CO, "Helper")
+    for name in ("pm1", "pm2", "pm3", "ctrl1", "ctrl2"):
+        world.revoke(team[name], CO)
+    request_id = submit(team, amount=5_000)
+    message, _ = _denied(world, lambda: approvals.approve(world.ctx(helper, CO), request_id))
+    assert message == "Your role has no approval limit for a bill; ask an Admin to set one or to approve it."
+
+
+def test_a_holder_through_the_parent_company_counts(world, team):
+    child = "CHILD"
+    world.role(child, "Clerk", ["bill.create"])
+    world.role(child, "Small", ["bill.approve"])
+    world.role(child, "Treasurer", ["bill.approve"])
+    world.limit(child, "Small", "Bill", 100)
+    world.limit(child, "Treasurer", "Bill", 10_000_000)
+    clerk, small, treasurer = world.user("cclerk"), world.user("small"), world.user("treasurer")
+    world.grant(clerk, child, "Clerk")
+    world.grant(small, child, "Small")
+    world.grant(treasurer, CO, "Treasurer")                 # no row in CHILD: the parent's row applies
+    request_id = approvals.submit_for_approval(world.ctx(clerk, child), "Bill", "invoice", 1, 5_000,
+                                               created_by=clerk)
+    with pytest.raises(PermissionDeniedError) as error:
+        approvals.approve(world.ctx(small, child), request_id)
+    assert str(error.value).endswith("ask someone in the Treasurer role or an Admin to approve it.")
+    world.grant(treasurer, child, "Treasurer", mode="Deny")  # the nearest row denies: no longer a holder
+    with pytest.raises(PermissionDeniedError) as error:
+        approvals.approve(world.ctx(small, child), request_id)
+    assert str(error.value).endswith("; ask an Admin to approve it.")
+
+
+# --- R36: access is checked before the file ---------------------------------------------------------------------
+
+def _wrong_file(context, world):
+    import dataclasses
+    return dataclasses.replace(context, company_db_path=str(world.path("OTHER")))
+
+
+def test_a_user_without_access_and_a_wrong_file_is_told_only_no_access(world, team):
+    stranger = world.user("stranger")
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(_wrong_file(world.ctx(stranger, CO), world), "ledger.view")
+    assert str(error.value) == "You do not have access to this company; ask an Admin to give you access."
+    assert world.events("OTHER") == []                  # nothing is written into a file that is not CO's
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.check_company_access(_wrong_file(world.ctx(stranger, CO), world))
+    assert str(error.value) == "You do not have access to this company; ask an Admin to give you access."
+    assert authz.is_allowed(_wrong_file(world.ctx(stranger, CO), world), "ledger.view") is False
+    assert world.events("OTHER") == []
+
+
+def test_a_user_without_access_and_the_right_file_is_still_logged(world, team):
+    stranger = world.user("stranger")
+    with pytest.raises(PermissionDeniedError):
+        authz.authorize(world.ctx(stranger, CO), "ledger.view")
+    assert world.events(CO)[-1]["permission_code"] == "ledger.view"
+
+
+def test_a_denied_user_and_a_wrong_file_is_told_only_no_access(world, team):
+    world.grant(team["clerk"], CO, "Clerk", mode="Deny")
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(_wrong_file(team["ctx"]("clerk"), world), "ledger.view")
+    assert str(error.value) == "You do not have access to this company; ask an Admin to give you access."
+    assert world.events("OTHER") == []
+
+
+def test_a_user_with_access_and_a_wrong_file_is_told_the_file_is_wrong(world, team):
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(_wrong_file(team["ctx"]("clerk"), world), "ledger.view")
+    assert str(error.value) == authz._FIXED_MESSAGES[authz.WRONG_FILE]
+
+
+def test_the_master_is_told_the_file_is_wrong_even_for_an_archived_company(world, team):
+    world.set_company_active(CO, False)
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(_wrong_file(team["ctx"]("master"), world), "company.backup")
+    assert str(error.value) == authz._FIXED_MESSAGES[authz.WRONG_FILE]
+
+
+def test_an_archived_company_with_access_and_a_wrong_file_is_told_the_file_is_wrong(world, team):
+    world.set_company_active(CO, False)
+    with pytest.raises(PermissionDeniedError) as error:
+        authz.authorize(_wrong_file(team["ctx"]("clerk"), world), "ledger.view")
+    assert str(error.value) == authz._FIXED_MESSAGES[authz.WRONG_FILE]

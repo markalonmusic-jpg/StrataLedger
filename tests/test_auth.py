@@ -193,7 +193,7 @@ def test_a_rebuilt_user_table_cannot_set_up_a_second_master(master_path):
 
 
 def test_failed_logins_never_store_or_log_the_password(world, caplog):
-    world.user("ann")
+    ann = world.user("ann")
     secret = "my wrong secret attempt"
     with caplog.at_level(logging.DEBUG):
         for _ in range(3):
@@ -201,8 +201,8 @@ def test_failed_logins_never_store_or_log_the_password(world, caplog):
                 auth.login(world.master, "ann", secret)
     assert secret not in caplog.text
     assert secret not in all_master_text(world) and PASSWORD not in all_master_text(world)
-    events = world.master_rows("SELECT event_type, username FROM auth_event")
-    assert events == [{"event_type": "Login failed", "username": "ann"}] * 3
+    events = world.master_rows("SELECT event_type, username, user_id FROM auth_event")
+    assert events == [{"event_type": "Login failed", "username": None, "user_id": ann}] * 3     # R32
 
 
 # --- Throttling ------------------------------------------------------------------------------
