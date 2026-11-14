@@ -185,6 +185,10 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
    auto-reversing accruals are known (`auto_reverse_date`, `reversal_reason = 'Accrual reversal'`). (e) The
    loan principal / interest columns (`invoice_line.loan_line_type`, `journal_line.loan_id`) wait for the
    loans step. (f) `company_settings` has no default report basis setting.
+   Export (docs/export_design.md, v1.0): one export service with XLSX (live formulas with cached values) and CSV
+   writers, used by every report and list as it is built; XLSX upload and fuller row errors for the importer;
+   import templates. Needs: XlsxWriter, openpyxl and defusedxml after the licence and PyInstaller check; an
+   `export_event` table; a streaming write in `storage.py`; journal entry and budget import types.
 7. Backup/export, installer, licensing.
 8. (Done in Phase 2.6: customer and vendor codes.) Still open: the wizard
    shows the code (Phase 3).
