@@ -422,15 +422,56 @@ def test_a_document_draft_is_changed_only_through_its_document(rnd, source, word
                 rf"^This entry was made by {words} instead\.$")
 
 
-def test_saving_the_lines_back_as_read_keeps_the_rounding_line(rnd):
-    importer = ctx_for(rnd, "Import")
-    entry_id = doc(rnd, "Import", off_by(rnd, 1), context=importer)["entry_id"]
-    shown = ledger.get_entry(importer, entry_id)["lines"]
+@pytest.mark.parametrize("source", ROUNDING_SOURCES)
+def test_saving_the_lines_back_as_read_keeps_the_rounding_line(rnd, source):
+    reviewer = ctx_for(rnd, ORIGIN_FOR[source])
+    entry_id = doc(rnd, source, off_by(rnd, 1), context=reviewer)["entry_id"]
+    shown = ledger.get_entry(reviewer, entry_id)["lines"]
     back = [{k: line[k] for k in ledger.LINE_FIELDS if line[k] is not None} for line in shown]
     assert len(back) == 3                                            # the screen sends all three lines back
-    ledger.update_entry(importer, entry_id, lines=back)
+    ledger.update_entry(reviewer, entry_id, lines=back)
     saved = lines_of(rnd, entry_id)
     assert len(saved) == 3 and [l["is_rounding_adjustment"] for l in saved] == [0, 0, 1]
+
+
+def test_the_rounding_line_takes_nothing_from_the_other_lines(rnd):
+    # R49: no contact, project, cost code or reference, even when the entry's other lines carry them.
+    project = rnd.project("PARENT")
+    with rnd._company("PARENT") as c:
+        cost_code = c.execute("INSERT INTO cost_code (code, name, cost_type_label) VALUES ('03-300', 'Concrete', "
+                              "'Cement') RETURNING cost_code_id").fetchone()[0]
+    entry_lines = off_by(rnd, 1)
+    for line in entry_lines:
+        line.update(contact_id=rnd.plain_contact, project_id=project, cost_code_id=cost_code, external_ref="R-1",
+                    memo="Week 12")
+    entry_id = doc(rnd, "Import", entry_lines)["entry_id"]
+    line = rounding_lines(rnd, entry_id)[0]
+    assert (line["memo"], line["contact_id"], line["project_id"], line["cost_code_id"], line["external_ref"]) == (
+        "Rounding (1 cent)", None, None, None, None)
+
+
+@pytest.mark.parametrize("change", ["memo", "contact", "project", "account"])
+def test_a_line_that_only_looks_like_the_rounding_line_is_kept(rnd, change):
+    # R55: only a line sent back exactly as read is taken as the rounding line. A real 1-cent line that differs in
+    # one field stays a person's line; here it balances the entry, so no rounding line is written.
+    importer = ctx_for(rnd, "Import")
+    entry_id = doc(rnd, "Import", off_by(rnd, 1), context=importer)["entry_id"]
+    look_alike = {"account_id": A(rnd, "rounding"), "credit_cents": 1, "memo": "Rounding (1 cent)"}
+    if change == "memo":
+        look_alike["memo"] = "Bank fee"
+    elif change == "contact":
+        look_alike["contact_id"] = rnd.plain_contact
+    elif change == "project":
+        look_alike["project_id"] = rnd.project("PARENT")
+    else:                    # a person's line on the new rounding account, not on the stored rounding line's account
+        with rnd._company("PARENT") as c:
+            new = lh.make_account(c, "8030")
+        settings(rnd, rounding_variance_acct_id=new)
+        look_alike["account_id"] = new
+    ledger.update_entry(importer, entry_id, lines=off_by(rnd, 1) + [look_alike])
+    saved = lines_of(rnd, entry_id)
+    assert [l["is_rounding_adjustment"] for l in saved] == [0, 0, 0]
+    assert saved[-1]["account_id"] == look_alike["account_id"]
 
 
 def test_an_edited_import_draft_two_cents_off_says_save_again(rnd):

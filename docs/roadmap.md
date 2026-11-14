@@ -90,7 +90,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     its automatic reversal in the same transaction; `void_entry` and `reverse_entry` (Void and Correction, a
     person with `je.reverse`, a note and confirm); voiding an accrual voids its automatic reversal too; every
     reversal mirrors its original, dimensions included. R48 (period 13/14 reversals) final 2026-11-14.
-    **Step 6** (built 2026-11-14, R49-R54): rounding and document entries: `create_document_entry`, the one narrow
+    **Step 6** (done 2026-11-14, R49-R55; R55 provisional): rounding and document entries: `create_document_entry`, the one narrow
     path for document, import, payroll and conversion entries (section 13, brought forward from Step 7), with
     `as_system`/`as_import` and a static caller test; `create_entry` takes manual sources only; a 1-cent Import,
     Payroll or Conversion entry gets a flagged rounding line when saved, 2 cents or more is refused when saved;

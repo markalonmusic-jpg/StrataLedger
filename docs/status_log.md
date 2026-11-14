@@ -670,3 +670,14 @@ Rotation and key-lost text as it stood before the trim:
   closed, the reversal is refused with "reopen it with a reason, or date the void in the next fiscal year" and
   never moved; four tests (void, correction, next-year void, pair void). Suite 2565 passed, 7 deselected,
   5 xfailed. Step 6 (rounding) planned in docs/next_step.md; waiting for approval (Q1-Q3).
+
+- 2026-11-14: Phase 2.5 Step 6 done (rounding and document entries; L8, R1, R49-R55). Owner answers recorded:
+  R49 (the rounding line is written at save and worked out again on every save; posting checks it again, R53),
+  R50 (`create_entry`/`update_entry` take manual sources only), R51 (2 cents or more is refused when the importer
+  saves it, naming the entry, its rows and the difference; nothing is saved). `ledger.create_document_entry`,
+  `ServiceContext.as_system`/`as_import` and a static caller test (R54). Review fixes (R55, provisional): Import
+  and Payroll only with origin Import; document drafts changed only through their document. R48: a test confirms
+  `periods.reopen_period` reopens periods 13 and 14 with a reason, so the sentence stands. Commits 513aedc,
+  0695522. Mutation check: 53 mutants, 48 killed; the 5 survivors (the rounding line's recognition and its empty
+  fields) now have tests (suite 2740 passed, 7 deselected, 5 xfailed; test_ledger_rounding.py: as-read over the three sources, nothing copied from other
+  lines, four look-alike lines), and each kills its mutant. Hand check tools/hand_check_step6.py passes.
