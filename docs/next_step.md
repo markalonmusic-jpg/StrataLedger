@@ -1,196 +1,178 @@
 # Next step: Phase 2.5 Step 5 (reversals and automatic reversals)
 
-Written at the end of the Step 4 follow-up 4 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **Step 4 and four rounds of owner follow-ups (R27-R31, R32-R36, R37-R38, R39) done; the owner accepted the hand check.**
-Step 5 is not planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
+Written at the STOP after the R39 review and the design batch (2026-11-13). Overwritten at each STOP (CLAUDE.md
+section 8). Status: **plan written, waiting for the owner's approval. No Step 5 code exists.**
 
-**State:** suite **2466 passed, 7 deselected, 6 xfailed**. HEAD: the R39 commit. The development master was
-rebuilt from the edited baseline (it gained `throttle_secret`, R32); it is empty (no users, companies or keys) and
-there are no company files. The previous empty master is in Backups\.
+**State:** suite **2471 passed, 7 deselected, 6 xfailed** (the R39 review added five tests). The development
+master is empty (no users, companies or keys), and there are no company files. Step 5 needs no baseline change,
+so no rebuild, unless the owner answers question 6 with "yes".
 
-## Follow-up 4 (owner answer to the follow-up-3 question, R39)
+## Done since the last STOP
 
-- **R39:** with separation on, the limit refusal's "ask" target leaves out the creator and submitter: "another
-  Admin" when one of them is an Admin and another active Admin exists; "an Admin" when neither is an Admin
-  (unchanged wording); else "the Master" if the Master is neither; else, with no role holder left, the whole
-  refusal is "No one else in this company can approve it; add another approver, or turn off separation of duties
-  in Settings > Controls." `authz._admin_target` and `authz._ask_target` build it; `_who_can_approve` became
-  `_roles_that_can_approve` (names only). Tests in tests/test_refusal_messages.py (R39 section), written first.
-- The hand check (`STRATALEDGER_ALLOW_TEST_KEYS=1 python tools/hand_check_step4.py`) still ends "Every step behaved
-  as decided."
+- **R39 review** (step-reviewer on d141718): approve with changes, and the changes were tests only. Five tests were
+  added to tests/test_refusal_messages.py: no Admin in the company asks the Master; an inactive Master is not
+  asked; reject leaves out the Admin creator; a missing settings row; two role holders with the Master. Each was
+  proven against a mutant of authz.py or approvals.py (5 of 5 killed). One note was left as is: an Admin
+  inherited from a parent company is not tested for R39 (it reuses `_access_role`, which is tested elsewhere).
+- **Design batch:** five docs-only commits, then the owner accepted every proposed answer (CM3, BF1, EX1) and the
+  Ramp double-booking test requirement. Every baseline gap is placed under its step in docs/roadmap.md ("Baseline
+  gaps from the 2026-11-13 design batch"). **Step 5 needs none of them.** It keeps the accrual link that CB1 uses
+  (`auto_reverse_date` on the original; `reversal_reason = 'Accrual reversal'` and `reverses_entry_id` on the
+  reversal; the reversal keeps its original's `source`).
 
-## Follow-up 3 (owner answers to the three follow-up-2 questions, R37-R38)
+## Step 5 plan (for approval)
 
-- **R37:** with require_separate_approver on (or no settings row), the approval-limit refusal does not count the
-  request's creator or submitter as holding a role that could approve; if no one is left it says to ask an Admin.
-  Approve and reject both. `approvals.separation_on(context)` is the shared read; `authz.check_approval_limit`
-  takes `not_counted`.
-- **R38:** every logger is `strataledger` or under it; `modules/font_loader.py` is `strataledger.fonts`. A static
-  test in tests/test_app_logging.py scans every `getLogger` call in app_strata.pyw and modules/.
-- **Backlog 19** (docs/roadmap.md): support bundles redact absolute paths and the Windows profile name from the
-  logs before they leave the computer. No code now.
-- **step-reviewer:** approve with changes. Fixed: a test for the reject path (it bites: removing the exclusion
-  from reject turns it red), and the logger scan now also sees a bare `getLogger(...)`. Left as notes:
-  - `_not_counted` reads company_settings on every approve or reject, before authorize (not protected data;
-    `_load_request` already reads first; rule 10's write order holds);
-  - `ledger._separation_on(settings)` and `approvals.separation_on(context)` both treat a missing row as on;
-    they could be merged when Step 5 touches ledger;
-  - question 1 below.
+### What is built already (the starting point)
+- **Baseline:**
+  - `journal_entry` columns: `reverses_entry_id`, `reversal_reason` (Void, Accrual reversal, Correction),
+    `reversal_note` (required and non-blank for Void and Correction), and `auto_reverse_date` (after the entry
+    date, never on a reversal).
+  - Two slot indexes (R4): one Void-or-Correction reversal per entry and one Accrual reversal per entry.
+  - The posting trigger refuses a reversal of an unposted or voided entry, and one that does not mirror its
+    original by account, contact, project, cost code and deferral. It does not compare dimensions or memos.
+  - `journal_entry_void_on_reversal` sets `is_void` on the original when a Void reversal posts; the posted-entry
+    lock allows only that change.
+  - All the reversal fields, `auto_reverse_date` included, are hashed by the chain and covered by the approval
+    digest (R15).
+- **Code:**
+  - `ledger._postable` refuses a draft with `reverses_entry_id` and a draft with `auto_reverse_date` (R11's
+    remainder).
+  - `update_entry` refuses reversal drafts.
+  - Drafts may already carry `auto_reverse_date`, checked to be later than the entry date.
+  - `je.reverse` exists (Ledger, not sensitive) and is seeded at the Standard level. It is not in
+    `AGENT_ALLOWED`.
+- **The pending xfail** `test_reversal_cannot_predate_original` in tests/test_service_rules_pending.py was listed
+  for step 7. It belongs to this step, so Step 5 rewrites it against the real service (R25) and removes it from
+  the pending file (6 xfails become 5).
 
-## Follow-up 2 (owner answers to the four questions, R32-R36)
+### What Step 5 builds (all in `modules/services/ledger.py`, the only writer of the journal tables)
 
-- **R32 (question 1):** a failed sign-in never writes the typed username. The log says `user=<id>` or
-  `user=unknown username`; `auth_event` keeps the user id only (no username) for `Login failed` / `Locked`. The
-  throttle key is `auth.throttle_key(secret, name)`, HMAC-SHA256 of the stripped, case-folded name under the
-  master's `throttle_secret` (32 random bytes, made on the first failure). Case variants share one lock. The
-  limit is written into the decision: the secret is in the same file.
-- **R33 (question 2):** `app_strata.pyw` calls `start_logging()` before the window (`DATA_DIR\Logs\strataledger.log`,
-  1 MB x 5, R30 filter). If it cannot open, the app starts and says so once. The CLAUDE.md known issue is gone.
-- **R34 (question 3):** a limit refusal names only roles that an active user (not the Master) holds in the
-  company, by the nearest access row; otherwise "ask an Admin".
-- **R35 (question 4):** a database error in any service write is rolled back, logged with its details and shown
-  as "Something went wrong saving this; nothing was saved. The details are in the log." (`SaveFailedError`, no
-  cause attached).
-- **R36 (question 4):** a user without access is told only that, before any wrong-file check.
-- Not changed: the Windows `getpass` note (use `--no-prompt` from tools, R31).
+1. **One internal posting core**, `_post_in_transaction(conn, context, entry_id, ...)`, split out of
+   `post_journal_entry`. It numbers the entry, takes the chain head, seals and writes, inside the caller's
+   transaction. `post_journal_entry`, the reversal actions and the automatic reversal all use it, so the numbering
+   stays gapless (L4) and the chain has no hole however many entries one transaction posts.
+2. **Automatic reversals (L5, R2, R11).** Posting an entry with `auto_reverse_date` posts the original, then in
+   the same transaction creates and posts its reversal:
+   * dated `auto_reverse_date`, with `reversal_reason = 'Accrual reversal'` and `reverses_entry_id` set to the
+     original;
+   * the original's source, origin `System` (the narrow ledger path in audit design 13), and `created_by` and
+     `posted_by` set to the person who posted;
+   * no approval fields and no `confirm` (R2). The original's approval covers it, because the digest includes the
+     date.
 
-To see R32 by hand: sign in with a password typed into the username box five times, then look at
-`Logs\strataledger.log` and the master's `auth_event` and `login_throttle`: the text you typed is in none of them.
+   The reversal date's period must exist and be open. If not, the whole post is refused before anything is
+   numbered: "The automatic reversal date (2027-01-01) has no open period; open it or change the date." (The
+   wording distinguishes a missing period from a closed one.) The R11 refusal for `auto_reverse_date` is removed.
+3. **`void_entry(context, entry_id, *, note, entry_date=None, confirm=False, acknowledge_date_warnings=False)`.**
+   Posts a Void reversal and marks the original void. The order of checks:
+   1. authorize `je.reverse` (rule 10; Agent is already refused there);
+   2. Human origin only;
+   3. `confirm=True` (R2);
+   4. a non-blank note (R9);
+   5. the target is posted and not void;
+   6. the slot is free;
+   7. the date is not before the original's (the xfail) and its period is open.
 
-Reviews of follow-up 2:
-- **step-reviewer:** approve with changes. Fixed:
-  - the R36 reorder wrote the denial row into the unchecked (wrong) company file. Now the file is still compared
-    first; a wrong file gets only the log line, with the no-access sentence when the user has no access;
-  - "Ann" and "ann" could be two accounts sharing one throttle counter, so a sign-in as one reset the other's
-    lock. New usernames must now be unique ignoring case.
+   Then mirror lines (debit and credit swapped; account, contact, project, cost code, deferral, batch, retainage
+   flag, external ref, memo and the control-override and rounding flags copied; dimensions copied verbatim, never
+   re-resolved, JD1), posted through the core. The voided original's period and the void's period are both
+   checked. Date warnings (L6, R12) apply as for a Human post.
+4. **`reverse_entry(context, entry_id, *, note, entry_date=None, confirm=False, acknowledge_date_warnings=False)`**:
+   the same as `void_entry` with `reversal_reason = 'Correction'`. The original is not marked void. The person then
+   enters the corrected entry as a normal draft.
+5. **Pair void (R4).** `void_entry` on an entry that has an Accrual reversal voids both in one transaction: a Void of
+   the original and a Void of its automatic reversal. If either period is closed, nothing is written: "JE-000012
+   and its automatic reversal JE-000013 must both be voided, and February 2027 is closed; reopen it first." Voiding
+   the automatic reversal on its own is refused with a sentence that names the original.
+6. **Reversals are exempt** from manual-entry approval (R8), and from the A5 "manual entries to controlled accounts
+   off" refusal. The flags are copied, so a reversal of a flagged line is flagged too.
+7. **Unique-index races:** a second void or correction of the same entry, when two people act at once, becomes
+   "JE-000012 has already been voided or corrected." rather than a database error.
+8. **Clean-up carried from the R37 review:** `ledger._separation_on(settings)` and `approvals.separation_on(context)`
+   share one rule (a missing row is on). Step 5 makes the ledger call the approvals helper's logic (one function
+   that takes a settings row), so there is one definition.
+9. **Refusals** follow R27 (no permission codes; the static scan enforces it). The note is typed text and is never
+   quoted in a refusal, so no `log_message` is needed. Any sentence that quotes one gets `log_message` (R30).
 
-  Left as notes:
-  - a missing secret row disables existing locks (needs the master file in hand, which is R32's limit; commented);
-  - question 1 below.
-- **secrets-auditor:** no Critical or High. Fixed:
-  - (Medium) a password typed into the username box stayed forever as an HMAC that is cheap to guess against
-    with the master file in hand. Rows idle for a day are now purged, and the R32 limit is reworded;
-  - the secret is a `SecretKey`;
-  - the R35 log line no longer prints an earlier error it interrupted (it may quote typed text);
-  - tests for the upper-case marker, the typed password, the secret's hex and a temporary password when the save
-    fails.
+### Tests first (new `tests/test_ledger_reversals.py`; the xfail rewritten)
+- **Automatic reversal:**
+  - posting gives two entries numbered N and N+1, both sealed;
+  - the reversal mirrors the original line by line, dimensions included;
+  - fields: Accrual reversal, System origin, the poster as creator and poster, the same source, no approval
+    fields;
+  - the full verification is OK;
+  - refused, with nothing numbered, when the reversal period is missing or closed;
+  - an Agent-origin accrual still needs approval, and once approved both post;
+  - the approval digest changes when `auto_reverse_date` changes (R21 cancels the approval).
+- **Void and Correction:**
+  - confirm, the note, `je.reverse`, Agent, Import and System refused;
+  - refused for a draft, a voided entry, a date before the original, and a closed period;
+  - mirror exactness, dimensions included;
+  - Void marks `is_void` and Correction does not;
+  - the shared slot: a void after a correction, and a correction after a void, are both refused;
+  - the race sentence;
+  - date warnings and acknowledge;
+  - exempt from threshold approval and from the A5 control;
+  - flags copied.
+- **Pair void:** both voided; all or nothing when either period is closed; the automatic reversal cannot be voided
+  on its own.
+- **Verification and audit:**
+  - after every reversal kind the full verification is OK;
+  - tampering with a reversal's line breaks the chain there;
+  - `audit_log` holds every insert and the void flag;
+  - CB1's identification holds (the original with `auto_reverse_date` and its Accrual reversal can be found by
+    query).
+- **Static:** `ledger.py` stays the only writer of the journal tables; the R27 scan passes; the rule 10 order
+  holds for the new services.
+- **The rewritten xfail:** a Void dated before the original is refused (moved into the new file; the pending file
+  loses it).
 
-  Left as notes: questions 2 and 3 below.
+### Files
+- `modules/services/ledger.py` (the core split, auto reversal, `void_entry`, `reverse_entry`, pair void, races,
+  separation helper)
+- `modules/services/approvals.py` (the shared separation rule, item 8)
+- `tests/test_ledger_reversals.py` (new)
+- `tests/test_service_rules_pending.py` (one xfail removed)
+- `tests/ledger_helpers.py` (only if a helper is needed)
+- `tools/hand_check_step5.py` (new, like the Step 4 one, on a throwaway company)
+- Docs: the decisions record (codes for the owner's answers below), CLAUDE.md "Where we are", docs/roadmap.md,
+  docs/status_log.md and docs/next_step.md.
+- **No baseline change** (unless question 6).
 
-## Hand check for the owner (Step 4 and R27-R31)
+### Order, reviews and stop
+Tests first (red), then the code, then the full suite. Then step-reviewer, and mutation-tester on the committed
+step. secrets-auditor is not needed: no auth, key storage or secret handling changes; posting already uses the
+chain key. Then commit and push, write next_step.md, and STOP.
 
-There is no posting screen yet, so the check runs the real services on a throwaway company in a temporary folder
-(never the real databases) and prints what a person would see. From the repo root, in PowerShell:
+## Questions for the owner (proposed answers first)
 
-```
-$env:STRATALEDGER_ALLOW_TEST_KEYS = "1"; python tools/hand_check_step4.py; Remove-Item Env:STRATALEDGER_ALLOW_TEST_KEYS
-```
+1. **Which entries may a person void or correct?** Proposed: manual sources (none, Manual, Adjustment) and
+   Import, Payroll and Conversion entries. Entries from documents (Invoice, Bill, Payment, Deferral, Completion)
+   are refused with "This entry belongs to invoice INV-1001; void the invoice instead." Those documents' own void
+   services (Phase 4; B14 for payments) will call the narrow ledger path.
+2. **The Void's date:** proposed: it defaults to the original's date and may be any later date in an open period,
+   never earlier. In a pair void, each Void is dated on its own target's date, as R4's "either period closed"
+   implies. A Correction defaults to today and may be any date on or after the original's.
+3. **Separation of duties (R17) for a reversal:** a reversal is created and posted by one person in one action,
+   so R17 ("the creator cannot post it") would always refuse it when separation is on. Proposed: void and
+   correction need no second person, because they are audited and reversible by a new entry; they only need
+   `je.reverse`. The alternative is that with separation on, a reversal becomes a draft that another person posts.
+4. **Reversing a reversal:** proposed: refused for every kind ("JE-000015 is a reversal; enter a new entry to
+   change its effect."), so an undo is never undone by the same mechanism.
+5. **A Correction of an accrual that has an automatic reversal:** proposed: refused ("void JE-000012 and its
+   automatic reversal together, then enter a new accrual"), because a correction plus the standing automatic
+   reversal would double-count.
+6. **Dimensions in the mirror check:** the baseline's posting trigger does not compare dimensions. Proposed: the
+   service checks them and a test proves it, with no baseline change now (H4: the service rule plus a test). The
+   alternative is to extend the trigger, which means one baseline edit and a rebuild.
+7. **The automatic reversal's description and reference:** proposed: description "Automatic reversal of
+   JE-000012: <original description>", the original's reference; a Void gets "Void of JE-000012: ..." and a
+   Correction gets "Correction of JE-000012: ...".
 
-The variable lets this one run use the test suite's fixed chain key (`keys.FixedKeyProvider` refuses without it;
-without it the script prints one line and does nothing). The last line must be **"Every step behaved as decided."**
-Read the sentences on the way; these are the ones to judge (rule 0b). No sentence shows a permission code (R27).
-The test world names each role by its code, so a sentence reads "the APPROVER role"; a real company shows the
-role's name.
-
-| Section | What you should see |
-|---|---|
-| 1 | Every control off: "This entry can be posted directly; it does not need approval." and the entry posts. |
-| 2 | Threshold 1,000.00: 1,000.00 posts; 1,000.01 is refused "...send it for approval first."; "already waiting"; "waiting for approval (step 1 of 1)"; after Anna approves it posts with `approved_by` = Anna and `approved_at` = her approval time (15:30). |
-| 3 | Two steps: Carl approving first is told "Step 1 of 2 must be approved first by someone in the APPROVER role; you can approve step 2 once it is complete."; after Anna, posting says "step 2 of 2"; Carl completes it. |
-| 4 | An edit after approval: "The approval was cancelled because the entry was changed; send it for approval again."; the new request starts at step 1 (Carl gets the step-order sentence again). |
-| 5 | Reject with no reason: "Give a reason for rejecting it, so the preparer knows what to fix."; posting says "This entry was rejected (Wrong account); change it and..."; sending it again unchanged, or after re-saving the same lines, is refused; after a real change it can be sent. |
-| 6 | Agent and Import entries with every control off: refused until approved; "Only a person can approve or reject..." and "the denial log names je.approve (the sentence above does not)" (R29); the agent posting: "The AI assistant cannot post entries; a person posts the entry after it is approved."; "An imported entry is posted by a person after review..."; a person posts both. |
-| 7 | Separation on: "This company needs a different person to post an entry you created; ask a colleague to post it."; another clerk posts it. The Admin sends the clerk's entry for approval and may not approve it: "...approve the entry you sent for approval; ask a colleague to approve it." (R28); Anna and Carl approve and clerk2 posts. |
-| 8 | Verification OK; changing one approver breaks the chain at that entry. |
-| 9 | The audit log holds the approval requests and actions; denials are logged. |
-| 10 | A fresh context has the current time, not the time the company was opened. |
-
-R30 and R31 are not in the script. R30 is covered by tests/test_rejection_logging.py, which logs a marked reason
-every way a screen might and checks that the log file never holds it. To see R31:
-`python scripts/create_fresh_databases.py --apply --no-prompt` rebuilds the development databases without the
-first-Master question (it is a real rebuild: run the dry run first, as always).
-
-## What this follow-up built (owner answers 1-5 to the Step 4 questions)
-
-- **R27 (answer 3):** no refusal a person sees shows a permission code; the code is only in the denial log.
-  `authz.denial_message` builds the default sentence from the denial's reason (role, project scope, no access,
-  inactive role or user, archived or missing company, wrong file, agent). Approval sentences give the step order,
-  the role that can approve, and for a limit the roles whose limit covers the amount, or an Admin. Master-only
-  actions, user management, a read-only company and acting twice on a request have their own sentences. A user
-  without access to a company is told only that, not whether it exists or is archived. Static scans in
-  tests/test_refusal_messages.py check refusal calls, module-level sentences and `*_message` returns for
-  code-shaped words. The pattern needs two letters on each side of the dot, so "1,000.00" and "e.g." pass. The
-  allow-list holds two entries, `.db` and `.sql` file names.
-- **R28 (answer 1):** with separation on, neither the creator nor the submitter may approve or reject. With it
-  off, the submitter's approval is flagged `self_approved` like the creator's, so it stops counting at posting
-  once separation is turned on.
-- **R29 (answer 2):** the "only a person" denial reads the request first; its `access_event` row names the
-  approve permission. It is still denied before any write.
-- **R30 (answer 4):** rejection reasons never reach the log file.
-  - Mechanism: `ServiceError(..., log_message=...)` with `errors.log_text`, and `logging_setup.LogMessageFilter` on
-    the file handler. The filter cleans error objects in the message, the arguments and the traceback, and
-    follows causes, contexts (also after `from None`) and exception groups.
-  - Static tests: one forbids logging an error's text (f-strings, `str()`, `repr()`, `.args`, formatting,
-    `format_exc()`) or a reason. Another requires `log_message=` wherever `reason_text(` builds a sentence.
-- **R31 (answer 5):** `create_fresh_databases.py --no-prompt`; input that ends early ends with "No answer was
-  read; no Master was created." and exit code 0.
-- New `modules/services/money.py` (amounts in sentences; the ledger uses it too).
-
-## Reviews
-
-- **step-reviewer:** approve with changes; permission decisions unchanged apart from R28. Fixed:
-  - the log filter missed a chain cut with `from None` and errors quoting a hidden one; logging an error's text
-    is now banned by a static test;
-  - the R27 scan's blind spots (module-level sentences, `*_message` returns, the deny calls' message
-    arguments);
-  - the agent sentence was used for an allowed code the user's role lacks;
-  - three sentences without a next step (password reset, read-only company, already acted);
-  - the two UI-model tests that still built "Not permitted" errors.
-
-  Left as a hint: `_who_can_approve` names a role even when nobody holds it (question 3 below).
-- **secrets-auditor:** no Critical or High findings. Fixed:
-  - the same filter gaps, plus exception groups and reasons with quotes or newlines;
-  - the R30 static test now covers attribute calls and every `reason_text(` use;
-  - the denial no longer tells a user without access whether a company exists or is archived;
-  - the Master gets "restore it ... first" for an archived company.
-
-  Open: questions 1 and 2 below.
-- **mutation-tester:** 116 mutations, 88 killed, 28 survived. Tests were added for the 20 real gaps; 19 of them
-  were re-run against their mutation and are killed:
-  - the Master and a missing company;
-  - a missing role;
-  - `deny` with no code;
-  - Admin never listed;
-  - a limit equal to the amount;
-  - the default creator sentence;
-  - already acted, in planning and in the transaction;
-  - step 2 named after step 1;
-  - only the unfilled role named;
-  - role names and their order;
-  - three roles;
-  - dict arguments, `__cause__`, exception groups, a cycle of linked errors and a trailing newline in the log filter.
-
-  The 20th (a later step open to any role) cannot happen: a policy step must name a role.
-
-  Equivalent survivors:
-  - "do this" for an unknown code (unreachable);
-  - "aeiou" (no document type starts with o or u);
-  - `> 1` / `> 2` roles (same text for two);
-  - the later-step scan starting at the first open step, and `<=` on later steps (unreachable);
-  - the order of the three redaction forms (the reason is removed either way).
-
-## Open questions for the owner
-
-None. The follow-up-3 question was answered (R39).
-
-## Step 5, to plan next session
-
-Reversals and automatic reversals (the refusals in `ledger._postable` for `reverses_entry_id` and
-`auto_reverse_date`, R11's remainder), then step 6 (rounding) and step 7 (the remaining six xfails in
-tests/test_service_rules_pending.py: reversal date, payment over-allocation, one allocation target, reopening
-with a reason, numbering, period from date). Read docs/decisions_2026-11-11.md by code (grep) and the reversal
-parts of docs/design_decisions.md before planning. New refusals follow R27 (the static scan enforces it) and any
-sentence quoting typed text carries a `log_message` (R30).
+## Then
+Step 6 (rounding, R1, L8) and Step 7 (the five xfails left: payment over-allocation, one allocation target,
+reopening with a reason, numbering, period from date; plus the payment allocation gaps placed there), then 2.7,
+2.8 and Phase 3.
 
 ## Carried forward
 
@@ -198,8 +180,11 @@ sentence quoting typed text carries a `log_message` (R30).
   - show the unverified range and the close check's warning;
   - after a key replacement, call `App.start_key_store()` again;
   - show `KeyReplaced.recovery_code` once;
-  - every post, approval and close passes `self.app.action_context()` (the static test enforces it);
-  - log an error by passing the error object, never its text (R30, static test).
+  - every post, approval and close passes `self.app.action_context()` (the static test enforces it); the void and
+    reverse actions do too;
+  - log an error by passing the error object, never its text (R30, static test);
+  - show `SaveFailedError` like any service error (its sentence only) and never log typed text.
 - Whether retired installation keys keep their recovery copies is decided with KS18's key restore (backlog 16).
 - `auth._now()` remains the one allowed clock read in services (H2).
-- Phase 3 screens show `SaveFailedError` like any service error (its sentence only) and never log typed text.
+- The hand check for Step 4 still runs: `$env:STRATALEDGER_ALLOW_TEST_KEYS = "1"; python tools/hand_check_step4.py;
+  Remove-Item Env:STRATALEDGER_ALLOW_TEST_KEYS` ends "Every step behaved as decided."

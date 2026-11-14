@@ -367,6 +367,13 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
 - 2026-11-13: Owner answer to the follow-up-3 question, R39: with separation on, the limit refusal's "ask"
   target leaves out the creator and submitter ("another Admin", else "the Master", else "No one else in this
   company can approve it; ..."). Suite 2466 passed, 6 xfailed.
+- 2026-11-13: Design batch (docs only, five commits 753ede4..35687fa): CB1 cash basis view and CF1 direct-method
+  cash flow; JD1 job-driven dimensions (the task's J1 was taken); CM1-CM2 and docs/cloud_migration_design.md; B11a
+  and docs/bank_feeds_design.md; docs/export_design.md. The owner accepted every proposed answer (CM3, BF1, EX1)
+  and added the Ramp double-booking test requirement; every baseline gap is placed by step in docs/roadmap.md.
+- 2026-11-13: step-reviewer on the R39 commit: approve with changes (tests only). Five R39 tests added (no Admin
+  asks the Master, inactive Master, reject, missing settings row, two role holders), each proven against a mutant.
+  Step 5 planned (docs/next_step.md), waiting for approval. Suite 2471 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 
