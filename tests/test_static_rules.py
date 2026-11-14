@@ -323,3 +323,88 @@ def test_fresh_context_checker_flags_a_stored_context(call):
 ])
 def test_fresh_context_checker_passes_a_fresh_context(call):
     assert fresh_context_violations(f"def f(self):\n    {call}\n") == []
+
+
+# --- Section 13 (R54): who may make document entries -------------------------------------------------------
+#
+# create_document_entry, as_system and as_import are the narrow path for document, import, payroll and
+# conversion entries (docs/audit_readiness_design.md section 13). Only the modules below may name them, and a
+# call to create_document_entry passes a literal source from that module's row. ledger.py defines the function
+# (its auto-reversal and rounding paths need no call) and context.py defines the two context methods.
+
+DOCUMENT_ENTRY_CALLERS = {
+    "billing.py": {"Invoice", "Payment"},
+    "bills.py": {"Bill"},
+    "payments.py": {"Payment"},
+    "payroll_import.py": {"Payroll"},
+    "imports.py": {"Import"},
+    "conversion.py": {"Conversion"},
+    "deferrals.py": {"Deferral"},
+    "poc.py": {"Completion"},
+    "ledger.py": set(),
+}
+DOCUMENT_ENTRY_NAMES = {"create_document_entry", "as_system", "as_import"}
+
+
+def document_entry_violations(source, filename="snippet.py"):
+    """Every use of the narrow path in source that its module may not make: a module outside the table naming it
+    (called, passed on, imported under any name or looked up by string), or a create_document_entry call whose
+    source is not a literal from the module's row."""
+    allowed = DOCUMENT_ENTRY_CALLERS.get(filename)
+    problems = []
+    for node in ast.walk(ast.parse(source)):
+        named = ((isinstance(node, ast.Name) and node.id in DOCUMENT_ENTRY_NAMES)
+                 or (isinstance(node, ast.Attribute) and node.attr in DOCUMENT_ENTRY_NAMES)
+                 or (isinstance(node, ast.Constant) and node.value in DOCUMENT_ENTRY_NAMES)
+                 or (isinstance(node, ast.ImportFrom) and any(a.name in DOCUMENT_ENTRY_NAMES for a in node.names)))
+        if named and allowed is None:
+            problems.append(f"{filename}:{node.lineno}")
+        if isinstance(node, ast.Call) and _call_name(node) == "create_document_entry" and allowed is not None:
+            given = [k.value for k in node.keywords if k.arg == "source"]
+            if not (len(given) == 1 and isinstance(given[0], ast.Constant) and given[0].value in allowed):
+                problems.append(f"{filename}:{node.lineno}")
+    return problems
+
+
+def test_only_the_listed_modules_make_document_entries():
+    paths = sorted((ROOT / "modules").rglob("*.py"))
+    assert len(paths) > 20                                     # the scan sees the modules
+    problems = []
+    for path in paths:
+        if path.name == "context.py" and path.parent.name == "services":
+            continue                                           # defines as_system and as_import
+        problems += document_entry_violations(path.read_text(encoding="utf-8"), path.name)
+    assert problems == [], f"create_document_entry, as_system and as_import (section 13): {problems}"
+
+
+def test_ledger_defines_the_narrow_path():
+    source = (SERVICES_DIR / "ledger.py").read_text(encoding="utf-8")
+    assert "def create_document_entry(conn, context, *," in source
+    assert "def as_system(self)" in (SERVICES_DIR / "context.py").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("filename, snippet", [
+    ("views_billing.py", "ledger.create_document_entry(conn, ctx, source='Invoice', entry_date=d, lines=l)"),
+    ("reports.py", "ctx2 = ctx.as_system()"),
+    ("reports.py", "ctx2 = ctx.as_import()"),
+    ("reports.py", "from modules.services.ledger import create_document_entry as make"),
+    ("reports.py", "make = getattr(ledger, 'create_document_entry')"),
+    ("reports.py", "run(ledger.create_document_entry)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, source=kind, entry_date=d, lines=l)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, source='Bill', entry_date=d, lines=l)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, entry_date=d, lines=l)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, **values)"),
+    ("ledger.py", "create_document_entry(conn, ctx, source='Import', entry_date=d, lines=l)"),
+])
+def test_document_entry_checker_flags(filename, snippet):
+    assert document_entry_violations(f"def f(conn, ctx):\n    {snippet}\n", filename) != []
+
+
+@pytest.mark.parametrize("filename, snippet", [
+    ("billing.py", "ledger.create_document_entry(conn, ctx.as_system(), source='Invoice', entry_date=d, lines=l)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, source='Payment', entry_date=d, lines=l)"),
+    ("imports.py", "ledger.create_document_entry(conn, ctx.as_import(), source='Import', entry_date=d, lines=l)"),
+    ("reports.py", "ledger.create_entry(ctx, entry_date=d)"),
+])
+def test_document_entry_checker_passes(filename, snippet):
+    assert document_entry_violations(f"def f(conn, ctx):\n    {snippet}\n", filename) == []

@@ -16,7 +16,8 @@ from tests import ledger_helpers as lh
 from tests.authz_world import world  # noqa: F401  (fixture)
 from tests.test_ledger_approvals import as_, team  # noqa: F401  (fixture and helper)
 from tests.test_ledger_posting import (  # noqa: F401  (fixtures and helpers)
-    A, NOW, TODAY, ctx_for, draft, entry_row, env, keyed, lines, refused, settings, snapshot, verify,
+    A, NOW, TODAY, ctx_for, document_draft, draft, entry_row, env, keyed, lines, refused, settings, snapshot,
+    verify,
 )
 
 NOTE = "wrong account"
@@ -622,6 +623,26 @@ def test_a_reversal_into_a_closed_period_13_is_refused_and_never_moves(rev, acti
             rf"^FY2026-13 is closed; reopen it with a reason, or date the {word} in the next fiscal year\.$")
 
 
+@pytest.mark.parametrize("number", [13, 14])
+def test_the_sentence_holds_reopen_the_adjustment_period_with_a_reason_then_void(rev, number):
+    # R48: periods.reopen_period (step 2.4b) reopens period 13 or 14 with a logged reason; the void then posts there.
+    from modules.services import periods
+    rev.grant_permission("PARENT", "POSTER", "period.reopen")
+    settings(rev, adjustment_periods_enabled=1)
+    period_id = rev.rows("PARENT", "SELECT period_id FROM fiscal_period WHERE period_number = ? "
+                                   "AND start_date = '2026-12-31'", (number,))[0]["period_id"]
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=period_id)
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close_period(rev, period_id)
+    refused(rev, lambda: void(rev, entry_id), PeriodClosedError, rf"^FY2026-{number} is closed; reopen it with a reason")
+    periods.reopen_period(ctx(rev), period_id, reason="Auditor adjustment", confirm=True)
+    reversal = entry_row(rev, void(rev, entry_id)["entry_id"])
+    assert (reversal["period_id"], reversal["entry_date"]) == (period_id, "2026-12-31")
+    history = rev.rows("PARENT", "SELECT action, reason FROM period_status_history WHERE period_id = ? "
+                                 "ORDER BY rowid DESC LIMIT 1", (period_id,))[0]
+    assert (history["action"], history["reason"]) == ("Reopen", "Auditor adjustment")
+
+
 def test_a_void_of_a_closed_period_13_entry_can_be_dated_in_the_next_year(rev):
     p13 = period_13(rev)
     entry_id = draft(rev, entry_date="2026-12-31", period_id=p13)
@@ -663,8 +684,7 @@ def test_a_correction_into_a_closed_period_is_refused(rev):
 
 def test_a_person_voids_an_imported_entry(team):
     team.grant_permission("PARENT", "POSTER", "je.reverse")
-    entry_id = ledger.create_entry(as_(team, "poster", "Import"), entry_date="2026-03-15", lines=lines(team),
-                                   source="Import")
+    entry_id = document_draft(team, as_(team, "poster", "Import"), source="Import")
     request_id = ledger.submit_entry_for_approval(as_(team, "poster", "Import"), entry_id)
     approvals.approve(as_(team, "appr1"), request_id)
     ledger.post_journal_entry(as_(team, "poster"), entry_id, confirm=True)

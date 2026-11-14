@@ -220,6 +220,12 @@ R. Phase 2.5 ledger and billing services:
 - R46 Generated reversal descriptions; the person's note shown with them
 - R47 How the automatic reversal is posted
 - R48 A reversal dated its target's date stays in period 13 or 14; closed means refused, never moved
+- R49 The rounding line is written when the draft is saved, worked out again on every save
+- R50 create_entry takes manual sources only, for every origin
+- R51 Two cents or more is refused when the entry is saved; the error names the entry, rows and difference
+- R52 A missing or unusable rounding account refuses a one-cent entry
+- R53 Posting checks every rounding line again (integrity)
+- R54 create_document_entry, as_system and as_import: the narrow path and its callers
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1343,5 +1349,38 @@ as proposed):
   refused once period 12 is closed, which also blocked a period-13 accrual's pair void for good).
   When that period 13 or 14 is closed, the reversal is refused with the next step ("FY2026-13 is closed; reopen it
   with a reason, or date the void in the next fiscal year.") and is never moved to another period. A pair void (R4)
-  cannot take a date, so it can only be reopened.
+  cannot take a date, so it can only be reopened. `periods.reopen_period` (step 2.4b) reopens period 13 or 14 with
+  a confirmed, logged reason; when the whole year is closed it asks for `reopen_year` first.
+
+Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
+- R49 The rounding line (L8, R1) is written when the draft is saved, and worked out again on every save of its
+  lines (`update_entry` on an Import, Payroll or Conversion draft). It is the entry's last line: 1 cent on the
+  short side to `rounding_variance_acct_id`, memo "Rounding (1 cent)", no contact, project, cost code or
+  dimension, flagged `is_rounding_adjustment`. The approver sees it and the R15 digest covers it, so posting an
+  approved entry needs no new approval. Saving again after the rounding account changed moves the line.
+- R50 `create_entry` and `update_entry` take manual sources only (none, Manual, Adjustment), for every origin,
+  Import and System included (section 13's rule, brought forward from Step 7). Import and System contexts may
+  still save manual drafts. A document or import draft keeps its source.
+- R51 A difference of 2 cents or more on an Import, Payroll or Conversion entry is refused when the importer saves
+  it, consistent with all-or-nothing CSV imports: the error is raised inside the importer's one transaction, so
+  nothing of the file is saved. It names the entry (its reference, or its date), its source rows and the
+  difference: "Entry PR-0412 (rows 12-15) is out of balance by 0.02; only a 1-cent rounding difference is
+  balanced automatically, so nothing was saved. Correct the amounts and import it again." These three sources
+  must give `source_rows`. Other sources keep rule 2 (an unbalanced draft may be saved; posting refuses it).
+- R52 A one-cent entry is refused when it is saved if no rounding account is set, or the account is inactive,
+  not postable or has sub-accounts (C2), with what to do ("choose one in Company Settings > Accounts, or correct
+  the amounts"). A balanced entry needs no rounding account.
+- R53 (integrity) Posting refuses, before a number is taken: a rounding line on any source other than Import,
+  Payroll or Conversion; more than one rounding line; a rounding line that is not exactly 1 cent; a rounding line
+  not on the current rounding account ("save the entry again to work it out again"). Callers cannot set the
+  flag. Reversals copy the line and flag as they are (R45) and do not go through this check, so a void still
+  works after the rounding account changed.
+- R54 `ledger.create_document_entry(conn, context, *, source, entry_date, lines, description, reference,
+  source_rows, post)` lands in Step 6 (section 13): inside the caller's write transaction, no authorize (the caller
+  authorized its own permission), origin System or Import, document sources only, `check_lines`, the period
+  from the date. post=True posts in the same transaction through `_seal_and_post`; it is refused for an Import
+  origin (R18) and for an entry whose document type needs approval. It returns `entry_id`, `entry_number` and
+  `rounding_cents`. `ServiceContext.as_system()` and `as_import()` keep the person, company and time and change
+  only the origin; an Agent context cannot use them. A static test (tests/test_static_rules.py) fixes the modules
+  that may name the three and the literal sources each may pass.
 

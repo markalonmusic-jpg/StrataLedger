@@ -89,8 +89,13 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     **Step 5** (done 2026-11-13, R40-R47): reversals: one posting core for every entry; posting an accrual posts
     its automatic reversal in the same transaction; `void_entry` and `reverse_entry` (Void and Correction, a
     person with `je.reverse`, a note and confirm); voiding an accrual voids its automatic reversal too; every
-    reversal mirrors its original, dimensions included.
-    Then steps 6-7. Step 1c landed before any screen can post; 2.5 is not done until steps 6-7 are.
+    reversal mirrors its original, dimensions included. R48 (period 13/14 reversals) final 2026-11-14.
+    **Step 6** (built 2026-11-14, R49-R54): rounding and document entries: `create_document_entry`, the one narrow
+    path for document, import, payroll and conversion entries (section 13, brought forward from Step 7), with
+    `as_system`/`as_import` and a static caller test; `create_entry` takes manual sources only; a 1-cent Import,
+    Payroll or Conversion entry gets a flagged rounding line when saved, 2 cents or more is refused when saved;
+    posting checks every rounding line again.
+    Then step 7. Step 1c landed before any screen can post; 2.5 is not done until step 7 is.
     Accepted until step 2.8: the Master can change the password without the recovery code
     (`auth.change_password`).
   - **2.6 Customer and vendor codes (done):** `customer_number` and
@@ -303,7 +308,7 @@ docs/export_design.md section 13.
   CB1 relies on, which the baseline already has: an automatic reversal is identified by its original's
   `auto_reverse_date` and its own `reversal_reason = 'Accrual reversal'` and `reverses_entry_id`, and a reversal
   keeps its original's `source`, so the cash view can drop an accrual together with its reversal.
-- **Step 6 (rounding):** none.
+- **Step 6 (rounding):** none (built with no baseline change).
 - **Step 7 (the remaining xfails, including payment allocation and one allocation target):** `payment_allocation`
   gets its own apply date (CB1 recognizes cash on the date a payment is applied, B4) and room for a credit-memo
   target (B6). The `allocation_one_target` CHECK (invoice or deferral) is the one Step 7 already tests, so the

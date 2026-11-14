@@ -6,7 +6,7 @@ role change applies on the user's next action.
 """
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Optional
 
@@ -46,3 +46,18 @@ class ServiceContext:
             raise ValidationError(f"today must be an ISO date like 2026-01-01; got {today!r}") from None
         object.__setattr__(self, "now", now)
         object.__setattr__(self, "today", today)
+
+    def as_system(self):
+        """This person's context with origin System, for a document service making its entry (audit design
+        section 13, R54). The user, company, time and paths stay as they are, so the audit log names the person."""
+        return self._as("System")
+
+    def as_import(self):
+        """This person's context with origin Import, for an importer saving its entries (section 13, R54)."""
+        return self._as("Import")
+
+    def _as(self, origin):
+        if self.origin == "Agent":
+            raise ValidationError("An agent's actions stay agent actions; an agent cannot act as the system or "
+                                  "as an import.")
+        return replace(self, origin=origin)

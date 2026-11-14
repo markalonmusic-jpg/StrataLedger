@@ -132,11 +132,8 @@ def test_a_person_or_agent_cannot_label_a_draft_with_a_document_source(env, orig
     assert snapshot(env) == before
 
 
-@pytest.mark.parametrize("origin, source", [("Import", "Import"), ("Import", "Payroll"), ("Import", "Conversion"),
-                                              ("System", "Invoice"), ("System", "Deferral")])
-def test_import_and_system_origin_may_use_document_sources(env, origin, source):
-    entry_id = ledger.create_entry(env.ctx(env.user_id, "PARENT", origin), entry_date="2026-03-15", source=source)
-    assert (entry_row(env, entry_id)["source"], entry_row(env, entry_id)["origin"]) == (source, origin)
+# Import and System origin no longer use create_entry for document sources either (R50): they go through
+# ledger.create_document_entry; both sides are tested in tests/test_ledger_rounding.py.
 
 
 def test_update_cannot_relabel_a_draft_as_a_document_entry(env, ctx):

@@ -2,7 +2,7 @@
 
 This is the only module that writes `journal_entry`, `journal_line` and the entry counter (CLAUDE.md rule 7; a
 static test fails if any other file does). Step 2 covers drafts only: create, update, delete and read, with every
-line checked by one function (`check_lines`). Posting, numbering, approvals, reversals, voids and rounding come in
+line checked by one function (`check_lines`). Posting, numbering, approvals, reversals, voids and rounding came in
 later steps and call the same functions.
 
 * A draft may be unbalanced or empty; the balance, line count and closed-period rules are enforced when posting
@@ -13,9 +13,11 @@ later steps and call the same functions.
   created or changed and is available as `check_entry_lines` so posting can run it again on the stored lines,
   because an account can be deactivated after a draft was saved.
 * Amounts are integer cents: floats, strings and booleans are refused.
-* `is_control_override` and `is_rounding_adjustment` are set by the posting code, never by a caller.
-* Manual sources only (none, Manual, Adjustment) for Human and Agent origin: a person cannot label a draft with a
-  document source to escape the manual-entry rules. Import and System origin may use the others.
+* `is_control_override` (set when posting) and `is_rounding_adjustment` (set when saving, R49) are set by this
+  module, never by a caller.
+* `create_entry` and `update_entry` take manual sources only (none, Manual, Adjustment), for every origin (R50): a
+  person cannot label a draft with a document source to escape the manual-entry rules. Document, import, payroll
+  and conversion entries are made only by `create_document_entry`, inside the caller's transaction (section 13).
 * Drafts record the context's origin, so an Agent draft stays an Agent entry through posting. Columns are always
   named in SQL, never positional, and rows are read by name.
 
@@ -40,6 +42,12 @@ Reversals (step 5, L5, R4, R40-R47):
   every dimension copied (R45). The account rules and the A5 control are not applied again: a correction must
   stay possible after an account is closed or the control is turned off.
 * Reads return `display_description`: the description, with the person's reversal note after it (R46).
+
+Rounding and document entries (step 6, L8, R1, R49-R54): `create_document_entry` is the one way a document,
+import, payroll or conversion entry is made, inside the caller's write transaction (audit design section 13). An
+Import, Payroll or Conversion entry out of balance by exactly 1 cent gets one flagged 1-cent line to the rounding
+account when it is saved, worked out again on every save; 2 cents or more is refused when it is saved, naming the
+entry, its file rows and the difference. Posting checks every rounding line again (R53).
 
 Approvals (step 4, R15-R24): an entry needs an Approved request before it posts when its origin is Agent or
 Import, when it is a manual entry over the manual-entry approval threshold, or when its document type requires
@@ -79,6 +87,9 @@ CONTACT_RULES = {"AR": ("is_customer", "customer"), "AP": ("is_vendor", "vendor"
 VIEW = "ledger.view"
 MANUAL_SOURCES = (None, "Manual", "Adjustment")
 OTHER_SOURCES = ("Invoice", "Bill", "Payment", "Payroll", "Import", "Deferral", "Completion", "Conversion")
+# L8, R1: only these may carry the one-cent rounding line (R49-R53).
+ROUNDING_SOURCES = ("Import", "Payroll", "Conversion")
+ROUNDING_MEMO = "Rounding (1 cent)"
 LINE_FIELDS = ("account_id", "debit_cents", "credit_cents", "memo", "contact_id", "project_id", "cost_code_id",
                "external_ref")
 STATES = ("draft", "posted")
@@ -116,15 +127,14 @@ def _iso_date(value, what):
     return value
 
 
-def _source(context, source):
+def _source(source):
+    """A draft's source through create_entry or update_entry: manual sources only, for every origin (R50)."""
     if source in MANUAL_SOURCES:
         return source
     if source not in OTHER_SOURCES:
         raise ValidationError(f"'{source}' is not an entry source")
-    if context.origin not in ("Import", "System"):
-        raise ValidationError(f"A {context.origin.lower()} entry is a manual entry; the source '{source}' is "
-                              "used only by documents and imports")
-    return source
+    raise ValidationError(f"This is a manual entry; the source '{source}' is used only by documents and imports, "
+                          "which make their entries through their own service")
 
 
 def _cents(value, what):
@@ -199,18 +209,20 @@ def check_entry_lines(conn, entry_id):
 
 
 def _stored_lines(conn, entry_id):
-    """The entry's lines as check_lines returns them, in order (to spot a re-save of the same lines)."""
-    return [{field: row[field] for field in LINE_FIELDS} for row in conn.execute(
-        f"SELECT {', '.join(LINE_FIELDS)} FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
+    """The entry's lines as _rounded returns them, in order (to spot a re-save of the same lines)."""
+    fields = LINE_FIELDS + ("is_rounding_adjustment",)
+    return [{field: row[field] for field in fields} for row in conn.execute(
+        f"SELECT {', '.join(fields)} FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
 
 
 def _insert_lines(conn, entry_id, lines):
     for line in lines:
         conn.execute(
             "INSERT INTO journal_line (entry_id, account_id, debit_cents, credit_cents, memo, contact_id, "
-            "project_id, cost_code_id, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "project_id, cost_code_id, external_ref, is_rounding_adjustment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (entry_id, line["account_id"], line["debit_cents"], line["credit_cents"], line["memo"],
-             line["contact_id"], line["project_id"], line["cost_code_id"], line["external_ref"]))
+             line["contact_id"], line["project_id"], line["cost_code_id"], line["external_ref"],
+             line.get("is_rounding_adjustment", 0)))
 
 
 def _open_period(conn, entry_date, period_id):
@@ -231,6 +243,79 @@ def _check_auto_reverse(entry_date, auto_reverse_date):
     return auto_reverse_date
 
 
+# --- Rounding (L8, R1, R49-R52) ----------------------------------------------------------------------------
+
+def _source_rows(source_rows):
+    """The file rows an Import, Payroll or Conversion entry came from: a non-empty list of row numbers (R51)."""
+    if (not isinstance(source_rows, (list, tuple)) or not source_rows
+            or any(isinstance(n, bool) or not isinstance(n, int) or n < 1 for n in source_rows)):
+        raise ValidationError("Give the file rows this entry came from (a list of row numbers), so a balance error "
+                              "can name them.")
+    return tuple(source_rows)
+
+
+def _rows_text(rows):
+    """(4, 5, 7, 9) -> 'rows 4-5, 7, 9'; (8,) -> 'row 8'."""
+    numbers = sorted(set(rows))
+    runs = []
+    start = previous = numbers[0]
+    for number in numbers[1:]:
+        if number != previous + 1:
+            runs.append(f"{start}-{previous}" if previous != start else f"{start}")
+            start = number
+        previous = number
+    runs.append(f"{start}-{previous}" if previous != start else f"{start}")
+    return ("row " if len(numbers) == 1 else "rows ") + ", ".join(runs)
+
+
+def _entry_label(reference, entry_date, source_rows):
+    """How a balance error names the entry: 'Entry PR-0412 (rows 12-15)' or 'The entry dated 2026-03-15'."""
+    label = f"Entry {reference}" if reference else f"The entry dated {entry_date}"
+    return f"{label} ({_rows_text(source_rows)})" if source_rows else label
+
+
+def _rounding_account(conn, label):
+    """The rounding account from Company Settings, usable for a line (C2); refused with what to do (R52)."""
+    settings = _settings(conn)
+    account_id = settings["rounding_variance_acct_id"] if settings is not None else None
+    if account_id is None:
+        raise ValidationError(f"{label} is out of balance by 0.01 and no rounding account is set; choose one in "
+                              "Company Settings > Accounts, or correct the amounts.")
+    account = conn.execute("SELECT code, name, is_active, is_postable FROM account WHERE account_id = ?",
+                           (account_id,)).fetchone()
+    has_children = conn.execute("SELECT 1 FROM account WHERE parent_id = ? LIMIT 1", (account_id,)).fetchone()
+    problem = ("is inactive" if not account["is_active"]
+               else "is a header account" if not account["is_postable"] or has_children else None)
+    if problem:
+        raise ValidationError(f"{label} is out of balance by 0.01 and the rounding account {account['code']} "
+                              f"{account['name']} {problem}; choose another in Company Settings > Accounts, or "
+                              "correct the amounts.")
+    return account_id
+
+
+def _rounded(conn, source, cleaned, label):
+    """The lines to store and the difference (debits - credits) before rounding (R49, R51).
+
+    An Import, Payroll or Conversion entry that is out by exactly 1 cent gets one more line, last: 1 cent on the
+    other side to the rounding account, flagged is_rounding_adjustment. Out by 2 cents or more is refused, so the
+    caller's transaction saves nothing. Any other source is stored as it is (posting refuses an imbalance).
+    """
+    stored = [dict(line, is_rounding_adjustment=0) for line in cleaned]
+    if source not in ROUNDING_SOURCES:
+        return stored, 0
+    difference = sum(l["debit_cents"] for l in cleaned) - sum(l["credit_cents"] for l in cleaned)
+    if difference == 0:
+        return stored, 0
+    if abs(difference) > 1:
+        raise ValidationError(f"{label} is out of balance by {money.text(abs(difference))}; only a 1-cent rounding "
+                              "difference is balanced automatically, so nothing was saved. Correct the amounts "
+                              "and import it again.")
+    stored.append({"account_id": _rounding_account(conn, label), "debit_cents": 1 if difference < 0 else 0,
+                   "credit_cents": 1 if difference > 0 else 0, "memo": ROUNDING_MEMO, "contact_id": None,
+                   "project_id": None, "cost_code_id": None, "external_ref": None, "is_rounding_adjustment": 1})
+    return stored, difference
+
+
 def _draft(conn, entry_id):
     """The entry row if it is an editable draft."""
     row = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
@@ -247,7 +332,7 @@ def create_entry(context, *, entry_date, lines=(), description=None, reference=N
                  period_id=None, auto_reverse_date=None):
     """Save a new draft entry and return its id. Nothing is posted and no entry number is taken."""
     authorize(context, CREATE, record_type="journal_entry")
-    source = _source(context, source)
+    source = _source(source)
     description, reference = _text(description, "description"), _text(reference, "reference")
     with write_transaction(context.company_db_path, context) as conn:
         resolved = _open_period(conn, entry_date, period_id)
@@ -270,18 +355,24 @@ def update_entry(context, entry_id, *, entry_date=_UNSET, description=_UNSET, re
         current = _draft(conn, entry_id)
         if current["reverses_entry_id"] is not None:
             raise PostingError("A reversal draft is made by the reverse or void action and is not edited here")
+        if source is not _UNSET and current["source"] not in MANUAL_SOURCES and source != current["source"]:
+            raise ValidationError(f"An import or document entry keeps its source ({current['source']}); delete the "
+                                  "draft and make it again instead.")
         values = {
             "entry_date": current["entry_date"] if entry_date is _UNSET else entry_date,
             "description": current["description"] if description is _UNSET else _text(description, "description"),
             "reference": current["reference"] if reference is _UNSET else _text(reference, "reference"),
-            "source": current["source"] if source is _UNSET else _source(context, source),
+            "source": current["source"] if source is _UNSET or source == current["source"] else _source(source),
             "auto_reverse_date": current["auto_reverse_date"] if auto_reverse_date is _UNSET else auto_reverse_date,
             "period_id": current["period_id"],
         }
         if entry_date is not _UNSET or period_id is not None:
             values["period_id"] = _open_period(conn, values["entry_date"], period_id)
         values["auto_reverse_date"] = _check_auto_reverse(values["entry_date"], values["auto_reverse_date"])
-        cleaned = check_lines(conn, lines) if lines is not None else None
+        cleaned = None
+        if lines is not None:                                     # R49: worked out again on every save
+            cleaned, _ = _rounded(conn, values["source"], check_lines(conn, lines),
+                                  _entry_label(values["reference"], values["entry_date"], None))
         if cleaned is not None and cleaned == _stored_lines(conn, entry_id):
             cleaned = None                     # the same lines again: not a change (R22 compares the digest)
         conn.execute(
@@ -306,6 +397,55 @@ def delete_entry(context, entry_id):
             conn.execute("DELETE FROM journal_entry WHERE entry_id = ?", (entry_id,))
         except sqlite3.IntegrityError:
             raise ValidationError("This entry is used by another record and cannot be deleted") from None
+
+
+# --- Document entries: the one narrow path (audit design section 13, R50, R54) ----------------------------------
+
+def create_document_entry(conn, context, *, source, entry_date, lines, description=None, reference=None,
+                          source_rows=None, post=False):
+    """Save (and with post=True, post) a document, import, payroll or conversion entry inside the caller's write
+    transaction, so the document and its entry are written together or not at all.
+
+    It does not authorize: the calling service has already authorized the person for its own permission. The
+    context's origin is System or Import (`context.as_system()` / `as_import()`); a static test fixes which modules
+    may call this and with which literal source. Import, Payroll and Conversion entries give `source_rows` (the
+    file rows they came from) and are rounded by one cent or refused (R49, R51). post=True posts at once; an
+    imported entry is posted by a person after its review (R18), and an entry whose document type needs
+    approval is refused.
+
+    Returns {'entry_id', 'entry_number' (None unless posted), 'rounding_cents'}: the difference (debits - credits)
+    the rounding line balanced, 1 (a 1-cent credit), -1 (a 1-cent debit) or 0.
+    """
+    if context.origin not in ("System", "Import"):
+        raise ValidationError("A document entry is made by its document's service (origin System or Import), "
+                              "not by a person or an agent directly.")
+    if source not in OTHER_SOURCES:
+        raise ValidationError(f"'{source}' is not a document or import source; make a manual entry with "
+                              "create_entry instead.")
+    if post and context.origin == "Import":
+        raise ValidationError("An imported entry is posted by a person after its review; save it without "
+                              "posting.")
+    if source in ROUNDING_SOURCES:
+        source_rows = _source_rows(source_rows)
+    description, reference = _text(description, "description"), _text(reference, "reference")
+    _iso_date(entry_date, "date")
+    period_id = _open_period(conn, entry_date, None)
+    stored, difference = _rounded(conn, source, check_lines(conn, lines),
+                                  _entry_label(reference, entry_date, source_rows))
+    entry_id = conn.execute(
+        "INSERT INTO journal_entry (entry_date, period_id, reference, description, source, created_by, origin) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING entry_id",
+        (entry_date, period_id, reference, description, source, context.user_id, context.origin)).fetchone()[0]
+    _insert_lines(conn, entry_id, stored)
+    number = None
+    if post:
+        entry, _, _, debits, _ = _postable(conn, entry_id)
+        if approval_document_type(conn, entry, _settings(conn), debits) is not None:
+            raise PostingError("This entry needs approval before it posts; save it without posting and send it "
+                               "for approval.")
+        key_id, key = _active_key(conn, context)
+        number = _seal_and_post(conn, context, entry_id, _company_code(context), key_id, key)
+    return {"entry_id": entry_id, "entry_number": number, "rounding_cents": difference}
 
 
 # --- Reading ------------------------------------------------------------------------------------------------
@@ -468,12 +608,34 @@ def _postable(conn, entry_id):
     rows = conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,)).fetchall()
     if len(rows) < 2:
         raise PostingError("A journal entry needs at least two lines to post")
+    _check_rounding_lines(conn, entry, rows)
     debits = sum(r["debit_cents"] or 0 for r in rows)
     credits = sum(r["credit_cents"] or 0 for r in rows)
     if debits != credits or debits <= 0:
         raise PostingError(f"This entry does not balance: debits {money.text(debits)}, credits {money.text(credits)}")
     overrides = _control_overrides(conn, rows, _settings(conn)) if entry["source"] in MANUAL_SOURCES else []
     return entry, period, rows, debits, overrides
+
+
+def _check_rounding_lines(conn, entry, rows):
+    """R53 (integrity): at most one rounding line, of exactly 1 cent, on the rounding account, and only on an
+    Import, Payroll or Conversion entry. Callers cannot set the flag (it is not in LINE_FIELDS); this catches a
+    line changed by any other way before it is sealed."""
+    flagged = [(number, row) for number, row in enumerate(rows, start=1) if row["is_rounding_adjustment"]]
+    if not flagged:
+        return
+    if entry["source"] not in ROUNDING_SOURCES:
+        raise PostingError(f"Line {flagged[0][0]} is marked as a rounding line, which only import, payroll and "
+                           "conversion entries may have; nothing was posted.")
+    if len(flagged) > 1:
+        raise PostingError("This entry has more than one rounding line; nothing was posted.")
+    number, row = flagged[0]
+    if (row["debit_cents"] or 0) + (row["credit_cents"] or 0) != 1:
+        raise PostingError(f"Line {number}: a rounding line is exactly 1 cent; nothing was posted.")
+    settings = _settings(conn)
+    if settings is None or row["account_id"] != settings["rounding_variance_acct_id"]:
+        raise PostingError(f"Line {number}: the rounding line is not on the rounding account in Company Settings > "
+                           "Accounts; save the entry again to work it out again.")
 
 
 def _control_overrides(conn, rows, settings):

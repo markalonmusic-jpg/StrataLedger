@@ -14,7 +14,7 @@ from modules.services.errors import PermissionDeniedError, PostingError, Validat
 from tests import ledger_helpers as lh
 from tests.authz_world import world  # noqa: F401  (fixture)
 from tests.test_ledger_posting import (  # noqa: F401  (fixtures and helpers)
-    A, NOW, TODAY, entry_row, env, keyed, lines, refused, settings, verify,
+    A, NOW, TODAY, document_draft, entry_row, env, keyed, lines, refused, settings, verify,
 )
 
 LATER = "2026-03-21T09:30:00+00:00"
@@ -48,6 +48,8 @@ def as_(env, name, origin="Human", now=NOW):
 
 
 def make(env, who="poster", origin="Human", amount=1000, **kwargs):
+    if kwargs.get("source") in ledger.OTHER_SOURCES:             # the only path for a document source (R50)
+        return document_draft(env, as_(env, who, origin), entry_lines=lines(env, amount), **kwargs)
     return ledger.create_entry(as_(env, who, origin), entry_date="2026-03-15", lines=lines(env, amount), **kwargs)
 
 

@@ -2,7 +2,7 @@
 
 Approvals in posting (step 4) are tested in tests/test_ledger_approvals.py; here only that an entry needing
 approval is refused until it has one. Reversals and auto-reversal (step 5) are in tests/test_ledger_reversals.py;
-rounding (step 6) comes later.
+rounding and document entries (step 6) are in tests/test_ledger_rounding.py.
 """
 import dataclasses
 import re
@@ -73,8 +73,23 @@ def lines(env, amount=1000, debit="cash", credit="sales", **extra):
 
 
 def draft(env, ctx=None, *, entry_date="2026-03-15", entry_lines=None, **kwargs):
-    return ledger.create_entry(ctx or ctx_for(env), entry_date=entry_date,
-                               lines=entry_lines if entry_lines is not None else lines(env), **kwargs)
+    """A draft entry. A document source goes through create_document_entry, the only path for it (R50)."""
+    entry_lines = entry_lines if entry_lines is not None else lines(env)
+    if kwargs.get("source") in ledger.OTHER_SOURCES:
+        return document_draft(env, ctx, entry_date=entry_date, entry_lines=entry_lines, **kwargs)
+    return ledger.create_entry(ctx or ctx_for(env), entry_date=entry_date, lines=entry_lines, **kwargs)
+
+
+def document_draft(env, ctx=None, *, source, entry_date="2026-03-15", entry_lines=None, **kwargs):
+    """create_document_entry in its own write transaction, as a document service or importer calls it."""
+    from modules.services.tx import write_transaction
+    ctx = ctx or ctx_for(env, "System")
+    if source in ledger.ROUNDING_SOURCES:
+        kwargs.setdefault("source_rows", [2, 3])
+    with write_transaction(ctx.company_db_path, ctx) as conn:
+        return ledger.create_document_entry(conn, ctx, source=source, entry_date=entry_date,
+                                            lines=entry_lines if entry_lines is not None else lines(env),
+                                            **kwargs)["entry_id"]
 
 
 def entry_row(env, entry_id):

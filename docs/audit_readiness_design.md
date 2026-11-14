@@ -701,7 +701,7 @@ be designed with that work.
 | **Step 1b:** chain columns, `ledger_chain_key`, `ledger_checkpoint`, locks, close check code `ledger_integrity`; pure `ledger_chain.py` (canonical form, seal, verify) with golden vectors; test helpers seal with a fixed test key | Phase 2.5, now, before Step 3 | v1.0 |
 | **Step 3:** posting seals inside the transaction through the `KeyProvider` interface (`FixedTestKeyProvider` in tests, `NullKeyProvider` otherwise, so posting is refused without a real key); the `ledger_integrity` close check; incremental verification at open | Phase 2.5 | v1.0 |
 | **Step 1c:** keystore (`keys.py` `LocalKeyProvider`, master `installation_key` and `company_key`, DPAPI in `platform_support.py`, recovery-code wrap; the `cryptography` decision K2). **Must land before any screen can post, and before 2.5 is declared done.** The keystore must **retain every retired key** (wrapped, never deleted), so entries sealed under an old key stay verifiable; it mirrors `ledger_chain_key`, which already keeps retired rows. | Phase 2.5, after Step 3 | v1.0 |
-| Steps 4-7 (approvals, reversals, rounding, billing) seal through the same path; `create_document_entry` (section 13) lands with billing | Phase 2.5 | v1.0 |
+| Steps 4-7 (approvals, reversals, rounding, billing) seal through the same path; `create_document_entry` (section 13) landed in Step 6 | Phase 2.5 | v1.0 |
 | Verify service, checkpoints table writes, master mirror, `ledger.verify` permission | Phase 2.5 (with Step 3 / 1c) | v1.0 |
 | Ledger integrity screen, banner at open, Audit-ready checklist screen | Phase 3 | v1.0 |
 | Single connection point: allow-list emptied, test extended (section 5) | Phase 3 | v1.0 |
@@ -746,9 +746,10 @@ get one narrow function:
 
   The test fails if any other module calls `create_document_entry`, `as_system` or `as_import`, or passes a
   source outside its row, or passes a non-literal source.
-* **When it lands** (with billing, Step 7), `create_entry` (the public draft function) accepts only the
-  manual sources for every origin, Import and System included. That closes the remaining path. Until then
-  Step 2's rule stands.
+* **Built in Step 6** (R50, R54; brought forward from billing): `create_entry` (the public draft function) accepts
+  only the manual sources for every origin, Import and System included, which closes the remaining path.
+  `create_document_entry` also takes `source_rows` and rounds Import, Payroll and Conversion entries by one cent
+  or refuses them (R49-R53). Step 7 adds the first real caller (billing).
 * The same lines go through `check_lines`, the same posting path and the same seal (2.5).
 
 ---
