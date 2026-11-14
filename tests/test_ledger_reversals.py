@@ -604,6 +604,42 @@ def test_a_period_13_accrual_is_voided_as_a_pair_with_period_12_closed(rev):
     assert verify(rev)["ok"]
 
 
+def close_period(env, period_id):
+    with env._company("PARENT") as c:
+        lh.set_period_closed(c, period_id, True)
+
+
+@pytest.mark.parametrize("action, word", [("void", "void"), ("correct", "correction")])
+def test_a_reversal_into_a_closed_period_13_is_refused_and_never_moves(rev, action, word):
+    # R48 (final): a reversal dated its period-13 target's date stays in period 13; with period 13 closed it is
+    # refused with the next step, never posted in period 12 (open here) or anywhere else.
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13)
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close_period(rev, p13)
+    call = void if action == "void" else correct
+    refused(rev, lambda: call(rev, entry_id, entry_date="2026-12-31"), PeriodClosedError,
+            rf"^FY2026-13 is closed; reopen it with a reason, or date the {word} in the next fiscal year\.$")
+
+
+def test_a_void_of_a_closed_period_13_entry_can_be_dated_in_the_next_year(rev):
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13)
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close_period(rev, p13)
+    reversal_id = void(rev, entry_id, entry_date="2027-01-05", acknowledge_date_warnings=True)["entry_id"]
+    assert entry_row(rev, reversal_id)["period_id"] == period_of(rev, "2027-01-05")
+
+
+def test_a_period_13_accrual_pair_void_with_period_13_closed_writes_nothing(rev):
+    p13 = period_13(rev)
+    entry_id = draft(rev, entry_date="2026-12-31", period_id=p13, auto_reverse_date="2027-01-01")
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    close_period(rev, p13)
+    refused(rev, lambda: void(rev, entry_id, acknowledge_date_warnings=True), PeriodClosedError,
+            r"^JE-000001 and its automatic reversal JE-000002 are voided together, and FY2026-13 is closed; ")
+
+
 def test_an_automatic_reversal_into_the_next_fiscal_year(rev):
     entry_id = draft(rev, entry_date="2026-12-31", auto_reverse_date="2027-01-01")
     ledger.post_journal_entry(ctx(rev), entry_id, confirm=True, acknowledge_date_warnings=True)

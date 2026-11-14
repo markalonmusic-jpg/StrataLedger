@@ -857,6 +857,9 @@ def _reversal_plan(conn, context, target, kind, word, entry_date):
         if day < target["entry_date"]:
             raise ValidationError(f"A {word} cannot be dated before the entry it reverses ({target['entry_date']}).")
         _, period = _reversal_period(conn, day, target)
+        if period["is_closed"] and period["is_adjustment_period"]:        # R48: it stays there, never moves
+            raise PeriodClosedError(f"{period['name']} is closed; reopen it with a reason, or date the {word} in "
+                                    "the next fiscal year.")
         if period["is_closed"]:
             raise PeriodClosedError(f"{period['name']} is closed; reopen it or choose a date in an open period")
         return [(target, number, day, period)]

@@ -665,3 +665,8 @@ Rotation and key-lost text as it stood before the trim:
 > after the commit. Update CLAUDE.md (status entry, the Step 1b line in the 2.5 roadmap). **STOP after
 > Step 1b and report:** what changed in the baseline, the tests adapted, counts and the commit hash. Do not
 > start Step 3.
+
+- 2026-11-14: R48 made final by the owner (accepted as built). When the period-13 or 14 target's period is
+  closed, the reversal is refused with "reopen it with a reason, or date the void in the next fiscal year" and
+  never moved; four tests (void, correction, next-year void, pair void). Suite 2565 passed, 7 deselected,
+  5 xfailed. Step 6 (rounding) planned in docs/next_step.md; waiting for approval (Q1-Q3).

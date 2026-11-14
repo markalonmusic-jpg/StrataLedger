@@ -1,110 +1,128 @@
 # Next step: Phase 2.5 Step 6 (rounding)
 
-Written at the end of Step 5 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **Step 5 built, reviewed and mutation-tested. One owner question is open (R48, below).** Step 6 is not
-planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
+Written 2026-11-14, at the STOP after R48 was made final. Overwritten at each STOP (CLAUDE.md section 8).
+Status: **the Step 6 plan below is waiting for the owner's approval. No Step 6 code has been written.**
 
-**State:** suite **2561 passed, 7 deselected, 5 xfailed** (Step 5 retired the "reversal cannot predate original"
-xfail). There was no baseline change, so no rebuild. The development master is empty (no users, companies or keys)
-and there are no company files.
+**State:** suite **2565 passed, 7 deselected, 5 xfailed**. The baseline did not change, so no rebuild is needed.
+The development master is empty and there are no company files.
 
-## What Step 5 built (decisions L5, R2, R4, R8, R40-R48)
+## Done this session: R48 is final
 
-All in `modules/services/ledger.py`, which is still the only writer of the journal tables.
-- **One posting core,** `_seal_and_post`. Every entry is posted through it, so one transaction can post several
-  entries with gapless numbers and a whole chain. `post_journal_entry` seals exactly what it sealed before.
-- **Automatic reversals (L5, R47).**
-  - Posting an entry with `auto_reverse_date` posts its Accrual reversal right after it, in the same transaction:
-    origin System, created and posted by the poster, the original's source, no approval fields.
-  - A missing or closed reversal period refuses the post before anything is numbered, and refuses submitting it
-    for approval.
-  - The result now also carries `reversal_entry_id` and `reversal_entry_number`, both None for an ordinary entry.
-  - The R11 refusal is gone.
-- **`void_entry` and `reverse_entry`** (Void and Correction).
-  - Who: a person with `je.reverse`, `confirm=True` (exactly True) and a note. Import and System contexts are
-    denied with a sentence; Agent is denied by `authorize`.
-  - Which entries: manual, Import, Payroll and Conversion. A document's entry is refused with "void the invoice
-    instead" (R40).
-  - Dates: a Void defaults to the original's date and a Correction to today, and neither may be earlier than the
-    original (R41).
-  - No second person (R42), no approval (R8), and the A5 control is not applied again.
-  - A reversal of a reversal is refused (R43).
-  - An accrual with an automatic reversal can only be voided, and then both are voided, each on its own date and
-    all or nothing (R4, R44).
-  - Losing the race for the slot gives a sentence; any other database error goes through R35.
-- **Mirrors (R45):** every line field and flag and every dimension is copied, then checked by the service. A test
-  pins `journal_line`'s columns to the copied list, so a new column cannot be missed.
-- **Descriptions (R46):** "Void of JE-000012: Rent" and so on. `get_entry` and `list_entries` return
-  `display_description`, which shows the person's note: "Void of JE-000012: Rent (note: wrong account)".
-- **`approvals.separation_required(row)`** is now the one separation rule for both modules.
-- **Tests:** tests/test_ledger_reversals.py, 91 tests, written first. The refusal snapshot (tests/test_ledger_posting.py)
-  now also covers `journal_line_dimension`.
+- The owner accepted R48 as built. A Void or Correction dated the same day as its target, when the target is in
+  period 13 or 14, is posted in that same period.
+- When that period is closed, the reversal is refused with the next step and is never moved to another period:
+  "FY2026-13 is closed; reopen it with a reason, or date the void in the next fiscal year." The service had
+  already refused it. Only the sentence is new.
+- A pair void (R4) cannot take a date, so its sentence still says to reopen the period.
+- Tests (tests/test_ledger_reversals.py):
+  - a Void and a Correction into a closed period 13 are refused and write nothing, with period 12 open;
+  - a Void dated in the next year still works;
+  - a pair void with period 13 closed writes nothing.
 
-## Reviews
-- **step-reviewer** on 8d23ba5: approve with changes. Fixed in b5faa82:
-  - (medium) reversals of period 13/14 entries. A Void dated the target's date stays in that period with no date
-    warnings. Before the fix it fell into period 12, which was wrong for the Pre-adjustment basis and refused
-    once period 12 was closed. This is **R48, provisional** (question 1);
-  - an IntegrityError is called a race only when the slot is really taken;
-  - a sentence for a reversal date with no period;
-  - eight tests for the gaps it listed.
-- **mutation-tester** on b5faa82: 92 mutations, 79 killed, 13 survived. Five survivors were real gaps, and each
-  now has a test that kills it (checked one by one against its mutation):
-  - a void by a different person (the void's `created_by` and `posted_by`);
-  - a confirm that is not exactly True;
-  - a malformed date that sorts after the original;
-  - a pair void showing a date warning once;
-  - `display_description` with no description.
+## Step 6 plan (rounding: L8, R1, docs/audit_readiness_design.md section 13)
 
-  The other eight are equivalent:
-  - the R48 condition without the adjustment test: an ordinary target's period always holds its date, because
-    the resolver refuses anything else;
-  - `!= 0` for `== 1` on `require_separate_approver`: the CHECK allows only 0 and 1;
-  - the race branch's Accrual-reversal guard and query width: no Void can exist when an automatic reversal is
-    inserted;
-  - `_slot_taken` narrowed or removed: the unique indexes give the same sentence through the race branch;
-  - the pair void's second lookup by target: an automatic reversal is always dated after its accrual.
-- **secrets-auditor:** not needed. No change to auth, key storage, recovery, backups, email or feeds.
+**The rule, already decided:**
+- Only entries from three sources may carry a rounding line: Import (CSV), Payroll and Conversion.
+- An entry from one of those sources that is out of balance by exactly 1 cent gets one line of 1 cent to
+  `company_settings.rounding_variance_acct_id`, with `is_rounding_adjustment = 1`.
+- 2 cents or more is refused. Manual entries have zero tolerance (posting already refuses any imbalance).
 
-## Hand check for the owner
+**Proposed build** (the decision codes R49 and up are proposed and waiting for approval):
 
-There is still no posting screen, so the check runs the real services on a throwaway company in a temporary
-folder. From the repo root, in PowerShell:
+1. **`ledger.create_document_entry(conn, context, *, source, entry_date, lines, description=None,
+   reference=None, post=False)`**, as section 13 describes it:
+   - it runs inside the caller's write transaction and does not authorize;
+   - the context's origin must be System or Import;
+   - its lines go through `check_lines`;
+   - with `post=True`, it posts through `_seal_and_post` in the same transaction. An Import-origin entry still
+     needs its approval, so it cannot be posted this way (R18).
+   - `ServiceContext.as_system()` and `as_import()` return a copy of the context with that origin and the same
+     `user_id`.
+2. **Rounding happens when the draft is saved, not when it is posted (R49, Q1).** One helper, `_rounding_line`,
+   is called by `create_document_entry`. It is also called by `update_entry` when the draft's source is one of
+   the three: the old rounding line is removed and the difference is worked out again.
+   - The approver sees the line, and the R15 digest covers it, so approving and then posting needs no
+     re-approval.
+   - If debits are higher, the 1 cent is a credit; otherwise it is a debit.
+   - The line has the memo "Rounding (1 cent)", no contact, project or dimensions, and is the entry's last line.
+3. **2 cents or more (R50).** Rule 2 lets an unbalanced draft be saved, so the draft is saved without a rounding
+   line. Submit and post refuse it with this sentence: "This entry is out of balance by 0.02; only a 1-cent
+   rounding difference is balanced automatically. Correct the amounts and import it again."
+4. **No rounding account (R51).** If the setting is empty, or its account is inactive, not postable or has child
+   accounts (C2), the entry is refused when it is saved: "Choose a rounding account in Company Settings >
+   Accounts, or correct the 1-cent difference."
+5. **Posting checks the flag again (R52, integrity).** At posting, an entry may hold at most one
+   `is_rounding_adjustment` line. That line must be 1 cent, on the rounding account, and the entry's source must
+   be one of the three. Anything else is refused before a number is taken.
+   - Reversals keep their original's source and copy the flag (R45), so a Void of an imported entry with a
+     rounding line passes.
+   - Callers still cannot set the flag: it is not in `LINE_FIELDS`.
+6. **Results.** `create_document_entry` returns `rounding_cents` (0, 1 or -1). `get_entry` already returns the
+   line with its flag, so the import review screen can show the note (the "info flag" in L8).
+7. **Who may call it (static test, section 13).** An AST scan of `modules/` names the only modules that may call
+   `create_document_entry`, `as_system` or `as_import`, and the literal sources each may pass. The table is in
+   section 13. Today only `ledger.py` calls it; the other rows wait for their modules.
+8. **Is `create_entry` limited to manual sources now? (Q2.)** Section 13 says `create_entry` takes only manual
+   sources once `create_document_entry` exists. The roadmap places that with billing in Step 7. Proposed:
+   do it in Step 6.
+   - Then there is one path for document and import entries, and rounding cannot be bypassed.
+   - Tests that make Import entries through `create_entry` move to `create_document_entry`. These include
+     test_a_person_voids_an_imported_entry and the Step 4 Import approval tests.
+   - Step 7 then only adds the billing caller.
 
-```
-$env:STRATALEDGER_ALLOW_TEST_KEYS = "1"; python tools/hand_check_step5.py; Remove-Item Env:STRATALEDGER_ALLOW_TEST_KEYS
-```
+**Tests first** (tests/test_ledger_rounding.py, plus the static test in tests/test_static_rules.py):
+- each of the three sources:
+  - 1 cent each way gives one line on the right side, flagged;
+  - 0 cents gives no line;
+  - 2 cents saves the draft, and posting refuses it with the sentence;
+- manual entries:
+  - 1 cent off is refused at posting;
+  - a Human or Agent context cannot reach `create_document_entry`;
+- the rounding account is missing, inactive or a parent;
+- `update_entry` works the rounding out again (1 cent to 0, 0 to 1, 1 cent to the other side);
+- the digest covers the line: approve, then post with no re-approval;
+- the posting check refuses each of these with the flag forced in the database:
+  - two rounding lines;
+  - a 2-cent line;
+  - a line on the wrong account;
+  - a manual entry with the flag;
+- a Void of a rounded Import entry mirrors the line and verifies;
+- the chain verifies after rounded entries are posted;
+- the static caller test: a temporary module outside the table, or a non-literal source, makes it fail.
 
-The last line must be **"Every step behaved as decided."** These are the sentences to judge (rule 0b):
+**Files:**
+- modules/services/ledger.py
+- modules/services/context.py
+- tests/test_ledger_rounding.py (new)
+- tests/test_static_rules.py
+- the tests that move to `create_document_entry` (Q2)
+- docs/decisions_2026-11-11.md (R49 and up, with index rows)
+- docs/audit_readiness_design.md section 13 (when it lands)
+- docs/roadmap.md, docs/status_log.md and this file
 
-| Section | What you should see |
-|---|---|
-| 1 | The accrual posts as JE-000001 on 31 March, and its automatic reversal as JE-000002 on 1 April (origin System), with the description "Automatic reversal of JE-000001: March wages accrued". |
-| 2 | "The automatic reversal date (2031-01-01) has no fiscal period yet; add the fiscal year or change the date." |
-| 3 | No note: "Say why in the note, so the reason stays with the entry."; not confirmed: "Confirm the void first; ..."; dated too early: "A void cannot be dated before the entry it reverses (2026-03-15)."; a user without the permission is refused with the role sentence; then the void posts ("Void of JE-000003: Rent March (note: wrong account)") and the original shows void 1; voiding again: "JE-000003 is already void."; voiding the Void: "JE-000004 is a reversal; enter a new entry to change its effect." |
-| 4 | A Correction dated today (20 March) leaves the original standing; voiding it afterwards: "JE-000005 has already been voided or corrected." |
-| 5 | Correcting the accrual: "JE-000001 has an automatic reversal (JE-000002); void JE-000001 and both are voided together, then enter a new accrual."; voiding the automatic reversal alone: "JE-000002 is the automatic reversal of JE-000001; void JE-000001 and both are voided together."; voiding the accrual posts two Voids, on 31 March and 1 April. |
-| 6 | Verification OK for 8 entries numbered 1 to 8 with no gap; the accrued wages account nets to 0.00. |
+No baseline change: the column, the setting and the template account (8020 Rounding Variance) already exist.
 
-The Step 4 hand check (`tools/hand_check_step4.py`) still ends "Every step behaved as decided."
+**Reviews:** step-reviewer, then mutation-tester on the commit. secrets-auditor is not needed.
 
-## Open question for the owner
+## Open questions for the owner (Step 6)
 
-1. **R48 (provisional; built this way):** when the entry being voided or corrected is in adjustment period 13 or
-   14, a reversal dated on that entry's own date is posted in the same period, with no date warnings. That way the
-   Pre-adjustment, GAAP and Tax bases each net to zero. A later date takes its month period, as usual. The
-   alternative is to always use the month period (period 12 for the year end). That would show a void in the
-   Pre-adjustment basis without its original, and it is refused once period 12 is closed. Proposed: keep R48 as
-   built.
+1. **Q1. When is the rounding line written?** Proposed: when the draft is saved, so the approver sees it and the
+   approval covers it. The alternative is to add it at posting. That would change an approved Import entry after
+   its approval, so every approval would have to be done again.
+2. **Q2. Limit `create_entry` to manual sources in Step 6?** Proposed: yes. The alternative is to wait for
+   Step 7, as section 13 says. Until then an Import or System context could save an Import entry through
+   `create_entry`. That entry would never be rounded, and posting would refuse its 1 cent.
+3. **Q3. A difference of 2 cents or more.** Proposed: the draft is saved and posting refuses it (rule 2). The
+   alternative is to refuse it already when the importer saves the entry, which would stop a bad file earlier.
+   That alternative breaks rule 2 for these three sources only.
 
-## Step 6, to plan next session
+## Then Step 7
 
-Rounding (R1, L8): the one-cent `is_rounding_adjustment` line on Import, Payroll and Conversion entries only, to
-`rounding_variance_acct_id`; two cents or more is refused, and manual entries have zero tolerance. The entry path
-is the narrow `create_document_entry` (docs/audit_readiness_design.md section 13). Read R1, L8 and section 13 by
-search before planning. Then Step 7: the five xfails left (payment over-allocation, one allocation target,
-reopening with a reason, numbering, period from date), plus the payment allocation gaps placed there in
-docs/roadmap.md ("Baseline gaps from the 2026-11-13 design batch").
+- The five xfails left: payment over-allocation, one allocation target, reopening with a reason, numbering and
+  period from date.
+- The payment allocation gaps placed there in docs/roadmap.md ("Baseline gaps from the 2026-11-13 design
+  batch").
+- "Reopening with a reason" is the next step that the R48 sentence names.
 
 ## Carried forward
 

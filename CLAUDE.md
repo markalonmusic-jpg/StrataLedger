@@ -151,11 +151,12 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-13):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
+**Where we are (2026-11-14):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
 KS1-KS11; the service can post, no posting screen yet), 1d (key-lost checkpoint, replacing a lost installation
 key, KS12-KS21), 4 (approvals in posting, R15-R26; owner follow-ups R27-R39) and 5 (reversals and automatic
-reversals, R40-R47). Design batch accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1; gaps placed by step in
-docs/roadmap.md). Next: steps 6-7 (docs/next_step.md), then 2.7, 2.8 (PW1-PW11), Phase 3.
+reversals, R40-R48; R48 final). Design batch accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1; gaps placed by step
+in docs/roadmap.md). Next: step 6 (rounding; plan awaiting approval in docs/next_step.md), 7, then 2.7, 2.8
+(PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.

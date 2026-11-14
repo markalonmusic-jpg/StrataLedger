@@ -219,7 +219,7 @@ R. Phase 2.5 ledger and billing services:
 - R45 Reversals mirror dimensions too (service check)
 - R46 Generated reversal descriptions; the person's note shown with them
 - R47 How the automatic reversal is posted
-- R48 A reversal dated its target's date stays in period 13 or 14 (provisional)
+- R48 A reversal dated its target's date stays in period 13 or 14; closed means refused, never moved
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1336,9 +1336,12 @@ as proposed):
   created and posted by the person who posted the original, the original's source, no approval fields and no
   confirm (R2); the original's approval covers it because the digest includes `auto_reverse_date`. If the reversal
   date has no period, or its period is closed, the whole post is refused before anything is numbered.
-- R48 (Step 5 review, 2026-11-13; PROVISIONAL, built this way and waiting for the owner's confirmation) A Void or
+- R48 (Step 5 review, 2026-11-13; FINAL, accepted as built by the owner 2026-11-14) A Void or
   Correction dated its target's own date, when the target is in adjustment period 13 or 14, is posted in that same
   period, with no date warnings (R12), so the Pre-adjustment, GAAP and Tax bases each net to zero. A later date
   takes the month period that holds it. Without this, a Void of a period-13 entry would land in period 12 (and be
   refused once period 12 is closed, which also blocked a period-13 accrual's pair void for good).
+  When that period 13 or 14 is closed, the reversal is refused with the next step ("FY2026-13 is closed; reopen it
+  with a reason, or date the void in the next fiscal year.") and is never moved to another period. A pair void (R4)
+  cannot take a date, so it can only be reopened.
 
