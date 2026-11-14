@@ -328,20 +328,22 @@ def test_fresh_context_checker_passes_a_fresh_context(call):
 # --- Section 13 (R54): who may make document entries -------------------------------------------------------
 #
 # create_document_entry, as_system and as_import are the narrow path for document, import, payroll and
-# conversion entries (docs/audit_readiness_design.md section 13). Only the modules below may name them, and a
-# call to create_document_entry passes a literal source from that module's row. ledger.py defines the function
-# (its auto-reversal and rounding paths need no call) and context.py defines the two context methods.
+# conversion entries (docs/audit_readiness_design.md section 13). Only the modules below (paths relative to
+# modules/) may name them, and a call to create_document_entry passes a literal source from that module's row.
+# ledger.py defines the function (its auto-reversal and rounding paths need no call) and context.py defines the
+# two context methods. Outside context.py, no module builds a context with any origin but a literal "Human"
+# (ServiceContext(...) or a replace(..., origin=...)), so an Agent context cannot be rebuilt as System or Import.
 
 DOCUMENT_ENTRY_CALLERS = {
-    "billing.py": {"Invoice", "Payment"},
-    "bills.py": {"Bill"},
-    "payments.py": {"Payment"},
-    "payroll_import.py": {"Payroll"},
-    "imports.py": {"Import"},
-    "conversion.py": {"Conversion"},
-    "deferrals.py": {"Deferral"},
-    "poc.py": {"Completion"},
-    "ledger.py": set(),
+    "services/billing.py": {"Invoice", "Payment"},
+    "services/bills.py": {"Bill"},
+    "services/payments.py": {"Payment"},
+    "services/payroll_import.py": {"Payroll"},
+    "services/imports.py": {"Import"},
+    "services/conversion.py": {"Conversion"},
+    "services/deferrals.py": {"Deferral"},
+    "services/poc.py": {"Completion"},
+    "services/ledger.py": set(),
 }
 DOCUMENT_ENTRY_NAMES = {"create_document_entry", "as_system", "as_import"}
 
@@ -359,6 +361,12 @@ def document_entry_violations(source, filename="snippet.py"):
                  or (isinstance(node, ast.ImportFrom) and any(a.name in DOCUMENT_ENTRY_NAMES for a in node.names)))
         if named and allowed is None:
             problems.append(f"{filename}:{node.lineno}")
+        if isinstance(node, ast.Call) and _call_name(node) in ("ServiceContext", "replace"):
+            origins = [k.value for k in node.keywords if k.arg == "origin"]
+            if _call_name(node) == "ServiceContext" and not origins:
+                origins = node.args[2:3]
+            if any(not (isinstance(o, ast.Constant) and o.value == "Human") for o in origins):
+                problems.append(f"{filename}:{node.lineno}")
         if isinstance(node, ast.Call) and _call_name(node) == "create_document_entry" and allowed is not None:
             given = [k.value for k in node.keywords if k.arg == "source"]
             if not (len(given) == 1 and isinstance(given[0], ast.Constant) and given[0].value in allowed):
@@ -371,9 +379,10 @@ def test_only_the_listed_modules_make_document_entries():
     assert len(paths) > 20                                     # the scan sees the modules
     problems = []
     for path in paths:
-        if path.name == "context.py" and path.parent.name == "services":
+        name = path.relative_to(ROOT / "modules").as_posix()
+        if name == "services/context.py":
             continue                                           # defines as_system and as_import
-        problems += document_entry_violations(path.read_text(encoding="utf-8"), path.name)
+        problems += document_entry_violations(path.read_text(encoding="utf-8"), name)
     assert problems == [], f"create_document_entry, as_system and as_import (section 13): {problems}"
 
 
@@ -385,26 +394,40 @@ def test_ledger_defines_the_narrow_path():
 
 @pytest.mark.parametrize("filename, snippet", [
     ("views_billing.py", "ledger.create_document_entry(conn, ctx, source='Invoice', entry_date=d, lines=l)"),
-    ("reports.py", "ctx2 = ctx.as_system()"),
-    ("reports.py", "ctx2 = ctx.as_import()"),
-    ("reports.py", "from modules.services.ledger import create_document_entry as make"),
-    ("reports.py", "make = getattr(ledger, 'create_document_entry')"),
-    ("reports.py", "run(ledger.create_document_entry)"),
-    ("billing.py", "ledger.create_document_entry(conn, ctx, source=kind, entry_date=d, lines=l)"),
-    ("billing.py", "ledger.create_document_entry(conn, ctx, source='Bill', entry_date=d, lines=l)"),
-    ("billing.py", "ledger.create_document_entry(conn, ctx, entry_date=d, lines=l)"),
-    ("billing.py", "ledger.create_document_entry(conn, ctx, **values)"),
-    ("ledger.py", "create_document_entry(conn, ctx, source='Import', entry_date=d, lines=l)"),
+    ("billing.py", "ledger.create_document_entry(conn, ctx, source='Invoice', entry_date=d, lines=l)"),
+    ("other/billing.py", "ledger.create_document_entry(conn, ctx, source='Invoice', entry_date=d, lines=l)"),
+    ("services/reports.py", "ctx2 = ctx.as_system()"),
+    ("services/reports.py", "ctx2 = ctx.as_import()"),
+    ("services/reports.py", "from modules.services.ledger import create_document_entry as make"),
+    ("services/reports.py", "make = getattr(ledger, 'create_document_entry')"),
+    ("services/reports.py", "run(ledger.create_document_entry)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, source=kind, entry_date=d, lines=l)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, source='Bill', entry_date=d, lines=l)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, entry_date=d, lines=l)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, **values)"),
+    ("services/ledger.py", "create_document_entry(conn, ctx, source='Import', entry_date=d, lines=l)"),
+    ("services/billing.py", "c = ServiceContext(user_id=1, company_id=1, origin='System', company_db_path=p, "
+                            "master_db_path=m)"),
+    ("services/reports.py", "c = ServiceContext(1, 1, 'Import', p, m)"),
+    ("services/reports.py", "c = ServiceContext(user_id=1, company_id=1, origin=kind, company_db_path=p, "
+                            "master_db_path=m)"),
+    ("services/reports.py", "c = dataclasses.replace(ctx, origin='System')"),
+    ("services/billing.py", "c = replace(ctx, origin=agent.origin)"),
 ])
 def test_document_entry_checker_flags(filename, snippet):
     assert document_entry_violations(f"def f(conn, ctx):\n    {snippet}\n", filename) != []
 
 
 @pytest.mark.parametrize("filename, snippet", [
-    ("billing.py", "ledger.create_document_entry(conn, ctx.as_system(), source='Invoice', entry_date=d, lines=l)"),
-    ("billing.py", "ledger.create_document_entry(conn, ctx, source='Payment', entry_date=d, lines=l)"),
-    ("imports.py", "ledger.create_document_entry(conn, ctx.as_import(), source='Import', entry_date=d, lines=l)"),
-    ("reports.py", "ledger.create_entry(ctx, entry_date=d)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx.as_system(), source='Invoice', entry_date=d, "
+                            "lines=l)"),
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, source='Payment', entry_date=d, lines=l)"),
+    ("services/imports.py", "ledger.create_document_entry(conn, ctx.as_import(), source='Import', entry_date=d, "
+                            "lines=l)"),
+    ("services/reports.py", "ledger.create_entry(ctx, entry_date=d)"),
+    ("services/users.py", "c = ServiceContext(user_id=1, company_id=1, origin='Human', company_db_path=p, "
+                          "master_db_path=m)"),
+    ("services/reports.py", "c = dataclasses.replace(ctx, now=n, today=t)"),
 ])
 def test_document_entry_checker_passes(filename, snippet):
     assert document_entry_violations(f"def f(conn, ctx):\n    {snippet}\n", filename) == []

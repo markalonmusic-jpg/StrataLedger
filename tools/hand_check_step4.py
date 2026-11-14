@@ -22,6 +22,7 @@ import config  # noqa: E402
 import modules.database as database  # noqa: E402
 from modules.services import approvals, companies, keys, ledger, ledger_chain, periods  # noqa: E402
 from modules.services.errors import ServiceError  # noqa: E402
+from modules.services.tx import write_transaction  # noqa: E402
 from tests import ledger_helpers as lh  # noqa: E402
 from tests.authz_world import World  # noqa: E402
 
@@ -78,8 +79,13 @@ def main():
             return dataclasses.replace(world.ctx(people[name], "PARENT", origin), now=now, today="2026-03-20")
 
         def entry(cents, who="clerk", origin="Human", **kw):
-            return ledger.create_entry(ctx(who, origin), entry_date="2026-03-15", lines=[
-                {"account_id": cash, "debit_cents": cents}, {"account_id": sales, "credit_cents": cents}], **kw)
+            entry_lines = [{"account_id": cash, "debit_cents": cents}, {"account_id": sales, "credit_cents": cents}]
+            if kw.get("source") == "Import":            # an importer saves it in its own transaction (R50, R54)
+                importer = ctx(who, origin)
+                with write_transaction(importer.company_db_path, importer) as conn:
+                    return ledger.create_document_entry(conn, importer, entry_date="2026-03-15", lines=entry_lines,
+                                                        source_rows=[2, 3], **kw)["entry_id"]
+            return ledger.create_entry(ctx(who, origin), entry_date="2026-03-15", lines=entry_lines, **kw)
 
         def post(entry_id, who="clerk", origin="Human"):
             return lambda: ledger.post_journal_entry(ctx(who, origin), entry_id,

@@ -134,6 +134,14 @@ def main():
         show("an agent context as the importer", lambda: world.ctx(people["clerk"], "PARENT", "Agent").as_import(),
              "agent's actions stay agent actions")
 
+        def payroll_as_system():
+            system = ctx().as_system()
+            with write_transaction(system.company_db_path, system) as conn:
+                return ledger.create_document_entry(conn, system, source="Payroll", entry_date="2026-03-15",
+                                                    lines=wage_lines(100, 100), source_rows=[2], post=True)
+        show("payroll saved and posted as the system (skipping the review)", payroll_as_system,
+             "saved by its importer")
+
         print("5. A manual entry 1 cent off is never rounded")
         manual = ledger.create_entry(ctx(), entry_date="2026-03-15", lines=wage_lines(1_001, 1_000))
         show("post it", lambda: ledger.post_journal_entry(ctx(), manual, confirm=True), "does not balance")

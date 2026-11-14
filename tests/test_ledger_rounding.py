@@ -388,3 +388,63 @@ def test_as_system_and_as_import_keep_the_person(env, method, origin):
 def test_an_agent_context_cannot_become_system_or_import(env, method):
     with pytest.raises(ValidationError, match=r"^An agent's actions stay agent actions"):
         getattr(ctx_for(env, "Agent"), method)()
+
+
+# --- Step 6 review: closing the narrow path -------------------------------------------------------------------
+
+@pytest.mark.parametrize("source", ["Import", "Payroll"])
+@pytest.mark.parametrize("post", [False, True])
+def test_an_import_or_payroll_entry_comes_only_from_an_importer(rnd, source, post):
+    # Section 0: import-origin batches always need one human review. As System they would post unreviewed.
+    refused(rnd, lambda: doc(rnd, source, lines(rnd), context=ctx_for(rnd).as_system(), post=post),
+            ValidationError, rf"^An? {source.lower()} entry is saved by its importer \(origin Import\)")
+
+
+@pytest.mark.parametrize("switch", [0, 1])
+def test_a_payroll_entry_always_needs_its_review(rnd, switch):
+    with rnd._company("PARENT") as c:
+        c.execute("UPDATE document_approval_setting SET requires_approval = ? WHERE document_type = 'Import batch'",
+                  (switch,))
+    entry_id = doc(rnd, "Payroll", lines(rnd))["entry_id"]
+    refused(rnd, lambda: ledger.post_journal_entry(ctx_for(rnd), entry_id, confirm=True), PostingError,
+            "needs approval")
+
+
+@pytest.mark.parametrize("source, words", [("Invoice", "an invoice; change the invoice"),
+                                           ("Bill", "a bill; change the bill"),
+                                           ("Deferral", "a deferral; change the deferral")])
+def test_a_document_draft_is_changed_only_through_its_document(rnd, source, words):
+    entry_id = doc(rnd, source, lines(rnd))["entry_id"]
+    for context in (ctx_for(rnd), ctx_for(rnd, "System")):
+        refused(rnd, lambda: ledger.update_entry(context, entry_id, lines=lines(rnd, 5)), PostingError,
+                rf"^This entry was made by {words} instead\.$")
+        refused(rnd, lambda: ledger.delete_entry(context, entry_id), PostingError,
+                rf"^This entry was made by {words} instead\.$")
+
+
+def test_saving_the_lines_back_as_read_keeps_the_rounding_line(rnd):
+    importer = ctx_for(rnd, "Import")
+    entry_id = doc(rnd, "Import", off_by(rnd, 1), context=importer)["entry_id"]
+    shown = ledger.get_entry(importer, entry_id)["lines"]
+    back = [{k: line[k] for k in ledger.LINE_FIELDS if line[k] is not None} for line in shown]
+    assert len(back) == 3                                            # the screen sends all three lines back
+    ledger.update_entry(importer, entry_id, lines=back)
+    saved = lines_of(rnd, entry_id)
+    assert len(saved) == 3 and [l["is_rounding_adjustment"] for l in saved] == [0, 0, 1]
+
+
+def test_an_edited_import_draft_two_cents_off_says_save_again(rnd):
+    importer = ctx_for(rnd, "Import")
+    entry_id = doc(rnd, "Import", off_by(rnd, 0), context=importer)["entry_id"]
+    refused(rnd, lambda: ledger.update_entry(ctx_for(rnd), entry_id, lines=off_by(rnd, 4)), ValidationError,
+            r"^The entry dated 2026-03-15 is out of balance by 0\.04; only a 1-cent rounding difference is balanced "
+            r"automatically, so nothing was saved\. Correct the amounts and save again\.$")
+
+
+@pytest.mark.parametrize("source", ["Conversion", "Deferral"])
+def test_a_document_entry_posted_on_save_with_separation_on(rnd, source):
+    # R54: create and post are one action of the document's service; R17 (the creator may not post) is for a draft
+    # posted later by a person, and a document's separation is its own approval.
+    rnd.settings("PARENT", require_separate_approver=1)
+    result = doc(rnd, source, off_by(rnd, 1 if source == "Conversion" else 0), post=True)
+    assert entry_row(rnd, result["entry_id"])["posted_by"] == rnd.user_id

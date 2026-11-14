@@ -675,20 +675,19 @@ def test_a_request_for_lines_on_two_projects_has_no_project(team):
 
 
 @pytest.mark.parametrize("switch", [1, 0])
-def test_a_payroll_entry_follows_the_import_batch_switch(team, switch):
+def test_a_payroll_entry_needs_its_review_whatever_the_import_batch_switch(team, switch):
+    # Section 0, R18, R55: a payroll entry is saved only by its importer, so it always needs one human review;
+    # the Import batch switch cannot remove it (it was reachable with a System context before R55).
     with team._company("PARENT") as c:
         c.execute("UPDATE document_approval_setting SET requires_approval = ? WHERE document_type = 'Import batch'",
                   (switch,))
-    entry_id = make(team, origin="System", source="Payroll")
-    if not switch:
-        post(team, entry_id, origin="System")
-        assert entry_row(team, entry_id)["is_posted"] == 1
-        return
-    refused(team, lambda: post(team, entry_id, origin="System"), PostingError, "send it for approval")
-    request_id = submit(team, entry_id, origin="System")
+    entry_id = make(team, origin="Import", source="Payroll")
+    refused(team, lambda: post(team, entry_id), PostingError, "send it for approval")
+    request_id = submit(team, entry_id, origin="Import")
     assert requests(team, entry_id)[0]["document_type"] == "Import batch"
     approvals.approve(as_(team, "appr1"), request_id)
-    post(team, entry_id, origin="System")
+    post(team, entry_id)
+    assert entry_row(team, entry_id)["is_posted"] == 1
 
 
 def test_posting_refuses_a_dimension_added_after_approval(team):
