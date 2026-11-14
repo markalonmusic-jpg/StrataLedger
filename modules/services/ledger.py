@@ -23,7 +23,23 @@ Posting (`post_journal_entry`, step 3) runs every check again on the stored draf
 sets the control-override flags, locks the entry counter row, reads it, increments it, seals the entry with the
 company's chain key (docs/audit_readiness_design.md 2.5) and writes is_posted, the number, who and when and the
 four chain columns in ONE update. Any failure rolls the whole transaction back, so numbers stay gapless and the
-chain has no hole. Reversals (step 5) and automatic reversals are refused here.
+chain has no hole. `_seal_and_post` is that core; every entry is posted through it, so one transaction may post
+several entries in turn and still number and chain them without a gap.
+
+Reversals (step 5, L5, R4, R40-R47):
+* Posting an entry with `auto_reverse_date` posts its Accrual reversal right after it, in the same transaction:
+  origin System, created and posted by the person who posted, the original's source, no approval fields. If the
+  reversal date has no period or its period is closed, nothing is posted (R47).
+* `void_entry` posts a Void reversal (the trigger then marks the original void) and `reverse_entry` a Correction.
+  Only a person, with `je.reverse`, `confirm=True` and a note; no second person (R42) and no approval (R8). Only
+  manual, Import, Payroll and Conversion entries (R40); never a reversal (R43). A Void defaults to the original's
+  date, a Correction to today, and neither may be dated before the original (R41). Voiding an accrual that has an
+  automatic reversal voids both, each on its target's date, or nothing (R4); such an accrual cannot be corrected
+  (R44).
+* A reversal mirrors its original line by line: debit and credit swapped, every other line field and flag and
+  every dimension copied (R45). The account rules and the A5 control are not applied again: a correction must
+  stay possible after an account is closed or the control is turned off.
+* Reads return `display_description`: the description, with the person's reversal note after it (R46).
 
 Approvals (step 4, R15-R24): an entry needs an Approved request before it posts when its origin is Agent or
 Import, when it is a manual entry over the manual-entry approval threshold, or when its document type requires
@@ -46,6 +62,7 @@ from modules.services.tx import read_connection, write_transaction
 
 CREATE = "je.create"
 POST = "je.post"
+REVERSE = "je.reverse"
 RECORD_TYPE = "journal_entry"
 IMPORT_POSTED_BY_A_PERSON = ("An imported entry is posted by a person after review; sign in and post it from the "
                              "approved entries.")
@@ -65,6 +82,15 @@ OTHER_SOURCES = ("Invoice", "Bill", "Payment", "Payroll", "Import", "Deferral", 
 LINE_FIELDS = ("account_id", "debit_cents", "credit_cents", "memo", "contact_id", "project_id", "cost_code_id",
                "external_ref")
 STATES = ("draft", "posted")
+# R40: entries a person may void or correct by source; a document's entry is voided through its document.
+REVERSIBLE_SOURCES = (None, "Manual", "Adjustment", "Import", "Payroll", "Conversion")
+DOCUMENT_SOURCE_WORDS = {"Invoice": ("an invoice", "invoice"), "Bill": ("a bill", "bill"),
+                         "Payment": ("a payment", "payment"), "Deferral": ("a deferral", "deferral"),
+                         "Completion": ("a percentage-of-completion entry", "percentage-of-completion entry")}
+ONLY_A_PERSON_REVERSES = "Only a person can void or correct an entry; sign in and do it from the entry."
+# The line fields a reversal copies as they are (debit and credit are swapped), R45.
+MIRRORED_LINE_FIELDS = ("account_id", "memo", "contact_id", "project_id", "cost_code_id", "deferral_id", "batch_id",
+                        "is_retainage_line", "external_ref", "is_control_override", "is_rounding_adjustment")
 _UNSET = object()
 
 
@@ -299,6 +325,7 @@ def get_entry(context, entry_id):
         conn.close()
     entry["total_debit_cents"] = sum(line["debit_cents"] for line in entry["lines"])
     entry["total_credit_cents"] = sum(line["credit_cents"] for line in entry["lines"])
+    entry["display_description"] = display_description(entry)
     return entry
 
 
@@ -312,9 +339,20 @@ def list_entries(context, *, state=None):
         sql += f" WHERE is_posted = {1 if state == 'posted' else 0}"
     conn = read_connection(context.company_db_path)
     try:
-        return [dict(r) for r in conn.execute(sql + " ORDER BY entry_id")]
+        entries = [dict(r) for r in conn.execute(sql + " ORDER BY entry_id")]
     finally:
         conn.close()
+    for entry in entries:
+        entry["display_description"] = display_description(entry)
+    return entries
+
+
+def display_description(entry):
+    """The description as a screen shows it: a reversal's generated text with the person's note after it (R46)."""
+    description, note = entry["description"], entry["reversal_note"]
+    if not note:
+        return description
+    return f"{description} (note: {note})" if description else f"(note: {note})"
 
 
 # --- Posting (step 3) ------------------------------------------------------------------------------------------
@@ -382,10 +420,6 @@ def _entry_digest(conn, entry):
     return ledger_chain.entry_digest(entry, entry_lines, dimensions)
 
 
-def _separation_on(settings):
-    return settings is None or settings["require_separate_approver"] == 1      # no row: the safe default
-
-
 def _approval_gate(state, needed, digest, debits, separate):
     """Refuse posting unless the approvals allow it (R15, R20). Returns (approved_by, approved_at) or (None, None).
 
@@ -424,8 +458,7 @@ def _postable(conn, entry_id):
     if entry["reverses_entry_id"] is not None:
         raise PostingError("A reversal is posted by the reverse or void action, not here")
     if entry["auto_reverse_date"] is not None:
-        raise PostingError("This entry has an automatic reversal date, which is not available yet; "
-                           "clear the date to post it")
+        _auto_reversal_period(conn, entry["auto_reverse_date"])        # R47: refused before anything is numbered
     period_id = periods.resolve_entry_period(conn, entry["entry_date"], entry["period_id"])
     period = conn.execute("SELECT name, is_closed, is_adjustment_period FROM fiscal_period WHERE period_id = ?",
                           (period_id,)).fetchone()
@@ -522,7 +555,7 @@ def submit_entry_for_approval(context, entry_id):
         if state is not None and state["status"] == "Pending":
             raise ValidationError("This entry is already waiting for approval.")
         if (state is not None and state["status"] == "Approved" and state["document_digest"] == digest
-                and not (_separation_on(settings) and state["self_approved"])):
+                and not (approvals.separation_required(settings) and state["self_approved"])):
             raise ValidationError("This entry is already approved; post it.")
         return approvals.submit_in_transaction(conn, context, needed, RECORD_TYPE, entry_id, debits,
                                                created_by=entry["created_by"], project_id=project_id,
@@ -554,10 +587,12 @@ def _check_creator_may_post(context, entry_id):
 
 
 def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_warnings=False):
-    """Post a draft: check it again, number it, seal it. Returns {'entry_id', 'entry_number', 'warnings'}.
+    """Post a draft: check it again, number it, seal it. Returns {'entry_id', 'entry_number', 'warnings',
+    'reversal_entry_id', 'reversal_entry_number'} (the last two None unless the entry has an automatic reversal).
 
     A Human-origin post needs confirm=True (R2). Date warnings (L6, Human origin only) raise DateWarningsError
-    until acknowledge_date_warnings=True; they never block an open period.
+    until acknowledge_date_warnings=True; they never block an open period. An entry with auto_reverse_date also
+    posts its Accrual reversal in the same transaction (L5, R47).
     """
     authorize(context, POST, record_type=RECORD_TYPE, record_id=entry_id)
     if context.origin == "Human" and confirm is not True:
@@ -571,36 +606,255 @@ def post_journal_entry(context, entry_id, *, confirm=False, acknowledge_date_war
         settings = _settings(conn)
         needed = approval_document_type(conn, entry, settings, debits)
         approved_by, approved_at = _approval_gate(approvals.request_state(conn, RECORD_TYPE, entry_id), needed,
-                                                  _entry_digest(conn, entry), debits, _separation_on(settings))
+                                                  _entry_digest(conn, entry), debits,
+                                                  approvals.separation_required(settings))
         warnings = []
         if context.origin == "Human" and not period["is_adjustment_period"]:
-            warnings = [w for w in periods.entry_date_warnings(conn, entry["entry_date"], context.today)
-                        if w["code"] in ("future", "past")]
-            if warnings and not acknowledge_date_warnings:
-                raise DateWarningsError("Check the date before posting: " + " ".join(w["message"] for w in warnings),
-                                        warnings)
+            warnings = _date_warnings(conn, entry["entry_date"], context, acknowledge_date_warnings)
         key_id, key = _active_key(conn, context)
         if overrides:                  # before sealing: the flag is part of the seal
             conn.execute(f"UPDATE journal_line SET is_control_override = 1 WHERE line_id IN "
                          f"({', '.join('?' * len(overrides))})", overrides)
-        number = _next_entry_number(conn)
-        prev_hash = _chain_head(conn)
-        header = dict(entry)
-        header.update(entry_number=number, posted_by=context.user_id, posted_at=context.now,
-                      approved_by=approved_by, approved_at=approved_at,
-                      chain_version=ledger_chain.CHAIN_VERSION, chain_key_id=key_id)
-        sealed_lines = [dict(r) for r in conn.execute(
-            "SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
-        dimensions = [dict(r) for r in conn.execute(
-            "SELECT d.* FROM journal_line_dimension AS d JOIN journal_line AS l ON l.line_id = d.line_id "
-            "WHERE l.entry_id = ?", (entry_id,))]
-        chain_hash = ledger_chain.seal(key.use_for_hmac(), company_code, prev_hash,
-                                       ledger_chain.canonical_entry(header, sealed_lines, dimensions))
-        # A database error here reaches write_transaction: logged, shown as SaveFailedError (R35).
-        conn.execute(
-            "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
-            "approved_by = ?, approved_at = ?, chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
-            "chain_hash = ? WHERE entry_id = ?",
-            (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
-             prev_hash, chain_hash, entry_id))
-    return {"entry_id": entry_id, "entry_number": number, "warnings": warnings}
+        number = _seal_and_post(conn, context, entry_id, company_code, key_id, key, approved_by, approved_at)
+        reversal_id = reversal_number = None
+        if entry["auto_reverse_date"] is not None:                       # L5, R47: same transaction, right after
+            reversal_id = _insert_reversal(conn, context, entry, number, "Accrual reversal",
+                                           entry_date=entry["auto_reverse_date"],
+                                           period_id=_auto_reversal_period(conn, entry["auto_reverse_date"]),
+                                           note=None, origin="System")
+            reversal_number = _seal_and_post(conn, context, reversal_id, company_code, key_id, key)
+    return {"entry_id": entry_id, "entry_number": number, "warnings": warnings,
+            "reversal_entry_id": reversal_id, "reversal_entry_number": reversal_number}
+
+
+def _date_warnings(conn, entry_date, context, acknowledged):
+    """L6 warnings for a Human-origin post; raises DateWarningsError until they are acknowledged."""
+    warnings = [w for w in periods.entry_date_warnings(conn, entry_date, context.today)
+                if w["code"] in ("future", "past")]
+    if warnings and not acknowledged:
+        raise DateWarningsError("Check the date before posting: " + " ".join(w["message"] for w in warnings),
+                                warnings)
+    return warnings
+
+
+def _seal_and_post(conn, context, entry_id, company_code, key_id, key, approved_by=None, approved_at=None):
+    """The posting core, inside the caller's transaction: step the locked counter, chain to the head, seal the
+    entry as stored, and write is_posted, the number, who and when and the four chain columns in ONE update.
+    Returns the entry number. Every entry is posted through here (L4, audit design 2.5)."""
+    header = dict(conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone())
+    number = _next_entry_number(conn)
+    prev_hash = _chain_head(conn)
+    header.update(entry_number=number, posted_by=context.user_id, posted_at=context.now,
+                  approved_by=approved_by, approved_at=approved_at,
+                  chain_version=ledger_chain.CHAIN_VERSION, chain_key_id=key_id)
+    sealed_lines = [dict(r) for r in conn.execute(
+        "SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id", (entry_id,))]
+    dimensions = [dict(r) for r in conn.execute(
+        "SELECT d.* FROM journal_line_dimension AS d JOIN journal_line AS l ON l.line_id = d.line_id "
+        "WHERE l.entry_id = ?", (entry_id,))]
+    chain_hash = ledger_chain.seal(key.use_for_hmac(), company_code, prev_hash,
+                                   ledger_chain.canonical_entry(header, sealed_lines, dimensions))
+    # A database error here reaches write_transaction: logged, shown as SaveFailedError (R35).
+    conn.execute(
+        "UPDATE journal_entry SET is_posted = 1, entry_number = ?, posted_by = ?, posted_at = ?, "
+        "approved_by = ?, approved_at = ?, chain_version = ?, chain_key_id = ?, chain_prev_hash = ?, "
+        "chain_hash = ? WHERE entry_id = ?",
+        (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
+         prev_hash, chain_hash, entry_id))
+    return number
+
+
+# --- Reversals (step 5) ---------------------------------------------------------------------------------------
+
+def _je(number):
+    return f"JE-{number:06d}"
+
+
+def _auto_reversal_period(conn, reverse_date):
+    """The open period for an automatic reversal date (R47); a missing or closed period refuses the post."""
+    try:
+        period_id = periods.resolve_entry_period(conn, reverse_date)
+    except NotFoundError:
+        raise PostingError(f"The automatic reversal date ({reverse_date}) has no fiscal period yet; add the fiscal "
+                           "year or change the date.") from None
+    period = conn.execute("SELECT name, is_closed FROM fiscal_period WHERE period_id = ?", (period_id,)).fetchone()
+    if period["is_closed"]:
+        raise PeriodClosedError(f"The automatic reversal date ({reverse_date}) is in {period['name']}, which is "
+                                "closed; reopen it or change the date.")
+    return period_id
+
+
+def _reversal_description(kind, number, description):
+    """R46: 'Void of JE-000012: Rent'; the person's note stays in reversal_note (see display_description)."""
+    prefix = {"Accrual reversal": "Automatic reversal", "Void": "Void", "Correction": "Correction"}[kind]
+    text = f"{prefix} of {_je(number)}"
+    return f"{text}: {description}" if description else text
+
+
+def _insert_reversal(conn, context, target, target_number, kind, *, entry_date, period_id, note, origin):
+    """Insert the mirror of a posted entry as a draft reversal, inside the caller's transaction (it is posted next
+    by _seal_and_post, so no reversal draft is ever left behind). Returns its entry id. The slot indexes refuse a
+    second Void or Correction, also when two people act at once (R4)."""
+    try:
+        reversal_id = conn.execute(
+            "INSERT INTO journal_entry (entry_date, period_id, reference, description, source, created_by, origin, "
+            "reverses_entry_id, reversal_reason, reversal_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "RETURNING entry_id",
+            (entry_date, period_id, target["reference"],
+             _reversal_description(kind, target_number, target["description"]), target["source"], context.user_id,
+             origin, target["entry_id"], kind, note)).fetchone()[0]
+    except sqlite3.IntegrityError:
+        raise PostingError(f"{_je(target_number)} has already been voided or corrected.") from None
+    columns = ("entry_id", "debit_cents", "credit_cents") + MIRRORED_LINE_FIELDS
+    insert = (f"INSERT INTO journal_line ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))}) "
+              "RETURNING line_id")
+    pairs = []
+    for line in conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+                             (target["entry_id"],)).fetchall():
+        values = (reversal_id, line["credit_cents"], line["debit_cents"]) + tuple(
+            line[field] for field in MIRRORED_LINE_FIELDS)
+        pairs.append((line["line_id"], conn.execute(insert, values).fetchone()[0]))
+    _copy_dimensions(conn, pairs)
+    _check_mirror(conn, target["entry_id"], reversal_id, target_number)
+    return reversal_id
+
+
+def _copy_dimensions(conn, pairs):
+    """Copy every dimension of each original line onto its mirror line, verbatim (R45; never re-resolved, JD1)."""
+    for old_id, new_id in pairs:
+        for dim in conn.execute("SELECT dimension_type_id, dimension_value_id FROM journal_line_dimension "
+                                "WHERE line_id = ?", (old_id,)).fetchall():
+            conn.execute("INSERT INTO journal_line_dimension (line_id, dimension_type_id, dimension_value_id) "
+                         "VALUES (?, ?, ?)", (new_id, dim["dimension_type_id"], dim["dimension_value_id"]))
+
+
+def _mirror_shape(conn, entry_id, swap):
+    shape = []
+    for line in conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+                             (entry_id,)).fetchall():
+        dims = sorted((d["dimension_type_id"], d["dimension_value_id"]) for d in conn.execute(
+            "SELECT dimension_type_id, dimension_value_id FROM journal_line_dimension WHERE line_id = ?",
+            (line["line_id"],)))
+        sides = (line["credit_cents"], line["debit_cents"]) if swap else (line["debit_cents"], line["credit_cents"])
+        shape.append((sides, tuple(line[field] for field in MIRRORED_LINE_FIELDS), tuple(dims)))
+    return shape
+
+
+def _check_mirror(conn, original_id, reversal_id, original_number):
+    """R45: the reversal mirrors the original line by line, dimensions and flags included. The baseline trigger
+    compares the line keys only, so the service checks the whole line (H4)."""
+    if _mirror_shape(conn, original_id, swap=True) != _mirror_shape(conn, reversal_id, swap=False):
+        raise PostingError(f"The reversal does not mirror {_je(original_number)}; nothing was posted.")
+
+
+def _slot_taken(conn, entry_id):
+    """A Void or Correction of this entry exists (they share one slot, R4)."""
+    return conn.execute("SELECT 1 FROM journal_entry WHERE reverses_entry_id = ? "
+                        "AND reversal_reason IN ('Void', 'Correction')", (entry_id,)).fetchone() is not None
+
+
+def _reversal_period(conn, entry_date):
+    """(period id, period row) for a reversal's date: the month period that holds it."""
+    period_id = periods.resolve_entry_period(conn, entry_date)
+    period = conn.execute("SELECT name, is_closed FROM fiscal_period WHERE period_id = ?", (period_id,)).fetchone()
+    return period_id, period
+
+
+def void_entry(context, entry_id, *, note=None, entry_date=None, confirm=False, acknowledge_date_warnings=False):
+    """Void a posted entry: post its mirror as a Void reversal; the original is marked void (R40-R46).
+
+    The Void is dated the original's date unless a later date is given (R41). An accrual that has an automatic
+    reversal is voided with it, each Void on its target's date, or not at all (R4). Returns {'entry_id' and
+    'entry_number' (the Void of the entry itself), 'voided_entry_ids', 'warnings'}.
+    """
+    return _reverse(context, entry_id, "Void", note, entry_date, confirm, acknowledge_date_warnings)
+
+
+def reverse_entry(context, entry_id, *, note=None, entry_date=None, confirm=False, acknowledge_date_warnings=False):
+    """Correct a posted entry: post its mirror as a Correction. The original stays standing and the person enters
+    the corrected entry as a new draft (R40-R46). Dated today unless another date on or after the original's is
+    given (R41). Returns the same shape as void_entry, with an empty 'voided_entry_ids'."""
+    return _reverse(context, entry_id, "Correction", note, entry_date, confirm, acknowledge_date_warnings)
+
+
+def _reverse(context, entry_id, kind, note, entry_date, confirm, acknowledge_date_warnings):
+    """Void or Correction. Only je.reverse and confirm (R2, R8, R42); rule 10's order: authorize, then the write."""
+    authorize(context, REVERSE, record_type=RECORD_TYPE, record_id=entry_id)
+    if context.origin != "Human":                      # Agent is refused by authorize (je.reverse is not allowed)
+        deny(context, REVERSE, record_type=RECORD_TYPE, record_id=entry_id, message=ONLY_A_PERSON_REVERSES)
+    word = "void" if kind == "Void" else "correction"
+    if confirm is not True:
+        raise ValidationError(f"Confirm the {word} first; it is posted at once and cannot be edited")
+    note = _text(note, "note")
+    if not note:
+        raise ValidationError("Say why in the note, so the reason stays with the entry.")
+    if entry_date is not None:
+        _iso_date(entry_date, "date")
+    company_code = _company_code(context)
+    with write_transaction(context.company_db_path, context) as conn:
+        target = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+        plan = _reversal_plan(conn, context, target, kind, word, entry_date)
+        warnings = []
+        for _, _, day in plan:
+            for warning in _date_warnings(conn, day, context, acknowledge_date_warnings):
+                if warning not in warnings:
+                    warnings.append(warning)
+        key_id, key = _active_key(conn, context)
+        posted = []
+        for row, row_number, day in plan:
+            period_id, _ = _reversal_period(conn, day)
+            reversal_id = _insert_reversal(conn, context, row, row_number, kind, entry_date=day,
+                                           period_id=period_id, note=note, origin="Human")
+            posted.append((reversal_id, _seal_and_post(conn, context, reversal_id, company_code, key_id, key)))
+    voided = [row["entry_id"] for row, _, _ in plan] if kind == "Void" else []
+    return {"entry_id": posted[0][0], "entry_number": posted[0][1], "voided_entry_ids": voided,
+            "warnings": warnings}
+
+
+def _reversal_plan(conn, context, target, kind, word, entry_date):
+    """Every check on the target, then [(row to reverse, its number, the reversal's date)] in posting order."""
+    if target is None:
+        raise NotFoundError("That journal entry does not exist")
+    if not target["is_posted"]:
+        raise PostingError("Only a posted entry can be voided or corrected; change or delete the draft instead.")
+    number = target["entry_number"]
+    if target["reverses_entry_id"] is not None:
+        if target["reversal_reason"] == "Accrual reversal":
+            original = _je(_entry_number(conn, target["reverses_entry_id"]))
+            raise PostingError(f"{_je(number)} is the automatic reversal of {original}; void {original} and both "
+                               "are voided together.")
+        raise PostingError(f"{_je(number)} is a reversal; enter a new entry to change its effect.")        # R43
+    if target["is_void"]:
+        raise PostingError(f"{_je(number)} is already void.")
+    if target["source"] not in REVERSIBLE_SOURCES:                                                      # R40
+        made_by, document = DOCUMENT_SOURCE_WORDS.get(target["source"], ("a document", "document"))
+        raise PostingError(f"This entry was made by {made_by}; void the {document} instead.")
+    if _slot_taken(conn, target["entry_id"]):
+        raise PostingError(f"{_je(number)} has already been voided or corrected.")
+    auto = conn.execute("SELECT * FROM journal_entry WHERE reverses_entry_id = ? "
+                        "AND reversal_reason = 'Accrual reversal'", (target["entry_id"],)).fetchone()
+    if auto is None:
+        day = entry_date or (target["entry_date"] if kind == "Void" else context.today)
+        if day < target["entry_date"]:
+            raise ValidationError(f"A {word} cannot be dated before the entry it reverses ({target['entry_date']}).")
+        _, period = _reversal_period(conn, day)
+        if period["is_closed"]:
+            raise PeriodClosedError(f"{period['name']} is closed; reopen it or choose a date in an open period")
+        return [(target, number, day)]
+    if kind == "Correction":                                                                            # R44
+        raise PostingError(f"{_je(number)} has an automatic reversal ({_je(auto['entry_number'])}); void "
+                           f"{_je(number)} and both are voided together, then enter a new accrual.")
+    if entry_date is not None:
+        raise ValidationError("An accrual and its automatic reversal are each voided on their own date; leave the "
+                              "date empty.")
+    plan = [(target, number, target["entry_date"]), (auto, auto["entry_number"], auto["entry_date"])]   # R4, R41
+    for _, _, day in plan:
+        _, period = _reversal_period(conn, day)
+        if period["is_closed"]:
+            raise PeriodClosedError(f"{_je(number)} and its automatic reversal {_je(auto['entry_number'])} are "
+                                    f"voided together, and {period['name']} is closed; reopen it first.")
+    return plan
+
+
+def _entry_number(conn, entry_id):
+    return conn.execute("SELECT entry_number FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()[0]

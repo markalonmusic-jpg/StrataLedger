@@ -86,7 +86,11 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     **Step 4** (done 2026-11-13, R15-R26): approvals in posting: submit for approval with the entry's digest,
     posting only with an Approved request that matches the entry, chains and limits, edits cancel, rejection
     needs a change, separation also covers posting, a fresh context per action, the last approver sealed.
-    Then steps 5-7. Step 1c landed before any screen can post; 2.5 is not done until steps 5-7 are.
+    **Step 5** (done 2026-11-13, R40-R47): reversals: one posting core for every entry; posting an accrual posts
+    its automatic reversal in the same transaction; `void_entry` and `reverse_entry` (Void and Correction, a
+    person with `je.reverse`, a note and confirm); voiding an accrual voids its automatic reversal too; every
+    reversal mirrors its original, dimensions included.
+    Then steps 6-7. Step 1c landed before any screen can post; 2.5 is not done until steps 6-7 are.
     Accepted until step 2.8: the Master can change the password without the recovery code
     (`auth.change_password`).
   - **2.6 Customer and vendor codes (done):** `customer_number` and

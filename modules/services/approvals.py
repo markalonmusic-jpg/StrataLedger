@@ -78,14 +78,20 @@ def check_separate_approver(context, created_by_user_id, *, permission_code=None
     return True
 
 
+def separation_required(settings_row):
+    """The one rule for require_separate_approver: on when the row says 1, and on when there is no settings row
+    (the safe default). The ledger and this module both use it (R17, R37)."""
+    return settings_row is None or settings_row["require_separate_approver"] == 1
+
+
 def separation_on(context):
-    """require_separate_approver for the context's company; no settings row means on (the safe default)."""
+    """require_separate_approver for the context's company (separation_required on its settings row)."""
     conn = read_connection(context.company_db_path)
     try:
         row = conn.execute("SELECT require_separate_approver FROM company_settings WHERE id = 1").fetchone()
     finally:
         conn.close()
-    return row is None or row["require_separate_approver"] == 1
+    return separation_required(row)
 
 
 def _not_counted(context, request):

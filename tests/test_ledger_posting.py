@@ -1,7 +1,8 @@
 """ledger.post_journal_entry, Phase 2.5 step 3 (decisions L4, L6, A5, R2, R5, R8, R9, K3; audit design 2.5, 2.7).
 
 Approvals in posting (step 4) are tested in tests/test_ledger_approvals.py; here only that an entry needing
-approval is refused until it has one. Reversals and auto-reversal (step 5) and rounding (step 6) come later.
+approval is refused until it has one. Reversals and auto-reversal (step 5) are in tests/test_ledger_reversals.py;
+rounding (step 6) comes later.
 """
 import dataclasses
 import re
@@ -118,7 +119,8 @@ def test_post_numbers_stamps_and_seals_the_entry(env, ctx):
     entry_id = draft(env)
     result = ledger.post_journal_entry(ctx, entry_id, confirm=True)
     row = entry_row(env, entry_id)
-    assert result == {"entry_id": entry_id, "entry_number": 1, "warnings": []}
+    assert result == {"entry_id": entry_id, "entry_number": 1, "warnings": [], "reversal_entry_id": None,
+                      "reversal_entry_number": None}
     assert (row["is_posted"], row["entry_number"], row["posted_by"], row["posted_at"]) == (1, 1, env.user_id, NOW)
     assert (row["chain_version"], row["chain_prev_hash"]) == (1, ledger_chain.GENESIS)
     assert re.fullmatch(r"[0-9a-f]{64}", row["chain_hash"])
@@ -268,11 +270,6 @@ def test_a_reversal_draft_is_not_posted_here(env, ctx):
     with env._company("PARENT") as c:
         reversal = lh.make_reversal(c, original, "Correction", entry_date="2026-03-16")
     refused(env, lambda: ledger.post_journal_entry(ctx, reversal, confirm=True), PostingError, "reverse or void")
-
-
-def test_an_entry_with_an_automatic_reversal_date_waits_for_step_5(env, ctx):
-    entry_id = draft(env, entry_date="2026-03-31", auto_reverse_date="2026-04-01")
-    refused(env, lambda: ledger.post_journal_entry(ctx, entry_id, confirm=True), PostingError, "automatic reversal")
 
 
 # --- the key (K3: never post without it) ------------------------------------------------------------------

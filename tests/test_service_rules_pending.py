@@ -7,11 +7,12 @@ rename them, updating these tests.
 
 Step 4 rewrote six of them against the real services (decision R25): the approval rules are in
 tests/test_ledger_approvals.py, the account and controlled-account rules in tests/test_ledger_posting.py.
+Step 5 moved "a reversal cannot predate its original" to tests/test_ledger_reversals.py.
 """
 import pytest
 
 import modules.database as database
-from tests.ledger_helpers import USER, make_invoice, make_period, posted_entry
+from tests.ledger_helpers import USER, make_invoice, make_period
 
 pending = pytest.mark.xfail(strict=True, reason="Phase 2 service layer (controls audit)")
 
@@ -26,14 +27,6 @@ def conn(fresh_company):
 def services():
     from modules.services import billing, errors, ledger  # noqa: F401  (Phase 2)
     return ledger, billing, errors.ServiceRuleError
-
-
-@pending
-def test_reversal_cannot_predate_original(conn):
-    ledger, _, ServiceRuleError = services()
-    original = posted_entry(conn, entry_date="2026-03-20")
-    with pytest.raises(ServiceRuleError):
-        ledger.reverse_entry(conn, original, reason="Void", entry_date="2026-03-10", user_id=USER)
 
 
 @pending
