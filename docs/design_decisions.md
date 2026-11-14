@@ -323,3 +323,20 @@ before building; the database wins on naming.
 - Disabling an add-on hides its screens and stops its hooks. It never drops
   its tables or data, and posted documents stay locked.
 - `company_addon` records which add-ons a company has enabled.
+
+**Cash basis and the cash flow statement (DECIDED 2026-11-13, decisions CB1, CF1)**
+- The books are always accrual. Cash basis is a report view: an Accrual / Cash switch on every financial
+  report, combinable with the A1 basis, with a company default; every report and export names both bases.
+- Cash view: invoice and bill amounts are recognized when payments are applied, prorated across lines by the
+  paid share (jobs and dimensions stay right); unpaid AR and AP drop out; card purchases are paid on the card
+  date; sales tax follows the paid share. Non-cash entries (depreciation, POC, accrued payroll, deferral and
+  prepaid amortization, auto-reversing accruals and their reversals) are removed. Prepaids are expense when
+  paid; deferred revenue is revenue when received; customer deposits stay a liability until applied; fixed
+  assets stay at cost; manual AR/AP entries stay in and are flagged; retainage drops out until paid.
+- Cash flow statement (CF1): direct method, management view. Operating receipts and payments by category,
+  totalling to cash-basis net income (check line); investing; financing; other balance-sheet cash movements;
+  beginning plus change equals ending cash (bank, petty cash, undeposited funds; transfers between them
+  excluded). Every account has a cash flow category defaulted from its type and control type, changeable with
+  an audit entry. The tie-out is checked, never forced: an Unclassified line with drill-down, and a non-zero
+  Unclassified line is a close warning. Lines drill down; Excel export (docs/export_design.md); period
+  comparison. A GAAP indirect-method statement is a possible later report.

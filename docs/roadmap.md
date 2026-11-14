@@ -155,7 +155,24 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
    (docs/pay_applications_design.md); subcontracts and POs designed
    (docs/po_ap_matching_design.md).
 6. Reports: trial balance, job cost, WIP schedule, deferral rollforward,
-   AR/AP aging.
+   AR/AP aging. Also (decided 2026-11-13): the Accrual / Cash switch on every financial report (CB1) and the
+   direct-method cash flow statement (CF1), both v1.0, both exported per docs/export_design.md. For them to
+   work the data must keep: each payment allocation's date, amount and the invoice or bill it pays (the line
+   split is computed from the document's posted lines); each account's cash flow category (Operating,
+   Investing, Financing, Cash) and operating sub-category (customers, vendors, employees, interest, taxes,
+   other); a marker on every non-cash entry (depreciation, POC, accrued payroll, amortization, auto-reversing
+   accruals); and the loan principal vs interest split of each loan payment (docs/loans_design.md).
+   Not in the baseline today (report only; to be added with failing tests first when the reports are built):
+   (a) `payment_allocation` has no date of its own, so a payment applied later than its payment date (B4
+   unapplied payments, B6 credit memos) has no apply date; it also has no credit-memo or loan target (B6,
+   docs/loans_design.md). (b) `account` has no cash flow category or operating sub-category. (c) No marker for
+   petty cash or credit card accounts: `control_type` has `Undeposited funds` only, banks are known through
+   `bank_account`, cards only through `company_settings.credit_card_clearing_acct_id`. (d) Non-cash entries
+   cannot all be told apart: `journal_entry.source` has no depreciation or POC value (the meaning of
+   `Completion` is not documented) and B13 `source_doc_type` / `source_doc_id` are not in the baseline;
+   auto-reversing accruals are known (`auto_reverse_date`, `reversal_reason = 'Accrual reversal'`). (e) The
+   loan principal / interest columns (`invoice_line.loan_line_type`, `journal_line.loan_id`) wait for the
+   loans step. (f) `company_settings` has no default report basis setting.
 7. Backup/export, installer, licensing.
 8. (Done in Phase 2.6: customer and vendor codes.) Still open: the wizard
    shows the code (Phase 3).

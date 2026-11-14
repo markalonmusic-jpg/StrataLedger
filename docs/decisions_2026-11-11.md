@@ -266,6 +266,10 @@ KS. Key store, Phase 2.5 step 1c:
 - KS20 The replace service lives in installation_keys.py
 - KS21 Each installation key's copies are bound to its own row id
 
+CB, CF. Cash basis and cash flow (section "Reports, dimensions, cloud move and bank feeds"):
+- CB1 Cash basis is a report view; books stay on accrual
+- CF1 Direct-method cash flow statement with account cash flow categories
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
@@ -1172,3 +1176,52 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
   approve it; add another approver, or turn off separation of duties in Settings > Controls." (also when the role
   has no limit row). Role holders who are left are still named ("someone in the Controller role or the Master";
   "someone in the Controller role" when no Admin or Master is left). With separation off, nothing changes.
+
+## Reports, dimensions, cloud move and bank feeds (decided 2026-11-13)
+
+Owner decisions from the planning chat on 2026-11-13, recorded in the design batch. Each item names the design
+doc that carries the detail.
+
+### CB. Cash and accrual basis
+
+- CB1 (owner, 2026-11-13) Cash and accrual basis.
+  - The books are always kept on accrual. Cash basis is a report view only: nothing posts differently and the
+    ledger chain is unaffected.
+  - Every financial report has an Accrual / Cash switch, separate from and combinable with the A1 basis
+    (Pre-adjustment, GAAP, Tax, Management). A company setting picks the default. Every report and export is
+    labelled with both bases.
+  - Cash view: invoice revenue and bill expense are recognized on the date each payment is applied, prorated
+    across the document's lines by the paid share, so jobs and dimensions stay correct. Unpaid AR and AP, and
+    the revenue and expense behind them, drop out. Credit card purchases count as paid on the card date. Sales
+    tax follows the paid share.
+  - Non-cash entries are removed: depreciation, percentage-of-completion adjustments, accrued payroll, deferral
+    and prepaid amortization, and auto-reversing accruals together with their reversals.
+  - Prepaid payments are expensed on the date paid, to the account they would amortize into. Deferred revenue
+    received is revenue on the date the cash was received. Customer deposits held in a deposit account stay a
+    liability until applied.
+  - Fixed asset purchases stay on the balance sheet at cost (no depreciation in the cash view).
+  - Manual journal entries to AR or AP stay in and are flagged on the report. Retainage receivable and
+    retainage payable drop out until paid.
+  - Later: a per-company list of accounts excluded from the cash view.
+
+### CF. Cash flow statement
+
+- CF1 (owner, 2026-11-13) Cash flow statement, direct method, management view.
+  - Direct method, for lenders and investors. Operating activities show gross cash receipts and payments by
+    category: received from customers, paid to vendors and suppliers, paid to employees, interest paid, taxes
+    paid, other operating. They total to the cash-basis net income (CB1), shown as a check line.
+  - Then investing (fixed assets purchased or sold) and financing (loan proceeds, loan principal repaid, owner
+    contributions and draws), plus other balance-sheet cash movements (deposits held, sales tax collected vs
+    remitted, payroll liabilities, credit card balance change). Beginning cash plus the net change equals ending
+    cash.
+  - Every operating account maps to one of the operating categories, defaulted from its account type and
+    changeable with an audit entry.
+  - Cash means bank, petty cash and undeposited funds accounts. Transfers between them are excluded.
+  - Every balance-sheet account has a cash flow category (operating, investing, financing, cash), defaulted from
+    its type and control type (fixed assets: investing; loans and equity: financing; bank: cash) and changeable
+    with an audit entry.
+  - The tie-out to the ending bank and cash balances is checked, never forced: anything unclassified shows on an
+    Unclassified line with drill-down, and a non-zero Unclassified line is a close-checklist warning (L2).
+  - Every line drills down to its entries and documents. The statement exports to Excel with its basis and
+    period labelled, and supports period comparison. A GAAP indirect-method statement is a possible later
+    report.
