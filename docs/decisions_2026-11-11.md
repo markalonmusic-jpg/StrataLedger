@@ -45,6 +45,7 @@ B. Posting, payments, bank rec, year-end (section 2):
 - B10 Undo only the latest reconciliation
 - B11 CSV and OFX/QFX statement import; no live feeds in v1 (amended by B11a)
 - B11a v1.0 feed seam and file provider; Ramp in v1.1; aggregators later; relay hosted
+- BF1 Bank feeds design questions answered as proposed; a Ramp charge is never booked twice
 - B12 Credit cards reconcile on the same screen
 - B13 journal_entry.source_doc_type and source_doc_id
 - B14 Voiding a received payment
@@ -277,6 +278,10 @@ JD. Job-driven dimensions (same section):
 CM. Moving a company to the cloud (same section; docs/cloud_migration_design.md):
 - CM1 "Move to the cloud / Invite your team" keeps every record and a verifiable history
 - CM2 Sign-ins move: hashes upgraded at first cloud sign-in, email login, verify once, 2FA for Admins and Master
+- CM3 Cloud migration design questions 1-10 answered as proposed
+
+EX. Export (same section; docs/export_design.md):
+- EX1 Export design questions 1-8 answered as proposed
 
 ---
 
@@ -1274,4 +1279,24 @@ Design: docs/bank_feeds_design.md.
   - Aggregators (Plaid-style) are later, as an optional add-on where the customer supplies their own credentials.
     A hosted relay belongs to the hosted product (and becomes natural there, P5).
   - Reason: a desktop installer cannot safely hold a vendor-wide secret.
+
+### Design batch accepted (owner, 2026-11-13)
+
+The owner accepted the design batch and answered every open question in the three new design docs as proposed.
+Each doc's question section holds the answers; read them there.
+- CM3 docs/cloud_migration_design.md section 10, questions 1-10, as proposed: legacy hashes kept 90 days; the
+  Master becomes the company's Owner; a company user map keeps desktop user ids; an unconfirmed move expires after 7
+  days; no move back in this feature; one company per move; only the Master starts a move; the desktop is not
+  locked during upload (the switch is refused if anything changed); a breached-password check at the first cloud
+  sign-in where the identity provider offers it; the package is a ZIP with fixed member names.
+- BF1 docs/bank_feeds_design.md section 14, questions 1-6, as proposed: secrets in encrypted files under
+  `DATA_DIR/Secrets/` keyed from the installation key; a 60-minute sync timer per company; Ramp card lines in
+  both the holding area and the statement lines; no write-back to Ramp in v1.1; a 45-day re-read window, to be
+  confirmed; `bank.reconcile` and `bank.unreconcile` added with bank reconciliation. Added: a test requirement
+  that a Ramp card charge is never booked twice (holding-area entry vs statement line; section 12).
+- EX1 docs/export_design.md section 14, questions 1-8, as proposed: XlsxWriter writes and openpyxl reads; exports
+  go to `Exports/<company code>/` through storage with "Save a copy as..."; 250,000-row Excel limit, a
+  confirmation above 50,000, CSV streamed; `SUBTOTAL(9, ...)` totals; Excel dates in the company format and CSV
+  in ISO; a `Report export` checkpoint for journal-based reports only; the Auditor gets `report.export` when its
+  template exists, Viewer does not; full-width trigger characters neutralized.
 

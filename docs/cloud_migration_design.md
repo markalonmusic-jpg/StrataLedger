@@ -1,8 +1,8 @@
 # Cloud migration design (DESIGN, NOT BUILT)
 
-**Date:** 2026-11-13 · **Status:** design. Owner decisions CM1 and CM2 (docs/decisions_2026-11-11.md). Nothing
-here is built, and the hosted product it moves into (P5) is not designed yet. Open questions are in section 10
-with proposed answers.
+**Date:** 2026-11-13 · **Status:** design, accepted by the owner. Owner decisions CM1 and CM2, and CM3 (the open
+questions in section 10, all answered as proposed; docs/decisions_2026-11-11.md). Nothing here is built, and the
+hosted product it moves into (P5) is not designed yet.
 
 **Owner decisions this design follows:**
 * **CM1** The desktop app offers "Move to the cloud / Invite your team". It moves one company into the hosted
@@ -404,7 +404,7 @@ company user map, legacy-hash sign-in, email verification and two-factor sign-in
 * Users: email sign-in; legacy hash verified once and replaced; expired legacy hash refused; email reset refused
   while unverified; Admin and Owner cannot see data before two-factor enrolment.
 
-**Open questions, with proposed answers:**
+**Questions, decided (owner, 2026-11-13, CM3): every answer below was accepted as proposed.**
 1. **How long do legacy hashes live in the cloud?** Proposed: 90 days after the switch, then deleted; the user
    uses normal account recovery.
 2. **What does the desktop Master become?** Proposed: the company's Owner (Admin plus the cloud account that

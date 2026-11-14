@@ -1,8 +1,8 @@
 # CSV and Excel export design (DESIGN, NOT BUILT)
 
-**Date:** 2026-11-13 · **Status:** design, not built. No report code exists yet (no report service, no
-report screen), so this design defines the export layer that the reports will use. Open questions are in
-section 14 with proposed answers.
+**Date:** 2026-11-13 · **Status:** design, accepted by the owner; not built. The questions in section 14 are
+decided (EX1, all answered as proposed). No report code exists yet (no report service, no report screen), so
+this design defines the export layer that the reports will use.
 
 **Goal (the owner's top accountant request):** one click exports any report or ledger drill-down to a real
 `.xlsx` with live formulas and clean columns; CSV export for lists; bulk CSV and XLSX upload with clear row
@@ -368,7 +368,7 @@ it:
 
 ---
 
-## 14. Open questions, with proposed answers
+## 14. Questions, decided (owner, 2026-11-13, EX1): every answer below was accepted as proposed
 
 1. **Which writer library?** Proposed: XlsxWriter to write (cached formula results, constant memory, no
    dependencies) and openpyxl only to read uploads. openpyxl cannot write cached formula results.

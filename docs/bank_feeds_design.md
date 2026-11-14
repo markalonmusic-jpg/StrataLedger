@@ -1,7 +1,7 @@
 # Bank feeds design (DESIGN, NOT BUILT)
 
-**Date:** 2026-11-13 · **Status:** design. Owner decision B11a (docs/decisions_2026-11-11.md), which amends B11.
-Nothing here is built. Open questions are in section 14 with proposed answers.
+**Date:** 2026-11-13 · **Status:** design, accepted by the owner. Owner decision B11a (docs/decisions_2026-11-11.md),
+which amends B11, and BF1 (the questions in section 14, all answered as proposed). Nothing here is built.
 
 **Owner decision this design follows (B11a, owner-approved 2026-11-11, recorded 2026-11-13):**
 * v1.0 ships the feed **seam** only: a provider interface, one shared staging path, and file import (CSV,
@@ -368,6 +368,15 @@ could later use the relay as a client of the hosted service (an option, not deci
 * **Boundaries:** a provider module cannot import `tx`, `database` or `ledger` (static test); the feed service
   authorizes before its write transaction (the existing rule 10 static test); `bank.feed.manage` is not in
   `AGENT_ALLOWED`; an Agent context is refused.
+* **A Ramp card charge is never booked twice (owner, 2026-11-13, BF1):** one cleared Ramp transaction reaches both
+  the holding area (`staged_transaction`, which makes the entry) and `bank_statement_line` (which reconciles the card
+  account), and the ledger gets exactly one expense for it. Tests: after the holding-area row is posted and the
+  statement line synced, the card account and the expense account each move once by the charge's amount; the
+  matching screen offers no "Create entry" for a Ramp statement line whose `external_id` has a holding-area row (it
+  offers the match to that row's entry, or "waiting for review" while the row is unposted); matching that line to a
+  second entry is refused; re-syncing, a pending-to-posted change, and syncing before or after the holding-area post
+  all leave one entry; a statement line and a holding-area row are tied by provider, connection and `external_id`,
+  never by amount and date alone.
 * **Money:** amounts become integer cents exactly; a conversion rate other than 100, or a non-base currency, is
   refused.
 * **Ramp (v1.1, against recorded responses, never the live API in the suite):** pagination follows `page.next` to
@@ -399,7 +408,7 @@ the aggregator add-on. **Hosted:** the relay.
 
 ---
 
-## 14. Open questions, with proposed answers
+## 14. Questions, decided (owner, 2026-11-13, BF1): every answer below was accepted as proposed
 
 1. **Where do desktop secrets live?** Proposed: files under `DATA_DIR/Secrets/`, encrypted under a key derived
    from the installation key (section 4), rather than Windows Credential Manager, which is per Windows user (P1
