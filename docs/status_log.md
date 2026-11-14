@@ -360,6 +360,10 @@ automated imports from third-party tools (Gusto, Rippling, Ramp).
   user without access is told only that, and a wrong file is never written to. step-reviewer and
   secrets-auditor findings fixed (the wrong-file access_event row, case-variant accounts, the stored hash's
   lifetime, SecretKey, the R35 log chain). Suite 2443 passed, 6 xfailed.
+- 2026-11-13: Owner answers to the three follow-up-2 questions, R37-R38. R37: with separation on, the limit
+  refusal does not count the request's creator or submitter as a holder (no one left: ask an Admin). R38: every
+  logger is under `strataledger` (font_loader moved; static test). Backlog 19: support bundles redact paths and
+  the profile name. Suite 2455 passed, 6 xfailed.
 
 ## Known issues as recorded on 2026-11-12 (full text)
 

@@ -194,11 +194,13 @@ def record_company_open(context):
     return True
 
 
-def check_approval_limit(context, document_type, amount_cents, project_id=None, *, record_type=None, record_id=None):
+def check_approval_limit(context, document_type, amount_cents, project_id=None, *, record_type=None, record_id=None,
+                         not_counted=frozenset()):
     """Authorize the document's approve permission, then its approval limit.
 
     Master and Admin are unlimited. Otherwise the role needs an approval_limit row
-    for the document type with max_amount_cents >= amount_cents.
+    for the document type with max_amount_cents >= amount_cents. not_counted: user ids the refusal does not
+    count as holders of a role that could approve (R37: the creator and submitter when separation is on).
     """
     if document_type not in permissions.APPROVE_PERMISSION:
         raise ValueError(f"Unknown document type: {document_type!r}")
@@ -216,7 +218,7 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
     finally:
         company.close()
     if row is None or amount_cents > row["max_amount_cents"]:
-        who = _who_can_approve(context, permission, document_type, amount_cents)
+        who = _who_can_approve(context, permission, document_type, amount_cents, not_counted)
         if row is None and who is None:
             message = (f"Your role has no approval limit for {_with_article(document_type.lower())}; ask an Admin "
                        f"to set one or to approve it.")
@@ -229,10 +231,10 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
         _deny(context, permission, "User", record_type, record_id, message)
 
 
-def _who_can_approve(context, permission, document_type, amount_cents):
+def _who_can_approve(context, permission, document_type, amount_cents, not_counted=frozenset()):
     """'someone in the Controller or PM role, or an Admin': the active roles holding the permission whose limit
-    covers the amount, by name, and only those at least one active user holds here (R34). None when no such role
-    is held: only an Admin is left (an Admin can always approve)."""
+    covers the amount, by name, and only those at least one active user holds here (R34), users in not_counted
+    aside (R37). None when no such role is held: only an Admin is left (an Admin can always approve)."""
     company = database.get_readonly_connection(context.company_db_path)
     try:
         candidates = [(r["role_code"], r["name"]) for r in company.execute(
@@ -244,7 +246,7 @@ def _who_can_approve(context, permission, document_type, amount_cents):
             "ORDER BY role.name", (permission, document_type, amount_cents))]
     finally:
         company.close()
-    held = _held_roles(context, {code for code, _ in candidates}) if candidates else set()
+    held = _held_roles(context, {code for code, _ in candidates}, not_counted) if candidates else set()
     names = [name for code, name in candidates if code in held]
     if not names:
         return None
@@ -253,14 +255,17 @@ def _who_can_approve(context, permission, document_type, amount_cents):
     return f"someone in the {', '.join(names[:-1])} or {names[-1]} role, or an Admin,"   # "...or an Admin, to approve it"
 
 
-def _held_roles(context, role_codes):
-    """The role codes among `role_codes` that at least one active user other than the Master holds in the
-    context's company, by the same nearest-row rule as the access check (a Deny row holds nothing)."""
+def _held_roles(context, role_codes, not_counted=frozenset()):
+    """The role codes among `role_codes` that at least one active user other than the Master, and not in
+    `not_counted`, holds in the context's company, by the same nearest-row rule as the access check (a Deny row
+    holds nothing)."""
     master = database.get_readonly_connection(context.master_db_path)
     try:
         held = set()
         for user in master.execute("SELECT user_id FROM app_user WHERE is_active = 1 AND is_master = 0 "
                                    "ORDER BY user_id").fetchall():
+            if user["user_id"] in not_counted:
+                continue
             role_code = _access_role(master, user["user_id"], context.company_id)
             if role_code in role_codes:
                 held.add(role_code)

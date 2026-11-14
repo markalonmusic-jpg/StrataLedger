@@ -69,18 +69,31 @@ def check_separate_approver(context, created_by_user_id, *, permission_code=None
     is_creator = created_by_user_id == context.user_id
     if not is_creator and (submitted_by_user_id is None or submitted_by_user_id != context.user_id):
         return False
-    conn = read_connection(context.company_db_path)
-    try:
-        row = conn.execute("SELECT require_separate_approver FROM company_settings WHERE id = 1").fetchone()
-    finally:
-        conn.close()
-    if row is None or row["require_separate_approver"] == 1:
+    if separation_on(context):
         if is_creator:
             sentence = message or separation_message("document", submitted=False)
         else:
             sentence = submitter_message or separation_message("document", submitted=True)
         authz.deny(context, permission_code, record_type=record_type, record_id=record_id, message=sentence)
     return True
+
+
+def separation_on(context):
+    """require_separate_approver for the context's company; no settings row means on (the safe default)."""
+    conn = read_connection(context.company_db_path)
+    try:
+        row = conn.execute("SELECT require_separate_approver FROM company_settings WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    return row is None or row["require_separate_approver"] == 1
+
+
+def _not_counted(context, request):
+    """R37: with separation on, the request's creator and submitter may not approve it, so a limit refusal does
+    not count them as holders of a role that could."""
+    if not separation_on(context):
+        return frozenset()
+    return frozenset(u for u in (request["created_by"], request["submitted_by"]) if u is not None)
 
 
 # --- Is approval needed at all? (decision 1.6) --------------------------------------------------
@@ -169,7 +182,8 @@ def approve(context, request_id):
     _require_person(context, request_id)
     request = _load_request(context, request_id)
     check_approval_limit(context, request["document_type"], request["amount_cents"], request["project_id"],
-                         record_type="approval_request", record_id=request_id)
+                         record_type="approval_request", record_id=request_id,
+                         not_counted=_not_counted(context, request))
     plan = _plan(context, request)
     with write_transaction(context.company_db_path, context) as conn:
         return _record(conn, context, plan, "Approve", None)
@@ -182,7 +196,8 @@ def reject(context, request_id, reason):
     _require_person(context, request_id)
     request = _load_request(context, request_id)
     check_approval_limit(context, request["document_type"], request["amount_cents"], request["project_id"],
-                         record_type="approval_request", record_id=request_id)
+                         record_type="approval_request", record_id=request_id,
+                         not_counted=_not_counted(context, request))
     plan = _plan(context, request)
     with write_transaction(context.company_db_path, context) as conn:
         return _record(conn, context, plan, "Reject", str(reason).strip())

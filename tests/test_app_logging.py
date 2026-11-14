@@ -75,3 +75,47 @@ def test_a_log_folder_that_cannot_be_made_still_starts(app_module, clean_logger,
     assert app_module.start_logging() == app_module.LOG_UNAVAILABLE
     assert app_module.LOG_UNAVAILABLE == ("The log file could not be opened, so errors will not be recorded; "
                                           "check that the data folder can be written.")
+
+
+# --- R38: every logger in the app is under the app's logger, so its lines reach the file ---------------------
+
+ROOT = APP.parent
+
+
+def _is_get_logger(node):
+    """logging.getLogger(...) or a bare getLogger(...) imported from logging."""
+    return isinstance(node, ast.Call) and "getLogger" in (getattr(node.func, "attr", None),
+                                                          getattr(node.func, "id", None))
+
+
+def _logger_names():
+    """(file, name) for every logging.getLogger(...) call in app_strata.pyw and modules/."""
+    found = []
+    for path in [APP, *sorted((ROOT / "modules").rglob("*.py"))]:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if _is_get_logger(node) and path.name != "logging_setup.py":
+                arg = node.args[0] if node.args else None
+                name = arg.value if isinstance(arg, ast.Constant) else ast.unparse(arg) if arg else ""
+                found.append((path.name, name))
+    return found
+
+
+def test_the_logger_scan_sees_a_bare_getlogger():
+    tree = ast.parse("from logging import getLogger\nlog = getLogger(__name__)\nlogging.getLogger('x')\n")
+    assert len([n for n in ast.walk(tree) if _is_get_logger(n)]) == 2
+
+
+def test_every_logger_is_under_the_app_logger():
+    wrong = [(f, n) for f, n in _logger_names()
+             if not (n == logging_setup.LOGGER_NAME or str(n).startswith(logging_setup.LOGGER_NAME + "."))]
+    assert wrong == []
+
+
+def test_a_font_warning_reaches_the_log_file(clean_logger, tmp_path):
+    from modules import font_loader
+    path = tmp_path / "Logs" / "strataledger.log"
+    logging_setup.configure_logging(str(path))
+    font_loader.logger.warning("Inter font provisioning failed; using Segoe UI")
+    for handler in clean_logger.handlers:
+        handler.flush()
+    assert "Inter font provisioning failed" in path.read_text(encoding="utf-8")

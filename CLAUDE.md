@@ -153,7 +153,7 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-13):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
 KS1-KS11; the service can post, no posting screen yet), 1d (key-lost checkpoint, replacing a lost installation
-key, KS12-KS21) and 4 (approvals in posting, R15-R26; owner follow-ups R27-R36). Next: steps 5-7
+key, KS12-KS21) and 4 (approvals in posting, R15-R26; owner follow-ups R27-R38). Next: steps 5-7
 (docs/next_step.md), then 2.7, 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**

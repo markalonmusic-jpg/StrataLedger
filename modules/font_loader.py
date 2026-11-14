@@ -9,7 +9,7 @@ from urllib.request import urlopen
 
 from config import FONT_DIR as _CONFIG_FONT_DIR
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("strataledger.fonts")   # under the app logger, so warnings reach the log file (R38)
 
 FONT_DIR = _CONFIG_FONT_DIR
 FONT_FILES = (

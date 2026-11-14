@@ -206,6 +206,8 @@ R. Phase 2.5 ledger and billing services:
 - R34 A limit refusal names only roles someone holds
 - R35 Database errors in a save are a plain sentence; details go to the log
 - R36 Access is checked before the company file
+- R37 With separation on, a limit refusal does not count the creator or submitter
+- R38 Every logger is under the app logger
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1152,3 +1154,11 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
   company file is also the wrong one. A user with access, and the Master, are told the file is not the registered one. The file check
   still comes before anything reads or writes the company file: a wrong file is never given an access_event row
   (the log line records it), whichever sentence the user gets.
+- R37 (owner, 2026-11-13, answer to the R34 question) When require_separate_approver is on (or the company has no
+  settings row, the safe default), the approval-limit refusal leaves the request's creator and submitter out when
+  it counts who holds a role that could approve: they may not approve it (R17, R28). If no holder is left, it
+  says to ask an Admin. With separation off they count as before. Applies to approve and reject.
+- R38 (owner, 2026-11-13) Every logger in the app is `strataledger` or under it, so its lines reach the log
+  file and pass the R30 filter; `modules/font_loader.py` moved to `strataledger.fonts`. A static test checks
+  every `getLogger` call in `app_strata.pyw` and `modules/`. Paths in the log are not redacted now; support
+  bundles redact them (roadmap backlog 19).

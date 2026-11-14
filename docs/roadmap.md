@@ -191,6 +191,8 @@ See docs/crm_pm_design.md section 11.
     Decided 2026-11-12: built in the installer (Phase 5), REQUIRED BEFORE v1.0.
 18. A start-up check that warns the Master when the data folder is readable by all users of the computer (with
     backlog 17, so a folder copied or created outside the installer is caught).
+19. Support bundles (when built) redact absolute paths and the Windows profile name from the log files before
+    they leave the computer (owner, 2026-11-13; the log itself keeps them; R38).
 
 **Schema plan** (each change with failing tests first). Until the first
 release there is one baseline per database kind (section 5), so planned

@@ -1,12 +1,30 @@
 # Next step: Phase 2.5 Step 5 (reversals and automatic reversals)
 
-Written at the end of the Step 4 follow-up 2 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **Step 4 and both rounds of owner follow-ups (R27-R31, R32-R36) done; the owner accepted the hand check.**
+Written at the end of the Step 4 follow-up 3 (2026-11-13). Overwritten at each STOP (CLAUDE.md section 8).
+Status: **Step 4 and three rounds of owner follow-ups (R27-R31, R32-R36, R37-R38) done; the owner accepted the hand check.**
 Step 5 is not planned yet: the next session writes its plan (plan mode) and stops for approval before any code.
 
-**State:** suite **2443 passed, 7 deselected, 6 xfailed**. HEAD: the R32-R36 commit. The development master was
+**State:** suite **2455 passed, 7 deselected, 6 xfailed**. HEAD: the R37-R38 commit. The development master was
 rebuilt from the edited baseline (it gained `throttle_secret`, R32); it is empty (no users, companies or keys) and
 there are no company files. The previous empty master is in Backups\.
+
+## Follow-up 3 (owner answers to the three follow-up-2 questions, R37-R38)
+
+- **R37:** with require_separate_approver on (or no settings row), the approval-limit refusal does not count the
+  request's creator or submitter as holding a role that could approve; if no one is left it says to ask an Admin.
+  Approve and reject both. `approvals.separation_on(context)` is the shared read; `authz.check_approval_limit`
+  takes `not_counted`.
+- **R38:** every logger is `strataledger` or under it; `modules/font_loader.py` is `strataledger.fonts`. A static
+  test in tests/test_app_logging.py scans every `getLogger` call in app_strata.pyw and modules/.
+- **Backlog 19** (docs/roadmap.md): support bundles redact absolute paths and the Windows profile name from the
+  logs before they leave the computer. No code now.
+- **step-reviewer:** approve with changes. Fixed: a test for the reject path (it bites: removing the exclusion
+  from reject turns it red), and the logger scan now also sees a bare `getLogger(...)`. Left as notes:
+  - `_not_counted` reads company_settings on every approve or reject, before authorize (not protected data;
+    `_load_request` already reads first; rule 10's write order holds);
+  - `ledger._separation_on(settings)` and `approvals.separation_on(context)` both treat a missing row as on;
+    they could be merged when Step 5 touches ledger;
+  - question 1 below.
 
 ## Follow-up 2 (owner answers to the four questions, R32-R36)
 
@@ -152,14 +170,11 @@ first-Master question (it is a real rebuild: run the dry run first, as always).
 
 ## Open questions for the owner
 
-Questions 1-4 of the previous STOP were answered (R32-R36 above). New, from the reviews:
+The three follow-up-2 questions were answered (R37, R38, backlog 19). New, from the review:
 
-1. **R34 and the submitter** (step-reviewer): the limit refusal can name a role whose only holder is the person
-   who sent the request, who may not approve it when separation is on (R28). Leave it out of the count too?
-2. **Paths in the log** (secrets-auditor): the log file now runs, and tracebacks and one first-run line hold
-   absolute paths with the Windows profile name. Redact them only when a support bundle is built, or now?
-3. **`modules/font_loader.py`** logs to `modules.font_loader`, outside the `strataledger` logger, so its warnings
-   never reach the file (rule 12). Move it under `strataledger` now (one line), or with Phase 3?
+1. **The only Admin is the creator** (step-reviewer): with separation on, a limit refusal still ends "ask an
+   Admin" even when the company's only Admin created or sent the request and so may not approve it. Leave the
+   wording as it is, or say "ask the Master" (or "another Admin") in that case?
 
 ## Step 5, to plan next session
 

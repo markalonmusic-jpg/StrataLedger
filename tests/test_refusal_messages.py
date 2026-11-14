@@ -615,6 +615,67 @@ def test_a_holder_through_the_parent_company_counts(world, team):
     assert str(error.value).endswith("; ask an Admin to approve it.")
 
 
+# --- R37: with separation on, the creator and the submitter are not counted as holders ---------------------
+
+def _only_ctrl1_holds_controller(world, team):
+    world.revoke(team["ctrl2"], CO)
+    world.grant_permission(CO, "Controller", "bill.create")     # so ctrl1 can send a bill for approval
+
+
+@pytest.mark.parametrize("act", ["approve", "reject"])
+@pytest.mark.parametrize("role", ["creator", "submitter"])
+def test_the_creator_or_submitter_is_not_counted_with_separation_on(world, team, role, act):
+    _only_ctrl1_holds_controller(world, team)
+    by, created_by = ("clerk", "ctrl1") if role == "creator" else ("ctrl1", "clerk")
+    request_id = submit(team, amount=200_000, by=by, created_by=created_by)
+    if act == "approve":
+        def call():
+            return approvals.approve(team["ctx"]("pm1"), request_id)
+    else:
+        def call():
+            return approvals.reject(team["ctx"]("pm1"), request_id, "wrong vendor")
+    message, _ = _denied(world, call)
+    assert message == ("This amount (2,000.00) is over your approval limit (1,000.00); ask an Admin to "
+                       "approve it.")
+
+
+@pytest.mark.parametrize("role", ["creator", "submitter"])
+def test_the_creator_or_submitter_still_counts_with_separation_off(world, team, role):
+    _only_ctrl1_holds_controller(world, team)
+    world.settings(CO, require_separate_approver=0)
+    by, created_by = ("clerk", "ctrl1") if role == "creator" else ("ctrl1", "clerk")
+    request_id = submit(team, amount=200_000, by=by, created_by=created_by)
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm1"), request_id))
+    assert message.endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+def test_another_holder_is_still_named_with_separation_on(world, team):
+    request_id = submit(team, amount=200_000, by="clerk", created_by="ctrl1")   # ctrl2 still holds it
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm1"), request_id))
+    assert message.endswith("ask someone in the Controller role or an Admin to approve it.")
+
+
+def test_no_limit_and_only_the_creator_holds_says_ask_an_admin(world, team):
+    _only_ctrl1_holds_controller(world, team)
+    for name in ("pm1", "pm2", "pm3"):
+        world.revoke(team[name], CO)
+    world.role(CO, "Helper", ["bill.approve"])
+    helper = world.user("helper")
+    world.grant(helper, CO, "Helper")
+    request_id = submit(team, amount=5_000, by="clerk", created_by="ctrl1")
+    message, _ = _denied(world, lambda: approvals.approve(world.ctx(helper, CO), request_id))
+    assert message == "Your role has no approval limit for a bill; ask an Admin to set one or to approve it."
+
+
+def test_a_missing_settings_row_counts_as_separation_on_for_the_count(world, team):
+    _only_ctrl1_holds_controller(world, team)
+    with world._company(CO) as c:
+        c.execute("DELETE FROM company_settings")
+    request_id = submit(team, amount=200_000, by="clerk", created_by="ctrl1")
+    message, _ = _denied(world, lambda: approvals.approve(team["ctx"]("pm1"), request_id))
+    assert message.endswith("ask an Admin to approve it.")
+
+
 # --- R36: access is checked before the file ---------------------------------------------------------------------
 
 def _wrong_file(context, world):
