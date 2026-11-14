@@ -288,6 +288,50 @@ Planned schema work, in build order (names only):
 - At the first release the baseline is frozen and the pre-release hash guard
   is replaced by versioned migrations (002 and up).
 
+**Baseline gaps from the 2026-11-13 design batch, by the step that builds them** (owner, 2026-11-13). Each is
+added with failing tests first when its step is built; none is in the baseline yet. Sources: CB1/CF1 and JD1
+(backlog 6, Phase 4 notes above), docs/cloud_migration_design.md section 9, docs/bank_feeds_design.md section 14,
+docs/export_design.md section 13.
+- **Phase 2.5 Step 5 (reversals and automatic reversals):** none of these gaps is needed. Step 5 must keep what
+  CB1 relies on, which the baseline already has: an automatic reversal is identified by its original's
+  `auto_reverse_date` and its own `reversal_reason = 'Accrual reversal'` and `reverses_entry_id`, and a reversal
+  keeps its original's `source`, so the cash view can drop an accrual together with its reversal.
+- **Step 6 (rounding):** none.
+- **Step 7 (the remaining xfails, including payment allocation and one allocation target):** `payment_allocation`
+  gets its own apply date (CB1 recognizes cash on the date a payment is applied, B4) and room for a credit-memo
+  target (B6). The `allocation_one_target` CHECK (invoice or deferral) is the one Step 7 already tests, so the
+  target list is decided there; the loan target waits for the loans step.
+- **Step 2.8 (password recovery, PW1-PW11):** `app_user.email` required (not empty), valid in form and unique
+  ignoring case for new and changed users, with a warning for existing users who lack one (cloud pre-flight, CM2;
+  password design 6 also needs a trusted address).
+- **Phase 4 (double-entry posting of documents, bank reconciliation, reports):**
+  - JD1: `invoice_line.project_id` (the line's job; `invoice.project_id` becomes the default job); remove
+    `invoice_line.department_tag` when dimensions are wired.
+  - B13 `journal_entry.source_doc_type` and `source_doc_id` (also lets CB1 tell document entries apart).
+  - Bank reconciliation and feeds (v1.0 seam): `bank_statement_line`, `feed_connection`, `feed_account_map`,
+    `feed_sync_run`; `bank_reconciliation.completed_by` / `completed_at`; the `recon_id` lock on completion (C11)
+    for statement lines as well as journal lines; the `bank.feed.manage`, `bank.reconcile` and `bank.unreconcile`
+    permissions; an account marker for credit card accounts (B12) and petty cash.
+  - Reports (backlog 6): `account` cash flow category and operating sub-category (CF1); the company default report
+    basis, Accrual or Cash (CB1); an `export_event` table, a streaming write in `storage.py`, and XlsxWriter,
+    openpyxl and defusedxml after the licence and PyInstaller check (export design).
+  - Non-cash markers for CB1 come with the steps that post them: depreciation with fixed assets (v1.0), POC with
+    construction (v1.1), accrued payroll with payroll imports.
+- **Loans (v1.0):** `invoice_line.loan_id`, `loan_schedule_line_id`, `loan_line_type`; `journal_line.loan_id`; the
+  `payment_allocation` loan target (docs/loans_design.md), which CF1 needs to split principal from interest.
+- **CRM / project lifecycle (backlog 2 and 9):** JD1's job dimension settings (a `project_dimension` table of
+  project, dimension type and value).
+- **Imports (backlog 4, csv_import_design.md):** dimension tables for `staged_line` and `time_entry` (JD1); a Ramp
+  `import_source` row (bank feeds 7); journal entry and budget import types (export round trip); the company number
+  format (csv_import_design.md question 3).
+- **Attachments (when designed):** `file_attachment.sha256` recorded at upload and a storage key instead of a path
+  (H3; audit design 10; the cloud package's hashes).
+- **Backups (Phase 5, backlog 16):** the portable company package and the key bundle (no schema change expected);
+  the `Secrets/` folder excluded from backups and support bundles (bank feeds 4).
+- **Hosted (P5):** the `Migration` checkpoint kind in `ledger_checkpoint.kind` and the master `chain_checkpoint.kind`;
+  the company registry's "moved to cloud" state; a record of each move (`cloud_move` or an `auth_event` type); the
+  company user map in the hosted schema.
+
 ## Open decisions (CLAUDE.md section 9)
 
 1. Payroll posting: import the payroll system's own journal (recommended) vs.
