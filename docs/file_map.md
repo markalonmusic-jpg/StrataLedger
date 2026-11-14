@@ -88,6 +88,10 @@ in code (`tests/test_config_paths.py` fails on one).
   temporary password (72 h, forced change), personal backup codes for regular users, the Master's recovery
   code for every change (re-wraps the installation key, Step 1c), abuse limits, session end after a reset,
   optional email (last), TOTP hook (v1.1). NOT BUILT; decided (PW1-PW11).
+- `docs/bank_feeds_design.md` - design for bank feeds (B11a): the provider interface in
+  `modules/services/feeds/`, one statement-line staging table for files and feeds, connections and account maps,
+  secrets outside the databases and backups, polling sync, cutoff against reconciliations, the Ramp provider
+  (v1.1). NOT BUILT.
 - `docs/cloud_migration_design.md` - design for moving a desktop company to the hosted version (CM1, CM2): the
   user's flow, pre-flight, the portable company package shared with backups and exports, the key bundle and Key
   Vault, import and proof, the read-only desktop afterwards, users and password hashes. NOT BUILT.

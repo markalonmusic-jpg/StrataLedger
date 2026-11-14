@@ -158,7 +158,10 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 2. Projects: cost codes, estimates, contracts, schedule of values, change
    orders, budgets.
 3. POC snapshots and the adjusting entry.
-4. Ramp staging, approval and posting; then payroll imports.
+4. Ramp staging, approval and posting; then payroll imports. Bank feeds (B11a, docs/bank_feeds_design.md): v1.0
+   the provider seam, one statement-line staging table, CSV and OFX/QFX files as the first provider, and the
+   matching screen, with the bank reconciliation step; v1.1 the Ramp provider (customer-supplied credential,
+   read-only, into the holding area); aggregators later as an add-on; the relay with the hosted product.
 5. Pay applications (progress billing and retainage) and subcontract/purchase
    order commitments. Pay applications and retainage designed
    (docs/pay_applications_design.md); subcontracts and POs designed

@@ -43,7 +43,8 @@ B. Posting, payments, bank rec, year-end (section 2):
 - B8 Bills approved and off hold before a payment run
 - B9 Check printing and NACHA ACH export
 - B10 Undo only the latest reconciliation
-- B11 CSV and OFX/QFX statement import; no live feeds in v1
+- B11 CSV and OFX/QFX statement import; no live feeds in v1 (amended by B11a)
+- B11a v1.0 feed seam and file provider; Ramp in v1.1; aggregators later; relay hosted
 - B12 Credit cards reconcile on the same screen
 - B13 journal_entry.source_doc_type and source_doc_id
 - B14 Voiding a received payment
@@ -1262,4 +1263,15 @@ Design: docs/cloud_migration_design.md.
     everyone else.
   - Recovery codes, backup codes and temporary passwords do not move; the cloud uses normal account recovery.
   - The pre-flight lists any user without an email address and blocks the move until each has one.
+
+### B (continued). Bank feeds
+
+Design: docs/bank_feeds_design.md.
+- B11a (owner-approved 2026-11-11, recorded 2026-11-13; amends B11 "no live feeds in v1")
+  - v1.0 ships the feed seam only: a provider interface, a shared staging path, and the file import (CSV,
+    OFX/QFX) as the first provider. No live connection ships in v1.0.
+  - v1.1 ships the Ramp provider (card and payables data, customer-supplied API credential).
+  - Aggregators (Plaid-style) are later, as an optional add-on where the customer supplies their own credentials.
+    A hosted relay belongs to the hosted product (and becomes natural there, P5).
+  - Reason: a desktop installer cannot safely hold a vendor-wide secret.
 
