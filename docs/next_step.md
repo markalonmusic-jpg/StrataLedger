@@ -6,7 +6,7 @@ Status: **STOP 1 is committed: both baselines carry the replan schema (RP1-RP11,
 the previous baselines are in archive/baseline_pre_replan/ (tag `baseline-pre-replan`), and the development
 master was rebuilt. Step 7 is not started.**
 
-**State:** suite **2818 passed, 7 deselected, 5 xfailed** (was 2745; 73 new tests). The 5 xfails in tests/test_service_rules_pending.py are the Step 7 work below.
+**State:** suite **2821 passed, 7 deselected, 5 xfailed** (was 2745; 76 new tests). The 5 xfails in tests/test_service_rules_pending.py are the Step 7 work below.
 Rebuild needed before running the app on an older development file: `python scripts/create_fresh_databases.py
 --apply`. `Companies/COMBUZZ.db` predates this baseline, and the hash guard refuses it.
 
@@ -51,7 +51,10 @@ Rebuild needed before running the app on an older development file: `python scri
     as their last four characters only, and the RP1 test now covers every table and more name patterns.
     Recorded: the custom-field bank-number check (Part 3) and the bridge token handling (docs/design.md
     section 1).
-  - **mutation-tester:** MUTATION_HERE
+  - **mutation-tester** (on 35ffbb7): 122 mutants of the new locks, CHECKs, indexes and code. 89 were killed
+    first; the 33 survivors (release-only clauses, CHECK halves, update triggers, contact insert masking)
+    got a test each in a4bc3d7, and a rerun killed all 33. One survivor (a no-op update of a bank match) is
+    pinned by a test that any non-release update is refused.
 
 ## STOP 2 plan: Step 7
 

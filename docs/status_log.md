@@ -732,3 +732,5 @@ Rotation and key-lost text as it stood before the trim:
   - secrets-auditor: contact tax id and certificate number masked to the last four in the audit log; RP1
     test widened to every table.
   Suite 2818 passed, 7 deselected, 5 xfailed.
+  Mutation check (on 35ffbb7): 122 mutants, 89 killed; tests for the 33 survivors in a4bc3d7; the rerun killed
+  all 33. Suite 2821 passed, 7 deselected, 5 xfailed. STOP 1 done; STOP 2 (Step 7) planned in docs/next_step.md.
