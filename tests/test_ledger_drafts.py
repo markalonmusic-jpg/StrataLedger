@@ -278,6 +278,7 @@ def test_check_lines_is_the_single_choke_point(env, ctx, monkeypatch):
 
 # --- entry dates and periods (replaces pending test period_is_set_from_entry_date) --------------------------
 
+# Step 7: replaces the strict xfail "the period is set from the entry date" (tests/test_service_rules_pending.py).
 def test_period_comes_from_the_entry_date(env, ctx):
     march = ledger.create_entry(ctx, entry_date="2026-03-15")
     december_31 = ledger.create_entry(ctx, entry_date="2026-12-31")

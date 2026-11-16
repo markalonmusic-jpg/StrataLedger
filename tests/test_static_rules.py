@@ -335,7 +335,7 @@ def test_fresh_context_checker_passes_a_fresh_context(call):
 # (ServiceContext(...) or a replace(..., origin=...)), so an Agent context cannot be rebuilt as System or Import.
 
 DOCUMENT_ENTRY_CALLERS = {
-    "services/billing.py": {"Invoice", "Payment"},
+    "services/billing.py": {"Invoice"},            # Step 7: payments are made only by services/payments.py
     "services/bills.py": {"Bill"},
     "services/payments.py": {"Payment"},
     "services/payroll_import.py": {"Payroll"},
@@ -403,6 +403,8 @@ def test_ledger_defines_the_narrow_path():
     ("services/reports.py", "run(ledger.create_document_entry)"),
     ("services/billing.py", "ledger.create_document_entry(conn, ctx, source=kind, entry_date=d, lines=l)"),
     ("services/billing.py", "ledger.create_document_entry(conn, ctx, source='Bill', entry_date=d, lines=l)"),
+    # Step 7: payment entries come only from services/payments.py.
+    ("services/billing.py", "ledger.create_document_entry(conn, ctx, source='Payment', entry_date=d, lines=l)"),
     ("services/billing.py", "ledger.create_document_entry(conn, ctx, entry_date=d, lines=l)"),
     ("services/billing.py", "ledger.create_document_entry(conn, ctx, **values)"),
     ("services/ledger.py", "create_document_entry(conn, ctx, source='Import', entry_date=d, lines=l)"),
@@ -421,7 +423,8 @@ def test_document_entry_checker_flags(filename, snippet):
 @pytest.mark.parametrize("filename, snippet", [
     ("services/billing.py", "ledger.create_document_entry(conn, ctx.as_system(), source='Invoice', entry_date=d, "
                             "lines=l)"),
-    ("services/billing.py", "ledger.create_document_entry(conn, ctx, source='Payment', entry_date=d, lines=l)"),
+    ("services/payments.py", "ledger.create_document_entry(conn, ctx.as_system(), source='Payment', entry_date=d, "
+                             "lines=l)"),
     ("services/imports.py", "ledger.create_document_entry(conn, ctx.as_import(), source='Import', entry_date=d, "
                             "lines=l)"),
     ("services/reports.py", "ledger.create_entry(ctx, entry_date=d)"),

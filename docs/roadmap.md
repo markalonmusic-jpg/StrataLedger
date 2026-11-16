@@ -66,9 +66,9 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
       (year name typed exactly); `check_entry_date` (L6); `change_fiscal_year_start` (only with no entries).
       Every close and reopen writes the append-only `period_status_history`. Archive and restore need the
       company code typed (0b amended). The 2.5 ledger service must call `resolve_entry_period`.
-  - **2.5 Ledger services:** the controls-audit rules; every test in
-    tests/test_service_rules_pending.py flips from xfail to pass (strict
-    xfail means each one must be un-marked as it is implemented).
+  - **2.5 Ledger services (done 2026-11-16):** the controls-audit rules; every test in
+    tests/test_service_rules_pending.py flipped from xfail to pass (the file is gone; step 7 moved its last
+    five to test_payments.py, test_sequences.py, test_period_close.py and test_ledger_drafts.py).
     Build order: step 1 (done), step 2 (done), **step 1b** (done: chain schema and the pure `ledger_chain.py`,
     docs/audit_readiness_design.md section 14), step 3 (posting seals every entry inside the posting
     transaction through the `KeyProvider` interface: a fixed key in tests, posting refused when no real key

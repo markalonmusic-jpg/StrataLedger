@@ -99,13 +99,16 @@ def test_allocation_names_exactly_one_source(conn):
     assert not rejects(conn, *insert_sql("payment_allocation", credit_memo_id=memo, **base))
 
 
-def test_a_credit_memo_source_must_be_a_sales_credit_memo(conn):
+def test_a_credit_memo_source_must_be_a_credit_memo(conn):
+    """R56: a sales credit memo or a vendor credit; which document it may pay is the payments service's check."""
     invoice_id = make_invoice(conn, status="Sent")
     other_invoice = make_invoice(conn)
+    bill = make_invoice(conn, itype="Bill")
     vendor_credit = make_invoice(conn, itype="Credit Memo", ledger_side="Purchase")
     base = {"invoice_id": invoice_id, "amount_applied_cents": 100, "applied_date": "2026-03-21"}
     assert rejects(conn, *insert_sql("payment_allocation", credit_memo_id=other_invoice, **base))
-    assert rejects(conn, *insert_sql("payment_allocation", credit_memo_id=vendor_credit, **base))
+    assert rejects(conn, *insert_sql("payment_allocation", credit_memo_id=bill, **base))
+    assert not rejects(conn, *insert_sql("payment_allocation", credit_memo_id=vendor_credit, **base))
 
 
 def test_release_fields_are_all_set_or_all_empty(conn):
@@ -120,6 +123,20 @@ def test_release_fields_are_all_set_or_all_empty(conn):
     assert rejects(conn, "UPDATE payment_allocation SET released_at = '2026-03-25T09:00:00+00:00', "
                          "release_reason = 'x' WHERE allocation_id = ?", (allocation_id,))
     assert not rejects(conn, RELEASE, (allocation_id,))
+
+
+def test_an_allocation_records_its_application_entry_once(conn):
+    """R58: the zero-net entry an allocation of a posted source posts; one entry per allocation."""
+    fks = {row["from"]: row["table"] for row in conn.execute("PRAGMA foreign_key_list(payment_allocation)")}
+    assert fks["application_entry_id"] == "journal_entry"
+    application = posted_entry(conn)
+    first = allocation(conn, payment_id=make_payment(conn))
+    conn.execute("UPDATE payment_allocation SET application_entry_id = ? WHERE allocation_id = ?", (application, first))
+    second = allocation(conn, payment_id=make_payment(conn))
+    assert rejects(conn, "UPDATE payment_allocation SET application_entry_id = ? WHERE allocation_id = ?",
+                   (application, second))
+    assert rejects(conn, "UPDATE payment_allocation SET application_entry_id = 9999 WHERE allocation_id = ?",
+                   (second,))
 
 
 def test_allocations_of_a_draft_source_can_change(conn):
@@ -154,7 +171,8 @@ def test_a_posted_source_allocation_is_released_once_and_never_deleted(conn, sou
                     else ("credit_memo_id", make_invoice(conn, itype="Credit Memo")))
     for column, value in (other_source, ("invoice_id", make_invoice(conn, status="Sent")),
                           ("created_by", 9), ("created_at", "2026-01-01T00:00:00+00:00"),
-                          ("allocation_id", 9999), ("amount_applied_cents", 50), ("applied_date", "2026-03-22")):
+                          ("allocation_id", 9999), ("amount_applied_cents", 50), ("applied_date", "2026-03-22"),
+                          ("application_entry_id", posted_entry(conn))):
         assert rejects(conn, "UPDATE payment_allocation SET released_at = '2026-03-25T09:00:00+00:00', released_by = 1, "
                              f"release_reason = 'x', {column} = ? WHERE allocation_id = ?", (value, allocation_id)), column
     conn.execute(RELEASE, (allocation_id,))
@@ -193,9 +211,11 @@ def test_switching_an_allocation_to_a_non_credit_memo_source_is_refused(conn):
     allocation_id = allocation(conn, credit_memo_id=memo)
     sale = make_invoice(conn)
     assert rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?", (sale, allocation_id))
+    bill = make_invoice(conn, itype="Bill")
+    assert rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?", (bill, allocation_id))
     vendor_credit = make_invoice(conn, itype="Credit Memo", ledger_side="Purchase")
-    assert rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?",
-                   (vendor_credit, allocation_id))
+    assert not rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?",
+                       (vendor_credit, allocation_id))
     other_memo = make_invoice(conn, itype="Credit Memo")
     assert not rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?",
                        (other_memo, allocation_id))

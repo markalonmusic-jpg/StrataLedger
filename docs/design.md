@@ -71,6 +71,14 @@ Token handling when the bridge is built:
   lines net to zero.
 - Payment allocation (Step 7, `payment_allocation`) is the subledger link between payments, credit memos and
   documents; clearing is its ledger-side mirror.
+- BUILT in Phase 2.5 step 7 (R57, R58):
+  - a document entry's line opens a group with `ledger.NEW_CLEARING` (the group id is the opening line's own
+    `line_id`) or joins one by its id, on the same account;
+  - `payments.open_item` finds a document's opening line, and `payments.clearing_lines` splits a payment's AR/AP
+    side per allocation plus a remainder;
+  - `payments.allocate` posts a zero-net application entry when the source has already posted, and
+    `release_allocations` posts its opposite after the source's void.
+  - The invoice, bill and payment posting services that call these come in Phase 4.
 
 ## 4. Posted documents versus posted journal entries
 

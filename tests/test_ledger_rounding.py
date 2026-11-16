@@ -520,8 +520,11 @@ def test_the_rounding_line_takes_nothing_from_the_other_lines(rnd):
     # R49: no contact, project, cost code or reference, even when the entry's other lines carry them.
     project = rnd.project("PARENT")
     with rnd._company("PARENT") as c:
-        cost_code = c.execute("INSERT INTO cost_code (code, name, cost_type_label) VALUES ('03-300', 'Concrete', "
-                              "'Cement') RETURNING cost_code_id").fetchone()[0]
+        division = c.execute("INSERT INTO cost_code (code, name, cost_type_label) VALUES ('03', 'Concrete', "
+                             "'Cement') RETURNING cost_code_id").fetchone()[0]
+        # RP5: lines post to a leaf code (level 2 or 3), never to the division itself.
+        cost_code = c.execute("INSERT INTO cost_code (code, name, cost_type_label, level, parent_id) VALUES "
+                              "('03-300', 'Concrete', 'Cement', 2, ?) RETURNING cost_code_id", (division,)).fetchone()[0]
     entry_lines = off_by(rnd, 1)
     for line in entry_lines:
         line.update(contact_id=rnd.plain_contact, project_id=project, cost_code_id=cost_code, external_ref="R-1",

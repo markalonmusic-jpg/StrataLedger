@@ -328,6 +328,9 @@ CREATE TABLE "payment_allocation" (
     released_at TEXT,
     released_by INTEGER,
     release_reason TEXT,
+    -- R58: the zero-net application entry posted when this allocation applied an already-posted payment or credit
+    -- memo; a release posts its opposite. NULL for an allocation made while the source was a draft.
+    application_entry_id INTEGER UNIQUE REFERENCES journal_entry(entry_id),
     CHECK (typeof(amount_applied_cents) = 'integer'),
     CONSTRAINT allocation_amount_positive CHECK (amount_applied_cents > 0),
     -- 2.5: an allocation names exactly one document, an invoice or a deferral.
@@ -1555,6 +1558,7 @@ WHEN (EXISTS (SELECT 1 FROM payment WHERE payment_id IN (OLD.payment_id, NEW.pay
         AND NEW.applied_date IS OLD.applied_date
         AND NEW.created_by IS OLD.created_by
         AND NEW.created_at IS OLD.created_at
+        AND NEW.application_entry_id IS OLD.application_entry_id
         AND (EXISTS (SELECT 1 FROM payment AS p JOIN journal_entry AS e ON e.entry_id = p.entry_id
                      WHERE p.payment_id = OLD.payment_id AND e.is_void = 1)
           OR EXISTS (SELECT 1 FROM invoice AS i JOIN journal_entry AS e ON e.entry_id = i.entry_id
@@ -1568,17 +1572,19 @@ WHEN EXISTS (SELECT 1 FROM invoice AS i JOIN journal_entry AS e ON e.entry_id = 
              WHERE i.invoice_id = NEW.credit_memo_id AND e.is_void = 1)
 BEGIN SELECT RAISE(ABORT, 'A voided credit memo cannot be applied'); END;
 
+-- R56: a sales credit memo applies to invoices, a vendor credit (a Purchase credit memo) to bills; the payments
+-- service checks the side, the schema that the source is a credit memo.
 CREATE TRIGGER payment_allocation_credit_memo_source_insert
 BEFORE INSERT ON payment_allocation
 WHEN NEW.credit_memo_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo' AND ledger_side = 'Sales')
-BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a sales credit memo'); END;
+    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo')
+BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a credit memo or vendor credit'); END;
 
 CREATE TRIGGER payment_allocation_credit_memo_source_update
 BEFORE UPDATE OF credit_memo_id ON payment_allocation
 WHEN NEW.credit_memo_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo' AND ledger_side = 'Sales')
-BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a sales credit memo'); END;
+    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo')
+BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a credit memo or vendor credit'); END;
 
 CREATE TRIGGER payment_allocation_no_voided_payment
 BEFORE INSERT ON payment_allocation
@@ -2709,7 +2715,8 @@ BEGIN
             'created_at', NEW.created_at,
             'released_at', NEW.released_at,
             'released_by', NEW.released_by,
-            'release_reason', NEW.release_reason),
+            'release_reason', NEW.release_reason,
+            'application_entry_id', NEW.application_entry_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2733,7 +2740,8 @@ BEGIN
             'created_at', OLD.created_at,
             'released_at', OLD.released_at,
             'released_by', OLD.released_by,
-            'release_reason', OLD.release_reason),
+            'release_reason', OLD.release_reason,
+            'application_entry_id', OLD.application_entry_id),
         json_object(
             'allocation_id', NEW.allocation_id,
             'payment_id', NEW.payment_id,
@@ -2746,7 +2754,8 @@ BEGIN
             'created_at', NEW.created_at,
             'released_at', NEW.released_at,
             'released_by', NEW.released_by,
-            'release_reason', NEW.release_reason),
+            'release_reason', NEW.release_reason,
+            'application_entry_id', NEW.application_entry_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2770,7 +2779,8 @@ BEGIN
             'created_at', OLD.created_at,
             'released_at', OLD.released_at,
             'released_by', OLD.released_by,
-            'release_reason', OLD.release_reason),
+            'release_reason', OLD.release_reason,
+            'application_entry_id', OLD.application_entry_id),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;

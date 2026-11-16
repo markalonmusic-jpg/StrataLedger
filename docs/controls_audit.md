@@ -257,7 +257,8 @@ Under the Phase 1 decisions, ledger rules can be schema triggers, while rules fo
 
 The proof on copies also found that invoices could be inserted already past Draft, skipping every leave-Draft rule. 004 now rejects that.
 
-**Moved to the Phase 2 service layer**, with strict expected-failure tests in `tests/test_service_rules_pending.py`:
+**Moved to the Phase 2 service layer**, with strict expected-failure tests in `tests/test_service_rules_pending.py`
+(all now real tests; the file was removed in Phase 2.5 step 7, 2026-11-16):
 - L2 (postable and active accounts) and decision 5 (controlled accounts);
 - decision 6 (when approval is required);
 - the remaining reversal check (date not before the original);

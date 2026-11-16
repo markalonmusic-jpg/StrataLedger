@@ -227,6 +227,9 @@ R. Phase 2.5 ledger and billing services:
 - R53 Posting checks every rounding line again (integrity)
 - R54 create_document_entry, as_system and as_import: the narrow path and its callers
 - R55 Import, Payroll, Conversion (opening balances too) only from the importer; document drafts via their document
+- R56 Allocation permissions: payment.receive (Sales side), payment.make (Purchase side)
+- R57 clearing_id at post time: the opening line's own line_id; a payment splits its AR/AP side per allocation
+- R58 Allocating a posted payment or credit memo posts a zero-net application entry; release posts its opposite
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1423,6 +1426,24 @@ Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
   R5). Import, Payroll and Conversion drafts may be corrected during their review (R49); a rounding line sent back
   exactly as read is recognised as the rounding line and worked out again, and an edit that is 2 cents or more off
   ends "Correct the amounts and save again."
+- R56 (Step 7, owner 2026-11-16) Allocating needs the existing receive and pay permissions: payment.receive for the
+  Sales side (a Received payment or a sales credit memo applied to an invoice), payment.make for the Purchase side
+  (a Made payment or a vendor credit applied to a bill). No separate payment.allocate permission. A release runs
+  inside the void of its payment or credit memo, whose service authorizes it.
+- R57 (Step 7, owner 2026-11-16; Q8) clearing_id is assigned when an entry posts; posted lines are never edited.
+  An invoice's or bill's AR/AP line opens a new group, and so does a credit memo or vendor credit posted
+  unapplied, and the remainder line of a payment. A new group's id is the opening line's own line_id (unique,
+  no sequence table); an opening line is one whose clearing_id equals its line_id. When a payment posts with
+  allocations, its AR/AP side is split into one line per allocated invoice or bill, copying that document's
+  clearing_id, plus one line for any unapplied remainder, so each document's group nets to $0.00 when paid in
+  full. Step 7 builds and tests the helpers (ledger NEW_CLEARING, payments.open_item and clearing_lines); the
+  invoice, bill and payment posting services use them in Phase 4.
+- R58 (Step 7, owner 2026-11-16) Applying a payment or credit memo that has already posted cannot join the two
+  groups by editing lines, so allocate posts a zero-net application entry on the AR/AP account, dated the applied
+  date, with one line in the source's group and one in the target's (source Payment, origin System), and records
+  it in payment_allocation.application_entry_id. Releasing that allocation (after the source is voided, RP11)
+  posts the opposite entry, so the invoice's group is open again. An allocation made while its payment or
+  credit memo is still a draft writes no entry: the posting splits the lines (R57).
 
 
 ## RP. Replan resolutions (decided 2026-11-16)

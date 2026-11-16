@@ -97,6 +97,9 @@ IMPORTER_SOURCES = ("Import", "Payroll", "Conversion")
 LINE_FIELDS = ("account_id", "debit_cents", "credit_cents", "memo", "contact_id", "project_id", "cost_code_id",
                "external_ref")
 STATES = ("draft", "posted")
+# R57: a document entry's line may open a clearing group (the group's id is then the line's own id) or join an
+# existing group on the same account by giving that group's id.
+NEW_CLEARING = "new"
 # R40: entries a person may void or correct by source; a document's entry is voided through its document.
 REVERSIBLE_SOURCES = (None, "Manual", "Adjustment", "Import", "Payroll", "Conversion")
 DOCUMENT_SOURCE_WORDS = {"Invoice": ("an invoice", "invoice"), "Bill": ("a bill", "bill"),
@@ -170,6 +173,23 @@ def _check_accounts(conn, rows):
                                "choose one of its sub-accounts")
 
 
+def _check_cost_codes(conn, rows, error):
+    """RP5: a line posts only to an active leaf cost code: not a level 1 division, not a code with active
+    sub-codes. `error` is ValidationError when saving and PostingError when posting."""
+    for number, row in enumerate(rows, start=1):
+        if row["cost_code_id"] is None:
+            continue
+        code = conn.execute("SELECT code, level, is_active FROM cost_code WHERE cost_code_id = ?",
+                            (row["cost_code_id"],)).fetchone()
+        if not code["is_active"]:
+            raise error(f"Line {number}: cost code {code['code']} is inactive; choose an active code")
+        if code["level"] == 1:
+            raise error(f"Line {number}: post to a cost code or sub-code, not the division {code['code']}")
+        if conn.execute("SELECT 1 FROM cost_code WHERE parent_id = ? AND is_active = 1 LIMIT 1",
+                        (row["cost_code_id"],)).fetchone():
+            raise error(f"Line {number}: cost code {code['code']} has sub-codes; post to one of its sub-codes")
+
+
 def check_lines(conn, lines):
     """The one place a line is validated. Returns the cleaned lines; raises ValidationError or PostingError.
 
@@ -204,14 +224,16 @@ def check_lines(conn, lines):
             clean[field] = value
         cleaned.append(clean)
     _check_accounts(conn, cleaned)
+    _check_cost_codes(conn, cleaned, ValidationError)
     return cleaned
 
 
 def check_entry_lines(conn, entry_id):
-    """Run the account rules again on an entry's stored lines (posting calls this)."""
-    rows = conn.execute("SELECT account_id FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+    """Run the account and cost-code rules again on an entry's stored lines (posting calls this)."""
+    rows = conn.execute("SELECT account_id, cost_code_id FROM journal_line WHERE entry_id = ? ORDER BY line_id",
                         (entry_id,)).fetchall()
     _check_accounts(conn, rows)
+    _check_cost_codes(conn, rows, PostingError)
 
 
 def _stored_lines(conn, entry_id):
@@ -222,13 +244,56 @@ def _stored_lines(conn, entry_id):
 
 
 def _insert_lines(conn, entry_id, lines):
-    for line in lines:
-        conn.execute(
-            "INSERT INTO journal_line (entry_id, account_id, debit_cents, credit_cents, memo, contact_id, "
-            "project_id, cost_code_id, external_ref, is_rounding_adjustment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (entry_id, line["account_id"], line["debit_cents"], line["credit_cents"], line["memo"],
-             line["contact_id"], line["project_id"], line["cost_code_id"], line["external_ref"],
-             line.get("is_rounding_adjustment", 0)))
+    """Insert the lines in order and return their new line ids."""
+    return [conn.execute(
+        "INSERT INTO journal_line (entry_id, account_id, debit_cents, credit_cents, memo, contact_id, "
+        "project_id, cost_code_id, external_ref, is_rounding_adjustment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "RETURNING line_id",
+        (entry_id, line["account_id"], line["debit_cents"], line["credit_cents"], line["memo"],
+         line["contact_id"], line["project_id"], line["cost_code_id"], line["external_ref"],
+         line.get("is_rounding_adjustment", 0))).fetchone()[0] for line in lines]
+
+
+def _clearing_requests(conn, lines, source):
+    """R57: the clearing id each document line asks for (None, NEW_CLEARING or an existing group's id), and the
+    lines without the key, ready for check_lines. Importers cannot set clearing ids."""
+    if not isinstance(lines, (list, tuple)):
+        return [], lines
+    requests, plain = [], []
+    for number, line in enumerate(lines, start=1):
+        if not isinstance(line, dict) or "clearing_id" not in line:
+            requests.append(None)
+            plain.append(line)
+            continue
+        value = line["clearing_id"]
+        plain.append({k: v for k, v in line.items() if k != "clearing_id"})
+        if value is None:
+            requests.append(None)
+            continue
+        if source in IMPORTER_SOURCES:
+            raise ValidationError(f"Line {number}: an imported entry cannot set a clearing id; it is set when the "
+                                  "documents are matched")
+        if value != NEW_CLEARING and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValidationError(f"Line {number}: a clearing id is a new group or an existing group's number")
+        requests.append(value)
+    return requests, plain
+
+
+def _check_clearing_groups(conn, requests, cleaned):
+    """An existing group is named by its opening line (clearing_id = line_id) on the same account."""
+    for number, (value, line) in enumerate(zip(requests, cleaned), start=1):
+        if value is None or value == NEW_CLEARING:
+            continue
+        if conn.execute("SELECT 1 FROM journal_line WHERE line_id = ? AND clearing_id = line_id AND account_id = ?",
+                        (value, line["account_id"])).fetchone() is None:
+            raise ValidationError(f"Line {number}: clearing group {value} does not exist on this account")
+
+
+def _apply_clearing(conn, requests, line_ids):
+    for value, line_id in zip(requests, line_ids):
+        if value is not None:
+            conn.execute("UPDATE journal_line SET clearing_id = ? WHERE line_id = ?",
+                         (line_id if value == NEW_CLEARING else value, line_id))
 
 
 def _open_period(conn, entry_date, period_id):
@@ -446,6 +511,9 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
     whose document type needs approval is refused, and the R17 creator rule does not apply (it is for a draft a
     person posts later; a document's separation is its own approval).
 
+    A line may carry `clearing_id` (R57): NEW_CLEARING opens a group whose id is the line's own id, an int joins
+    the existing group on the same account that that opening line started. Importers cannot set it.
+
     Returns {'entry_id', 'entry_number' (None unless posted), 'rounding_cents'}: the difference (debits - credits)
     the rounding line balanced, 1 (a 1-cent credit), -1 (a 1-cent debit) or 0.
     """
@@ -467,13 +535,15 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
     description, reference = _text(description, "description"), _text(reference, "reference")
     _iso_date(entry_date, "date")
     period_id = _open_period(conn, entry_date, None)
-    stored, difference = _rounded(conn, source, check_lines(conn, lines),
-                                  _entry_label(reference, entry_date, source_rows))
+    clearing, lines = _clearing_requests(conn, lines, source)
+    cleaned = check_lines(conn, lines)
+    _check_clearing_groups(conn, clearing, cleaned)
+    stored, difference = _rounded(conn, source, cleaned, _entry_label(reference, entry_date, source_rows))
     entry_id = conn.execute(
         "INSERT INTO journal_entry (entry_date, period_id, reference, description, source, created_by, origin) "
         "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING entry_id",
         (entry_date, period_id, reference, description, source, context.user_id, context.origin)).fetchone()[0]
-    _insert_lines(conn, entry_id, stored)
+    _apply_clearing(conn, clearing, _insert_lines(conn, entry_id, stored))
     number = None
     if post:
         entry, _, _, debits, _ = _postable(conn, entry_id)

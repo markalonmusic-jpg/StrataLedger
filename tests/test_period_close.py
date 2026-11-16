@@ -143,6 +143,7 @@ def test_closing_twice_is_refused(ctx):
 
 # --- Reopen (L7, 0b amended) -------------------------------------------------------------------
 
+# Step 7: replaces the strict xfail "reopening a period needs a logged reason" (tests/test_service_rules_pending.py).
 def test_reopen_needs_confirm_and_a_reason(ctx):
     periods.close_period(ctx, pid(ctx, "FY2027-01"))
     for kwargs in ({"reason": "Fix", "confirm": False}, {"reason": "Fix"}, {"reason": "  ", "confirm": True},
