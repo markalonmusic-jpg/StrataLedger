@@ -53,7 +53,7 @@ def main():
             periods.seed_years(c, 1, 2026)
             lh.ensure_test_chain_key(c)
             cash = lh.make_account(c, "1010", name="Operating Cash")
-            ar = lh.make_account(c, "1100", name="Accounts Receivable", control_type="AR")
+            ar = lh.make_account(c, "1100", name="Accounts Receivable", control_type="AR", track_clearing_id=1)
             sales = lh.make_account(c, "4010", name="Sales")
             customer = c.execute("INSERT INTO contact (name, is_customer, customer_code) VALUES ('Acme Builders', 1, "
                                  "'AC0001') RETURNING contact_id").fetchone()[0]
@@ -150,7 +150,8 @@ def main():
 
         system = ctx("System")
         with write_transaction(system.company_db_path, system) as conn:
-            numbers = [sequences.next_invoice_number(conn, system, "Invoice")["invoice_number"] for _ in range(2)]
+            numbers = [sequences.next_invoice_number(conn, system, "Invoice", issue_date="2026-03-20")["invoice_number"]
+                       for _ in range(2)]
         print(f"Next invoice numbers (the active series continues, gapless): {', '.join(numbers)}")
         if numbers != ["SI-000003", "SI-000004"]:
             problems.append("numbering did not continue the active series as SI-000003, SI-000004")

@@ -734,3 +734,21 @@ Rotation and key-lost text as it stood before the trim:
   Suite 2818 passed, 7 deselected, 5 xfailed.
   Mutation check (on 35ffbb7): 122 mutants, 89 killed; tests for the 33 survivors in a4bc3d7; the rerun killed
   all 33. Suite 2821 passed, 7 deselected, 5 xfailed. STOP 1 done; STOP 2 (Step 7) planned in docs/next_step.md.
+
+- 2026-11-16: Phase 2.5 Step 7 (STOP 2) done; Phase 2.5 is complete.
+  - Owner answers recorded as R56-R58, and review decisions as R59 and R60.
+  - `payments.py` (allocate, release_allocations, open_item, clearing_lines).
+  - Ledger: clearing ids on document entries (NEW_CLEARING; only on tracked accounts; a group is joined only once
+    posted, for the same contact), exempt_from_approval for application entries only, void_document_entry, and
+    leaf cost codes at save and at post.
+  - `sequences.next_invoice_number` (R6, ph_tax, range, valid_until against the issue date, first usable series).
+  - AR and AP accounts are marked to keep open items.
+  - Baseline: `payment_allocation.application_entry_id`; the credit-memo source triggers accept vendor credits
+    (archive/baseline_pre_2_5_7, tag baseline-pre-2.5-7).
+  - The five xfails are real tests; tests/test_service_rules_pending.py is removed. The billing allow-list row
+    shrank to {"Invoice"}.
+  - COMBUZZ.db moved to Backups/; development master rebuilt. tools/hand_check_step7.py passes.
+  - Commit f931d7a, then the review fixes (step-reviewer: approve with changes, all fixed; secrets-auditor:
+    nothing leaks, two fixes, LOW 2 left open in docs/next_step.md).
+  - Suite 2933 passed, 7 deselected, 0 xfailed.
+

@@ -165,3 +165,39 @@ def test_posting_checks_the_cost_code_again(env, codes):
         c.execute("UPDATE cost_code SET is_active = 0 WHERE cost_code_id = ?", (codes["sub"],))
     with pytest.raises(PostingError, match="inactive"):
         ledger.post_journal_entry(ctx_for(env), other, confirm=True)
+
+
+# --- R60: only accounts that keep open items; a group is joined only after it posted, for the same contact ---
+
+def test_an_account_that_keeps_no_open_items_cannot_open_a_group(env):
+    with pytest.raises(ValidationError, match="does not keep open items"):
+        document_entry(env, [{"account_id": A(env, "sales"), "credit_cents": 1000, "clearing_id": NEW},
+                             {"account_id": A(env, "cash"), "debit_cents": 1000}])
+
+
+def test_a_group_whose_opening_entry_is_still_a_draft_cannot_be_joined(env):
+    draft_entry = document_entry(env, [ar_line(env, 1000), sales_line(env, 1000)], post=False)
+    group = lines_of(env, draft_entry)[0]["clearing_id"]
+    with pytest.raises(ValidationError, match="not an open item posted"):
+        document_entry(env, [{"account_id": A(env, "cash"), "debit_cents": 1000},
+                             ar_line(env, 1000, debit=False, clearing=group)], source="Payment")
+
+
+def test_another_customers_group_cannot_be_joined(env):
+    first = document_entry(env, [ar_line(env, 1000), sales_line(env, 1000)])
+    group = lines_of(env, first)[0]["clearing_id"]
+    other = dict(ar_line(env, 1000, debit=False, clearing=group), contact_id=env.plain_contact)
+    with pytest.raises(ValidationError, match="another customer or vendor"):
+        document_entry(env, [{"account_id": A(env, "cash"), "debit_cents": 1000}, other], source="Payment")
+
+
+@pytest.mark.parametrize("control_type, tracked", [("AR", 1), ("AP", 1), ("GRNI", 0), (None, 0)])
+def test_ar_and_ap_accounts_keep_open_items_from_the_start(env, control_type, tracked):
+    from modules.services import accounts
+    env.grant_permission("PARENT", "POSTER", "account.manage")
+    type_name = "Liability" if control_type in ("AP", "GRNI") else "Asset"
+    account_id = accounts.create_account(ctx_for(env), f"19{tracked}{len(control_type or '')}", "Control",
+                                         type_name, control_type=control_type)
+    assert env.rows("PARENT", "SELECT track_clearing_id FROM account WHERE account_id = ?",
+                    (account_id,))[0]["track_clearing_id"] == tracked
+    assert accounts.tracks_open_items(control_type) == tracked

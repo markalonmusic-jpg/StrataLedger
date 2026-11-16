@@ -229,7 +229,9 @@ R. Phase 2.5 ledger and billing services:
 - R55 Import, Payroll, Conversion (opening balances too) only from the importer; document drafts via their document
 - R56 Allocation permissions: payment.receive (Sales side), payment.make (Purchase side)
 - R57 clearing_id at post time: the opening line's own line_id; a payment splits its AR/AP side per allocation
-- R58 Allocating a posted payment or credit memo posts a zero-net application entry; release posts its opposite
+- R58 Allocating a posted payment or credit memo posts a zero-net application entry; release voids it
+- R59 Application entries and their release are system entries: no document approval; release is a ledger Void
+- R60 Only accounts with track_clearing_id keep clearing groups (AR/AP marked); join a posted group, same contact
 
 K. Audit readiness:
 - K1 DPAPI machine scope, limit stated
@@ -1430,7 +1432,8 @@ Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
   Sales side (a Received payment or a sales credit memo applied to an invoice), payment.make for the Purchase side
   (a Made payment or a vendor credit applied to a bill). No separate payment.allocate permission. A release runs
   inside the void of its payment or credit memo, whose service authorizes it.
-- R57 (Step 7, owner 2026-11-16; Q8) clearing_id is assigned when an entry posts; posted lines are never edited.
+- R57 (Step 7, owner 2026-11-16; Q8) clearing_id is assigned when a document's entry is saved or posted (the
+  same transaction as the document, RP2); posted lines are never edited.
   An invoice's or bill's AR/AP line opens a new group, and so does a credit memo or vendor credit posted
   unapplied, and the remainder line of a payment. A new group's id is the opening line's own line_id (unique,
   no sequence table); an opening line is one whose clearing_id equals its line_id. When a payment posts with
@@ -1442,8 +1445,18 @@ Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
   groups by editing lines, so allocate posts a zero-net application entry on the AR/AP account, dated the applied
   date, with one line in the source's group and one in the target's (source Payment, origin System), and records
   it in payment_allocation.application_entry_id. Releasing that allocation (after the source is voided, RP11)
-  posts the opposite entry, so the invoice's group is open again. An allocation made while its payment or
+  voids the application entry (R59), so the invoice's group is open again. An allocation made while its payment or
   credit memo is still a draft writes no entry: the posting splits the lines (R57).
+- R59 (Step 7 review, owner 2026-11-16) An allocation's application entry is a system consequence of the
+  allocation (the allocation is the decision), like the R47 automatic reversal: document approval does not gate it
+  (create_document_entry's exempt_from_approval, which a static test allows only services/payments.py to pass).
+  Releasing the allocation voids the application entry with a ledger Void reversal inside the void's transaction
+  (ledger.void_document_entry: mirrors every line and clearing id, never dated before the application, in an open
+  period whose area is not locked, no approval), so turning a control on never blocks a correction (section 0).
+- R60 (Step 7 review, owner 2026-11-16; enforces RP2's marker) A line may open or join a clearing group only on an
+  account with track_clearing_id = 1; AR and AP control accounts are marked when created (accounts service and the
+  chart templates). An existing group is joined only once its opening line is posted, and only for the same
+  contact.
 
 
 ## RP. Replan resolutions (decided 2026-11-16)

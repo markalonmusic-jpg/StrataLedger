@@ -141,8 +141,8 @@ def _plan(conn, source, target, amount_cents, applied_date):
     if tgt["type"] != TARGET_TYPE[side]:
         kind = "received" if side == "Sales" else "made"
         what = f"A payment {kind}" if src["kind"] == "payment" else f"A {src['noun']}"
-        raise ValidationError(f"{what} applies to {'an invoice' if side == 'Sales' else 'a bill'}, not to "
-                              f"{tgt['label']}")
+        # The target is on the other side, which the caller may not see (R56), so the sentence does not name it.
+        raise ValidationError(f"{what} applies to {'an invoice' if side == 'Sales' else 'a bill'}; choose one")
     if src["contact_id"] != tgt["contact_id"]:
         raise ValidationError(f"{src['label'].capitalize()} and {tgt['label']} must be for the same customer or "
                               "vendor")
@@ -181,9 +181,27 @@ def _plan(conn, source, target, amount_cents, applied_date):
 
 # --- writing ---------------------------------------------------------------------------------------------------
 
-def _post(conn, context, entry_date, description, lines):
+def _post_application(conn, context, entry_date, description, lines):
+    """R58, R59: the application entry is a system consequence of the allocation, so document approval does not
+    gate it (as the R47 automatic reversal)."""
     return ledger.create_document_entry(conn, context.as_system(), source="Payment", entry_date=entry_date,
-                                        lines=lines, description=description, post=True)["entry_id"]
+                                        lines=lines, description=description, post=True,
+                                        exempt_from_approval=True)["entry_id"]
+
+
+def _source_side(conn, source):
+    """Only the side of the source (Sales or Purchase), read before authorizing so nothing else is disclosed."""
+    kind, record_id = _ref(source, ("payment", "credit_memo"), "Choose the payment or credit memo to apply")
+    if kind == "payment":
+        row = conn.execute("SELECT direction FROM payment WHERE payment_id = ?", (record_id,)).fetchone()
+        if row is None or row["direction"] not in ("Received", "Made"):
+            raise ValidationError("Choose the payment or credit memo to apply")
+        return "Sales" if row["direction"] == "Received" else "Purchase"
+    row = conn.execute("SELECT ledger_side FROM invoice WHERE invoice_id = ? AND invoice_type = 'Credit Memo'",
+                       (record_id,)).fetchone()
+    if row is None:
+        raise ValidationError("Choose the payment or credit memo to apply")
+    return row["ledger_side"]
 
 
 def _application_lines(plan, amount_cents):
@@ -218,21 +236,25 @@ def allocate(context, *, source, target, amount_cents, applied_date):
     invoice or a bill. Returns {'allocation_id', 'application_entry_id' (None for a draft source),
     'target_status'}.
     """
+    if context.origin == "Agent":                 # the AI never moves money (section 0): refused before any read
+        authorize(context, SIDE_PERMISSION["Sales"], record_type="payment_allocation")
     amount_cents = _amount(amount_cents)
     applied_date = _applied_date(applied_date)
     conn = read_connection(context.company_db_path)
     try:
-        side = _plan(conn, source, target, amount_cents, applied_date)["side"]
+        side = _source_side(conn, source)
     finally:
         conn.close()
     authorize(context, SIDE_PERMISSION[side], record_type="payment_allocation")
     with write_transaction(context.company_db_path, context) as conn:
         plan = _plan(conn, source, target, amount_cents, applied_date)
+        if plan["side"] != side:
+            raise ValidationError("The payment or credit memo changed while you were applying it; try again")
         src, tgt = plan["source"], plan["target"]
         entry_id = None
         if plan["source_item"] is not None:
-            entry_id = _post(conn, context, applied_date, f"Apply {src['label']} to {tgt['label']}",
-                             _application_lines(plan, amount_cents))
+            entry_id = _post_application(conn, context, applied_date, f"Apply {src['label']} to {tgt['label']}",
+                                         _application_lines(plan, amount_cents))
         allocation_id = conn.execute(
             f"INSERT INTO payment_allocation ({src['column']}, invoice_id, amount_applied_cents, applied_date, "
             "created_by, created_at, application_entry_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING allocation_id",
@@ -244,12 +266,14 @@ def allocate(context, *, source, target, amount_cents, applied_date):
 def release_allocations(conn, context, *, source, reason, entry_date):
     """Inside the void of a payment or credit memo: release each of its live allocations once (RP11).
 
-    A posted source's entry must already be voided. An allocation that posted an application entry gets the
-    opposite entry on entry_date (R58); every released allocation is stamped and a Paid target reopens.
-    Returns {'released': [allocation ids], 'entries': [opposite entry ids]}.
+    A posted source's entry must already be voided. An allocation that posted an application entry has that entry
+    voided (a ledger Void reversal dated entry_date, R59: never before the application, in an open period whose
+    area is not locked, needing no approval); every released allocation is stamped and a Paid target reopens.
+    Returns {'released': [allocation ids], 'entries': [the Void reversals' entry ids]}.
     """
     if not isinstance(reason, str) or not reason.strip():
         raise ValidationError("Give a reason for releasing the allocations")
+    entry_date = _applied_date(entry_date)
     src = _source(conn, source)
     if src["entry_id"] is not None and not _entry_is_void(conn, src["entry_id"]):
         raise ValidationError(f"Void the {src['noun']} before releasing its allocations")
@@ -258,14 +282,10 @@ def release_allocations(conn, context, *, source, reason, entry_date):
                             f"WHERE {src['column']} = ? AND released_at IS NULL ORDER BY allocation_id",
                             (src["id"],)).fetchall():
         if row["application_entry_id"] is not None:
-            opposite = [{"account_id": line["account_id"], "contact_id": line["contact_id"],
-                         "clearing_id": line["clearing_id"],
-                         **({"debit_cents": line["credit_cents"]} if line["credit_cents"]
-                            else {"credit_cents": line["debit_cents"]})}
-                        for line in conn.execute("SELECT * FROM journal_line WHERE entry_id = ? ORDER BY line_id",
-                                                 (row["application_entry_id"],))]
-            entries.append(_post(conn, context, entry_date, f"Release of allocation {row['allocation_id']}",
-                                 opposite))
+            _check_period(conn, entry_date, src["side"])
+            entries.append(ledger.void_document_entry(
+                conn, context.as_system(), row["application_entry_id"], entry_date=entry_date,
+                note=f"Release of allocation {row['allocation_id']}: {reason.strip()}"))
         conn.execute("UPDATE payment_allocation SET released_at = ?, released_by = ?, release_reason = ? "
                      "WHERE allocation_id = ?", (context.now, context.user_id, reason.strip(), row["allocation_id"]))
         _settle_status(conn, row["invoice_id"])

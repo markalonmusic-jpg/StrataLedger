@@ -280,13 +280,26 @@ def _clearing_requests(conn, lines, source):
 
 
 def _check_clearing_groups(conn, requests, cleaned):
-    """An existing group is named by its opening line (clearing_id = line_id) on the same account."""
+    """R57, R60: a clearing group lives on an account that keeps open items (track_clearing_id). An existing group
+    is named by its opening line (clearing_id = line_id): posted, on the same account, for the same contact."""
     for number, (value, line) in enumerate(zip(requests, cleaned), start=1):
-        if value is None or value == NEW_CLEARING:
+        if value is None:
             continue
-        if conn.execute("SELECT 1 FROM journal_line WHERE line_id = ? AND clearing_id = line_id AND account_id = ?",
-                        (value, line["account_id"])).fetchone() is None:
-            raise ValidationError(f"Line {number}: clearing group {value} does not exist on this account")
+        account = conn.execute("SELECT code, track_clearing_id FROM account WHERE account_id = ?",
+                               (line["account_id"],)).fetchone()
+        if not account["track_clearing_id"]:
+            raise ValidationError(f"Line {number}: account {account['code']} does not keep open items, so it has no "
+                                  "clearing groups; use the receivable or payable account")
+        if value == NEW_CLEARING:
+            continue
+        opening = conn.execute(
+            "SELECT l.contact_id FROM journal_line AS l JOIN journal_entry AS e ON e.entry_id = l.entry_id "
+            "WHERE l.line_id = ? AND l.clearing_id = l.line_id AND l.account_id = ? AND e.is_posted = 1",
+            (value, line["account_id"])).fetchone()
+        if opening is None:
+            raise ValidationError(f"Line {number}: clearing group {value} is not an open item posted on this account")
+        if opening["contact_id"] != line["contact_id"]:
+            raise ValidationError(f"Line {number}: clearing group {value} belongs to another customer or vendor")
 
 
 def _apply_clearing(conn, requests, line_ids):
@@ -498,7 +511,7 @@ def delete_entry(context, entry_id):
 # --- Document entries: the one narrow path (audit design section 13, R50, R54) ----------------------------------
 
 def create_document_entry(conn, context, *, source, entry_date, lines, description=None, reference=None,
-                          source_rows=None, post=False):
+                          source_rows=None, post=False, exempt_from_approval=False):
     """Save (and with post=True, post) a document, import, payroll or conversion entry inside the caller's write
     transaction, so the document and its entry are written together or not at all.
 
@@ -513,6 +526,8 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
 
     A line may carry `clearing_id` (R57): NEW_CLEARING opens a group whose id is the line's own id, an int joins
     the existing group on the same account that that opening line started. Importers cannot set it.
+    exempt_from_approval is only for an allocation's application entry (R59, payments.py; a static test fixes
+    the caller): it is a system consequence of the allocation, like the R47 automatic reversal.
 
     Returns {'entry_id', 'entry_number' (None unless posted), 'rounding_cents'}: the difference (debits - credits)
     the rounding line balanced, 1 (a 1-cent credit), -1 (a 1-cent debit) or 0.
@@ -547,7 +562,7 @@ def create_document_entry(conn, context, *, source, entry_date, lines, descripti
     number = None
     if post:
         entry, _, _, debits, _ = _postable(conn, entry_id)
-        if approval_document_type(conn, entry, _settings(conn), debits) is not None:
+        if not exempt_from_approval and approval_document_type(conn, entry, _settings(conn), debits) is not None:
             raise PostingError("This entry needs approval before it posts; save it without posting and send it "
                                "for approval.")
         key_id, key = _active_key(conn, context)
@@ -991,6 +1006,31 @@ def _insert_reversal(conn, context, target, target_number, kind, *, entry_date, 
         pairs.append((line["line_id"], conn.execute(insert, values).fetchone()[0]))
     _copy_dimensions(conn, pairs)
     _check_mirror(conn, target["entry_id"], reversal_id, target_number)
+    return reversal_id
+
+
+def void_document_entry(conn, context, entry_id, *, entry_date, note):
+    """Post a Void reversal of a document's own entry inside the caller's write transaction (R59: an allocation's
+    application entry, when the allocation is released). It does not authorize: the calling document service has.
+    The reversal mirrors every line, clearing ids included, is never dated before the original (R41), goes into an
+    open period and needs no approval. Returns the reversal's entry id."""
+    note = _text(note, "note")
+    if not note:
+        raise ValidationError("Say why in the note, so the reason stays with the entry.")
+    _iso_date(entry_date, "date")
+    target = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+    if target is None or not target["is_posted"]:
+        raise ValidationError("Only a posted entry can be voided")
+    if target["is_void"] or _slot_taken(conn, entry_id):
+        raise PostingError(f"{_je(target['entry_number'])} has already been voided or corrected.")
+    if entry_date < target["entry_date"]:
+        raise ValidationError(f"The void cannot be dated before {_je(target['entry_number'])} "
+                              f"({target['entry_date']}); choose {target['entry_date']} or later")
+    period_id = _open_period(conn, entry_date, None)
+    reversal_id = _insert_reversal(conn, context, target, target["entry_number"], "Void", entry_date=entry_date,
+                                   period_id=period_id, note=note, origin=context.origin)
+    key_id, key = _active_key(conn, context)
+    _seal_and_post(conn, context, reversal_id, _company_code(context), key_id, key)
     return reversal_id
 
 

@@ -434,3 +434,44 @@ def test_document_entry_checker_flags(filename, snippet):
 ])
 def test_document_entry_checker_passes(filename, snippet):
     assert document_entry_violations(f"def f(conn, ctx):\n    {snippet}\n", filename) == []
+
+
+# R59: only an allocation's application entry posts without document approval. Allow-lists only shrink.
+APPROVAL_EXEMPT_CALLERS = {"payments.py"}
+
+
+def approval_exemption_users(source):
+    """Lines that pass exempt_from_approval to a call (the keyword, whatever its value)."""
+    return [node.lineno for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call) and any(k.arg == "exempt_from_approval" for k in node.keywords)]
+
+
+def test_only_the_payments_service_posts_without_document_approval():
+    users = {path.name for path in SERVICES_DIR.glob("*.py")
+             if approval_exemption_users(path.read_text(encoding="utf-8"))}
+    assert users <= APPROVAL_EXEMPT_CALLERS
+    assert users == APPROVAL_EXEMPT_CALLERS, "the check sees no caller; did the keyword change?"
+
+
+# R59: the void of a document's own entry and the release of allocations run only inside a document service's
+# transaction (they do not authorize; their caller has). Today only the payments service calls them.
+UNAUTHORIZED_HELPER_CALLERS = {"void_document_entry": {"payments.py"}, "release_allocations": set()}
+
+
+def helper_callers(name):
+    found = set()
+    for path in SERVICES_DIR.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if any(isinstance(n, ast.Call) and _call_name(n) == name for n in ast.walk(tree)):
+            found.add(path.name)
+    return found
+
+
+@pytest.mark.parametrize("name", sorted(UNAUTHORIZED_HELPER_CALLERS))
+def test_document_void_helpers_have_only_their_listed_callers(name):
+    assert helper_callers(name) <= UNAUTHORIZED_HELPER_CALLERS[name]
+
+
+def test_the_approval_exemption_checker_finds_a_call():
+    assert approval_exemption_users("ledger.create_document_entry(conn, ctx, exempt_from_approval=True)") == [1]
+    assert approval_exemption_users("ledger.create_document_entry(conn, ctx, post=True)") == []

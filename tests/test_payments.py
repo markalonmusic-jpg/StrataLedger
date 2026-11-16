@@ -52,7 +52,8 @@ def plain_line(env, account, amount, debit):
     return {"account_id": A(env, account), ("debit_cents" if debit else "credit_cents"): amount}
 
 
-def document(env, kind, amount=1000, *, contact=None, posted=True, entry_date="2026-03-02", retainage=0):
+def document(env, kind, amount=1000, *, contact=None, posted=True, entry_date="2026-03-02", retainage=0,
+             status="Sent"):
     """An invoice, bill, credit memo or vendor credit; posted ones open their AR/AP group (R57)."""
     itype, side = {"invoice": ("Invoice", "Sales"), "bill": ("Bill", "Purchase"),
                    "credit_memo": ("Credit Memo", "Sales"), "vendor_credit": ("Credit Memo", "Purchase")}[kind]
@@ -69,7 +70,7 @@ def document(env, kind, amount=1000, *, contact=None, posted=True, entry_date="2
         if retainage:
             c.execute("UPDATE invoice SET retainage_cents = ? WHERE invoice_id = ?", (retainage, invoice_id))
         if posted:
-            lh.send_invoice(c, invoice_id, entry_id=entry_id)
+            lh.send_invoice(c, invoice_id, status=status, entry_id=entry_id)
         return invoice_id
 
 
@@ -208,6 +209,10 @@ def test_each_side_pairs_with_its_own_documents(pay, source_kind, target_kind):
         source = ("credit_memo", document(pay, source_kind, contact=contact, posted=False))
     target_ref = ("invoice", target)
     refused(lambda: allocate(pay, source, target_ref, 100), "applies to")
+    number = pay.rows("PARENT", "SELECT invoice_number FROM invoice WHERE invoice_id = ?", (target,))[0]["invoice_number"]
+    with pytest.raises(ValidationError) as wrong_side:
+        allocate(pay, source, target_ref, 100)
+    assert number not in str(wrong_side.value)      # the other side's document is not named (secrets audit)
 
 
 def test_a_draft_void_or_paid_target_is_refused(pay):
@@ -334,13 +339,17 @@ def test_a_posted_source_cannot_apply_more_than_its_open_remainder(pay):
     allocate(pay, ("payment", source), ("invoice", second), 300)
 
 
-def test_an_application_needing_approval_is_refused_whole(pay):
-    """The application entry is a Payment document entry: with payment approval on, nothing is written."""
-    invoice, source = document(pay, "invoice"), payment(pay)
+def test_payment_approval_never_blocks_an_application_or_its_release(pay):
+    """R59: the application entry and its release are system consequences of the allocation, like the R47
+    automatic reversal, so the Payment approval control (OFF by default) gates neither; a void is never blocked."""
+    invoice, source = document(pay, "invoice", 1000), payment(pay, amount=1000)
     with pay._company("PARENT") as c:
         c.execute("UPDATE document_approval_setting SET requires_approval = 1 WHERE document_type = 'Payment'")
-    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100), "approval", PostingError)
-    assert allocations(pay) == []
+    result = allocate(pay, ("payment", source), ("invoice", invoice), 1000)
+    assert result["application_entry_id"] and result["target_status"] == "Paid"
+    void_document_entry(pay, entry_of(pay, "payment", "payment_id", source))
+    released = release(pay, ("payment", source))
+    assert len(released["entries"]) == 1 and invoice_status(pay, invoice) == "Sent"
 
 
 # --- release (RP11, R58) -----------------------------------------------------------------------------------
@@ -442,3 +451,144 @@ def test_clearing_lines_refuse_more_than_the_payment(pay):
         with pytest.raises(ValidationError, match="more than the payment"):
             payments.clearing_lines(c, side="Sales", account_id=A(pay, "ar"), contact_id=pay.customer,
                                     amount_cents=500, allocations=[(invoice, 600)])
+
+
+# --- step 7 review: authorize before disclosing anything (rule 10), and the rules each test pins ------------
+
+def state(env):
+    """Everything an allocation or a release can write, to prove a refused call wrote nothing."""
+    return {t: env.rows("PARENT", f"SELECT * FROM {t} ORDER BY 1") for t in
+            ("journal_entry", "journal_line", "payment_allocation", "invoice", "invoice_series",
+             "entry_number_sequence")}
+
+
+@pytest.mark.parametrize("origin", ["Human", "Agent"])
+def test_a_refused_person_or_agent_learns_nothing_about_the_documents(pay, origin):
+    """The permission is checked before the amounts: an over-allocation by someone without the right is a denial,
+    not "Only 10.00 is open on invoice ...", and nothing is written."""
+    invoice, source = document(pay, "invoice", 1000), payment(pay, amount=1000)
+    if origin == "Human":
+        pay.remove_permission("PARENT", "POSTER", "payment.receive")
+    before = state(pay)
+    with pytest.raises(PermissionDeniedError) as denied:
+        allocate(pay, ("payment", source), ("invoice", invoice), 999999, context=ctx(pay, origin))
+    assert "open" not in str(denied.value) and "SI-" not in str(denied.value)
+    assert state(pay) == before
+
+
+def test_the_applied_date_cannot_be_before_the_invoice(pay):
+    invoice = document(pay, "invoice")                         # issued 2026-03-01 (tests/ledger_helpers.py)
+    source = payment(pay, posted=False, date="2026-02-20")
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100, applied_date="2026-02-25"),
+            "before the date of invoice")
+    allocate(pay, ("payment", source), ("invoice", invoice), 100, applied_date="2026-03-01")
+
+
+def test_a_void_target_is_refused_by_its_voided_entry_or_by_status(pay):
+    target = document(pay, "invoice")
+    void_document_entry(pay, entry_of(pay, "invoice", "invoice_id", target))
+    source = payment(pay, amount=5000, posted=False)
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", target), 100), "is void")
+    with pay._company("PARENT") as c:
+        c.execute("UPDATE invoice SET status = 'Void' WHERE invoice_id = ?", (target,))
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", target), 100), "is void")
+
+
+def test_a_voided_credit_memo_cannot_be_applied(pay):
+    invoice = document(pay, "invoice")
+    memo = document(pay, "credit_memo", 300)
+    void_document_entry(pay, entry_of(pay, "invoice", "invoice_id", memo))
+    refused(lambda: allocate(pay, ("credit_memo", memo), ("invoice", invoice), 100), "voided")
+    with pay._company("PARENT") as c:
+        c.execute("UPDATE invoice SET status = 'Void' WHERE invoice_id = ?", (memo,))
+    refused(lambda: allocate(pay, ("credit_memo", memo), ("invoice", invoice), 100), "voided")
+
+
+def test_a_posted_source_without_an_unapplied_line_is_refused(pay):
+    invoice = document(pay, "invoice")
+    entry_id = post_entry(pay, "Payment", [plain_line(pay, "cash", 1000, True), plain_line(pay, "ar", 1000, False)],
+                          "2026-03-05")
+    with pay._company("PARENT") as c:
+        source = c.execute("INSERT INTO payment (direction, contact_id, payment_date, amount_cents, entry_id) VALUES "
+                           "('Received', ?, '2026-03-05', 1000, ?) RETURNING payment_id",
+                           (pay.customer, entry_id)).fetchone()[0]
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100), "no unapplied receivable")
+
+
+def test_a_bill_in_a_pay_run_is_paid_when_settled(pay):
+    bill = document(pay, "bill", 400)
+    with pay._company("PARENT") as c:
+        c.execute("UPDATE invoice SET status = 'In pay run' WHERE invoice_id = ?", (bill,))
+    source = payment(pay, "Made", 400, posted=False)
+    assert allocate(pay, ("payment", source), ("invoice", bill), 400)["target_status"] == "Paid"
+
+
+def test_an_invoice_covered_by_an_advance_takes_no_allocation(pay):
+    """It never gets an entry of its own (the invoice lock allows entry_id only from Draft to Sent), so it has no
+    open item; the advance already covers it."""
+    with pay._company("PARENT") as c:
+        invoice = lh.make_invoice(c, contact_id=pay.customer, lines=((1, 500),), status="Covered by advance")
+    source = payment(pay, amount=500, posted=False)
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 500), "not been sent")
+
+
+def test_a_vendor_credit_on_two_bills_is_released_whole(pay):
+    bills = [document(pay, "bill", 300), document(pay, "bill", 200)]
+    credit = document(pay, "vendor_credit", 500)
+    groups = [open_group(pay, entry_of(pay, "invoice", "invoice_id", d), "Purchase") for d in (*bills, credit)]
+    allocate(pay, ("credit_memo", credit), ("invoice", bills[0]), 300)
+    allocate(pay, ("credit_memo", credit), ("invoice", bills[1]), 200)
+    assert [group(pay, "ap", g) for g in groups] == [0, 0, 0]
+    assert [invoice_status(pay, b) for b in bills] == ["Paid", "Paid"]
+    void_document_entry(pay, entry_of(pay, "invoice", "invoice_id", credit))
+    result = release(pay, ("credit_memo", credit), reason="Credit issued in error")
+    assert len(result["released"]) == 2 and len(result["entries"]) == 2
+    assert [group(pay, "ap", g) for g in groups] == [-300, -200, 0]
+    assert [invoice_status(pay, b) for b in bills] == ["Sent", "Sent"]
+    assert verify(pay)["ok"]
+
+
+def test_the_release_voids_each_application_entry(pay):
+    invoice, source = document(pay, "invoice", 1000), payment(pay, amount=1000)
+    application = allocate(pay, ("payment", source), ("invoice", invoice), 1000)["application_entry_id"]
+    void_document_entry(pay, entry_of(pay, "payment", "payment_id", source))
+    reversal = release(pay, ("payment", source))["entries"][0]
+    row = pay.rows("PARENT", "SELECT * FROM journal_entry WHERE entry_id = ?", (reversal,))[0]
+    assert (row["reverses_entry_id"], row["reversal_reason"], row["is_posted"]) == (application, "Void", 1)
+    assert pay.rows("PARENT", "SELECT is_void FROM journal_entry WHERE entry_id = ?", (application,))[0]["is_void"] == 1
+    assert "Payment voided" in row["reversal_note"]
+
+
+def test_the_release_cannot_be_dated_before_the_application(pay):
+    invoice, source = document(pay, "invoice"), payment(pay)
+    allocate(pay, ("payment", source), ("invoice", invoice), 1000, applied_date="2026-03-10")
+    void_document_entry(pay, entry_of(pay, "payment", "payment_id", source), day="2026-03-12")
+    before = state(pay)
+    refused(lambda: release(pay, ("payment", source), day="2026-03-09"), "before")
+    assert state(pay) == before
+
+
+def test_the_release_date_respects_the_area_lock(pay):
+    invoice, source = document(pay, "invoice"), payment(pay)
+    allocate(pay, ("payment", source), ("invoice", invoice), 1000)
+    void_document_entry(pay, entry_of(pay, "payment", "payment_id", source))
+    with pay._company("PARENT") as c:
+        period = lh.ensure_period(c, "2026-03-20")
+        c.execute("INSERT INTO fiscal_period_lock (period_id, area, locked_by, reason) VALUES (?, 'Sales', 1, 'x')",
+                  (period,))
+    refused(lambda: release(pay, ("payment", source)), "locked")
+
+
+@pytest.mark.parametrize("day", ["20/03/2026", None])
+def test_the_release_date_is_an_iso_date(pay, day):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    allocate(pay, ("payment", source), ("invoice", invoice), 100)
+    refused(lambda: release(pay, ("payment", source), day=day), "date")
+
+
+def test_a_refused_release_writes_nothing(pay):
+    invoice, source = document(pay, "invoice"), payment(pay)
+    allocate(pay, ("payment", source), ("invoice", invoice), 1000)
+    before = state(pay)
+    refused(lambda: release(pay, ("payment", source)), "Void the payment")
+    assert state(pay) == before

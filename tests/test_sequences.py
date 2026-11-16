@@ -3,8 +3,6 @@
 `sequences.next_invoice_number` runs in the caller's write transaction. Moved here from
 tests/test_service_rules_pending.py: "the numbering service assigns the next number" (a strict xfail).
 """
-import dataclasses
-
 import pytest
 
 from modules.services import sequences
@@ -15,12 +13,10 @@ from tests.authz_world import world  # noqa: F401  (fixture)
 from tests.test_ledger_posting import ctx_for, env, keyed  # noqa: F401
 
 
-def next_number(env, document_type="Invoice", today=None):
+def next_number(env, document_type="Invoice", issue_date="2026-03-10"):
     context = ctx_for(env, "System")
-    if today:
-        context = dataclasses.replace(context, today=today)
     with write_transaction(context.company_db_path, context) as conn:
-        return sequences.next_invoice_number(conn, context, document_type)
+        return sequences.next_invoice_number(conn, context, document_type, issue_date=issue_date)
 
 
 def series(env):
@@ -74,11 +70,38 @@ def test_a_registered_series_stops_at_its_last_number(env):
 
 
 def test_a_registered_series_past_its_valid_until_date_is_refused(env):
+    """The document's issue date counts (the leave-Draft trigger checks the same), not the day it is sent."""
     with env._company("PARENT") as c:
         lh.make_series(c, "Invoice", "SI-", registered=(1, 100), valid_until="2026-03-10")
-    assert next_number(env, today="2026-03-10")["sequence_number"] == 1
+    assert next_number(env, issue_date="2026-03-10")["sequence_number"] == 1
     with pytest.raises(ValidationError, match="expired"):
-        next_number(env, today="2026-03-11")
+        next_number(env, issue_date="2026-03-11")
+
+
+def test_under_the_philippines_add_on_an_unregistered_series_is_refused(env):
+    with env._company("PARENT") as c:
+        c.execute("INSERT INTO company_addon (addon_key, enabled) VALUES ('ph_tax', 1)")
+        lh.make_series(c, "Invoice", "SI-")
+    with pytest.raises(ValidationError, match="not registered"):
+        next_number(env)
+    with env._company("PARENT") as c:
+        lh.make_series(c, "Invoice", "BIR-", registered=(1, 500))
+    assert next_number(env)["invoice_number"] == "BIR-000001"
+
+
+def test_a_used_up_or_expired_older_series_gives_way_to_the_next_active_one(env):
+    with env._company("PARENT") as c:
+        lh.make_series(c, "Invoice", "OLD-", registered=(1, 1))
+        lh.make_series(c, "Invoice", "EXP-", registered=(1, 9), valid_until="2026-01-31")
+        lh.make_series(c, "Invoice", "NEW-")
+    assert next_number(env)["invoice_number"] == "OLD-000001"
+    assert next_number(env)["invoice_number"] == "NEW-000001"
+
+
+@pytest.mark.parametrize("issue_date", ["10/03/2026", None, 20260310])
+def test_the_issue_date_must_be_an_iso_date(env, issue_date):
+    with pytest.raises(ValidationError, match="issue date"):
+        next_number(env, issue_date=issue_date)
 
 
 def test_an_unknown_document_type_is_refused(env):

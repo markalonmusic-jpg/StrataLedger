@@ -39,8 +39,8 @@ def env(world, keyed):
         world.accts = {
             "cash": lh.make_account(c, "1010"),
             "sales": lh.make_account(c, "4010"),
-            "ar": lh.make_account(c, "1200", control_type="AR"),
-            "ap": lh.make_account(c, "2000", control_type="AP"),
+            "ar": lh.make_account(c, "1200", control_type="AR", track_clearing_id=1),   # R60: keeps open items
+            "ap": lh.make_account(c, "2000", control_type="AP", track_clearing_id=1),
             "inventory": lh.make_account(c, "1300", control_type="Inventory"),
         }
         world.customer = c.execute("INSERT INTO contact (name, is_customer, customer_code) VALUES "

@@ -167,8 +167,8 @@ there at the end of each step, and update the paragraph below).
 keystore and key-lost (KS1-KS21; the service can post, no posting screen yet), approvals in posting (R15-R39),
 reversals (R40-R48), rounding and `create_document_entry` (R49-R55); details in docs/status_log.md. Design batch
 accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15; the consolidated
-baseline update (STOP 1, RP1-RP11) done 2026-11-16. Next: step 7 (STOP 2: the five xfails and payment allocation;
-docs/next_step.md, waiting for approval), then 2.7, 2.8 (PW1-PW11), Phase 3.
+baseline update (STOP 1, RP1-RP11) and 2.5 step 7 (allocations, clearing, numbering; R56-R60) done 2026-11-16:
+Phase 2.5 is done. Next: 2.7 (hooks and add-ons; docs/next_step.md), 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.

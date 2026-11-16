@@ -109,9 +109,9 @@ def _insert(conn, *, code, name, type_name, parent_id, control_type, normal_bala
             conn.execute("UPDATE account SET is_postable = 0 WHERE account_id = ?", (parent_id,))
     return conn.execute(
         "INSERT INTO account (code, name, type_id, parent_id, is_postable, control_type, normal_balance, "
-        "subtype, is_tax_strategy_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING account_id",
+        "subtype, is_tax_strategy_only, track_clearing_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING account_id",
         (code, name, type_id, parent_id, int(bool(is_postable)), control_type, normal_balance, subtype,
-         int(bool(is_tax_strategy_only)))).fetchone()[0]
+         int(bool(is_tax_strategy_only)), tracks_open_items(control_type))).fetchone()[0]
 
 
 def seed_chart(conn, rows):
@@ -137,10 +137,21 @@ def seed_chart(conn, rows):
 
 def _insert_template_row(conn, row, parent_id):
     return conn.execute(
-        "INSERT INTO account (code, name, type_id, parent_id, is_postable, control_type, normal_balance, subtype) "
-        "VALUES (?, ?, (SELECT type_id FROM account_type WHERE name = ?), ?, ?, ?, ?, ?) RETURNING account_id",
+        "INSERT INTO account (code, name, type_id, parent_id, is_postable, control_type, normal_balance, subtype, "
+        "track_clearing_id) VALUES (?, ?, (SELECT type_id FROM account_type WHERE name = ?), ?, ?, ?, ?, ?, ?) "
+        "RETURNING account_id",
         (row["account_number"], row["name"], row["account_type"], parent_id, row["is_postable"],
-         row["control_type"], row["normal_balance"], row["subtype"])).fetchone()[0]
+         row["control_type"], row["normal_balance"], row["subtype"],
+         tracks_open_items(row["control_type"]))).fetchone()[0]
+
+
+# R60: AR and AP control accounts keep open items by clearing group (RP2), so they are marked when created.
+OPEN_ITEM_CONTROL_TYPES = ("AR", "AP")
+
+
+def tracks_open_items(control_type):
+    """1 for an AR or AP control account (it keeps open items by clearing group, R60), else 0."""
+    return int(control_type in OPEN_ITEM_CONTROL_TYPES)
 
 
 # --- Reads ---------------------------------------------------------------------------------------
