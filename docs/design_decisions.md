@@ -142,14 +142,14 @@ before building; the database wins on naming.
   file is not processed twice.
 - Run deterministic coding rules (vendor -> account) before calling the AI.
 - The agent's tools are the service functions plus read-only views. Its own database connection is read-only
-  (planned for Phase 6, docs/ai_copilot_design.md section 2 rule 1): every write it causes is a staged row made
+  (planned for Phase 6, archive/design_drafts_2026-11/ai_copilot_design.md section 2 rule 1): every write it causes is a staged row made
   by a write service with origin Agent. No agent code exists today; what is built is the `AGENT_ALLOWED`
   allow-list that `authorize` applies to Agent-origin contexts (`permissions.py`, `authz.py`) and the read-only
   `tx.read_connection` (`mode=ro`) that services use for reads.
 - AI is provider-neutral behind one adapter interface. v1 provider is the
   Gemini API using the customer's own key, stored only in the OS keyring. No
   consumer-account logins. Company data is sent only after an Admin opt-in and
-  paid-tier confirmation. See docs/ai_copilot_design.md.
+  paid-tier confirmation. See archive/design_drafts_2026-11/ai_copilot_design.md.
 
 **CRM and project lifecycle (summary; full design in docs/crm_pm_design.md)**
 - Internal-use CRM and project tool. Desktop version has no subscription;
@@ -312,7 +312,7 @@ before building; the database wins on naming.
 
 **Country add-ons**
 - Country-specific rules live in `addons/<key>/` (first one: `addons/ph_tax/`,
-  design in docs/philippines_tax_design.md section 11).
+  design in archive/design_drafts_2026-11/philippines_tax_design.md section 11).
 - Core never imports an add-on. Core exposes hook points; an enabled add-on
   registers handlers for them. A disabled add-on registers nothing, so core
   behaves as if it did not exist.
@@ -338,7 +338,7 @@ before building; the database wins on naming.
   beginning plus change equals ending cash (bank, petty cash, undeposited funds; transfers between them
   excluded). Every account has a cash flow category defaulted from its type and control type, changeable with
   an audit entry. The tie-out is checked, never forced: an Unclassified line with drill-down, and a non-zero
-  Unclassified line is a close warning. Lines drill down; Excel export (docs/export_design.md); period
+  Unclassified line is a close warning. Lines drill down; Excel export (archive/design_drafts_2026-11/export_design.md); period
   comparison. A GAAP indirect-method statement is a possible later report.
 
 **Job-driven dimensions (DECIDED 2026-11-13, decision JD1)**

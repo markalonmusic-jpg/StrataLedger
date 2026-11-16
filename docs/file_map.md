@@ -38,6 +38,13 @@ in code (`tests/test_config_paths.py` fails on one).
   Historical, never applied.
 - `archive/baseline_pre_2_5_3b/` - the company and master baselines before 2.5 step 3b (tag
   `baseline-pre-2.5-3b`). Historical, never applied.
+- `archive/baseline_pre_2_5_1d/` - the company and master baselines before 2.5 step 1d. Historical, never applied.
+- `archive/baseline_pre_2_5_4/` - the company baseline before 2.5 step 4 (tag `baseline-pre-2.5-4`). Historical,
+  never applied.
+- `archive/instructions/` - superseded Claude Code prompts and addenda. History only.
+- `archive/design_drafts_2026-11/` - design drafts for unbuilt areas that nothing but other docs cited (moved
+  2026-11-15): AI Copilot, bank feeds, cloud migration, export, inventory and fixed assets, loans, pay
+  applications, Philippines tax. Its README lists them; move one back to `docs/` when its step starts.
 - `accounting_librebase.db` - reference snapshot of the company baseline,
   generated on demand (see section 5). Not read at runtime; not kept in git.
 - `system_master.db` - global authentication and routing database
@@ -52,22 +59,9 @@ in code (`tests/test_config_paths.py` fails on one).
   service cases, customer/vendor codes and throughput tracking. NOT BUILT,
   except customer and vendor codes (Phase 2.6, `services/contacts.py`).
   Read it before touching anything in these areas.
-- `docs/inventory_fixed_assets_design.md` - design draft for inventory (lots,
-  serials, employee material advances, returns), fixed assets and equipment
-  charging, and controlled accounts. NOT BUILT.
-- `docs/loans_design.md` - design draft for loans payable (schedules,
-  current/long-term split). NOT BUILT.
-- `docs/philippines_tax_design.md` - design draft for the Philippines tax
-  add-on (VAT, withholding, certificates, filing tracker, e-invoicing).
-  NOT BUILT; needs a Philippine tax professional's review.
 - `docs/controls_audit.md` - controls and analytics audit of the schema, with
   the decisions taken and what each migration closed.
 - `docs/schema_audit.md` - the first (Phase 1) schema audit.
-- `docs/ai_copilot_design.md` - design draft for the AI Copilot: provider
-  adapter, credentials, safety rules, settings, tools and skill packs.
-  NOT BUILT.
-- `docs/pay_applications_design.md` - design draft for pay applications (SOV
-  progress billing) and retainage receivable. NOT BUILT.
 - `docs/po_ap_matching_design.md` - design draft for purchase orders,
   subcontracts, receiving and PO-to-AP matching, with retainage payable.
   NOT BUILT.
@@ -88,16 +82,6 @@ in code (`tests/test_config_paths.py` fails on one).
   temporary password (72 h, forced change), personal backup codes for regular users, the Master's recovery
   code for every change (re-wraps the installation key, Step 1c), abuse limits, session end after a reset,
   optional email (last), TOTP hook (v1.1). NOT BUILT; decided (PW1-PW11).
-- `docs/bank_feeds_design.md` - design for bank feeds (B11a): the provider interface in
-  `modules/services/feeds/`, one statement-line staging table for files and feeds, connections and account maps,
-  secrets outside the databases and backups, polling sync, cutoff against reconciliations, the Ramp provider
-  (v1.1). NOT BUILT.
-- `docs/cloud_migration_design.md` - design for moving a desktop company to the hosted version (CM1, CM2): the
-  user's flow, pre-flight, the portable company package shared with backups and exports, the key bundle and Key
-  Vault, import and proof, the read-only desktop afterwards, users and password hashes. NOT BUILT.
-- `docs/export_design.md` - design for CSV and Excel export: `modules/services/export.py`, the XLSX layout and
-  live formulas with cached values (XlsxWriter), CSV rules, formula injection, security and audit, round trip and
-  import templates, XLSX upload, the v1.0 report coverage. NOT BUILT.
 - `docs/help_system_design.md` - design for the built-in offline help (`help/*.md`
   articles, `modules/services/help.py`, the `?` / F1 panel, the `page_key` of
   every screen). Content is deferred to the end of v1.0. NOT BUILT.
@@ -164,4 +148,4 @@ in code (`tests/test_config_paths.py` fails on one).
   - `views_new_user.py` and `views_user_profile.py` - global user provisioning
     and profile management.
   - `ai_agent.py` - planned (Phase 6), provider adapter (Gemini first); see
-    docs/ai_copilot_design.md.
+    archive/design_drafts_2026-11/ai_copilot_design.md.

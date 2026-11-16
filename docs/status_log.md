@@ -689,3 +689,11 @@ Rotation and key-lost text as it stood before the trim:
   them. Five new tests in tests/test_ledger_rounding.py; Conversion tests that saved as System moved to origin
   Import plus a review. Suite 2745 passed, 7 deselected, 5 xfailed. Step 7 planned in docs/next_step.md; waiting
   for approval.
+
+- 2026-11-15: Docs cleanup (no code or baseline change). Eight design drafts for unbuilt areas that only other docs
+  cited moved to archive/design_drafts_2026-11/ (AI Copilot, bank feeds, cloud migration, export, inventory and
+  fixed assets, loans, pay applications, Philippines tax), with a README; citations in docs/roadmap.md,
+  docs/design_decisions.md and docs/decisions_2026-11-11.md repointed. Docs cited by CLAUDE.md, code, tests, the
+  baselines, agents or rules stay in docs/. Empty stubs modules/_init_.py and app_stratacrm.py removed.
+  docs/file_map.md updated (also lists archive/baseline_pre_2_5_1d, baseline_pre_2_5_4, instructions). Suite 2745
+  passed, 7 deselected, 5 xfailed.

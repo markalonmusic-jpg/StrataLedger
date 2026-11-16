@@ -291,12 +291,12 @@ CB, CF. Cash basis and cash flow (section "Reports, dimensions, cloud move and b
 JD. Job-driven dimensions (same section):
 - JD1 A line's job sets its dimensions; locked while the job is on the line (task name J1; J1 is taken)
 
-CM. Moving a company to the cloud (same section; docs/cloud_migration_design.md):
+CM. Moving a company to the cloud (same section; archive/design_drafts_2026-11/cloud_migration_design.md):
 - CM1 "Move to the cloud / Invite your team" keeps every record and a verifiable history
 - CM2 Sign-ins move: hashes upgraded at first cloud sign-in, email login, verify once, 2FA for Admins and Master
 - CM3 Cloud migration design questions 1-10 answered as proposed
 
-EX. Export (same section; docs/export_design.md):
+EX. Export (same section; archive/design_drafts_2026-11/export_design.md):
 - EX1 Export design questions 1-8 answered as proposed
 
 ---
@@ -497,7 +497,7 @@ Journal entries keep the existing `manual_entry_approval` setting as their
 - D3 `project.poc_method`: Cost-to-cost (default), Manual percent (reason
   required), Completed contract.
 - D4 Separate Retainage Release document (partial and final); merge the
-  new pay-app draft into docs/pay_applications_design.md.
+  new pay-app draft into archive/design_drafts_2026-11/pay_applications_design.md.
 - D5 Retainage rate from the contract; logged line overrides; separate
   stored-materials rate.
 - D6 Optional tax codes on pay application lines (off by default).
@@ -1272,7 +1272,7 @@ doc that carries the detail.
 
 ### CM. Moving a company to the cloud
 
-Design: docs/cloud_migration_design.md.
+Design: archive/design_drafts_2026-11/cloud_migration_design.md.
 - CM1 (owner, 2026-11-13) The desktop app offers "Move to the cloud / Invite your team", which moves a company into
   the hosted version (PostgreSQL on Azure, P5), keeping every journal entry, contact, job and attachment, with the
   history still verifiable. Easy to find but never nagging (section 0b).
@@ -1287,7 +1287,7 @@ Design: docs/cloud_migration_design.md.
 
 ### B (continued). Bank feeds
 
-Design: docs/bank_feeds_design.md.
+Design: archive/design_drafts_2026-11/bank_feeds_design.md.
 - B11a (owner-approved 2026-11-11, recorded 2026-11-13; amends B11 "no live feeds in v1")
   - v1.0 ships the feed seam only: a provider interface, a shared staging path, and the file import (CSV,
     OFX/QFX) as the first provider. No live connection ships in v1.0.
@@ -1300,17 +1300,17 @@ Design: docs/bank_feeds_design.md.
 
 The owner accepted the design batch and answered every open question in the three new design docs as proposed.
 Each doc's question section holds the answers; read them there.
-- CM3 docs/cloud_migration_design.md section 10, questions 1-10, as proposed: legacy hashes kept 90 days; the
+- CM3 archive/design_drafts_2026-11/cloud_migration_design.md section 10, questions 1-10, as proposed: legacy hashes kept 90 days; the
   Master becomes the company's Owner; a company user map keeps desktop user ids; an unconfirmed move expires after 7
   days; no move back in this feature; one company per move; only the Master starts a move; the desktop is not
   locked during upload (the switch is refused if anything changed); a breached-password check at the first cloud
   sign-in where the identity provider offers it; the package is a ZIP with fixed member names.
-- BF1 docs/bank_feeds_design.md section 14, questions 1-6, as proposed: secrets in encrypted files under
+- BF1 archive/design_drafts_2026-11/bank_feeds_design.md section 14, questions 1-6, as proposed: secrets in encrypted files under
   `DATA_DIR/Secrets/` keyed from the installation key; a 60-minute sync timer per company; Ramp card lines in
   both the holding area and the statement lines; no write-back to Ramp in v1.1; a 45-day re-read window, to be
   confirmed; `bank.reconcile` and `bank.unreconcile` added with bank reconciliation. Added: a test requirement
   that a Ramp card charge is never booked twice (holding-area entry vs statement line; section 12).
-- EX1 docs/export_design.md section 14, questions 1-8, as proposed: XlsxWriter writes and openpyxl reads; exports
+- EX1 archive/design_drafts_2026-11/export_design.md section 14, questions 1-8, as proposed: XlsxWriter writes and openpyxl reads; exports
   go to `Exports/<company code>/` through storage with "Save a copy as..."; 250,000-row Excel limit, a
   confirmation above 50,000, CSV streamed; `SUBTOTAL(9, ...)` totals; Excel dates in the company format and CSV
   in ISO; a `Report export` checkpoint for journal-based reports only; the Auditor gets `report.export` when its

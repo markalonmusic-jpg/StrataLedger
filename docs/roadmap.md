@@ -149,7 +149,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   suggest GL accounts and dimensions from company history, populate UI forms
   via structured JSON, and run pre-posting audit checks with human-in-the-loop
   approval. All AI work is built here, as one stretch, after the core
-  services it reads from exist (docs/ai_copilot_design.md section 7):
+  services it reads from exist (archive/design_drafts_2026-11/ai_copilot_design.md section 7):
   - Step 1: the AI support migration at the start of Phase 6; the AI
     credentials and connection service (OS keyring), the provider interface
     and the Gemini adapter, `ai_usage`, the data-sharing settings and
@@ -167,26 +167,26 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 2. Projects: cost codes, estimates, contracts, schedule of values, change
    orders, budgets.
 3. POC snapshots and the adjusting entry.
-4. Ramp staging, approval and posting; then payroll imports. Bank feeds (B11a, docs/bank_feeds_design.md): v1.0
+4. Ramp staging, approval and posting; then payroll imports. Bank feeds (B11a, archive/design_drafts_2026-11/bank_feeds_design.md): v1.0
    the provider seam, one statement-line staging table, CSV and OFX/QFX files as the first provider, and the
    matching screen, with the bank reconciliation step; v1.1 the Ramp provider (customer-supplied credential,
    read-only, into the holding area); aggregators later as an add-on; the relay with the hosted product.
 5. Pay applications (progress billing and retainage) and subcontract/purchase
    order commitments. Pay applications and retainage designed
-   (docs/pay_applications_design.md); subcontracts and POs designed
+   (archive/design_drafts_2026-11/pay_applications_design.md); subcontracts and POs designed
    (docs/po_ap_matching_design.md).
 6. Reports: trial balance, job cost, WIP schedule, deferral rollforward,
    AR/AP aging. Also (decided 2026-11-13): the Accrual / Cash switch on every financial report (CB1) and the
-   direct-method cash flow statement (CF1), both v1.0, both exported per docs/export_design.md. For them to
+   direct-method cash flow statement (CF1), both v1.0, both exported per archive/design_drafts_2026-11/export_design.md. For them to
    work the data must keep: each payment allocation's date, amount and the invoice or bill it pays (the line
    split is computed from the document's posted lines); each account's cash flow category (Operating,
    Investing, Financing, Cash) and operating sub-category (customers, vendors, employees, interest, taxes,
    other); a marker on every non-cash entry (depreciation, POC, accrued payroll, amortization, auto-reversing
-   accruals); and the loan principal vs interest split of each loan payment (docs/loans_design.md).
+   accruals); and the loan principal vs interest split of each loan payment (archive/design_drafts_2026-11/loans_design.md).
    Not in the baseline today (report only; to be added with failing tests first when the reports are built):
    (a) `payment_allocation` has no date of its own, so a payment applied later than its payment date (B4
    unapplied payments, B6 credit memos) has no apply date; it also has no credit-memo or loan target (B6,
-   docs/loans_design.md). (b) `account` has no cash flow category or operating sub-category. (c) No marker for
+   archive/design_drafts_2026-11/loans_design.md). (b) `account` has no cash flow category or operating sub-category. (c) No marker for
    petty cash or credit card accounts: `control_type` has `Undeposited funds` only, banks are known through
    `bank_account`, cards only through `company_settings.credit_card_clearing_acct_id`. (d) Non-cash entries
    cannot all be told apart: `journal_entry.source` has no depreciation or POC value (the meaning of
@@ -194,7 +194,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
    auto-reversing accruals are known (`auto_reverse_date`, `reversal_reason = 'Accrual reversal'`). (e) The
    loan principal / interest columns (`invoice_line.loan_line_type`, `journal_line.loan_id`) wait for the
    loans step. (f) `company_settings` has no default report basis setting.
-   Export (docs/export_design.md, v1.0): one export service with XLSX (live formulas with cached values) and CSV
+   Export (archive/design_drafts_2026-11/export_design.md, v1.0): one export service with XLSX (live formulas with cached values) and CSV
    writers, used by every report and list as it is built; XLSX upload and fuller row errors for the importer;
    import templates. Needs: XlsxWriter, openpyxl and defusedxml after the licence and PyInstaller check; an
    `export_event` table; a streaming write in `storage.py`; journal entry and budget import types.
@@ -228,7 +228,7 @@ See docs/crm_pm_design.md section 11.
     or backed-up company can be verified on another computer; then drop the `EXPORT_NOT_VERIFIABLE` warning
     (KS11). Every company backup also backs up `system_master.db` (KS10).
    The key bundle is part of one portable company package that serves backups, exports and the cloud move
-   (docs/cloud_migration_design.md section 3).
+   (archive/design_drafts_2026-11/cloud_migration_design.md section 3).
 17. Restrict the data folder (`%PROGRAMDATA%\StrataLedger`) at install or first run so other local accounts
     cannot read `system_master.db`: today it keeps the inherited permissions, and the machine-scope DPAPI copy of
     the installation key opens for any local user who can read it (secrets audit of Step 1c; audit design 1).
@@ -237,7 +237,7 @@ See docs/crm_pm_design.md section 11.
     backlog 17, so a folder copied or created outside the installer is caught).
 19. Support bundles (when built) redact absolute paths and the Windows profile name from the log files before
     they leave the computer (owner, 2026-11-13; the log itself keeps them; R38).
-20. Move a company to the cloud (CM1, CM2; docs/cloud_migration_design.md). Phase 5, with backlog 16: the
+20. Move a company to the cloud (CM1, CM2; archive/design_drafts_2026-11/cloud_migration_design.md). Phase 5, with backlog 16: the
     portable company package, the key bundle, attachment hashes at upload, the email rules for users (present,
     valid, unique) and the desktop pre-flight. The rest (cloud import and proof, Key Vault, user sign-in, the
     read-only desktop state) waits for the hosted product (P5), whose own design comes first.
@@ -266,9 +266,9 @@ schema work is named, not numbered, and edits the baseline directly.
 Planned schema work, in build order (names only):
 - CRM / project lifecycle (docs/crm_pm_design.md), including the project
   stage flags `allows_costs` and `allows_billing` (pay applications,
-  docs/pay_applications_design.md controls rule 5). The old `crm_*` tables are
+  archive/design_drafts_2026-11/pay_applications_design.md controls rule 5). The old `crm_*` tables are
   already gone (section 6 cleanup), so this work only adds.
-  Pay applications (docs/pay_applications_design.md section 8):
+  Pay applications (archive/design_drafts_2026-11/pay_applications_design.md section 8):
   `progress_billing_line`, `retainage_release`,
   `cost_code.counts_toward_progress`, the FK from
   `contract_line.change_order_id` to `change_order`, and a retainage
@@ -294,7 +294,7 @@ Planned schema work, in build order (names only):
 - AI support, built at the start of Phase 6: agent_run,
   agent_suggestion, ai_usage, price table, AI settings in company_settings,
   staged_transaction.origin, and `origin` plus `agent_run_id` on `audit_log`
-  and `audit_context` (docs/ai_copilot_design.md sections 2C and 7).
+  and `audit_context` (archive/design_drafts_2026-11/ai_copilot_design.md sections 2C and 7).
 - The Philippines add-on is not in the core schema; its migrations are
   numbered `ph_001`, `ph_002`, ...
 - At the first release the baseline is frozen and the pre-release hash guard
@@ -302,8 +302,8 @@ Planned schema work, in build order (names only):
 
 **Baseline gaps from the 2026-11-13 design batch, by the step that builds them** (owner, 2026-11-13). Each is
 added with failing tests first when its step is built; none is in the baseline yet. Sources: CB1/CF1 and JD1
-(backlog 6, Phase 4 notes above), docs/cloud_migration_design.md section 9, docs/bank_feeds_design.md section 14,
-docs/export_design.md section 13.
+(backlog 6, Phase 4 notes above), archive/design_drafts_2026-11/cloud_migration_design.md section 9, archive/design_drafts_2026-11/bank_feeds_design.md section 14,
+archive/design_drafts_2026-11/export_design.md section 13.
 - **Phase 2.5 Step 5 (reversals and automatic reversals):** none of these gaps is needed. Step 5 must keep what
   CB1 relies on, which the baseline already has: an automatic reversal is identified by its original's
   `auto_reverse_date` and its own `reversal_reason = 'Accrual reversal'` and `reverses_entry_id`, and a reversal
@@ -330,7 +330,7 @@ docs/export_design.md section 13.
   - Non-cash markers for CB1 come with the steps that post them: depreciation with fixed assets (v1.0), POC with
     construction (v1.1), accrued payroll with payroll imports.
 - **Loans (v1.0):** `invoice_line.loan_id`, `loan_schedule_line_id`, `loan_line_type`; `journal_line.loan_id`; the
-  `payment_allocation` loan target (docs/loans_design.md), which CF1 needs to split principal from interest.
+  `payment_allocation` loan target (archive/design_drafts_2026-11/loans_design.md), which CF1 needs to split principal from interest.
 - **CRM / project lifecycle (backlog 2 and 9):** JD1's job dimension settings (a `project_dimension` table of
   project, dimension type and value).
 - **Imports (backlog 4, csv_import_design.md):** dimension tables for `staged_line` and `time_entry` (JD1); a Ramp
@@ -358,7 +358,7 @@ docs/export_design.md section 13.
 5. ANSWERED: `app_user` exists only in `001_master.sql`; each company file has
    its own `audit_log`, and the master has one for master-level events.
 6. RESOLVED for desktop: customers bring their own key (Gemini first; see
-   docs/ai_copilot_design.md).
+   archive/design_drafts_2026-11/ai_copilot_design.md).
 7. CRM / project design open questions: see docs/crm_pm_design.md section
    12 (optional case fields, linear stages, warranty length, pausing cases,
    prospect in the wizard, closing checklist, desktop to hosted sync).
