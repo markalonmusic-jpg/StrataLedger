@@ -751,4 +751,7 @@ Rotation and key-lost text as it stood before the trim:
   - Commit f931d7a, then the review fixes (step-reviewer: approve with changes, all fixed; secrets-auditor:
     nothing leaks, two fixes, LOW 2 left open in docs/next_step.md).
   - Suite 2933 passed, 7 deselected, 0 xfailed.
-
+  Mutation check (on fc0cbc5): 141 mutants.
+  - 115 killed, plus 1 by tests/test_voucher_sequence.py; 4 equivalent.
+  - Tests for the other 22 in bd29f11; the rerun killed all 22.
+  Suite 2959 passed, 7 deselected, 0 xfailed. STOP 2 done; Phase 2.7 planned in docs/next_step.md.

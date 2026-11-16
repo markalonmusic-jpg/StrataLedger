@@ -4,7 +4,7 @@ Written 2026-11-16 at the STOP after Phase 2.5 Step 7. Overwritten at each STOP 
 Status: **Phase 2.5 is done** (Step 7 committed, reviewed and mutation-checked). 2.7 is not started; no 2.7 code
 is written.
 
-**State:** suite **2933 passed, 7 deselected, 0 xfailed** (was 2821 passed and 5 xfailed). No xfails remain: tests/test_service_rules_pending.py is gone, and its five rules
+**State:** suite **2959 passed, 7 deselected, 0 xfailed** (was 2821 passed and 5 xfailed). No xfails remain: tests/test_service_rules_pending.py is gone, and its five rules
 are real tests. The development master was rebuilt on the Step 7 baseline. `Companies/` is empty: the old
 COMBUZZ.db is in Backups/20261116-112133/.
 
@@ -49,7 +49,13 @@ COMBUZZ.db is in Backups/20261116-112133/.
     the first usable series, and the docs.
   - **secrets-auditor:** nothing leaks. Fixed: the wrong-side refusal no longer names the other side's
     document, and the static caller check for the two helpers. Open: LOW 2 below.
-  - **mutation-tester:** MUTATION_HERE
+  - **mutation-tester** (on fc0cbc5): 141 mutants.
+    - 115 were killed first. One more (voucher numbering, older code) was killed by
+      tests/test_voucher_sequence.py.
+    - 4 are equivalent: a Draft target never has an entry, a Void target never has an unvoided entry, `is_void`
+      is always backed by the reversal slot, and the slot index refuses a second void with the same sentence
+      as `_slot_taken`.
+    - The other 22 got a test each in bd29f11, and a rerun killed all of them.
 
 ## Step 2.7 plan (to detail and approve)
 
