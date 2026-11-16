@@ -328,8 +328,8 @@ def test_allocations_of_posted_payment(conn):
     payment_id = make_payment(conn, entry_id=entry_id)
     invoice_id = make_invoice(conn, status="Sent")
     allocation_id = conn.execute(
-        "INSERT INTO payment_allocation (payment_id, invoice_id, amount_applied_cents) VALUES (?, ?, 1000) "
-        "RETURNING allocation_id",
+        "INSERT INTO payment_allocation (payment_id, invoice_id, amount_applied_cents, applied_date) "
+        "VALUES (?, ?, 1000, '2026-03-06') RETURNING allocation_id",
         (payment_id, invoice_id),
     ).fetchone()[0]
     with pytest.raises(sqlite3.IntegrityError):
@@ -339,10 +339,15 @@ def test_allocations_of_posted_payment(conn):
 
     post(conn, make_reversal(conn, entry_id, "Void"))
 
-    conn.execute("DELETE FROM payment_allocation WHERE allocation_id = ?", (allocation_id,))
+    # RP11 (2026-11-16): a voided payment's allocations are released once, never deleted.
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM payment_allocation WHERE allocation_id = ?", (allocation_id,))
+    conn.execute("UPDATE payment_allocation SET released_at = '2026-03-07T09:00:00+00:00', released_by = 1, "
+                 "release_reason = 'Payment voided' WHERE allocation_id = ?", (allocation_id,))
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO payment_allocation (payment_id, invoice_id, amount_applied_cents) VALUES (?, ?, 10)",
+            "INSERT INTO payment_allocation (payment_id, invoice_id, amount_applied_cents, applied_date) "
+            "VALUES (?, ?, 10, '2026-03-08')",
             (payment_id, invoice_id),
         )
 
@@ -447,12 +452,24 @@ def test_credit_memo_spelling(conn):
     "INSERT INTO invoice_line (quantity, unit_price_cents) VALUES (-1, 100)",
     "INSERT INTO payment (payment_date, amount_cents) VALUES ('2026-03-01', -500)",
     "INSERT INTO payment (payment_date, amount_cents) VALUES ('2026-03-01', 0)",
-    "INSERT INTO payment_allocation (amount_applied_cents) VALUES (-5)",
-    "INSERT INTO payment_allocation (amount_applied_cents) VALUES (0)",
 ])
 def test_document_amounts_are_positive(conn, sql):
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(sql)
+
+
+@pytest.mark.parametrize("amount, rejected", [(-5, True), (0, True), (5, False)])
+def test_allocation_amounts_are_positive(conn, amount, rejected):
+    """With a valid source, target and applied date, only the amount decides (RP11 added the date and source)."""
+    payment_id = make_payment(conn)
+    invoice_id = make_invoice(conn, status="Sent")
+    sql = ("INSERT INTO payment_allocation (payment_id, invoice_id, amount_applied_cents, applied_date) "
+           "VALUES (?, ?, ?, '2026-03-06')")
+    if rejected:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(sql, (payment_id, invoice_id, amount))
+    else:
+        conn.execute(sql, (payment_id, invoice_id, amount))
 
 
 def test_signed_cents():

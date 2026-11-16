@@ -225,8 +225,8 @@ def deferral(conn):
 
 
 def allocation_sql(payment_id, invoice_id, deferral_id):
-    return ("INSERT INTO payment_allocation (payment_id, invoice_id, deferral_id, amount_applied_cents) "
-            "VALUES (?, ?, ?, 100)", (payment_id, invoice_id, deferral_id))
+    return ("INSERT INTO payment_allocation (payment_id, invoice_id, deferral_id, amount_applied_cents, applied_date) "
+            "VALUES (?, ?, ?, 100, '2026-03-21')", (payment_id, invoice_id, deferral_id))
 
 
 def test_allocation_names_an_invoice_or_a_deferral(conn, payment):

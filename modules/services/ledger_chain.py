@@ -11,9 +11,10 @@ gets the key from a KeyProvider and calls `seal`; verification reads rows and ca
 * The canonical form is defined on values, not on any driver or SQL dialect (2.4): sorted-key JSON, no spaces,
   UTF-8; integers, text and null only (floats and booleans are refused); dates as stored (YYYY-MM-DD);
   timestamps normalised to UTC whole seconds, YYYY-MM-DDTHH:MM:SSZ; lines sorted by line_id and dimensions by
-  type id in Python. The golden vectors in tests/data/ledger_chain_vectors.json freeze version 1.
+  type id in Python. The golden vectors in tests/data/ledger_chain_vectors.json fix version 1 (frozen at the first release).
 * Every column of journal_entry, journal_line and journal_line_dimension is listed below as hashed or excluded;
-  a test fails on an unclassified column. A newly hashed field means a new chain_version.
+  a test fails on an unclassified column. From the first release a newly hashed field means a new chain_version;
+  before it, version 1 is edited in place like the baseline (RP8: entity_id and clearing_id, 2026-11-16).
 """
 import hashlib
 import hmac
@@ -40,7 +41,7 @@ EXCLUDED_ENTRY = ("is_posted", "is_void", "chain_prev_hash", "chain_hash")
 HASHED_LINE = (
     "line_id", "entry_id", "account_id", "debit_cents", "credit_cents", "memo", "contact_id", "project_id",
     "cost_code_id", "deferral_id", "batch_id", "is_retainage_line", "external_ref", "is_control_override",
-    "is_rounding_adjustment",
+    "is_rounding_adjustment", "entity_id", "clearing_id",   # RP2/RP8: the entity and the clearing group are sealed
 )
 EXCLUDED_LINE = ("recon_id",)            # set and cleared by bank reconciliation (B10)
 HASHED_DIMENSION = ("dimension_type_id", "dimension_value_id")

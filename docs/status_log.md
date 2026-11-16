@@ -709,3 +709,20 @@ Rotation and key-lost text as it stood before the trim:
   Open questions in docs/design.md section 11 (B9 NACHA vs `bank_payee_id`, `clearing_id` and the chain,
   dimension depth cap of 3, service types vs `pipeline_stage`, cost code levels). Suite 2745 passed,
   7 deselected, 5 xfailed.
+
+- 2026-11-16: STOP 1 of the consolidated baseline update (before Step 7). Decisions RP1-RP11 recorded (B9, D7 and H6
+  amended). Baselines saved to archive/baseline_pre_replan/ (tag `baseline-pre-replan` on 499c8d5). Tests first
+  (54 failed on the old baseline). Both baselines edited in place:
+  - entities and `journal_line.entity_id` / `clearing_id` (frozen after posting, sealed: chain v1 edited in
+    place, vectors regenerated, RP8);
+  - contact and invoice columns, `contact_site`, `fiscal_period_lock`, `audit_log.reason`, the
+    `lock_documents_after_posting` control, four more approval toggles (all OFF);
+  - Step 7 `payment_allocation` columns, with posted-source rows released once and never deleted (RP11);
+  - 3-level cost codes, dimension depth 10, service types replacing `pipeline_stage`;
+  - pay runs, bank statement lines and matches, close tasks, payment terms, custom fields, list preferences;
+  - master `user_company_role` (schema only);
+  - audit triggers on every new table and column, and a full index on every foreign key (136 added).
+
+  Reversals mirror `entity_id` and `clearing_id`. Development master rebuilt. Suite 2798 passed, 7 deselected,
+  5 xfailed. STOP 2 (Step 7) planned in docs/next_step.md.
+

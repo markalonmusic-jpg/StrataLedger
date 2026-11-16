@@ -8,7 +8,8 @@ is (CLAUDE.md section 5.3); section 10 lists the differences the consolidated pr
 closes. Screen rules stay in docs/CLAUDE_UI.md. The CustomTkinter visual spec that this file used to hold is
 archived as archive/design_drafts_2026-11/visual_spec_customtkinter.md.
 
-Decision codes: AQ1 and AQ2 (architecture, indexed in docs/decisions_2026-11-11.md). Earlier decisions that
+Decision codes: AQ1 and AQ2 (architecture) and RP1-RP11 (resolutions, 2026-11-16), indexed in
+docs/decisions_2026-11-11.md. Earlier decisions that
 these rulings amend are named where they apply.
 
 ---
@@ -32,8 +33,9 @@ portable SQL. Moving a desktop company to the cloud follows CM1-CM3.
 - Until a screen is rebuilt, the existing CustomTkinter screens keep working. CLAUDE_UI.md and section 0b
   govern every screen in either technology.
 
-Open (section 11): how the bridge authenticates the page (a per-launch token), and how `config.Theme` (H6)
-becomes the front end's CSS tokens.
+Decided (RP6): `app_strata.pyw` makes a per-process token (`secrets.token_urlsafe(32)`, never logged or saved)
+and passes it to `pywebview`; the endpoints check `X-Strata-Token` in constant time and build a fresh
+`action_context()` per change. `config.Theme` serves the CSS custom properties.
 
 ## 2. Databases and entities
 
@@ -121,9 +123,9 @@ becomes the front end's CSS tokens.
 
 ## 8. Construction and costing
 
-- **Cost codes, 3 levels** (PLANNED). Level names and which level a line posts to are decided with the
-  baseline update (section 11).
-- **Dimensions, unlimited depth** (PLANNED). Dimension values nest under parents; JD1 (a line's job sets its
+- **Cost codes, 3 levels** (RP5): 1 Division (not postable), 2 Code, 3 Sub-code; postings go to active leaf
+  codes (level 2, or level 3 with no active children).
+- **Dimensions, depth up to 10** (RP3). Dimension values nest under parents; JD1 (a line's job sets its
   dimensions) is unchanged.
 - **Receiving: Direct-to-site vs. Stock** (PLANNED; accounting in docs/po_ap_matching_design.md section 4).
   Stock: Dr Inventory / Cr GRNI at receipt, the job costed later at the pull ticket. Direct-to-site: a
@@ -142,38 +144,35 @@ becomes the front end's CSS tokens.
 
 Each is listed on Company Settings > Controls and every change is audit-logged.
 
-## 10. Baseline today versus this design
+## 10. The consolidated baseline update (STOP 1, 2026-11-16)
 
-The consolidated pre-release baseline update (docs/roadmap.md, docs/next_step.md) adds these, with failing tests
-first, in one edit of `001_company.sql` and `001_master.sql` and one rebuild:
+One edit of `001_company.sql` and `001_master.sql` with failing tests first (tests/test_schema_replan.py) and one
+rebuild; the previous baselines are in archive/baseline_pre_replan/ (tag `baseline-pre-replan`). Services do
+not use the new columns yet; STOP 2 (Step 7) and later steps do.
 
-| Design | Baseline today |
+| Design | In the baseline after STOP 1 |
 |---|---|
-| `company_entity`, `journal_line.entity_id`, intercompany and elimination support | Not there; one company per file |
-| `journal_line.clearing_id`, open-item account marker | Not there; `journal_line.recon_id` only |
-| Document versions for reverse-and-repost; `Lock documents after posting` setting | Not there |
-| `bank_statement_line` and match records | Not there (already a Phase 4 gap) |
-| Pay run tables; `In pay run` status; `contact.bank_payee_id` | Not there (`invoice.status` has no pay-run state) |
-| Service types, their stages and triggers | Not there; `pipeline_stage` exists (D7) |
-| Estimate signing with the signed PDF | Not there |
-| 3-level cost codes | `cost_code` is flat (`code`, `name`, `cost_type_label`, `account_id`) |
-| Unlimited-depth dimensions | `dimension_value.parent_value_id` exists, capped at `database.MAX_DIMENSION_DEPTH = 3` (tested in tests/test_database.py) |
-| Step 7 `payment_allocation` columns (`applied_date`, `credit_memo_id`, who and when) | Planned in docs/next_step.md |
+| Entities in one file | `company_entity`; `journal_line.entity_id` (NULL = the file's own company) |
+| Clearing and open items (RP2) | `journal_line.clearing_id`, frozen after posting and sealed; `account.track_clearing_id` |
+| Editable posted documents | `invoice.revision_no`, `supersedes_id`; `company_settings.lock_documents_after_posting` (0) |
+| Period and area locks | `fiscal_period_lock` (period, area) |
+| Bank staging and matching | `bank_statement_line`, `bank_statement_match` (released, never deleted) |
+| Pay Run (section 6, RP1) | `pay_run`, `pay_run_line`; `invoice.status` 'In pay run'; `contact.bank_payee_id`, `bank_details_on_file` |
+| Service types (RP4) | `service_type`, `service_stage`, `stage_trigger`, `stage_trigger_run`; `project.service_type_id`, `service_stage_id` |
+| Cost codes (RP5) | `cost_code.level` 1-3, `parent_id`, `is_active` |
+| Dimensions (RP3) | depth limit 10 |
+| Step 7 allocations (RP11) | `payment_allocation.applied_date`, `credit_memo_id`, who and when, one-time release |
+| Contacts, documents, terms, custom fields, close tasks, list preferences | `contact` columns and `contact_site`; `invoice.voucher_number`, `sent_at`, `void_reason`, `is_opening`; `payment_term`; `custom_field_def`/`value`; `close_task`, `close_task_dependency`; `user_list_pref`, `saved_view`, `alert_dismissal` |
+| Multi-role (RP10) | master `user_company_role`, schema only |
+| Approvals (RP9) | `document_approval_setting` covers every document type, all OFF |
+| Not in STOP 1 | Estimate signing with the signed PDF (with the estimate step); intercompany and elimination entries (with consolidation reports) |
 
-## 11. Open questions for the owner
+## 11. Questions resolved (owner, 2026-11-16)
 
-1. **B9 vs `bank_payee_id`.** B9 promises a NACHA ACH export, which needs the payee's routing and account
-   numbers. This design stores none. Does the bank upload replace NACHA (B9 amended), or does NACHA stay as a
-   later option with its own stored numbers?
-2. **`clearing_id` and the chain.** Posted lines are append-only and sealed, but clearing happens after the
-   cleared line posted. Is the id fixed at posting (the clearing entry's lines carry it and name the open item
-   they settle) or kept in a separate append-only clearing record that the chain also seals? This decides the
-   column's shape in the baseline update.
-3. **Dimension depth.** Unlimited depth means removing the cap of 3 and its tests, or keeping a high safety cap
-   (for example 10) for the recursive checks?
-4. **Service types and `pipeline_stage`.** Do service type stages replace `pipeline_stage` (D7's
-   `allows_costs` / `allows_billing` carried over), or sit beside it?
-5. **Bridge security and theme tokens** (section 1).
-6. **Pay Run** answers next_step open question 2 (multi-vendor Pay Run) if the owner confirms.
-7. **Cost code levels.** The names of the three levels, and whether lines may post to any level or only the
-   lowest. Today `cost_code` is flat.
+1. B9 vs `bank_payee_id`: the payee-ID upload replaces NACHA in v1.0 (RP1).
+2. `clearing_id` and the chain: set at save or post on both sides, sealed; open items by group (RP2).
+3. Dimension depth: a limit of 10 (RP3).
+4. Service types replace `pipeline_stage` (RP4).
+5. Bridge security and theme tokens: per-process token, `X-Strata-Token`, `config.Theme` as CSS properties (RP6).
+6. Pay Run: multi-vendor, two steps (section 6), recorded with RP1.
+7. Cost code levels: Division, Code, Sub-code; postings to active leaf codes (RP5).

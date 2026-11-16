@@ -42,6 +42,20 @@ def test_golden_chain_hash(index):
     assert chain_hash(vector) == vector["chain_hash"]
 
 
+def test_entity_and_clearing_ids_are_sealed():
+    """RP2/RP8: a line's entity and clearing group are hashed, so neither can change after posting unseen."""
+    assert "entity_id" in lc.HASHED_LINE
+    assert "clearing_id" in lc.HASHED_LINE
+
+
+def test_golden_vectors_exercise_entity_and_clearing_ids():
+    lines = [line for vector in VECTORS["entries"] for line in vector["lines"]]
+    assert all("entity_id" in line and "clearing_id" in line for line in lines)
+    assert any(line["entity_id"] is not None for line in lines)
+    assert any(line["clearing_id"] is not None for line in lines)
+    assert any(line["clearing_id"] is None for line in lines)
+
+
 def test_golden_vectors_chain_to_each_other():
     assert E1["prev_hash"] == lc.GENESIS == "0" * 64
     assert E2["prev_hash"] == E1["chain_hash"]

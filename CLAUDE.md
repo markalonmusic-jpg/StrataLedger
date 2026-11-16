@@ -166,9 +166,9 @@ there at the end of each step, and update the paragraph below).
 **Where we are (2026-11-15):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1-6: chain and verify,
 keystore and key-lost (KS1-KS21; the service can post, no posting screen yet), approvals in posting (R15-R39),
 reversals (R40-R48), rounding and `create_document_entry` (R49-R55); details in docs/status_log.md. Design batch
-accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15. Next: one
-consolidated pre-release baseline update, then step 7 (the five xfails and payment allocation; docs/next_step.md,
-waiting for approval), then 2.7, 2.8 (PW1-PW11), Phase 3.
+accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15; the consolidated
+baseline update (STOP 1, RP1-RP11) done 2026-11-16. Next: step 7 (STOP 2: the five xfails and payment allocation;
+docs/next_step.md, waiting for approval), then 2.7, 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
@@ -178,6 +178,7 @@ waiting for approval), then 2.7, 2.8 (PW1-PW11), Phase 3.
   launcher list shows archived companies. Phase 3.
 - `ui_components.DataTable` needs `Theme.create_scrollbar` (missing); modal badge styles hold hex colours. Phase 3.
 - `app_user.role` is legacy free text read only by the sidebar's `NAV_ITEMS`; Phase 3 replaces and removes it.
+- `user_company_role` (master, RP10) exists but `authz` still reads only `user_company_access.role_code`.
 - Tests share one hidden Tk window (`tk_app` in conftest.py); live-clipboard tests need `STRATALEDGER_LIVE_CLIPBOARD=1`.
 
 ## 8. Working agreement

@@ -1,200 +1,130 @@
-# Next step: the consolidated baseline update, then Phase 2.5 Step 7 (plans for the owner's approval)
+# Next step: STOP 2, Phase 2.5 Step 7 (plan for the owner's approval)
 
-Written 2026-11-14 at the STOP after R55; updated 2026-11-15 with the owner's architecture and design rulings
-(AQ1, AQ2, docs/design.md). Overwritten at each STOP (CLAUDE.md section 8).
-Status: **R55 is final and committed. The 2026-11-15 rulings are recorded in CLAUDE.md and docs/design.md
-(docs only). Neither the baseline update nor Step 7 is started; no code is written.**
+Written 2026-11-16 at the end of STOP 1 (the consolidated baseline update). Overwritten at each STOP (CLAUDE.md
+section 8).
+Status: **STOP 1 is committed: both baselines carry the replan schema (RP1-RP11, docs/design.md section 10),
+the previous baselines are in archive/baseline_pre_replan/ (tag `baseline-pre-replan`), and the development
+master was rebuilt. Step 7 is not started.**
 
-**State:** suite **2745 passed, 7 deselected, 5 xfailed**. The baseline did not change, so no rebuild is needed.
+**State:** suite **2798 passed, 7 deselected, 5 xfailed** (was 2745; 53 new). The 5 xfails in tests/test_service_rules_pending.py are the Step 7 work below.
+Rebuild needed before running the app on an older development file: `python scripts/create_fresh_databases.py
+--apply`. `Companies/COMBUZZ.db` predates this baseline, and the hash guard refuses it.
 
-## Order (owner, 2026-11-15; docs/roadmap.md "Target architecture and the consolidated baseline update")
+## Done in STOP 1 (2026-11-16)
 
-1. **One consolidated pre-release baseline update** of `migrations/001_company.sql` and `001_master.sql`.
-2. **Step 7** on the new baseline (plan below): `sequences.next_invoice_number` and `services/payments.py`
-   allocations, closing the 5 xfails.
+- **Decisions:** RP1-RP11 recorded in docs/decisions_2026-11-11.md, with B9, D7 and H6 amended.
+- **Baselines:** schema only, with no service using the new columns yet:
+  - `company_entity`; `journal_line.entity_id` and `clearing_id`, frozen after posting and sealed (RP2, RP8),
+    plus the open-item index; `account.track_clearing_id`;
+  - the contact columns and `contact_site`;
+  - the invoice columns (`voucher_number`, `revision_no`, `supersedes_id`, `sent_at` / `sent_to` /
+    `void_reason` set once, `memo`, `is_opening`, `payment_term_id`; status `In pay run`, Sent <-> In pay run
+    -> Paid);
+  - `fiscal_period_lock`, `audit_log.reason`, `company_settings.lock_documents_after_posting`;
+  - `document_approval_setting` with Invoice, Credit Memo, Vendor credit and Pay run (all 0);
+  - `payment_allocation.applied_date` (NOT NULL), `credit_memo_id` (a sales Credit Memo), `created_by/_at`, and
+    the release fields; exactly one source; a posted source's rows released once, never deleted (RP11);
+  - 3-level `cost_code` (RP5); dimension depth 10 (RP3);
+  - `service_type`, `service_stage`, `stage_trigger`, `stage_trigger_run` (idempotent, append-only), with
+    `project.service_type_id` / `service_stage_id` (RP4);
+  - `pay_run`, `pay_run_line`; `bank_statement_line` (recon lock), `bank_statement_match` (release once);
+  - `close_task`, `close_task_dependency`; `payment_term`; `custom_field_def` / `custom_field_value`;
+    `user_list_pref`, `saved_view`, `alert_dismissal`;
+  - master `user_company_role` (RP10);
+  - audit triggers on every new table and column;
+  - a full index on every foreign key column in both files (static test).
+- **Code:** `MAX_DIMENSION_DEPTH = 10`; `ledger_chain.HASHED_LINE` gains `entity_id` and `clearing_id` (v1
+  vectors regenerated, RP8); `ledger.MIRRORED_LINE_FIELDS` gains both, so a reversal stays in its original's
+  entity and clearing group.
+- **Tests:** tests/test_schema_replan.py (new); tests/test_ledger_chain.py and tests/test_database.py (depth 10
+  allowed, 11 rejected, and a subtree move past 10); allocation fixtures in test_controls_003 and
+  test_schema_ledger_2_5. `test_allocations_of_posted_payment` now asserts release-not-delete (RP11).
+- **Reviews:** REVIEWS_HERE
 
-## Plan outline: the consolidated baseline update
+## STOP 2 plan: Step 7
 
-To be detailed into a column-by-column plan and approved before any edit.
-- Failing schema tests first, one test file per area (or the existing schema test file for that table).
-- Save the current baselines to `archive/baseline_pre_<tag>/` with a git tag, as earlier steps did.
-- One edit of both baselines, one rebuild (`python scripts/create_fresh_databases.py --apply`); the master and
-  company development files hold no real data.
-- Contents (docs/design.md section 10): `company_entity` and `journal_line.entity_id`; `journal_line.clearing_id`
-  and the open-item account marker; document versions and the `Lock documents after posting` setting;
-  `bank_statement_line` and its matches; pay run tables, `In pay run` and `contact.bank_payee_id`; service types,
-  stages and triggers; estimate signing with the signed PDF; 3-level cost codes; dimension depth; Step 7's
-  `payment_allocation` columns (part 3 below, including open questions 1 and 3).
-- Existing tests that change with it: the dimension depth tests (tests/test_database.py,
-  `MAX_DIMENSION_DEPTH = 3`) if the cap goes; the chain canonical form and its vectors
-  (tests/data/ledger_chain_vectors.json) if `clearing_id` and `entity_id` are sealed.
-- Needs the owner first: docs/design.md section 11 questions 1-4 and 7 (B9 vs `bank_payee_id`, `clearing_id`
-  and the chain, dimension depth, service types vs `pipeline_stage`, cost code levels).
-
-## Done this session: R55 final (owner, 2026-11-14, Conversion added)
-
-- Conversion entries join Import and Payroll: `create_document_entry` saves them only with origin Import, so they
-  always need one human review. post=True is refused for them, as R18 refuses it for Import origin. A System
-  context is refused with "A conversion entry is saved by its importer (origin Import), so a person reviews it
-  before it posts; save it as an import and send it for review."
-- Typed opening balances (a future wizard, not built) use the same path: source Conversion, origin Import
-  (`as_import`). The person who entered them may review them unless separation of duties is on (OFF by default).
-  With it on, someone else approves and someone other than the creator posts (R17, R28).
-- Tests: tests/test_ledger_rounding.py, section "R55 final". The static caller table needed no new row
-  (`services/conversion.py` already may pass "Conversion"). The hand check script has no Conversion block, so it is
-  unchanged.
-- Reviews: 
-  - step-reviewer: approve with changes, all fixed in 394c3a2: the post-on-save result is checked again (entry
-    number, posted, chain verifies), the two separation denials are matched by their sentence, and the R54 body,
-    audit design section 13, the ledger docstring and the status log are in step.
-  - mutation-tester on 394c3a2: 16 mutants, 15 killed. The survivor ("A import entry") is killed by the exact
-    sentence per source in `test_an_import_or_payroll_entry_comes_only_from_an_importer` (STOP commit).
-  - secrets-auditor: not needed.
-  - Reviewer note, behaviour from before this change (not changed): the R53 tests post an approved
-    Import-origin entry with a System context; `post_journal_entry` refuses only an Import-origin context, while
-    the ledger docstring says "Only a person posts an Import-origin entry". Open question 7.
-
-## Step 7 plan
-
-Step 7 closes Phase 2.5. It has four parts. Parts 1 and 2 need no baseline change; part 3 does.
+Step 7 closes Phase 2.5. It needs no baseline change: STOP 1 added every column it uses.
 
 ### Part 1. The five strict xfails (tests/test_service_rules_pending.py)
 
-Each xfail was written before the service layer, against a PROPOSED API (`conn`, `user_id=`). As in Step 4 (R25),
-each is rewritten against the real service and its marker removed, or moved to the file that already covers it.
+| xfail | Step 7 work |
+|---|---|
+| Reopening a period needs a logged reason | Covered by `periods.reopen_period` and `period_status_history` (tests/test_period_close.py). Delete the xfail; no code. |
+| Period set from the entry date | Covered by `ledger.create_entry` / `periods.resolve_entry_period`. Delete the xfail; no code. |
+| Numbering assigns the next number | New `modules/services/sequences.py`: `next_invoice_number(conn, context, document_type)`, run inside the caller's write transaction. It uses the R6 default series (`INV-` / `CM-`, created on first use, not with `ph_tax`), checks the registered range and `valid_until`, stays gapless, and refuses a missing series under `ph_tax` with a sentence. Also `next_voucher_number(conn, context)` for bills and vendor credits (`VCH-`, from `voucher_sequence`, decision 1.3; fills `invoice.voucher_number`). Rewrite the xfail against it. |
+| A payment cannot be over-allocated | Part 2. |
+| An allocation names exactly one target | Part 2: the service refuses it with a sentence before the CHECK is reached. |
 
-| xfail | What already exists | Step 7 work |
-|---|---|---|
-| Reopening a period needs a logged reason | **Covered.** `periods.reopen_period` needs `period.reopen`, confirm=True and a non-blank reason; the reason goes to `period_status_history`, which cannot be updated or deleted (tests/test_period_close.py, `test_reopen_needs_confirm_and_a_reason`, plus the year and "books closed through" variants). | Delete the xfail. The history rows already cannot be updated or deleted (tests/test_period_close.py around line 373). The xfail looks for the reason in `audit_log` on `fiscal_period`; the real design keeps it in `period_status_history`, which is the better record. No code. |
-| Period set from the entry date | **Covered.** `ledger.create_entry` resolves `period_id` from `entry_date` (`periods.resolve_entry_period`; tests/test_ledger_drafts.py around line 284). | Delete the xfail. No code. |
-| Numbering assigns the next number | Partly. The baseline has `invoice_series` (Invoice, Credit Memo), the gapless trigger `invoice_leave_draft` and R6 (the first send with no series creates "INV-" / "CM-"; not with `ph_tax`). No service assigns it. | Build the number assignment only: `sequences.next_invoice_number(conn, context, document_type)` inside the caller's write transaction (R6 default series, registered range and `valid_until` checked, gapless, `ph_tax` refuses a missing series). `billing.send_invoice` (posting the invoice) stays in Phase 4; the xfail is rewritten against the new function. |
-| A payment cannot be over-allocated | No service. | Part 3. |
-| An allocation names exactly one target | The `allocation_one_target` CHECK exists (tests/test_schema_ledger_2_5.py). No service. | Part 3: the service refuses it with a sentence before the CHECK is reached. |
+### Part 2. `modules/services/payments.py`
 
-### Part 2. The billing caller of create_document_entry
+Each function follows rule 10: validate, `authorize`, then the write transaction.
+- `allocate(context, *, source, target, amount_cents, applied_date)`:
+  - `source` is `("payment", id)` or `("credit_memo", id)`; `target` is `("invoice", id)` or
+    `("deferral", id)`.
+  - Never more than the target's open amount (total − retainage − live allocations, B2).
+  - Never more than the source's unapplied amount (amount, or credit memo total, − live allocations).
+  - Same contact; Received payment or sales credit memo → Sales invoice; Made payment or vendor credit → Bill
+    (R7).
+  - Source and target posted and not void; the target is not Draft, Void or Paid.
+  - `applied_date` is on or after both documents' dates and in an open period (closed-period integrity; it uses
+    `fiscal_period_lock` area `Sales` / `Purchases` too).
+  - The invoice is marked Paid when its net due reaches zero (B2), in the same transaction.
+  - Sets `created_by` / `created_at` from the context (H2).
+- `release_allocations(conn, context, *, source, reason)`: stamps `released_*` once on every live allocation of
+  the source and reopens Paid invoices. It is called by the payment and credit-memo void (Phase 4); Step 7 builds
+  and tests it.
+- Permissions: reuse the receive / pay permissions (`payment.receive`, `payment.make` or the existing names) or add
+  `payment.allocate` (open question 4). Agent never (section 0).
+- `clearing_id`: when an allocation's payment entry and the invoice entry exist, the service sets the same
+  clearing id on the AR/AP line of each at save or post time (RP2). In Step 7 only `allocate` and the release
+  touch it; the document posting services set it in Phase 4. Open question 8.
 
-`DOCUMENT_ENTRY_CALLERS` lets `services/billing.py` pass "Invoice" and "Payment", and `services/payments.py` pass
-"Payment". Two modules may make payment entries. Proposal: payments are made only by `services/payments.py`, so the
-billing row shrinks to `{"Invoice"}` (allow-lists only shrink). Allocation itself writes no journal entry (the
-payment's entry already moved AR or AP; an allocation is the subledger link), so Step 7 calls
-`create_document_entry` from nowhere new. The test for the shrink is the static test itself.
+### Part 3. Smaller items found in STOP 1
 
-### Part 3. Payment allocation (R7, B2, B4, B6, B14; roadmap "Baseline gaps", Step 7)
-
-New module `services/payments.py` with `allocate(context, ...)` and `release_allocations(conn, context, ...)`
-(called by a payment void later). Shape per rule 10: validate, `authorize`, then the write transaction.
-
-**Baseline change (made in the consolidated baseline update above, not as a separate edit; it blocks every
-existing development database until it is rebuilt with `scripts/create_fresh_databases.py --apply`):**
-`payment_allocation` gains
-- `applied_date TEXT NOT NULL` (B4, CB1: cash basis recognizes revenue on the date applied; the closed-period check
-  uses it);
-- `credit_memo_id INTEGER REFERENCES invoice(invoice_id)`: the credit memo applied (B6), with a CHECK that exactly
-  one source is set, `payment_id` or `credit_memo_id` (`payment_id` is already nullable);
-- `created_by` and `created_at` (who applied it; services set them, H2);
-- possibly `released_at`, `released_by`, `release_reason` (see open question 3).
-The `allocation_one_target` CHECK stays as it is (invoice or deferral): a credit memo is a source, not a target,
-so B6 needs no new target. The loan target waits for the loans step (roadmap). The change is written with failing
-schema tests first (tests/test_schema_ledger_2_5.py).
-
-**Rules the service enforces (tests first; these are integrity point 4 of the payments message):**
-1. Never more than the document's open amount (total minus retainage minus live allocations, B2) and never more
-   than the source's unapplied amount (the payment's amount, or the credit memo's total, minus its live
-   allocations). The first xfail.
-2. Exactly one target (the second xfail) and exactly one source, each refused with a sentence.
-3. Same contact only; a Received payment or a sales credit memo to a Sales invoice; a Made payment or a vendor
-   credit to a Bill (R7 opened the vendor side).
-4. The target and the source are posted and not void; the target is not Draft, Void or Paid.
-5. `applied_date` is on or after both the source's and the target's dates and in an open period (the closed-period
-   integrity rule). A credit-only application carries its own date.
-6. The invoice is marked Paid when its net due reaches zero (B2), in the same transaction.
-7. Allocations of a posted source are never edited or deleted (the triggers exist for payments; they extend to
-   credit memos); voiding the payment or credit memo releases its allocations and reopens the invoices (B14,
-   "reversing a payment reverses its allocations"). The void itself is Phase 4; Step 7 builds and tests the
-   release function and its trigger guard.
-8. Permissions: a new `payment.allocate` (or the existing receive/pay permission; open question 4); Agent never
-   (the AI does not move money, section 0).
+- `DOCUMENT_ENTRY_CALLERS`: payments are made only by `services/payments.py`, so the billing row shrinks to
+  `{"Invoice"}` (allow-lists only shrink).
+- Postings target active leaf cost codes (RP5): a check in the ledger's line validation (where accounts are checked postable and active), with a sentence ("Post to a
+  cost code or sub-code, not the division").
+- The four new approval toggles (Invoice, Credit Memo, Vendor credit, Pay run) exist at 0, but
+  `company_settings.set_document_approval` refuses them, because `permissions.DOCUMENT_TYPES` and the approval
+  chain CHECKs do not list them yet. They join when their posting services exist (Phase 4). Not Step 7.
 
 ### Part 4. Close Phase 2.5
 
-Roadmap 2.5 marked done, status log entry, the hand check script for Step 7, step-reviewer, mutation-tester.
-
-## The payments schema message (2026-11-14, product_consultant, forwarded from ux_audit)
-
-Checked against migrations/001_company.sql. "Later" names the step in docs/roadmap.md.
-
-| Item | Baseline today | Where |
-|---|---|---|
-| `date_paid` on every payment (the posting date) | **Already there** as `payment.payment_date` (NOT NULL, a date). Rename only if the owner wants the UI word in the schema. | Already in the baseline |
-| `date_cleared` (nullable; set on match or tick, cleared on unmatch, logged) | Not there. Reconciliation today marks `journal_line.recon_id`. | Later: Phase 4 bank reconciliation and feeds (baseline change then) |
-| Many-to-many matching of feed lines and payments ("partly cleared") | Not there (`bank_statement_line` and a match table do not exist; already listed as Phase 4 gaps). | Later: Phase 4 |
-| A feed line with no payment creates the payment on match | Not there. | Later: Phase 4 (an Import-origin payment through `create_document_entry`) |
-| Pay Bills single-vendor; Pay Run adds "Approved to pay" (posts nothing) | `invoice.status` has no "Approved to pay"; no run table. | Later: the bills and payments screens (Phase 3/4); open question 2 |
-| Open payments (date_cleared null) and two settings (open too long 30 days, stale check 180 days) | Not there (needs `date_cleared`; the two settings are not in `company_settings`). | Later: Phase 4, with `date_cleared` |
-| Credit memos as negative invoices, CM-### gapless at posting, integer primary key | **Mostly there.** `invoice.invoice_type` has 'Credit Memo', `invoice_series.document_type` has 'Credit Memo', R6 gives "CM-", numbers are gapless at leaving Draft, the key is an integer. Difference: amounts are stored positive (`invoice_amounts_positive`), the type gives the sign. Report, not changed (section 5.3). | Already in the baseline; the number assignment is built in Step 7 part 1 |
-| Vendor credits as negative bills, numbered the same way | **Conflict.** A Purchase-side 'Credit Memo' row is allowed, but a CHECK forbids a series on the Purchase side and decision 1.3 gives bills voucher numbers with gaps allowed, not a gapless series. | Owner decision (open question 5); later: bills step |
-| Receive Payment / Pay Bills list invoices, credit memos and unapplied payments; allocation rows link payment to invoice and credit memo to invoice | Partly: `payment_allocation` links a payment to an invoice or deferral; no credit-memo source and no apply date. | **Step 7 (baseline change, part 3)** |
-| A $0.00 payment that only applies credits | **Refused today** by `payment_amount_positive` (`amount_cents > 0`). | Step 7 if the owner keeps the $0.00 payment record (open question 1); not needed if a credit-only application is allocation rows with their own date |
-| Unapplied amounts stay on the payment, applied through the same rows | **There by derivation**: unapplied = `payment.amount_cents` minus its allocations. Needs `applied_date` to apply later. | Step 7 (the `applied_date` column) |
-| Undeposited funds vs matching | `company_settings.undeposited_funds_acct_id` and the 'Undeposited funds' control type exist (decision 1.2, B3: optional). | Open question 6 |
-
-**Its six integrity points:**
-1. Unmatching or unticking an item in a finished reconciliation reopens it with a reason. Later (Phase 4; today
-   `journal_line_recon_lock` refuses any change to a completed reconciliation, and B10 allows undoing only the
-   latest).
-2. `date_cleared` does not change the period, can be set in a closed period, and is logged. Later (Phase 4).
-3. A payment created from a feed line is Import origin; the human match is its review; the assistant proposes,
-   never confirms. Later (Phase 4). R18/R55 already give the path: origin Import always needs one review.
-4. Allocations: never over the open amount or the payment and credits; same customer or vendor; reversing a
-   payment reverses its allocations; a credit-only application has its own date and passes the closed-period
-   check. **Step 7 must enforce all of these** (part 3, rules 1, 3, 5 and 7).
-5. Cash basis: a credit memo applied with no cash. A report rule (Phase 4 reports). Step 7 only keeps what the
-   report needs: the source kind and `applied_date` on each allocation.
-6. Vendor credits keep the vendor's own number in a separate field. Already there: `invoice.invoice_number` (unique
-   per vendor) is the vendor's number; the internal number is open question 5. Later (bills step).
+Roadmap 2.5 marked done, a status log entry, the Step 7 hand-check script, step-reviewer and mutation-tester.
 
 ## Open questions for the owner
 
-1. **$0.00 payments.** Keep a $0.00 payment record for a credit-only application (the baseline CHECK becomes
-   `amount_cents >= 0`, and a $0.00 payment posts no entry), or record a credit-only application as allocation rows
-   from the credit memo with their own date and show it on screen as a $0.00 payment (no CHECK change)?
-   Recommendation: the second; one less record that posts nothing.
-2. **Which Pay screen is multi-vendor** (Pay Bills single-vendor vs a multi-vendor Pay Run). The 2026-11-15
-   design describes a two-step Pay Run across approved bills (docs/design.md section 6); confirm that this
-   answers it. Not needed for Step 7.
-3. **Releasing allocations.** Today the baseline lets a voided payment's allocation rows be deleted (logged). Keep
-   that, or keep the rows and mark them released (who, when, why), so the history shows what was applied and
-   undone? Recommendation: mark them released; corrections stay visible. Decides two or three columns in the
-   Step 7 baseline change.
-4. **Permission for allocating.** Reuse the receive/pay permissions (the ux_research note lists "Receive payments"
-   and "Pay bills" as team permissions) or add `payment.allocate`?
-5. **Vendor credit numbering.** Decision 1.3 gives bills voucher numbers with gaps allowed; the message asks for a
-   gapless internal series for vendor credits like CM-###. Which wins? Not needed for Step 7.
-6. **Undeposited funds vs matching.** Not decided here. Not needed for Step 7.
-7. **Who may post a reviewed import.** Should `post_journal_entry` also refuse a System context for an
-   Import-origin entry, so that only a Human context posts it, as the ledger docstring says? Today only an
-   Import context is refused. Small, and it could go into Step 7 with a test.
-
-**Note on questions 2 and 6:** C:\Users\marka\Strata_Teams\inbox\to_planning.md holds two later messages
-(2026-11-14, from ux_research) that say the owner decided both: keep Undeposited funds for checks and cash (ACH,
-wire and card post straight to the bank), and a multi-vendor Pay Run with a release approval. The task for this
-session said they are not decided, so they stay open here. Please confirm which is current.
+1. **$0.00 payments.** Recommendation (unchanged): a credit-only application is allocation rows from the credit
+   memo with their own `applied_date`, shown on screen as a $0.00 payment; no CHECK change.
+2. **Pay Run:** answered by RP1 and docs/design.md section 6 (multi-vendor, two steps). Closed.
+3. **Releasing allocations:** answered by RP11. Closed.
+4. **Permission for allocating:** reuse receive/pay, or add `payment.allocate`?
+5. **Vendor credit numbering:** STOP 1 gives vendor credits a `voucher_number` (`VCH-`, gaps allowed, decision
+   1.3) beside the vendor's own number. Confirm that this answers the gapless-series request in the payments
+   message.
+6. **Undeposited funds vs matching:** still open; not needed for Step 7.
+7. **Who may post a reviewed import:** should `post_journal_entry` also refuse a System context for an
+   Import-origin entry? Small; it could go into Step 7 with a test.
+8. **When is `clearing_id` set?** Proposal: the open item's line (the invoice's AR line) gets a new clearing id
+   when the invoice posts, and each settling line copies it when its payment posts or is allocated. Lines
+   already posted cannot be changed (RP2), so the open item's id must exist from its own posting. The
+   allocation then only links documents. Confirm.
 
 ## Carried forward
 
-- Phase 3 screens:
+- **Known issue (RP10):** `user_company_role` exists, but `authz` reads only `user_company_access.role_code`; a
+  later step switches it.
+- **Phase 3 screens:**
   - show the unverified range and the close check's warning;
   - after a key replacement, call `App.start_key_store()` again;
   - show `KeyReplaced.recovery_code` once;
-  - every post, approval, close, void and correction passes `self.app.action_context()` (the static test
-    enforces it for posts, approvals and closes; extend it to void and reverse when the screen is built);
-  - show `display_description` for entries;
-  - log an error by passing the error object, never its text (R30, static test);
-  - show `SaveFailedError` like any service error (its sentence only);
-  - the import review screen shows the rounding line's note (L8 "info flag"); `get_entry` returns the flag.
-- Backlog 21: the control "voids and corrections need a second person" (R42), off by default, listed on the
-  Audit-ready page. Not built.
-- Whether retired installation keys keep their recovery copies is decided with KS18's key restore (backlog 16).
-- `auth._now()` remains the one allowed clock read in services (H2).
-- Bills have no column for their VCH voucher number (decision 1.3; `voucher_sequence` exists). Noticed while
-  checking the message; for the bills step.
+  - every post, approval, close, void and correction passes `self.app.action_context()`;
+  - show `display_description`;
+  - log an error by passing the error object;
+  - show `SaveFailedError` like any service error;
+  - the import review screen shows the rounding note;
+  - the AQ2 bridge follows RP6.
+- **Backlog 21:** the "voids and corrections need a second person" control (R42).
+- **KS18:** whether retired installation keys keep their recovery copies.
+- `auth._now()` is the one allowed clock read in services (H2).

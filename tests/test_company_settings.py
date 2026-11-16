@@ -38,8 +38,11 @@ def test_defaults_are_permissive(world, admin):
 
 def test_document_approval_switches_cover_every_type_but_journal_entry(admin):
     switches = cs.get_document_approvals(admin)
+    # RP9 (2026-11-16) added Invoice, Credit Memo, Vendor credit and Pay run, all OFF.
     assert set(switches) == {"Bill", "Payment", "Purchase order", "Subcontract", "Pay application",
-                             "Import batch", "Asset disposal", "Estimate", "Change order", "Contract"}
+                             "Import batch", "Asset disposal", "Estimate", "Change order", "Contract",
+                             "Invoice", "Credit Memo", "Vendor credit", "Pay run"}
+    assert set(switches.values()) == {0}
 
 
 # --- Changing a control ---------------------------------------------------------------------

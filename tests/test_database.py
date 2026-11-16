@@ -55,7 +55,8 @@ def test_company_migrates_from_scripts_without_source_database(tmp_path, monkeyp
         assert "chart_of_accounts" not in table_names
 
 
-def test_dimension_depth_four_is_rejected(tmp_path, backup_dir):
+def test_dimension_depth_ten_is_allowed_and_eleven_is_rejected(tmp_path, backup_dir):
+    """RP3: the limit is 10 levels (it was 3)."""
     db_path = tmp_path / "dimensions.db"
     database.ensure_company_database(db_path)
 
@@ -65,7 +66,7 @@ def test_dimension_depth_four_is_rejected(tmp_path, backup_dir):
             ("Department",),
         ).fetchone()[0]
         parent_id = None
-        for index in range(1, database.MAX_DIMENSION_DEPTH + 1):
+        for index in range(1, 11):
             parent_id = conn.execute(
                 "INSERT INTO dimension_value (dimension_type_id, code, name, parent_value_id) "
                 "VALUES (?, ?, ?, ?) RETURNING dimension_value_id",
@@ -76,8 +77,37 @@ def test_dimension_depth_four_is_rejected(tmp_path, backup_dir):
             conn.execute(
                 "INSERT INTO dimension_value (dimension_type_id, code, name, parent_value_id) "
                 "VALUES (?, ?, ?, ?)",
-                (dimension_type_id, "D4", "Depth 4", parent_id),
+                (dimension_type_id, "D11", "Depth 11", parent_id),
             )
+
+
+def test_moving_a_subtree_below_depth_ten_is_rejected(tmp_path, backup_dir):
+    """The update trigger counts the moved value's descendants too: a 6-deep chain under a 5-deep one is 11."""
+    db_path = tmp_path / "dimension-move.db"
+    database.ensure_company_database(db_path)
+
+    with database.get_connection(db_path) as conn:
+        type_id = conn.execute("INSERT INTO dimension_type (name) VALUES ('Region') RETURNING dimension_type_id"
+                               ).fetchone()[0]
+
+        def chain(prefix, length):
+            parent = None
+            ids = []
+            for index in range(1, length + 1):
+                parent = conn.execute(
+                    "INSERT INTO dimension_value (dimension_type_id, code, name, parent_value_id) "
+                    "VALUES (?, ?, ?, ?) RETURNING dimension_value_id",
+                    (type_id, f"{prefix}{index}", f"{prefix} {index}", parent)).fetchone()[0]
+                ids.append(parent)
+            return ids
+
+        upper = chain("A", 5)
+        lower = chain("B", 6)
+        with pytest.raises(sqlite3.IntegrityError, match="depth limit"):
+            conn.execute("UPDATE dimension_value SET parent_value_id = ? WHERE dimension_value_id = ?",
+                         (upper[-1], lower[0]))
+        conn.execute("UPDATE dimension_value SET parent_value_id = ? WHERE dimension_value_id = ?",
+                     (upper[3], lower[0]))
 
 
 def test_invoice_line_rejects_two_values_of_one_dimension_type(tmp_path, backup_dir):

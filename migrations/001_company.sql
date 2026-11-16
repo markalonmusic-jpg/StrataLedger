@@ -37,8 +37,14 @@ CREATE TABLE cost_code (
 
     cost_type_label  TEXT NOT NULL, -- "Cement", "Lumber", "SaaS User Licensing"
 
-    account_id       INTEGER -- Parent General Ledger Account cross-reference link
+    account_id       INTEGER, -- Parent General Ledger Account cross-reference link
 
+    -- RP5: three levels (1 Division, 2 Code, 3 Sub-code). Level 1 has no parent; a deeper code's parent is one
+    -- level up (trigger cost_code_parent_level_*). Postings go to active leaf codes (a service check).
+    parent_id        INTEGER REFERENCES cost_code(cost_code_id),
+    level            INTEGER NOT NULL DEFAULT 1 CHECK (level IN (1, 2, 3)),
+    is_active        INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    CHECK ((level = 1) = (parent_id IS NULL))
 );
 
 CREATE TABLE dimension_type (
@@ -155,7 +161,10 @@ CREATE TABLE "audit_log" (
 
     software_version_tag TEXT,
 
-    terminal_id TEXT
+    terminal_id TEXT,
+
+    -- Replan: why a change was made (filled through audit_context by a later step; H4).
+    reason TEXT
 );
 
 CREATE TABLE "change_order_line" (
@@ -263,6 +272,9 @@ CREATE TABLE "project" (
     status                TEXT CHECK (status IN ('Mobilization', 'In Progress', 'Suspended', 'Completed', 'Closed Out')) DEFAULT 'Mobilization',
 
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    -- RP4: the job's service type and current stage (replace the planned pipeline_stage).
+    service_type_id       INTEGER REFERENCES service_type(service_type_id),
+    service_stage_id      INTEGER REFERENCES service_stage(stage_id),
     CHECK (original_budget_cents IS NULL OR typeof(original_budget_cents) = 'integer'),
     CHECK (revised_budget_cents IS NULL OR typeof(revised_budget_cents) = 'integer')
 );
@@ -307,10 +319,23 @@ CREATE TABLE "payment_allocation" (
     invoice_id INTEGER REFERENCES invoice(invoice_id),
     deferral_id INTEGER,
     amount_applied_cents INTEGER NOT NULL,
+    -- Step 7 (B4, B6, CB1, RP11): the date applied (cash basis and the closed-period check use it), the credit memo
+    -- applied as the source instead of a payment, who applied it, and the one-time release when the source is voided.
+    applied_date TEXT NOT NULL CHECK (applied_date IS date(applied_date)),
+    credit_memo_id INTEGER REFERENCES invoice(invoice_id),
+    created_by INTEGER,
+    created_at TEXT,
+    released_at TEXT,
+    released_by INTEGER,
+    release_reason TEXT,
     CHECK (typeof(amount_applied_cents) = 'integer'),
     CONSTRAINT allocation_amount_positive CHECK (amount_applied_cents > 0),
     -- 2.5: an allocation names exactly one document, an invoice or a deferral.
-    CONSTRAINT allocation_one_target CHECK ((invoice_id IS NULL) <> (deferral_id IS NULL))
+    CONSTRAINT allocation_one_target CHECK ((invoice_id IS NULL) <> (deferral_id IS NULL)),
+    -- Step 7: exactly one source, a payment or a credit memo.
+    CONSTRAINT allocation_one_source CHECK ((payment_id IS NULL) <> (credit_memo_id IS NULL)),
+    CONSTRAINT allocation_release_complete CHECK (
+        (released_at IS NULL) = (released_by IS NULL) AND (released_at IS NULL) = (release_reason IS NULL))
 );
 
 -- Who is writing. One row; the service layer sets it inside each write
@@ -473,6 +498,10 @@ CREATE TABLE "journal_line" (
     is_control_override INTEGER NOT NULL DEFAULT 0 CHECK (is_control_override IN (0, 1)),
     -- 2.5 (L8): the one-cent balancing line of an imported or converted entry.
     is_rounding_adjustment INTEGER NOT NULL DEFAULT 0 CHECK (is_rounding_adjustment IN (0, 1)),
+    -- RP2: the entity the line belongs to (NULL = the file's own company) and its clearing group. Both are set
+    -- at save or post time, frozen after posting (journal_line_lock_update_posted) and sealed by the chain.
+    entity_id INTEGER REFERENCES company_entity(entity_id),
+    clearing_id INTEGER,
     CHECK (debit_cents = 0 OR credit_cents = 0),
     CHECK (debit_cents IS NULL OR typeof(debit_cents) = 'integer'),
     CHECK (credit_cents IS NULL OR typeof(credit_cents) = 'integer')
@@ -548,7 +577,9 @@ CREATE TABLE "account" (
     -- 2.4: A3 (D or C; a contra account differs from its type) and 1.5 (tax-strategy accounts)
     subtype TEXT,
     normal_balance TEXT CHECK (normal_balance IS NULL OR normal_balance IN ('D', 'C')),
-    is_tax_strategy_only INTEGER NOT NULL DEFAULT 0 CHECK (is_tax_strategy_only IN (0, 1))
+    is_tax_strategy_only INTEGER NOT NULL DEFAULT 0 CHECK (is_tax_strategy_only IN (0, 1)),
+    -- RP2: the account keeps open items by clearing group (AR, AP, GRNI, clearing accounts).
+    track_clearing_id INTEGER NOT NULL DEFAULT 0 CHECK (track_clearing_id IN (0, 1))
 );
 
 CREATE TABLE "invoice" (
@@ -561,7 +592,7 @@ CREATE TABLE "invoice" (
     issue_date TEXT NOT NULL CHECK (issue_date IS date(issue_date)),
     due_date TEXT NOT NULL CHECK (due_date IS date(due_date)),
     terms TEXT CHECK (terms IN ('Due on Receipt', 'Net 15', 'Net 30', 'Net 60')) DEFAULT 'Net 30',
-    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Sent', 'Paid', 'Void', 'Covered by advance')),
+    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Sent', 'Paid', 'Void', 'Covered by advance', 'In pay run')),
     currency TEXT,
     exchange_rate REAL DEFAULT 1.0 CHECK (exchange_rate IS NULL OR exchange_rate = 1.0),
     subtotal_cents INTEGER DEFAULT 0,
@@ -580,6 +611,17 @@ CREATE TABLE "invoice" (
     ledger_side TEXT NOT NULL CHECK (ledger_side IN ('Sales', 'Purchase')),
     series_id INTEGER REFERENCES invoice_series(series_id),
     sequence_number INTEGER CHECK (sequence_number IS NULL OR sequence_number > 0),
+    -- Decision 1.3: a bill's or vendor credit's internal voucher number (VCH-...), from voucher_sequence.
+    voucher_number TEXT CHECK (voucher_number IS NULL OR (ledger_side = 'Purchase' AND voucher_number GLOB 'VCH-*')),
+    -- Editable posted documents (docs/design.md section 4): the revision and the document it supersedes.
+    revision_no INTEGER NOT NULL DEFAULT 1 CHECK (typeof(revision_no) = 'integer' AND revision_no >= 1),
+    supersedes_id INTEGER REFERENCES invoice(invoice_id),
+    sent_at TEXT,
+    sent_to TEXT,
+    void_reason TEXT,
+    memo TEXT,
+    is_opening INTEGER NOT NULL DEFAULT 0 CHECK (is_opening IN (0, 1)),
+    payment_term_id INTEGER REFERENCES payment_term(term_id),
     UNIQUE (invoice_type, contact_id, invoice_number),
     UNIQUE (series_id, sequence_number),
     CHECK ((invoice_type = 'Invoice' AND ledger_side = 'Sales')
@@ -737,7 +779,9 @@ CREATE TABLE "company_settings" (
     interest_income_acct_id INTEGER REFERENCES account(account_id),
     gain_loss_disposal_acct_id INTEGER REFERENCES account(account_id),
     interest_expense_acct_id INTEGER REFERENCES account(account_id),
-    rounding_variance_acct_id INTEGER REFERENCES account(account_id));
+    rounding_variance_acct_id INTEGER REFERENCES account(account_id),
+    -- Control (docs/design.md section 9): OFF lets a posted document be edited by reverse-and-repost.
+    lock_documents_after_posting INTEGER NOT NULL DEFAULT 0 CHECK (lock_documents_after_posting IN (0, 1)));
 
 CREATE TABLE "change_order" (
 	co_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -774,6 +818,17 @@ CREATE TABLE "contact" (
 , mailing_street TEXT, mailing_city TEXT, mailing_state TEXT, mailing_zip TEXT
     -- 2.6: codes are assigned only by the contacts service (customer_number / vendor_number)
     , customer_code TEXT, vendor_code TEXT
+    -- Replan (2026-11-16): customer type and names, tax exemption, bank payee id (RP1: no routing or account
+    -- numbers are ever stored), memo and payment terms.
+    , customer_type TEXT CHECK (customer_type IS NULL OR customer_type IN ('Individual', 'Business'))
+    , first_name TEXT, last_name TEXT
+    , tax_exempt_status TEXT NOT NULL DEFAULT 'Taxable' CHECK (tax_exempt_status IN ('Taxable', 'Exempt'))
+    , exemption_reason TEXT, exemption_cert_no TEXT
+    , exemption_expires_at TEXT CHECK (exemption_expires_at IS date(exemption_expires_at))
+    , bank_details_on_file INTEGER NOT NULL DEFAULT 0 CHECK (bank_details_on_file IN (0, 1))
+    , bank_payee_id TEXT
+    , memo TEXT
+    , payment_term_id INTEGER REFERENCES payment_term(term_id)
     -- 004: ISO dates and 0/1 flags
     , CHECK (is_customer IN (0, 1))
     , CHECK (is_vendor IN (0, 1))
@@ -781,6 +836,8 @@ CREATE TABLE "contact" (
     , CHECK (is_active IN (0, 1))
     , CHECK (is_customer = 0 OR customer_code IS NOT NULL)
     , CHECK (is_vendor = 0 OR vendor_code IS NOT NULL)
+    , CHECK (tax_exempt_status = 'Exempt'
+             OR (exemption_reason IS NULL AND exemption_cert_no IS NULL AND exemption_expires_at IS NULL))
 );
 
 CREATE UNIQUE INDEX idx_contact_customer_code ON contact (customer_code) WHERE customer_code IS NOT NULL;
@@ -1203,13 +1260,15 @@ INSERT INTO role_permission (role_code, permission_code)
 -- Decision 1.6: approval is OFF by default for every document type. Journal entries use
 -- company_settings.manual_entry_approval as their switch, so they have no row here.
 CREATE TABLE document_approval_setting (
-    document_type TEXT PRIMARY KEY CHECK (document_type IN ('Bill', 'Payment', 'Purchase order', 'Subcontract', 'Pay application', 'Import batch', 'Asset disposal', 'Estimate', 'Change order', 'Contract')),
+    document_type TEXT PRIMARY KEY CHECK (document_type IN ('Bill', 'Payment', 'Purchase order', 'Subcontract', 'Pay application', 'Import batch', 'Asset disposal', 'Estimate', 'Change order', 'Contract', 'Invoice', 'Credit Memo', 'Vendor credit', 'Pay run')),
     requires_approval INTEGER NOT NULL DEFAULT 0 CHECK (requires_approval IN (0, 1))
 );
 
 INSERT INTO document_approval_setting (document_type) VALUES
     ('Bill'), ('Payment'), ('Purchase order'), ('Subcontract'), ('Pay application'),
-    ('Import batch'), ('Asset disposal'), ('Estimate'), ('Change order'), ('Contract');
+    ('Import batch'), ('Asset disposal'), ('Estimate'), ('Change order'), ('Contract'),
+    -- RP9: every approval toggle lives here, all OFF by default (1.6).
+    ('Invoice'), ('Credit Memo'), ('Vendor credit'), ('Pay run');
 
 -- Decision 1.3: bills get a system voucher number (VCH-1001...) from their own sequence,
 -- assigned at entry; gaps are allowed when drafts are deleted.
@@ -1421,7 +1480,10 @@ BEGIN
            (OLD.status = 'Draft' AND NEW.status IN ('Sent', 'Covered by advance'))
         OR (OLD.status = 'Sent' AND NEW.status IN ('Paid', 'Void', 'Covered by advance'))
         OR (OLD.status = 'Paid' AND NEW.status = 'Sent')
-    ) THEN RAISE(ABORT, 'Invoice status move not allowed (Draft -> Sent -> Paid/Void; Paid -> Sent)') END;
+        -- Pay Run (docs/design.md section 6): an approved run locks the bill; paying it or removing it moves it on.
+        OR (OLD.status = 'Sent' AND NEW.status = 'In pay run' AND OLD.invoice_type = 'Bill')
+        OR (OLD.status = 'In pay run' AND NEW.status IN ('Paid', 'Sent'))
+    ) THEN RAISE(ABORT, 'Invoice status move not allowed (Draft -> Sent -> Paid/Void; Paid -> Sent; Sent <-> In pay run -> Paid)') END;
     SELECT CASE WHEN NEW.status = 'Void' AND OLD.entry_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM journal_entry WHERE entry_id = OLD.entry_id AND is_void = 1
     ) THEN RAISE(ABORT, 'Void the invoice journal entry (post a Void reversal) before voiding the invoice') END;
@@ -1468,17 +1530,44 @@ BEFORE INSERT ON journal_line
 WHEN EXISTS (SELECT 1 FROM journal_entry WHERE entry_id = NEW.entry_id AND is_posted = 1)
 BEGIN SELECT RAISE(ABORT, 'Posted journal entries cannot be changed'); END;
 
+-- RP11: allocations of a posted payment or credit memo are never deleted; voiding the source releases each
+-- allocation once (released_at, released_by, release_reason). Allocations of a draft source stay editable.
 CREATE TRIGGER payment_allocation_lock_delete
 BEFORE DELETE ON payment_allocation
-WHEN EXISTS (SELECT 1 FROM payment AS p LEFT JOIN journal_entry AS e ON e.entry_id = p.entry_id
-             WHERE p.payment_id = OLD.payment_id AND p.entry_id IS NOT NULL AND e.is_void IS NOT 1)
-BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment can be removed only after its entry is voided'); END;
+WHEN EXISTS (SELECT 1 FROM payment WHERE payment_id = OLD.payment_id AND entry_id IS NOT NULL)
+  OR EXISTS (SELECT 1 FROM invoice WHERE invoice_id = OLD.credit_memo_id AND entry_id IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment or credit memo are released, never deleted'); END;
 
 CREATE TRIGGER payment_allocation_lock_update
 BEFORE UPDATE ON payment_allocation
-WHEN EXISTS (SELECT 1 FROM payment WHERE payment_id IN (OLD.payment_id, NEW.payment_id)
-             AND entry_id IS NOT NULL)
-BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment cannot be changed'); END;
+WHEN (EXISTS (SELECT 1 FROM payment WHERE payment_id IN (OLD.payment_id, NEW.payment_id) AND entry_id IS NOT NULL)
+   OR EXISTS (SELECT 1 FROM invoice WHERE invoice_id IN (OLD.credit_memo_id, NEW.credit_memo_id)
+              AND entry_id IS NOT NULL))
+ AND NOT (
+        OLD.released_at IS NULL AND NEW.released_at IS NOT NULL
+        AND NEW.allocation_id IS OLD.allocation_id
+        AND NEW.payment_id IS OLD.payment_id
+        AND NEW.credit_memo_id IS OLD.credit_memo_id
+        AND NEW.invoice_id IS OLD.invoice_id
+        AND NEW.deferral_id IS OLD.deferral_id
+        AND NEW.amount_applied_cents IS OLD.amount_applied_cents
+        AND NEW.applied_date IS OLD.applied_date
+        AND NEW.created_by IS OLD.created_by
+        AND NEW.created_at IS OLD.created_at
+ )
+BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment or credit memo cannot be changed; release them instead'); END;
+
+CREATE TRIGGER payment_allocation_credit_memo_source_insert
+BEFORE INSERT ON payment_allocation
+WHEN NEW.credit_memo_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo' AND ledger_side = 'Sales')
+BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a sales credit memo'); END;
+
+CREATE TRIGGER payment_allocation_credit_memo_source_update
+BEFORE UPDATE OF credit_memo_id ON payment_allocation
+WHEN NEW.credit_memo_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE invoice_id = NEW.credit_memo_id AND invoice_type = 'Credit Memo' AND ledger_side = 'Sales')
+BEGIN SELECT RAISE(ABORT, 'A credit memo source must be a sales credit memo'); END;
 
 CREATE TRIGGER payment_allocation_no_voided_payment
 BEFORE INSERT ON payment_allocation
@@ -1724,6 +1813,8 @@ WHEN EXISTS (SELECT 1 FROM journal_entry WHERE entry_id IN (OLD.entry_id, NEW.en
         AND NEW.external_ref IS OLD.external_ref
         AND NEW.is_control_override IS OLD.is_control_override
         AND NEW.is_rounding_adjustment IS OLD.is_rounding_adjustment
+        AND NEW.entity_id IS OLD.entity_id
+        AND NEW.clearing_id IS OLD.clearing_id
  )
 BEGIN SELECT RAISE(ABORT, 'Posted journal entries cannot be changed'); END;
 
@@ -1868,6 +1959,16 @@ BEGIN
         AND NEW.ledger_side IS OLD.ledger_side
         AND NEW.series_id IS OLD.series_id
         AND NEW.sequence_number IS OLD.sequence_number
+        AND NEW.voucher_number IS OLD.voucher_number
+        AND NEW.revision_no IS OLD.revision_no
+        AND NEW.supersedes_id IS OLD.supersedes_id
+        AND NEW.memo IS OLD.memo
+        AND NEW.is_opening IS OLD.is_opening
+        AND NEW.payment_term_id IS OLD.payment_term_id
+        -- Recorded once after the document leaves Draft: when and to whom it was sent, and why it was voided.
+        AND (NEW.sent_at IS OLD.sent_at OR OLD.sent_at IS NULL)
+        AND (NEW.sent_to IS OLD.sent_to OR OLD.sent_to IS NULL)
+        AND (NEW.void_reason IS OLD.void_reason OR OLD.void_reason IS NULL)
     ) THEN RAISE(ABORT, 'Sent or posted invoices cannot be changed; issue a credit memo') END;
 END;
 
@@ -2071,7 +2172,9 @@ BEGIN
                     'is_retainage_line', l.is_retainage_line,
                     'external_ref', l.external_ref,
                     'is_control_override', l.is_control_override,
-                    'is_rounding_adjustment', l.is_rounding_adjustment))
+                    'is_rounding_adjustment', l.is_rounding_adjustment,
+                    'entity_id', l.entity_id,
+                    'clearing_id', l.clearing_id))
                 FROM journal_line AS l WHERE l.entry_id = NEW.entry_id)))
         ELSE json_object(
             'entry_id', NEW.entry_id,
@@ -2236,9 +2339,10 @@ BEGIN
             'is_active', NEW.is_active,
             'is_deferral_account', NEW.is_deferral_account,
             'control_type', NEW.control_type,
-            'normal_balance', NEW.normal_balance,
             'subtype', NEW.subtype,
-            'is_tax_strategy_only', NEW.is_tax_strategy_only),
+            'normal_balance', NEW.normal_balance,
+            'is_tax_strategy_only', NEW.is_tax_strategy_only,
+            'track_clearing_id', NEW.track_clearing_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2260,9 +2364,10 @@ BEGIN
             'is_active', OLD.is_active,
             'is_deferral_account', OLD.is_deferral_account,
             'control_type', OLD.control_type,
-            'normal_balance', OLD.normal_balance,
             'subtype', OLD.subtype,
-            'is_tax_strategy_only', OLD.is_tax_strategy_only),
+            'normal_balance', OLD.normal_balance,
+            'is_tax_strategy_only', OLD.is_tax_strategy_only,
+            'track_clearing_id', OLD.track_clearing_id),
         json_object(
             'account_id', NEW.account_id,
             'code', NEW.code,
@@ -2273,9 +2378,10 @@ BEGIN
             'is_active', NEW.is_active,
             'is_deferral_account', NEW.is_deferral_account,
             'control_type', NEW.control_type,
-            'normal_balance', NEW.normal_balance,
             'subtype', NEW.subtype,
-            'is_tax_strategy_only', NEW.is_tax_strategy_only),
+            'normal_balance', NEW.normal_balance,
+            'is_tax_strategy_only', NEW.is_tax_strategy_only,
+            'track_clearing_id', NEW.track_clearing_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2297,9 +2403,10 @@ BEGIN
             'is_active', OLD.is_active,
             'is_deferral_account', OLD.is_deferral_account,
             'control_type', OLD.control_type,
-            'normal_balance', OLD.normal_balance,
             'subtype', OLD.subtype,
-            'is_tax_strategy_only', OLD.is_tax_strategy_only),
+            'normal_balance', OLD.normal_balance,
+            'is_tax_strategy_only', OLD.is_tax_strategy_only,
+            'track_clearing_id', OLD.track_clearing_id),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -2341,7 +2448,16 @@ BEGIN
             'external_ref', NEW.external_ref,
             'ledger_side', NEW.ledger_side,
             'series_id', NEW.series_id,
-            'sequence_number', NEW.sequence_number),
+            'sequence_number', NEW.sequence_number,
+            'voucher_number', NEW.voucher_number,
+            'revision_no', NEW.revision_no,
+            'supersedes_id', NEW.supersedes_id,
+            'sent_at', NEW.sent_at,
+            'sent_to', NEW.sent_to,
+            'void_reason', NEW.void_reason,
+            'memo', NEW.memo,
+            'is_opening', NEW.is_opening,
+            'payment_term_id', NEW.payment_term_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2381,7 +2497,16 @@ BEGIN
             'external_ref', OLD.external_ref,
             'ledger_side', OLD.ledger_side,
             'series_id', OLD.series_id,
-            'sequence_number', OLD.sequence_number),
+            'sequence_number', OLD.sequence_number,
+            'voucher_number', OLD.voucher_number,
+            'revision_no', OLD.revision_no,
+            'supersedes_id', OLD.supersedes_id,
+            'sent_at', OLD.sent_at,
+            'sent_to', OLD.sent_to,
+            'void_reason', OLD.void_reason,
+            'memo', OLD.memo,
+            'is_opening', OLD.is_opening,
+            'payment_term_id', OLD.payment_term_id),
         json_object(
             'invoice_id', NEW.invoice_id,
             'invoice_type', NEW.invoice_type,
@@ -2410,7 +2535,16 @@ BEGIN
             'external_ref', NEW.external_ref,
             'ledger_side', NEW.ledger_side,
             'series_id', NEW.series_id,
-            'sequence_number', NEW.sequence_number),
+            'sequence_number', NEW.sequence_number,
+            'voucher_number', NEW.voucher_number,
+            'revision_no', NEW.revision_no,
+            'supersedes_id', NEW.supersedes_id,
+            'sent_at', NEW.sent_at,
+            'sent_to', NEW.sent_to,
+            'void_reason', NEW.void_reason,
+            'memo', NEW.memo,
+            'is_opening', NEW.is_opening,
+            'payment_term_id', NEW.payment_term_id),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2450,7 +2584,16 @@ BEGIN
             'external_ref', OLD.external_ref,
             'ledger_side', OLD.ledger_side,
             'series_id', OLD.series_id,
-            'sequence_number', OLD.sequence_number),
+            'sequence_number', OLD.sequence_number,
+            'voucher_number', OLD.voucher_number,
+            'revision_no', OLD.revision_no,
+            'supersedes_id', OLD.supersedes_id,
+            'sent_at', OLD.sent_at,
+            'sent_to', OLD.sent_to,
+            'void_reason', OLD.void_reason,
+            'memo', OLD.memo,
+            'is_opening', OLD.is_opening,
+            'payment_term_id', OLD.payment_term_id),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -2548,7 +2691,14 @@ BEGIN
             'payment_id', NEW.payment_id,
             'invoice_id', NEW.invoice_id,
             'deferral_id', NEW.deferral_id,
-            'amount_applied_cents', NEW.amount_applied_cents),
+            'amount_applied_cents', NEW.amount_applied_cents,
+            'applied_date', NEW.applied_date,
+            'credit_memo_id', NEW.credit_memo_id,
+            'created_by', NEW.created_by,
+            'created_at', NEW.created_at,
+            'released_at', NEW.released_at,
+            'released_by', NEW.released_by,
+            'release_reason', NEW.release_reason),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2565,13 +2715,27 @@ BEGIN
             'payment_id', OLD.payment_id,
             'invoice_id', OLD.invoice_id,
             'deferral_id', OLD.deferral_id,
-            'amount_applied_cents', OLD.amount_applied_cents),
+            'amount_applied_cents', OLD.amount_applied_cents,
+            'applied_date', OLD.applied_date,
+            'credit_memo_id', OLD.credit_memo_id,
+            'created_by', OLD.created_by,
+            'created_at', OLD.created_at,
+            'released_at', OLD.released_at,
+            'released_by', OLD.released_by,
+            'release_reason', OLD.release_reason),
         json_object(
             'allocation_id', NEW.allocation_id,
             'payment_id', NEW.payment_id,
             'invoice_id', NEW.invoice_id,
             'deferral_id', NEW.deferral_id,
-            'amount_applied_cents', NEW.amount_applied_cents),
+            'amount_applied_cents', NEW.amount_applied_cents,
+            'applied_date', NEW.applied_date,
+            'credit_memo_id', NEW.credit_memo_id,
+            'created_by', NEW.created_by,
+            'created_at', NEW.created_at,
+            'released_at', NEW.released_at,
+            'released_by', NEW.released_by,
+            'release_reason', NEW.release_reason),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -2588,7 +2752,14 @@ BEGIN
             'payment_id', OLD.payment_id,
             'invoice_id', OLD.invoice_id,
             'deferral_id', OLD.deferral_id,
-            'amount_applied_cents', OLD.amount_applied_cents),
+            'amount_applied_cents', OLD.amount_applied_cents,
+            'applied_date', OLD.applied_date,
+            'credit_memo_id', OLD.credit_memo_id,
+            'created_by', OLD.created_by,
+            'created_at', OLD.created_at,
+            'released_at', OLD.released_at,
+            'released_by', OLD.released_by,
+            'release_reason', OLD.release_reason),
         NULL,
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
@@ -3330,7 +3501,8 @@ BEGIN
             'interest_income_acct_id', NEW.interest_income_acct_id,
             'gain_loss_disposal_acct_id', NEW.gain_loss_disposal_acct_id,
             'interest_expense_acct_id', NEW.interest_expense_acct_id,
-            'rounding_variance_acct_id', NEW.rounding_variance_acct_id),
+            'rounding_variance_acct_id', NEW.rounding_variance_acct_id,
+            'lock_documents_after_posting', NEW.lock_documents_after_posting),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -3391,7 +3563,8 @@ BEGIN
             'interest_income_acct_id', OLD.interest_income_acct_id,
             'gain_loss_disposal_acct_id', OLD.gain_loss_disposal_acct_id,
             'interest_expense_acct_id', OLD.interest_expense_acct_id,
-            'rounding_variance_acct_id', OLD.rounding_variance_acct_id),
+            'rounding_variance_acct_id', OLD.rounding_variance_acct_id,
+            'lock_documents_after_posting', OLD.lock_documents_after_posting),
         json_object(
             'id', NEW.id,
             'company_name', NEW.company_name,
@@ -3441,7 +3614,8 @@ BEGIN
             'interest_income_acct_id', NEW.interest_income_acct_id,
             'gain_loss_disposal_acct_id', NEW.gain_loss_disposal_acct_id,
             'interest_expense_acct_id', NEW.interest_expense_acct_id,
-            'rounding_variance_acct_id', NEW.rounding_variance_acct_id),
+            'rounding_variance_acct_id', NEW.rounding_variance_acct_id,
+            'lock_documents_after_posting', NEW.lock_documents_after_posting),
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
@@ -3609,3 +3783,2040 @@ BEGIN
         ctx.software_version_tag, ctx.terminal_id
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
+
+
+-- ===========================================================================
+-- Consolidated replan update, STOP 1 (decisions RP1-RP11; docs/design.md section 10)
+-- ===========================================================================
+
+-- Entities in one file (rule 3): a parent's subsidiaries as entities, for consolidation. NULL entity_id on a
+-- journal line means the file's own company.
+CREATE TABLE company_entity (
+    entity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    parent_entity_id INTEGER REFERENCES company_entity(entity_id),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    is_eliminations INTEGER NOT NULL DEFAULT 0 CHECK (is_eliminations IN (0, 1)),
+    created_at TEXT
+);
+
+-- RP2: open items per account are the (account_id, clearing_id) groups that do not net to zero.
+CREATE INDEX idx_journal_line_account_clearing ON journal_line (account_id, clearing_id) WHERE clearing_id IS NOT NULL;
+
+CREATE TABLE payment_term (
+    term_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    days_due INTEGER NOT NULL DEFAULT 0 CHECK (typeof(days_due) = 'integer' AND days_due >= 0),
+    discount_percent REAL CHECK (discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 100)),
+    discount_days INTEGER CHECK (discount_days IS NULL OR (typeof(discount_days) = 'integer' AND discount_days >= 0)),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))
+);
+
+CREATE TABLE contact_site (
+    site_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL REFERENCES contact(contact_id),
+    name TEXT NOT NULL,
+    street TEXT,
+    city TEXT,
+    state TEXT,
+    zip TEXT,
+    country TEXT,
+    is_billing INTEGER NOT NULL DEFAULT 0 CHECK (is_billing IN (0, 1)),
+    is_shipping INTEGER NOT NULL DEFAULT 0 CHECK (is_shipping IN (0, 1)),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    memo TEXT
+);
+
+CREATE UNIQUE INDEX invoice_voucher_number_unique ON invoice (voucher_number) WHERE voucher_number IS NOT NULL;
+
+-- A period can be locked per area while the rest of the period stays open.
+CREATE TABLE fiscal_period_lock (
+    lock_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_id INTEGER NOT NULL REFERENCES fiscal_period(period_id),
+    area TEXT NOT NULL CHECK (area IN ('Sales', 'Purchases', 'Banking', 'Payroll', 'Inventory', 'Journal')),
+    is_locked INTEGER NOT NULL DEFAULT 1 CHECK (is_locked IN (0, 1)),
+    locked_by INTEGER,
+    locked_at TEXT,
+    reason TEXT,
+    UNIQUE (period_id, area)
+);
+
+CREATE TRIGGER cost_code_parent_level_insert
+BEFORE INSERT ON cost_code
+WHEN NEW.parent_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM cost_code WHERE cost_code_id = NEW.parent_id AND level = NEW.level - 1)
+BEGIN SELECT RAISE(ABORT, 'A cost code''s parent must be one level up'); END;
+
+CREATE TRIGGER cost_code_parent_level_update
+BEFORE UPDATE OF parent_id, level ON cost_code
+BEGIN
+    SELECT CASE WHEN NEW.parent_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM cost_code WHERE cost_code_id = NEW.parent_id AND level = NEW.level - 1)
+    THEN RAISE(ABORT, 'A cost code''s parent must be one level up') END;
+    SELECT CASE WHEN NEW.level IS NOT OLD.level AND EXISTS (
+        SELECT 1 FROM cost_code WHERE parent_id = NEW.cost_code_id)
+    THEN RAISE(ABORT, 'A cost code with sub-codes cannot change level') END;
+END;
+
+-- RP4: service types and their stages replace pipeline_stage; triggers run in services (H4), once per event.
+CREATE TABLE service_type (
+    service_type_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE service_stage (
+    stage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_type_id INTEGER NOT NULL REFERENCES service_type(service_type_id),
+    phase TEXT NOT NULL CHECK (phase IN ('Sales', 'Delivery')),
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    allows_costs INTEGER NOT NULL DEFAULT 0 CHECK (allows_costs IN (0, 1)),
+    allows_billing INTEGER NOT NULL DEFAULT 0 CHECK (allows_billing IN (0, 1)),
+    is_closed_stage INTEGER NOT NULL DEFAULT 0 CHECK (is_closed_stage IN (0, 1)),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    UNIQUE (service_type_id, name)
+);
+
+CREATE TABLE stage_trigger (
+    trigger_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stage_id INTEGER NOT NULL REFERENCES service_stage(stage_id),
+    event TEXT NOT NULL CHECK (event IN ('Enter', 'Leave')),
+    action TEXT NOT NULL,
+    config_json TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE stage_trigger_run (
+    run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trigger_id INTEGER NOT NULL REFERENCES stage_trigger(trigger_id),
+    record_type TEXT NOT NULL,
+    record_id INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    ran_at TEXT NOT NULL,
+    result TEXT NOT NULL CHECK (result IN ('Done', 'Skipped', 'Failed')),
+    message TEXT,
+    UNIQUE (trigger_id, record_type, record_id, event_key)
+);
+
+CREATE TRIGGER stage_trigger_run_no_update
+BEFORE UPDATE ON stage_trigger_run
+BEGIN SELECT RAISE(ABORT, 'Trigger runs are a permanent record'); END;
+
+CREATE TRIGGER stage_trigger_run_no_delete
+BEFORE DELETE ON stage_trigger_run
+BEGIN SELECT RAISE(ABORT, 'Trigger runs are a permanent record'); END;
+
+-- Pay Run (docs/design.md section 6): approve the run, then complete each line with the date paid and reference.
+CREATE TABLE pay_run (
+    pay_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_number TEXT NOT NULL UNIQUE,
+    bank_account_id INTEGER NOT NULL REFERENCES bank_account(bank_account_id),
+    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Approved', 'Completed', 'Cancelled')),
+    scheduled_date TEXT CHECK (scheduled_date IS date(scheduled_date)),
+    memo TEXT,
+    created_by INTEGER,
+    created_at TEXT,
+    approved_by INTEGER,
+    approved_at TEXT
+);
+
+CREATE TABLE pay_run_line (
+    line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pay_run_id INTEGER NOT NULL REFERENCES pay_run(pay_run_id),
+    invoice_id INTEGER NOT NULL REFERENCES invoice(invoice_id),
+    amount_cents INTEGER NOT NULL CHECK (typeof(amount_cents) = 'integer' AND amount_cents > 0),
+    status TEXT NOT NULL DEFAULT 'Open' CHECK (status IN ('Open', 'Paid', 'Removed')),
+    date_paid TEXT CHECK (date_paid IS date(date_paid)),
+    payment_ref TEXT,
+    payment_id INTEGER REFERENCES payment(payment_id),
+    completed_by INTEGER,
+    completed_at TEXT,
+    UNIQUE (pay_run_id, invoice_id),
+    CHECK ((status = 'Paid') = (payment_id IS NOT NULL AND date_paid IS NOT NULL AND payment_ref IS NOT NULL))
+);
+
+CREATE TRIGGER pay_run_line_bill_insert
+BEFORE INSERT ON pay_run_line
+WHEN NOT EXISTS (SELECT 1 FROM invoice WHERE invoice_id = NEW.invoice_id AND invoice_type = 'Bill')
+BEGIN SELECT RAISE(ABORT, 'A pay run pays bills only'); END;
+
+CREATE TRIGGER pay_run_line_bill_update
+BEFORE UPDATE OF invoice_id ON pay_run_line
+WHEN NOT EXISTS (SELECT 1 FROM invoice WHERE invoice_id = NEW.invoice_id AND invoice_type = 'Bill')
+BEGIN SELECT RAISE(ABORT, 'A pay run pays bills only'); END;
+
+-- One staging table for bank and card lines from files and feeds (B11, B11a); amounts are signed
+-- (+ money in, - money out). A line of a completed reconciliation cannot change.
+CREATE TABLE bank_statement_line (
+    statement_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank_account_id INTEGER NOT NULL REFERENCES bank_account(bank_account_id),
+    source TEXT NOT NULL CHECK (source IN ('File', 'Feed', 'Manual')),
+    import_batch_id INTEGER REFERENCES import_batch(batch_id),
+    external_id TEXT,
+    posted_date TEXT NOT NULL CHECK (posted_date IS date(posted_date)),
+    description TEXT,
+    amount_cents INTEGER NOT NULL CHECK (typeof(amount_cents) = 'integer'),
+    status TEXT NOT NULL DEFAULT 'Unmatched' CHECK (status IN ('Unmatched', 'Matched', 'Excluded')),
+    recon_id INTEGER REFERENCES bank_reconciliation(recon_id),
+    created_at TEXT
+);
+
+CREATE UNIQUE INDEX bank_statement_line_external_unique
+    ON bank_statement_line (bank_account_id, external_id) WHERE external_id IS NOT NULL;
+
+CREATE TRIGGER bank_statement_line_recon_lock
+BEFORE UPDATE ON bank_statement_line
+WHEN EXISTS (SELECT 1 FROM bank_reconciliation
+             WHERE recon_id IN (OLD.recon_id, NEW.recon_id) AND is_complete = 1)
+BEGIN SELECT RAISE(ABORT, 'Lines of a completed bank reconciliation cannot change'); END;
+
+-- A match is released once, never deleted, so the history shows what was matched and undone.
+CREATE TABLE bank_statement_match (
+    match_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement_line_id INTEGER NOT NULL REFERENCES bank_statement_line(statement_line_id),
+    payment_id INTEGER REFERENCES payment(payment_id),
+    journal_line_id INTEGER REFERENCES journal_line(line_id),
+    amount_cents INTEGER NOT NULL CHECK (typeof(amount_cents) = 'integer'),
+    matched_by INTEGER,
+    matched_at TEXT,
+    released_at TEXT,
+    released_by INTEGER,
+    release_reason TEXT,
+    CHECK ((payment_id IS NULL) <> (journal_line_id IS NULL)),
+    CHECK ((released_at IS NULL) = (released_by IS NULL) AND (released_at IS NULL) = (release_reason IS NULL))
+);
+
+CREATE TRIGGER bank_statement_match_release_only
+BEFORE UPDATE ON bank_statement_match
+WHEN NOT (
+        OLD.released_at IS NULL AND NEW.released_at IS NOT NULL
+        AND NEW.match_id IS OLD.match_id
+        AND NEW.statement_line_id IS OLD.statement_line_id
+        AND NEW.payment_id IS OLD.payment_id
+        AND NEW.journal_line_id IS OLD.journal_line_id
+        AND NEW.amount_cents IS OLD.amount_cents
+        AND NEW.matched_by IS OLD.matched_by
+        AND NEW.matched_at IS OLD.matched_at
+)
+BEGIN SELECT RAISE(ABORT, 'A bank match cannot be changed; release it instead'); END;
+
+CREATE TRIGGER bank_statement_match_no_delete
+BEFORE DELETE ON bank_statement_match
+BEGIN SELECT RAISE(ABORT, 'A bank match is released, never deleted'); END;
+
+-- Close checklist (a block only when the control is on; is_blocking defaults to 0).
+CREATE TABLE close_task (
+    task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_id INTEGER NOT NULL REFERENCES fiscal_period(period_id),
+    title TEXT NOT NULL,
+    area TEXT CHECK (area IS NULL OR area IN ('Sales', 'Purchases', 'Banking', 'Payroll', 'Inventory', 'Journal')),
+    assignee_user_id INTEGER,
+    due_date TEXT CHECK (due_date IS date(due_date)),
+    status TEXT NOT NULL DEFAULT 'Open' CHECK (status IN ('Open', 'Done', 'Skipped')),
+    is_blocking INTEGER NOT NULL DEFAULT 0 CHECK (is_blocking IN (0, 1)),
+    completed_by INTEGER,
+    completed_at TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE close_task_dependency (
+    task_id INTEGER NOT NULL REFERENCES close_task(task_id),
+    depends_on_task_id INTEGER NOT NULL REFERENCES close_task(task_id),
+    PRIMARY KEY (task_id, depends_on_task_id),
+    CHECK (task_id <> depends_on_task_id)
+);
+
+-- Custom fields: one typed value per field and record; the column used matches the field's type.
+CREATE TABLE custom_field_def (
+    field_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_type TEXT NOT NULL CHECK (record_type IN ('Contact', 'Invoice', 'Bill', 'Project', 'Estimate')),
+    field_key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    data_type TEXT NOT NULL CHECK (data_type IN ('Text', 'Number', 'Money', 'Date', 'Yes/No', 'Choice')),
+    choices_json TEXT,
+    is_required INTEGER NOT NULL DEFAULT 0 CHECK (is_required IN (0, 1)),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (record_type, field_key)
+);
+
+CREATE TABLE custom_field_value (
+    value_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id INTEGER NOT NULL REFERENCES custom_field_def(field_id),
+    record_id INTEGER NOT NULL,
+    value_text TEXT,
+    value_number REAL,
+    value_cents INTEGER CHECK (value_cents IS NULL OR typeof(value_cents) = 'integer'),
+    value_date TEXT CHECK (value_date IS date(value_date)),
+    value_bool INTEGER CHECK (value_bool IS NULL OR value_bool IN (0, 1)),
+    UNIQUE (field_id, record_id),
+    CHECK ((value_text IS NOT NULL) + (value_number IS NOT NULL) + (value_cents IS NOT NULL)
+           + (value_date IS NOT NULL) + (value_bool IS NOT NULL) <= 1)
+);
+
+CREATE TRIGGER custom_field_value_type_insert
+BEFORE INSERT ON custom_field_value
+WHEN NOT EXISTS (
+    SELECT 1 FROM custom_field_def AS d WHERE d.field_id = NEW.field_id AND (
+        (NEW.value_text IS NULL AND NEW.value_number IS NULL AND NEW.value_cents IS NULL
+         AND NEW.value_date IS NULL AND NEW.value_bool IS NULL)
+        OR (d.data_type IN ('Text', 'Choice') AND NEW.value_text IS NOT NULL)
+        OR (d.data_type = 'Number' AND NEW.value_number IS NOT NULL)
+        OR (d.data_type = 'Money' AND NEW.value_cents IS NOT NULL)
+        OR (d.data_type = 'Date' AND NEW.value_date IS NOT NULL)
+        OR (d.data_type = 'Yes/No' AND NEW.value_bool IS NOT NULL)))
+BEGIN SELECT RAISE(ABORT, 'A custom field value must use the column of its field''s type'); END;
+
+CREATE TRIGGER custom_field_value_type_update
+BEFORE UPDATE ON custom_field_value
+WHEN NOT EXISTS (
+    SELECT 1 FROM custom_field_def AS d WHERE d.field_id = NEW.field_id AND (
+        (NEW.value_text IS NULL AND NEW.value_number IS NULL AND NEW.value_cents IS NULL
+         AND NEW.value_date IS NULL AND NEW.value_bool IS NULL)
+        OR (d.data_type IN ('Text', 'Choice') AND NEW.value_text IS NOT NULL)
+        OR (d.data_type = 'Number' AND NEW.value_number IS NOT NULL)
+        OR (d.data_type = 'Money' AND NEW.value_cents IS NOT NULL)
+        OR (d.data_type = 'Date' AND NEW.value_date IS NOT NULL)
+        OR (d.data_type = 'Yes/No' AND NEW.value_bool IS NOT NULL)))
+BEGIN SELECT RAISE(ABORT, 'A custom field value must use the column of its field''s type'); END;
+
+-- Per-user list settings (user ids are master ids, plain integers; section 4).
+CREATE TABLE user_list_pref (
+    user_id INTEGER NOT NULL,
+    list_key TEXT NOT NULL,
+    columns_json TEXT,
+    sort_json TEXT,
+    page_size INTEGER CHECK (page_size IS NULL OR (typeof(page_size) = 'integer' AND page_size > 0)),
+    PRIMARY KEY (user_id, list_key)
+);
+
+CREATE TABLE saved_view (
+    view_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    list_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    filters_json TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    UNIQUE (user_id, list_key, name)
+);
+
+CREATE TABLE alert_dismissal (
+    user_id INTEGER NOT NULL,
+    alert_key TEXT NOT NULL,
+    dismissed_at TEXT NOT NULL,
+    until_at TEXT,
+    PRIMARY KEY (user_id, alert_key)
+);
+
+CREATE TRIGGER audit_contact_insert
+AFTER INSERT ON contact
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact', NEW.contact_id,
+        'Insert',
+        NULL,
+        json_object(
+            'contact_id', NEW.contact_id,
+            'name', NEW.name,
+            'bir_registered_name', NEW.bir_registered_name,
+            'entity_type', NEW.entity_type,
+            'is_customer', NEW.is_customer,
+            'is_vendor', NEW.is_vendor,
+            'is_employee', NEW.is_employee,
+            'email', NEW.email,
+            'phone', NEW.phone,
+            'address', NEW.address,
+            'tax_id', NEW.tax_id,
+            'is_active', NEW.is_active,
+            'mailing_street', NEW.mailing_street,
+            'mailing_city', NEW.mailing_city,
+            'mailing_state', NEW.mailing_state,
+            'mailing_zip', NEW.mailing_zip,
+            'customer_code', NEW.customer_code,
+            'vendor_code', NEW.vendor_code,
+            'customer_type', NEW.customer_type,
+            'first_name', NEW.first_name,
+            'last_name', NEW.last_name,
+            'tax_exempt_status', NEW.tax_exempt_status,
+            'exemption_reason', NEW.exemption_reason,
+            'exemption_cert_no', NEW.exemption_cert_no,
+            'exemption_expires_at', NEW.exemption_expires_at,
+            'bank_details_on_file', NEW.bank_details_on_file,
+            'bank_payee_id', NEW.bank_payee_id,
+            'memo', NEW.memo,
+            'payment_term_id', NEW.payment_term_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_contact_update
+AFTER UPDATE ON contact
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact', NEW.contact_id,
+        'Update',
+        json_object(
+            'contact_id', OLD.contact_id,
+            'name', OLD.name,
+            'bir_registered_name', OLD.bir_registered_name,
+            'entity_type', OLD.entity_type,
+            'is_customer', OLD.is_customer,
+            'is_vendor', OLD.is_vendor,
+            'is_employee', OLD.is_employee,
+            'email', OLD.email,
+            'phone', OLD.phone,
+            'address', OLD.address,
+            'tax_id', OLD.tax_id,
+            'is_active', OLD.is_active,
+            'mailing_street', OLD.mailing_street,
+            'mailing_city', OLD.mailing_city,
+            'mailing_state', OLD.mailing_state,
+            'mailing_zip', OLD.mailing_zip,
+            'customer_code', OLD.customer_code,
+            'vendor_code', OLD.vendor_code,
+            'customer_type', OLD.customer_type,
+            'first_name', OLD.first_name,
+            'last_name', OLD.last_name,
+            'tax_exempt_status', OLD.tax_exempt_status,
+            'exemption_reason', OLD.exemption_reason,
+            'exemption_cert_no', OLD.exemption_cert_no,
+            'exemption_expires_at', OLD.exemption_expires_at,
+            'bank_details_on_file', OLD.bank_details_on_file,
+            'bank_payee_id', OLD.bank_payee_id,
+            'memo', OLD.memo,
+            'payment_term_id', OLD.payment_term_id),
+        json_object(
+            'contact_id', NEW.contact_id,
+            'name', NEW.name,
+            'bir_registered_name', NEW.bir_registered_name,
+            'entity_type', NEW.entity_type,
+            'is_customer', NEW.is_customer,
+            'is_vendor', NEW.is_vendor,
+            'is_employee', NEW.is_employee,
+            'email', NEW.email,
+            'phone', NEW.phone,
+            'address', NEW.address,
+            'tax_id', NEW.tax_id,
+            'is_active', NEW.is_active,
+            'mailing_street', NEW.mailing_street,
+            'mailing_city', NEW.mailing_city,
+            'mailing_state', NEW.mailing_state,
+            'mailing_zip', NEW.mailing_zip,
+            'customer_code', NEW.customer_code,
+            'vendor_code', NEW.vendor_code,
+            'customer_type', NEW.customer_type,
+            'first_name', NEW.first_name,
+            'last_name', NEW.last_name,
+            'tax_exempt_status', NEW.tax_exempt_status,
+            'exemption_reason', NEW.exemption_reason,
+            'exemption_cert_no', NEW.exemption_cert_no,
+            'exemption_expires_at', NEW.exemption_expires_at,
+            'bank_details_on_file', NEW.bank_details_on_file,
+            'bank_payee_id', NEW.bank_payee_id,
+            'memo', NEW.memo,
+            'payment_term_id', NEW.payment_term_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_contact_delete
+AFTER DELETE ON contact
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact', OLD.contact_id,
+        'Delete',
+        json_object(
+            'contact_id', OLD.contact_id,
+            'name', OLD.name,
+            'bir_registered_name', OLD.bir_registered_name,
+            'entity_type', OLD.entity_type,
+            'is_customer', OLD.is_customer,
+            'is_vendor', OLD.is_vendor,
+            'is_employee', OLD.is_employee,
+            'email', OLD.email,
+            'phone', OLD.phone,
+            'address', OLD.address,
+            'tax_id', OLD.tax_id,
+            'is_active', OLD.is_active,
+            'mailing_street', OLD.mailing_street,
+            'mailing_city', OLD.mailing_city,
+            'mailing_state', OLD.mailing_state,
+            'mailing_zip', OLD.mailing_zip,
+            'customer_code', OLD.customer_code,
+            'vendor_code', OLD.vendor_code,
+            'customer_type', OLD.customer_type,
+            'first_name', OLD.first_name,
+            'last_name', OLD.last_name,
+            'tax_exempt_status', OLD.tax_exempt_status,
+            'exemption_reason', OLD.exemption_reason,
+            'exemption_cert_no', OLD.exemption_cert_no,
+            'exemption_expires_at', OLD.exemption_expires_at,
+            'bank_details_on_file', OLD.bank_details_on_file,
+            'bank_payee_id', OLD.bank_payee_id,
+            'memo', OLD.memo,
+            'payment_term_id', OLD.payment_term_id),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_contact_site_insert
+AFTER INSERT ON contact_site
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact_site', NEW.site_id,
+        'Insert',
+        NULL,
+        json_object(
+            'site_id', NEW.site_id,
+            'contact_id', NEW.contact_id,
+            'name', NEW.name,
+            'street', NEW.street,
+            'city', NEW.city,
+            'state', NEW.state,
+            'zip', NEW.zip,
+            'country', NEW.country,
+            'is_billing', NEW.is_billing,
+            'is_shipping', NEW.is_shipping,
+            'is_active', NEW.is_active,
+            'memo', NEW.memo),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_contact_site_update
+AFTER UPDATE ON contact_site
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact_site', NEW.site_id,
+        'Update',
+        json_object(
+            'site_id', OLD.site_id,
+            'contact_id', OLD.contact_id,
+            'name', OLD.name,
+            'street', OLD.street,
+            'city', OLD.city,
+            'state', OLD.state,
+            'zip', OLD.zip,
+            'country', OLD.country,
+            'is_billing', OLD.is_billing,
+            'is_shipping', OLD.is_shipping,
+            'is_active', OLD.is_active,
+            'memo', OLD.memo),
+        json_object(
+            'site_id', NEW.site_id,
+            'contact_id', NEW.contact_id,
+            'name', NEW.name,
+            'street', NEW.street,
+            'city', NEW.city,
+            'state', NEW.state,
+            'zip', NEW.zip,
+            'country', NEW.country,
+            'is_billing', NEW.is_billing,
+            'is_shipping', NEW.is_shipping,
+            'is_active', NEW.is_active,
+            'memo', NEW.memo),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_contact_site_delete
+AFTER DELETE ON contact_site
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'contact_site', OLD.site_id,
+        'Delete',
+        json_object(
+            'site_id', OLD.site_id,
+            'contact_id', OLD.contact_id,
+            'name', OLD.name,
+            'street', OLD.street,
+            'city', OLD.city,
+            'state', OLD.state,
+            'zip', OLD.zip,
+            'country', OLD.country,
+            'is_billing', OLD.is_billing,
+            'is_shipping', OLD.is_shipping,
+            'is_active', OLD.is_active,
+            'memo', OLD.memo),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_company_entity_insert
+AFTER INSERT ON company_entity
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'company_entity', NEW.entity_id,
+        'Insert',
+        NULL,
+        json_object(
+            'entity_id', NEW.entity_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'parent_entity_id', NEW.parent_entity_id,
+            'is_active', NEW.is_active,
+            'is_eliminations', NEW.is_eliminations,
+            'created_at', NEW.created_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_company_entity_update
+AFTER UPDATE ON company_entity
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'company_entity', NEW.entity_id,
+        'Update',
+        json_object(
+            'entity_id', OLD.entity_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'parent_entity_id', OLD.parent_entity_id,
+            'is_active', OLD.is_active,
+            'is_eliminations', OLD.is_eliminations,
+            'created_at', OLD.created_at),
+        json_object(
+            'entity_id', NEW.entity_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'parent_entity_id', NEW.parent_entity_id,
+            'is_active', NEW.is_active,
+            'is_eliminations', NEW.is_eliminations,
+            'created_at', NEW.created_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_company_entity_delete
+AFTER DELETE ON company_entity
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'company_entity', OLD.entity_id,
+        'Delete',
+        json_object(
+            'entity_id', OLD.entity_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'parent_entity_id', OLD.parent_entity_id,
+            'is_active', OLD.is_active,
+            'is_eliminations', OLD.is_eliminations,
+            'created_at', OLD.created_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_fiscal_period_lock_insert
+AFTER INSERT ON fiscal_period_lock
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_period_lock', NEW.lock_id,
+        'Insert',
+        NULL,
+        json_object(
+            'lock_id', NEW.lock_id,
+            'period_id', NEW.period_id,
+            'area', NEW.area,
+            'is_locked', NEW.is_locked,
+            'locked_by', NEW.locked_by,
+            'locked_at', NEW.locked_at,
+            'reason', NEW.reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_fiscal_period_lock_update
+AFTER UPDATE ON fiscal_period_lock
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_period_lock', NEW.lock_id,
+        'Update',
+        json_object(
+            'lock_id', OLD.lock_id,
+            'period_id', OLD.period_id,
+            'area', OLD.area,
+            'is_locked', OLD.is_locked,
+            'locked_by', OLD.locked_by,
+            'locked_at', OLD.locked_at,
+            'reason', OLD.reason),
+        json_object(
+            'lock_id', NEW.lock_id,
+            'period_id', NEW.period_id,
+            'area', NEW.area,
+            'is_locked', NEW.is_locked,
+            'locked_by', NEW.locked_by,
+            'locked_at', NEW.locked_at,
+            'reason', NEW.reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_fiscal_period_lock_delete
+AFTER DELETE ON fiscal_period_lock
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'fiscal_period_lock', OLD.lock_id,
+        'Delete',
+        json_object(
+            'lock_id', OLD.lock_id,
+            'period_id', OLD.period_id,
+            'area', OLD.area,
+            'is_locked', OLD.is_locked,
+            'locked_by', OLD.locked_by,
+            'locked_at', OLD.locked_at,
+            'reason', OLD.reason),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_cost_code_insert
+AFTER INSERT ON cost_code
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'cost_code', NEW.cost_code_id,
+        'Insert',
+        NULL,
+        json_object(
+            'cost_code_id', NEW.cost_code_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'cost_type_label', NEW.cost_type_label,
+            'account_id', NEW.account_id,
+            'parent_id', NEW.parent_id,
+            'level', NEW.level,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_cost_code_update
+AFTER UPDATE ON cost_code
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'cost_code', NEW.cost_code_id,
+        'Update',
+        json_object(
+            'cost_code_id', OLD.cost_code_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'cost_type_label', OLD.cost_type_label,
+            'account_id', OLD.account_id,
+            'parent_id', OLD.parent_id,
+            'level', OLD.level,
+            'is_active', OLD.is_active),
+        json_object(
+            'cost_code_id', NEW.cost_code_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'cost_type_label', NEW.cost_type_label,
+            'account_id', NEW.account_id,
+            'parent_id', NEW.parent_id,
+            'level', NEW.level,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_cost_code_delete
+AFTER DELETE ON cost_code
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'cost_code', OLD.cost_code_id,
+        'Delete',
+        json_object(
+            'cost_code_id', OLD.cost_code_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'cost_type_label', OLD.cost_type_label,
+            'account_id', OLD.account_id,
+            'parent_id', OLD.parent_id,
+            'level', OLD.level,
+            'is_active', OLD.is_active),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_type_insert
+AFTER INSERT ON service_type
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_type', NEW.service_type_id,
+        'Insert',
+        NULL,
+        json_object(
+            'service_type_id', NEW.service_type_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_type_update
+AFTER UPDATE ON service_type
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_type', NEW.service_type_id,
+        'Update',
+        json_object(
+            'service_type_id', OLD.service_type_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        json_object(
+            'service_type_id', NEW.service_type_id,
+            'code', NEW.code,
+            'name', NEW.name,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_type_delete
+AFTER DELETE ON service_type
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_type', OLD.service_type_id,
+        'Delete',
+        json_object(
+            'service_type_id', OLD.service_type_id,
+            'code', OLD.code,
+            'name', OLD.name,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_stage_insert
+AFTER INSERT ON service_stage
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_stage', NEW.stage_id,
+        'Insert',
+        NULL,
+        json_object(
+            'stage_id', NEW.stage_id,
+            'service_type_id', NEW.service_type_id,
+            'phase', NEW.phase,
+            'name', NEW.name,
+            'sort_order', NEW.sort_order,
+            'allows_costs', NEW.allows_costs,
+            'allows_billing', NEW.allows_billing,
+            'is_closed_stage', NEW.is_closed_stage,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_stage_update
+AFTER UPDATE ON service_stage
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_stage', NEW.stage_id,
+        'Update',
+        json_object(
+            'stage_id', OLD.stage_id,
+            'service_type_id', OLD.service_type_id,
+            'phase', OLD.phase,
+            'name', OLD.name,
+            'sort_order', OLD.sort_order,
+            'allows_costs', OLD.allows_costs,
+            'allows_billing', OLD.allows_billing,
+            'is_closed_stage', OLD.is_closed_stage,
+            'is_active', OLD.is_active),
+        json_object(
+            'stage_id', NEW.stage_id,
+            'service_type_id', NEW.service_type_id,
+            'phase', NEW.phase,
+            'name', NEW.name,
+            'sort_order', NEW.sort_order,
+            'allows_costs', NEW.allows_costs,
+            'allows_billing', NEW.allows_billing,
+            'is_closed_stage', NEW.is_closed_stage,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_service_stage_delete
+AFTER DELETE ON service_stage
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'service_stage', OLD.stage_id,
+        'Delete',
+        json_object(
+            'stage_id', OLD.stage_id,
+            'service_type_id', OLD.service_type_id,
+            'phase', OLD.phase,
+            'name', OLD.name,
+            'sort_order', OLD.sort_order,
+            'allows_costs', OLD.allows_costs,
+            'allows_billing', OLD.allows_billing,
+            'is_closed_stage', OLD.is_closed_stage,
+            'is_active', OLD.is_active),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_stage_trigger_insert
+AFTER INSERT ON stage_trigger
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'stage_trigger', NEW.trigger_id,
+        'Insert',
+        NULL,
+        json_object(
+            'trigger_id', NEW.trigger_id,
+            'stage_id', NEW.stage_id,
+            'event', NEW.event,
+            'action', NEW.action,
+            'config_json', NEW.config_json,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_stage_trigger_update
+AFTER UPDATE ON stage_trigger
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'stage_trigger', NEW.trigger_id,
+        'Update',
+        json_object(
+            'trigger_id', OLD.trigger_id,
+            'stage_id', OLD.stage_id,
+            'event', OLD.event,
+            'action', OLD.action,
+            'config_json', OLD.config_json,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        json_object(
+            'trigger_id', NEW.trigger_id,
+            'stage_id', NEW.stage_id,
+            'event', NEW.event,
+            'action', NEW.action,
+            'config_json', NEW.config_json,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_stage_trigger_delete
+AFTER DELETE ON stage_trigger
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'stage_trigger', OLD.trigger_id,
+        'Delete',
+        json_object(
+            'trigger_id', OLD.trigger_id,
+            'stage_id', OLD.stage_id,
+            'event', OLD.event,
+            'action', OLD.action,
+            'config_json', OLD.config_json,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_stage_trigger_run_insert
+AFTER INSERT ON stage_trigger_run
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'stage_trigger_run', NEW.run_id,
+        'Insert',
+        NULL,
+        json_object(
+            'run_id', NEW.run_id,
+            'trigger_id', NEW.trigger_id,
+            'record_type', NEW.record_type,
+            'record_id', NEW.record_id,
+            'event_key', NEW.event_key,
+            'ran_at', NEW.ran_at,
+            'result', NEW.result,
+            'message', NEW.message),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_insert
+AFTER INSERT ON pay_run
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run', NEW.pay_run_id,
+        'Insert',
+        NULL,
+        json_object(
+            'pay_run_id', NEW.pay_run_id,
+            'run_number', NEW.run_number,
+            'bank_account_id', NEW.bank_account_id,
+            'status', NEW.status,
+            'scheduled_date', NEW.scheduled_date,
+            'memo', NEW.memo,
+            'created_by', NEW.created_by,
+            'created_at', NEW.created_at,
+            'approved_by', NEW.approved_by,
+            'approved_at', NEW.approved_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_update
+AFTER UPDATE ON pay_run
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run', NEW.pay_run_id,
+        'Update',
+        json_object(
+            'pay_run_id', OLD.pay_run_id,
+            'run_number', OLD.run_number,
+            'bank_account_id', OLD.bank_account_id,
+            'status', OLD.status,
+            'scheduled_date', OLD.scheduled_date,
+            'memo', OLD.memo,
+            'created_by', OLD.created_by,
+            'created_at', OLD.created_at,
+            'approved_by', OLD.approved_by,
+            'approved_at', OLD.approved_at),
+        json_object(
+            'pay_run_id', NEW.pay_run_id,
+            'run_number', NEW.run_number,
+            'bank_account_id', NEW.bank_account_id,
+            'status', NEW.status,
+            'scheduled_date', NEW.scheduled_date,
+            'memo', NEW.memo,
+            'created_by', NEW.created_by,
+            'created_at', NEW.created_at,
+            'approved_by', NEW.approved_by,
+            'approved_at', NEW.approved_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_delete
+AFTER DELETE ON pay_run
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run', OLD.pay_run_id,
+        'Delete',
+        json_object(
+            'pay_run_id', OLD.pay_run_id,
+            'run_number', OLD.run_number,
+            'bank_account_id', OLD.bank_account_id,
+            'status', OLD.status,
+            'scheduled_date', OLD.scheduled_date,
+            'memo', OLD.memo,
+            'created_by', OLD.created_by,
+            'created_at', OLD.created_at,
+            'approved_by', OLD.approved_by,
+            'approved_at', OLD.approved_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_line_insert
+AFTER INSERT ON pay_run_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run_line', NEW.line_id,
+        'Insert',
+        NULL,
+        json_object(
+            'line_id', NEW.line_id,
+            'pay_run_id', NEW.pay_run_id,
+            'invoice_id', NEW.invoice_id,
+            'amount_cents', NEW.amount_cents,
+            'status', NEW.status,
+            'date_paid', NEW.date_paid,
+            'payment_ref', NEW.payment_ref,
+            'payment_id', NEW.payment_id,
+            'completed_by', NEW.completed_by,
+            'completed_at', NEW.completed_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_line_update
+AFTER UPDATE ON pay_run_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run_line', NEW.line_id,
+        'Update',
+        json_object(
+            'line_id', OLD.line_id,
+            'pay_run_id', OLD.pay_run_id,
+            'invoice_id', OLD.invoice_id,
+            'amount_cents', OLD.amount_cents,
+            'status', OLD.status,
+            'date_paid', OLD.date_paid,
+            'payment_ref', OLD.payment_ref,
+            'payment_id', OLD.payment_id,
+            'completed_by', OLD.completed_by,
+            'completed_at', OLD.completed_at),
+        json_object(
+            'line_id', NEW.line_id,
+            'pay_run_id', NEW.pay_run_id,
+            'invoice_id', NEW.invoice_id,
+            'amount_cents', NEW.amount_cents,
+            'status', NEW.status,
+            'date_paid', NEW.date_paid,
+            'payment_ref', NEW.payment_ref,
+            'payment_id', NEW.payment_id,
+            'completed_by', NEW.completed_by,
+            'completed_at', NEW.completed_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_pay_run_line_delete
+AFTER DELETE ON pay_run_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'pay_run_line', OLD.line_id,
+        'Delete',
+        json_object(
+            'line_id', OLD.line_id,
+            'pay_run_id', OLD.pay_run_id,
+            'invoice_id', OLD.invoice_id,
+            'amount_cents', OLD.amount_cents,
+            'status', OLD.status,
+            'date_paid', OLD.date_paid,
+            'payment_ref', OLD.payment_ref,
+            'payment_id', OLD.payment_id,
+            'completed_by', OLD.completed_by,
+            'completed_at', OLD.completed_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_statement_line_insert
+AFTER INSERT ON bank_statement_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_statement_line', NEW.statement_line_id,
+        'Insert',
+        NULL,
+        json_object(
+            'statement_line_id', NEW.statement_line_id,
+            'bank_account_id', NEW.bank_account_id,
+            'source', NEW.source,
+            'import_batch_id', NEW.import_batch_id,
+            'external_id', NEW.external_id,
+            'posted_date', NEW.posted_date,
+            'description', NEW.description,
+            'amount_cents', NEW.amount_cents,
+            'status', NEW.status,
+            'recon_id', NEW.recon_id,
+            'created_at', NEW.created_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_statement_line_update
+AFTER UPDATE ON bank_statement_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_statement_line', NEW.statement_line_id,
+        'Update',
+        json_object(
+            'statement_line_id', OLD.statement_line_id,
+            'bank_account_id', OLD.bank_account_id,
+            'source', OLD.source,
+            'import_batch_id', OLD.import_batch_id,
+            'external_id', OLD.external_id,
+            'posted_date', OLD.posted_date,
+            'description', OLD.description,
+            'amount_cents', OLD.amount_cents,
+            'status', OLD.status,
+            'recon_id', OLD.recon_id,
+            'created_at', OLD.created_at),
+        json_object(
+            'statement_line_id', NEW.statement_line_id,
+            'bank_account_id', NEW.bank_account_id,
+            'source', NEW.source,
+            'import_batch_id', NEW.import_batch_id,
+            'external_id', NEW.external_id,
+            'posted_date', NEW.posted_date,
+            'description', NEW.description,
+            'amount_cents', NEW.amount_cents,
+            'status', NEW.status,
+            'recon_id', NEW.recon_id,
+            'created_at', NEW.created_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_statement_line_delete
+AFTER DELETE ON bank_statement_line
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_statement_line', OLD.statement_line_id,
+        'Delete',
+        json_object(
+            'statement_line_id', OLD.statement_line_id,
+            'bank_account_id', OLD.bank_account_id,
+            'source', OLD.source,
+            'import_batch_id', OLD.import_batch_id,
+            'external_id', OLD.external_id,
+            'posted_date', OLD.posted_date,
+            'description', OLD.description,
+            'amount_cents', OLD.amount_cents,
+            'status', OLD.status,
+            'recon_id', OLD.recon_id,
+            'created_at', OLD.created_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_statement_match_insert
+AFTER INSERT ON bank_statement_match
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_statement_match', NEW.match_id,
+        'Insert',
+        NULL,
+        json_object(
+            'match_id', NEW.match_id,
+            'statement_line_id', NEW.statement_line_id,
+            'payment_id', NEW.payment_id,
+            'journal_line_id', NEW.journal_line_id,
+            'amount_cents', NEW.amount_cents,
+            'matched_by', NEW.matched_by,
+            'matched_at', NEW.matched_at,
+            'released_at', NEW.released_at,
+            'released_by', NEW.released_by,
+            'release_reason', NEW.release_reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_bank_statement_match_update
+AFTER UPDATE ON bank_statement_match
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'bank_statement_match', NEW.match_id,
+        'Update',
+        json_object(
+            'match_id', OLD.match_id,
+            'statement_line_id', OLD.statement_line_id,
+            'payment_id', OLD.payment_id,
+            'journal_line_id', OLD.journal_line_id,
+            'amount_cents', OLD.amount_cents,
+            'matched_by', OLD.matched_by,
+            'matched_at', OLD.matched_at,
+            'released_at', OLD.released_at,
+            'released_by', OLD.released_by,
+            'release_reason', OLD.release_reason),
+        json_object(
+            'match_id', NEW.match_id,
+            'statement_line_id', NEW.statement_line_id,
+            'payment_id', NEW.payment_id,
+            'journal_line_id', NEW.journal_line_id,
+            'amount_cents', NEW.amount_cents,
+            'matched_by', NEW.matched_by,
+            'matched_at', NEW.matched_at,
+            'released_at', NEW.released_at,
+            'released_by', NEW.released_by,
+            'release_reason', NEW.release_reason),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_insert
+AFTER INSERT ON close_task
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task', NEW.task_id,
+        'Insert',
+        NULL,
+        json_object(
+            'task_id', NEW.task_id,
+            'period_id', NEW.period_id,
+            'title', NEW.title,
+            'area', NEW.area,
+            'assignee_user_id', NEW.assignee_user_id,
+            'due_date', NEW.due_date,
+            'status', NEW.status,
+            'is_blocking', NEW.is_blocking,
+            'completed_by', NEW.completed_by,
+            'completed_at', NEW.completed_at,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_update
+AFTER UPDATE ON close_task
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task', NEW.task_id,
+        'Update',
+        json_object(
+            'task_id', OLD.task_id,
+            'period_id', OLD.period_id,
+            'title', OLD.title,
+            'area', OLD.area,
+            'assignee_user_id', OLD.assignee_user_id,
+            'due_date', OLD.due_date,
+            'status', OLD.status,
+            'is_blocking', OLD.is_blocking,
+            'completed_by', OLD.completed_by,
+            'completed_at', OLD.completed_at,
+            'sort_order', OLD.sort_order),
+        json_object(
+            'task_id', NEW.task_id,
+            'period_id', NEW.period_id,
+            'title', NEW.title,
+            'area', NEW.area,
+            'assignee_user_id', NEW.assignee_user_id,
+            'due_date', NEW.due_date,
+            'status', NEW.status,
+            'is_blocking', NEW.is_blocking,
+            'completed_by', NEW.completed_by,
+            'completed_at', NEW.completed_at,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_delete
+AFTER DELETE ON close_task
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task', OLD.task_id,
+        'Delete',
+        json_object(
+            'task_id', OLD.task_id,
+            'period_id', OLD.period_id,
+            'title', OLD.title,
+            'area', OLD.area,
+            'assignee_user_id', OLD.assignee_user_id,
+            'due_date', OLD.due_date,
+            'status', OLD.status,
+            'is_blocking', OLD.is_blocking,
+            'completed_by', OLD.completed_by,
+            'completed_at', OLD.completed_at,
+            'sort_order', OLD.sort_order),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_dependency_insert
+AFTER INSERT ON close_task_dependency
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task_dependency', NEW.rowid,
+        'Insert',
+        NULL,
+        json_object(
+            'task_id', NEW.task_id,
+            'depends_on_task_id', NEW.depends_on_task_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_dependency_update
+AFTER UPDATE ON close_task_dependency
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task_dependency', NEW.rowid,
+        'Update',
+        json_object(
+            'task_id', OLD.task_id,
+            'depends_on_task_id', OLD.depends_on_task_id),
+        json_object(
+            'task_id', NEW.task_id,
+            'depends_on_task_id', NEW.depends_on_task_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_close_task_dependency_delete
+AFTER DELETE ON close_task_dependency
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'close_task_dependency', OLD.rowid,
+        'Delete',
+        json_object(
+            'task_id', OLD.task_id,
+            'depends_on_task_id', OLD.depends_on_task_id),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_payment_term_insert
+AFTER INSERT ON payment_term
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'payment_term', NEW.term_id,
+        'Insert',
+        NULL,
+        json_object(
+            'term_id', NEW.term_id,
+            'name', NEW.name,
+            'days_due', NEW.days_due,
+            'discount_percent', NEW.discount_percent,
+            'discount_days', NEW.discount_days,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_payment_term_update
+AFTER UPDATE ON payment_term
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'payment_term', NEW.term_id,
+        'Update',
+        json_object(
+            'term_id', OLD.term_id,
+            'name', OLD.name,
+            'days_due', OLD.days_due,
+            'discount_percent', OLD.discount_percent,
+            'discount_days', OLD.discount_days,
+            'is_active', OLD.is_active),
+        json_object(
+            'term_id', NEW.term_id,
+            'name', NEW.name,
+            'days_due', NEW.days_due,
+            'discount_percent', NEW.discount_percent,
+            'discount_days', NEW.discount_days,
+            'is_active', NEW.is_active),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_payment_term_delete
+AFTER DELETE ON payment_term
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'payment_term', OLD.term_id,
+        'Delete',
+        json_object(
+            'term_id', OLD.term_id,
+            'name', OLD.name,
+            'days_due', OLD.days_due,
+            'discount_percent', OLD.discount_percent,
+            'discount_days', OLD.discount_days,
+            'is_active', OLD.is_active),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_def_insert
+AFTER INSERT ON custom_field_def
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_def', NEW.field_id,
+        'Insert',
+        NULL,
+        json_object(
+            'field_id', NEW.field_id,
+            'record_type', NEW.record_type,
+            'field_key', NEW.field_key,
+            'label', NEW.label,
+            'data_type', NEW.data_type,
+            'choices_json', NEW.choices_json,
+            'is_required', NEW.is_required,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_def_update
+AFTER UPDATE ON custom_field_def
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_def', NEW.field_id,
+        'Update',
+        json_object(
+            'field_id', OLD.field_id,
+            'record_type', OLD.record_type,
+            'field_key', OLD.field_key,
+            'label', OLD.label,
+            'data_type', OLD.data_type,
+            'choices_json', OLD.choices_json,
+            'is_required', OLD.is_required,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        json_object(
+            'field_id', NEW.field_id,
+            'record_type', NEW.record_type,
+            'field_key', NEW.field_key,
+            'label', NEW.label,
+            'data_type', NEW.data_type,
+            'choices_json', NEW.choices_json,
+            'is_required', NEW.is_required,
+            'is_active', NEW.is_active,
+            'sort_order', NEW.sort_order),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_def_delete
+AFTER DELETE ON custom_field_def
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_def', OLD.field_id,
+        'Delete',
+        json_object(
+            'field_id', OLD.field_id,
+            'record_type', OLD.record_type,
+            'field_key', OLD.field_key,
+            'label', OLD.label,
+            'data_type', OLD.data_type,
+            'choices_json', OLD.choices_json,
+            'is_required', OLD.is_required,
+            'is_active', OLD.is_active,
+            'sort_order', OLD.sort_order),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_value_insert
+AFTER INSERT ON custom_field_value
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_value', NEW.value_id,
+        'Insert',
+        NULL,
+        json_object(
+            'value_id', NEW.value_id,
+            'field_id', NEW.field_id,
+            'record_id', NEW.record_id,
+            'value_text', NEW.value_text,
+            'value_number', NEW.value_number,
+            'value_cents', NEW.value_cents,
+            'value_date', NEW.value_date,
+            'value_bool', NEW.value_bool),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_value_update
+AFTER UPDATE ON custom_field_value
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_value', NEW.value_id,
+        'Update',
+        json_object(
+            'value_id', OLD.value_id,
+            'field_id', OLD.field_id,
+            'record_id', OLD.record_id,
+            'value_text', OLD.value_text,
+            'value_number', OLD.value_number,
+            'value_cents', OLD.value_cents,
+            'value_date', OLD.value_date,
+            'value_bool', OLD.value_bool),
+        json_object(
+            'value_id', NEW.value_id,
+            'field_id', NEW.field_id,
+            'record_id', NEW.record_id,
+            'value_text', NEW.value_text,
+            'value_number', NEW.value_number,
+            'value_cents', NEW.value_cents,
+            'value_date', NEW.value_date,
+            'value_bool', NEW.value_bool),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_custom_field_value_delete
+AFTER DELETE ON custom_field_value
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'custom_field_value', OLD.value_id,
+        'Delete',
+        json_object(
+            'value_id', OLD.value_id,
+            'field_id', OLD.field_id,
+            'record_id', OLD.record_id,
+            'value_text', OLD.value_text,
+            'value_number', OLD.value_number,
+            'value_cents', OLD.value_cents,
+            'value_date', OLD.value_date,
+            'value_bool', OLD.value_bool),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_user_list_pref_insert
+AFTER INSERT ON user_list_pref
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_list_pref', NEW.rowid,
+        'Insert',
+        NULL,
+        json_object(
+            'user_id', NEW.user_id,
+            'list_key', NEW.list_key,
+            'columns_json', NEW.columns_json,
+            'sort_json', NEW.sort_json,
+            'page_size', NEW.page_size),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_user_list_pref_update
+AFTER UPDATE ON user_list_pref
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_list_pref', NEW.rowid,
+        'Update',
+        json_object(
+            'user_id', OLD.user_id,
+            'list_key', OLD.list_key,
+            'columns_json', OLD.columns_json,
+            'sort_json', OLD.sort_json,
+            'page_size', OLD.page_size),
+        json_object(
+            'user_id', NEW.user_id,
+            'list_key', NEW.list_key,
+            'columns_json', NEW.columns_json,
+            'sort_json', NEW.sort_json,
+            'page_size', NEW.page_size),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_user_list_pref_delete
+AFTER DELETE ON user_list_pref
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_list_pref', OLD.rowid,
+        'Delete',
+        json_object(
+            'user_id', OLD.user_id,
+            'list_key', OLD.list_key,
+            'columns_json', OLD.columns_json,
+            'sort_json', OLD.sort_json,
+            'page_size', OLD.page_size),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_saved_view_insert
+AFTER INSERT ON saved_view
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'saved_view', NEW.view_id,
+        'Insert',
+        NULL,
+        json_object(
+            'view_id', NEW.view_id,
+            'user_id', NEW.user_id,
+            'list_key', NEW.list_key,
+            'name', NEW.name,
+            'filters_json', NEW.filters_json,
+            'is_default', NEW.is_default),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_saved_view_update
+AFTER UPDATE ON saved_view
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'saved_view', NEW.view_id,
+        'Update',
+        json_object(
+            'view_id', OLD.view_id,
+            'user_id', OLD.user_id,
+            'list_key', OLD.list_key,
+            'name', OLD.name,
+            'filters_json', OLD.filters_json,
+            'is_default', OLD.is_default),
+        json_object(
+            'view_id', NEW.view_id,
+            'user_id', NEW.user_id,
+            'list_key', NEW.list_key,
+            'name', NEW.name,
+            'filters_json', NEW.filters_json,
+            'is_default', NEW.is_default),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_saved_view_delete
+AFTER DELETE ON saved_view
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'saved_view', OLD.view_id,
+        'Delete',
+        json_object(
+            'view_id', OLD.view_id,
+            'user_id', OLD.user_id,
+            'list_key', OLD.list_key,
+            'name', OLD.name,
+            'filters_json', OLD.filters_json,
+            'is_default', OLD.is_default),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_alert_dismissal_insert
+AFTER INSERT ON alert_dismissal
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'alert_dismissal', NEW.rowid,
+        'Insert',
+        NULL,
+        json_object(
+            'user_id', NEW.user_id,
+            'alert_key', NEW.alert_key,
+            'dismissed_at', NEW.dismissed_at,
+            'until_at', NEW.until_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_alert_dismissal_update
+AFTER UPDATE ON alert_dismissal
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'alert_dismissal', NEW.rowid,
+        'Update',
+        json_object(
+            'user_id', OLD.user_id,
+            'alert_key', OLD.alert_key,
+            'dismissed_at', OLD.dismissed_at,
+            'until_at', OLD.until_at),
+        json_object(
+            'user_id', NEW.user_id,
+            'alert_key', NEW.alert_key,
+            'dismissed_at', NEW.dismissed_at,
+            'until_at', NEW.until_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_alert_dismissal_delete
+AFTER DELETE ON alert_dismissal
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'alert_dismissal', OLD.rowid,
+        'Delete',
+        json_object(
+            'user_id', OLD.user_id,
+            'alert_key', OLD.alert_key,
+            'dismissed_at', OLD.dismissed_at,
+            'until_at', OLD.until_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_project_insert
+AFTER INSERT ON project
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'project', NEW.project_id,
+        'Insert',
+        NULL,
+        json_object(
+            'project_id', NEW.project_id,
+            'project_number', NEW.project_number,
+            'name', NEW.name,
+            'contact_id', NEW.contact_id,
+            'source_estimate_id', NEW.source_estimate_id,
+            'assigned_pm_id', NEW.assigned_pm_id,
+            'original_budget_cents', NEW.original_budget_cents,
+            'revised_budget_cents', NEW.revised_budget_cents,
+            'status', NEW.status,
+            'created_at', NEW.created_at,
+            'service_type_id', NEW.service_type_id,
+            'service_stage_id', NEW.service_stage_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_project_update
+AFTER UPDATE ON project
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'project', NEW.project_id,
+        'Update',
+        json_object(
+            'project_id', OLD.project_id,
+            'project_number', OLD.project_number,
+            'name', OLD.name,
+            'contact_id', OLD.contact_id,
+            'source_estimate_id', OLD.source_estimate_id,
+            'assigned_pm_id', OLD.assigned_pm_id,
+            'original_budget_cents', OLD.original_budget_cents,
+            'revised_budget_cents', OLD.revised_budget_cents,
+            'status', OLD.status,
+            'created_at', OLD.created_at,
+            'service_type_id', OLD.service_type_id,
+            'service_stage_id', OLD.service_stage_id),
+        json_object(
+            'project_id', NEW.project_id,
+            'project_number', NEW.project_number,
+            'name', NEW.name,
+            'contact_id', NEW.contact_id,
+            'source_estimate_id', NEW.source_estimate_id,
+            'assigned_pm_id', NEW.assigned_pm_id,
+            'original_budget_cents', NEW.original_budget_cents,
+            'revised_budget_cents', NEW.revised_budget_cents,
+            'status', NEW.status,
+            'created_at', NEW.created_at,
+            'service_type_id', NEW.service_type_id,
+            'service_stage_id', NEW.service_stage_id),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_project_delete
+AFTER DELETE ON project
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'project', OLD.project_id,
+        'Delete',
+        json_object(
+            'project_id', OLD.project_id,
+            'project_number', OLD.project_number,
+            'name', OLD.name,
+            'contact_id', OLD.contact_id,
+            'source_estimate_id', OLD.source_estimate_id,
+            'assigned_pm_id', OLD.assigned_pm_id,
+            'original_budget_cents', OLD.original_budget_cents,
+            'revised_budget_cents', OLD.revised_budget_cents,
+            'status', OLD.status,
+            'created_at', OLD.created_at,
+            'service_type_id', OLD.service_type_id,
+            'service_stage_id', OLD.service_stage_id),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- Every foreign key column is indexed (tests/test_schema_replan.py).
+-- Full indexes for the three columns that had only a partial one.
+CREATE INDEX idx_bank_statement_line_bank_account_id ON bank_statement_line (bank_account_id);
+CREATE INDEX idx_journal_entry_reverses_entry_id ON journal_entry (reverses_entry_id);
+CREATE INDEX idx_journal_line_account_id ON journal_line (account_id);
+CREATE INDEX idx_account_parent_id ON account (parent_id);
+CREATE INDEX idx_account_type_id ON account (type_id);
+CREATE INDEX idx_approval_request_project_id ON approval_request (project_id);
+CREATE INDEX idx_approval_request_policy_id ON approval_request (policy_id);
+CREATE INDEX idx_approval_step_role_code ON approval_step (role_code);
+CREATE INDEX idx_bank_reconciliation_account_id ON bank_reconciliation (account_id);
+CREATE INDEX idx_bank_statement_line_recon_id ON bank_statement_line (recon_id);
+CREATE INDEX idx_bank_statement_line_import_batch_id ON bank_statement_line (import_batch_id);
+CREATE INDEX idx_bank_statement_match_journal_line_id ON bank_statement_match (journal_line_id);
+CREATE INDEX idx_bank_statement_match_payment_id ON bank_statement_match (payment_id);
+CREATE INDEX idx_bank_statement_match_statement_line_id ON bank_statement_match (statement_line_id);
+CREATE INDEX idx_change_order_contract_id ON change_order (contract_id);
+CREATE INDEX idx_change_order_project_id ON change_order (project_id);
+CREATE INDEX idx_change_order_line_sov_line_id ON change_order_line (sov_line_id);
+CREATE INDEX idx_change_order_line_cost_code_id ON change_order_line (cost_code_id);
+CREATE INDEX idx_change_order_line_co_id ON change_order_line (co_id);
+CREATE INDEX idx_close_task_period_id ON close_task (period_id);
+CREATE INDEX idx_close_task_dependency_depends_on_task_id ON close_task_dependency (depends_on_task_id);
+CREATE INDEX idx_company_entity_parent_entity_id ON company_entity (parent_entity_id);
+CREATE INDEX idx_company_settings_rounding_variance_acct_id ON company_settings (rounding_variance_acct_id);
+CREATE INDEX idx_company_settings_interest_expense_acct_id ON company_settings (interest_expense_acct_id);
+CREATE INDEX idx_company_settings_gain_loss_disposal_acct_id ON company_settings (gain_loss_disposal_acct_id);
+CREATE INDEX idx_company_settings_interest_income_acct_id ON company_settings (interest_income_acct_id);
+CREATE INDEX idx_company_settings_bank_charges_acct_id ON company_settings (bank_charges_acct_id);
+CREATE INDEX idx_company_settings_inventory_adjustments_acct_id ON company_settings (inventory_adjustments_acct_id);
+CREATE INDEX idx_company_settings_equipment_recovery_acct_id ON company_settings (equipment_recovery_acct_id);
+CREATE INDEX idx_company_settings_customer_deposits_acct_id ON company_settings (customer_deposits_acct_id);
+CREATE INDEX idx_company_settings_unearned_revenue_acct_id ON company_settings (unearned_revenue_acct_id);
+CREATE INDEX idx_company_settings_use_tax_payable_acct_id ON company_settings (use_tax_payable_acct_id);
+CREATE INDEX idx_company_settings_credit_card_clearing_acct_id ON company_settings (credit_card_clearing_acct_id);
+CREATE INDEX idx_company_settings_grni_acct_id ON company_settings (grni_acct_id);
+CREATE INDEX idx_company_settings_prepaid_expenses_acct_id ON company_settings (prepaid_expenses_acct_id);
+CREATE INDEX idx_company_settings_employee_advances_acct_id ON company_settings (employee_advances_acct_id);
+CREATE INDEX idx_company_settings_retainage_payable_acct_id ON company_settings (retainage_payable_acct_id);
+CREATE INDEX idx_company_settings_retainage_receivable_acct_id ON company_settings (retainage_receivable_acct_id);
+CREATE INDEX idx_company_settings_undeposited_funds_acct_id ON company_settings (undeposited_funds_acct_id);
+CREATE INDEX idx_company_settings_opening_balance_equity_acct_id ON company_settings (opening_balance_equity_acct_id);
+CREATE INDEX idx_company_settings_retained_earnings_acct_id ON company_settings (retained_earnings_acct_id);
+CREATE INDEX idx_company_settings_default_bank_acct_id ON company_settings (default_bank_acct_id);
+CREATE INDEX idx_company_settings_sales_tax_payable_acct_id ON company_settings (sales_tax_payable_acct_id);
+CREATE INDEX idx_company_settings_ap_acct_id ON company_settings (ap_acct_id);
+CREATE INDEX idx_company_settings_ar_acct_id ON company_settings (ar_acct_id);
+CREATE INDEX idx_contact_payment_term_id ON contact (payment_term_id);
+CREATE INDEX idx_contact_site_contact_id ON contact_site (contact_id);
+CREATE INDEX idx_contract_contact_id ON contract (contact_id);
+CREATE INDEX idx_contract_project_id ON contract (project_id);
+CREATE INDEX idx_contract_line_cost_code_id ON contract_line (cost_code_id);
+CREATE INDEX idx_contract_line_contract_id ON contract_line (contract_id);
+CREATE INDEX idx_cost_code_parent_id ON cost_code (parent_id);
+CREATE INDEX idx_deferral_supersedes_id ON deferral (supersedes_id);
+CREATE INDEX idx_deferral_recognition_account_id ON deferral (recognition_account_id);
+CREATE INDEX idx_deferral_deferral_account_id ON deferral (deferral_account_id);
+CREATE INDEX idx_deferral_payment_id ON deferral (payment_id);
+CREATE INDEX idx_deferral_invoice_line_id ON deferral (invoice_line_id);
+CREATE INDEX idx_deferral_invoice_id ON deferral (invoice_id);
+CREATE INDEX idx_deferral_contact_id ON deferral (contact_id);
+CREATE INDEX idx_deferral_schedule_line_period_id ON deferral_schedule_line (period_id);
+CREATE INDEX idx_dimension_value_parent_value_id ON dimension_value (parent_value_id);
+CREATE INDEX idx_dimension_value_dimension_type_id ON dimension_value (dimension_type_id);
+CREATE INDEX idx_estimate_contact_id ON estimate (contact_id);
+CREATE INDEX idx_estimate_line_cost_code_id ON estimate_line (cost_code_id);
+CREATE INDEX idx_estimate_line_estimate_id ON estimate_line (estimate_id);
+CREATE INDEX idx_import_batch_entry_id ON import_batch (entry_id);
+CREATE INDEX idx_import_batch_reverses_batch_id ON import_batch (reverses_batch_id);
+CREATE INDEX idx_import_batch_source_id ON import_batch (source_id);
+CREATE INDEX idx_import_mapping_contact_id ON import_mapping (contact_id);
+CREATE INDEX idx_import_mapping_account_id ON import_mapping (account_id);
+CREATE INDEX idx_import_mapping_source_id ON import_mapping (source_id);
+CREATE INDEX idx_invoice_payment_term_id ON invoice (payment_term_id);
+CREATE INDEX idx_invoice_supersedes_id ON invoice (supersedes_id);
+CREATE INDEX idx_invoice_batch_id ON invoice (batch_id);
+CREATE INDEX idx_invoice_subscription_id ON invoice (subscription_id);
+CREATE INDEX idx_invoice_project_id ON invoice (project_id);
+CREATE INDEX idx_invoice_contact_id ON invoice (contact_id);
+CREATE INDEX idx_invoice_line_cost_code_id ON invoice_line (cost_code_id);
+CREATE INDEX idx_invoice_line_tax_rate_id ON invoice_line (tax_rate_id);
+CREATE INDEX idx_invoice_line_account_id ON invoice_line (account_id);
+CREATE INDEX idx_invoice_line_invoice_id ON invoice_line (invoice_id);
+CREATE INDEX idx_invoice_line_dimension_dimension_value_id ON invoice_line_dimension (dimension_value_id);
+CREATE INDEX idx_invoice_line_dimension_dimension_type_id ON invoice_line_dimension (dimension_type_id);
+CREATE INDEX idx_journal_entry_chain_key_id ON journal_entry (chain_key_id);
+CREATE INDEX idx_journal_entry_period_id ON journal_entry (period_id);
+CREATE INDEX idx_journal_line_entity_id ON journal_line (entity_id);
+CREATE INDEX idx_journal_line_batch_id ON journal_line (batch_id);
+CREATE INDEX idx_journal_line_deferral_id ON journal_line (deferral_id);
+CREATE INDEX idx_journal_line_cost_code_id ON journal_line (cost_code_id);
+CREATE INDEX idx_journal_line_project_id ON journal_line (project_id);
+CREATE INDEX idx_journal_line_recon_id ON journal_line (recon_id);
+CREATE INDEX idx_journal_line_contact_id ON journal_line (contact_id);
+CREATE INDEX idx_journal_line_entry_id ON journal_line (entry_id);
+CREATE INDEX idx_journal_line_dimension_dimension_value_id ON journal_line_dimension (dimension_value_id);
+CREATE INDEX idx_journal_line_dimension_dimension_type_id ON journal_line_dimension (dimension_type_id);
+CREATE INDEX idx_ledger_checkpoint_key_id ON ledger_checkpoint (key_id);
+CREATE INDEX idx_pay_run_bank_account_id ON pay_run (bank_account_id);
+CREATE INDEX idx_pay_run_line_payment_id ON pay_run_line (payment_id);
+CREATE INDEX idx_pay_run_line_invoice_id ON pay_run_line (invoice_id);
+CREATE INDEX idx_payment_bank_account_id ON payment (bank_account_id);
+CREATE INDEX idx_payment_contact_id ON payment (contact_id);
+CREATE INDEX idx_payment_allocation_credit_memo_id ON payment_allocation (credit_memo_id);
+CREATE INDEX idx_payment_allocation_invoice_id ON payment_allocation (invoice_id);
+CREATE INDEX idx_payment_allocation_payment_id ON payment_allocation (payment_id);
+CREATE INDEX idx_period_status_history_year_id ON period_status_history (year_id);
+CREATE INDEX idx_period_status_history_period_id ON period_status_history (period_id);
+CREATE INDEX idx_poc_snapshot_period_id ON poc_snapshot (period_id);
+CREATE INDEX idx_progress_billing_application_invoice_id ON progress_billing_application (invoice_id);
+CREATE INDEX idx_progress_billing_application_contract_id ON progress_billing_application (contract_id);
+CREATE INDEX idx_project_service_stage_id ON project (service_stage_id);
+CREATE INDEX idx_project_service_type_id ON project (service_type_id);
+CREATE INDEX idx_project_source_estimate_id ON project (source_estimate_id);
+CREATE INDEX idx_project_contact_id ON project (contact_id);
+CREATE INDEX idx_project_budget_co_line_id ON project_budget (co_line_id);
+CREATE INDEX idx_project_budget_estimate_line_id ON project_budget (estimate_line_id);
+CREATE INDEX idx_project_budget_cost_code_id ON project_budget (cost_code_id);
+CREATE INDEX idx_project_budget_project_id ON project_budget (project_id);
+CREATE INDEX idx_role_permission_permission_code ON role_permission (permission_code);
+CREATE INDEX idx_saas_usage_telemetry_subscription_id ON saas_usage_telemetry (subscription_id);
+CREATE INDEX idx_stage_trigger_stage_id ON stage_trigger (stage_id);
+CREATE INDEX idx_staged_line_account_id ON staged_line (account_id);
+CREATE INDEX idx_staged_line_stage_id ON staged_line (stage_id);
+CREATE INDEX idx_staged_transaction_entry_id ON staged_transaction (entry_id);
+CREATE INDEX idx_staged_transaction_payment_id ON staged_transaction (payment_id);
+CREATE INDEX idx_staged_transaction_invoice_id ON staged_transaction (invoice_id);
+CREATE INDEX idx_staged_transaction_matched_invoice_id ON staged_transaction (matched_invoice_id);
+CREATE INDEX idx_staged_transaction_contact_id ON staged_transaction (contact_id);
+CREATE INDEX idx_staged_transaction_reverses_stage_id ON staged_transaction (reverses_stage_id);
+CREATE INDEX idx_staged_transaction_batch_id ON staged_transaction (batch_id);
+CREATE INDEX idx_subscription_contact_id ON subscription (contact_id);
+CREATE INDEX idx_tax_rate_tax_account_id ON tax_rate (tax_account_id);
+CREATE INDEX idx_time_entry_source_batch_id ON time_entry (source_batch_id);
+CREATE INDEX idx_time_entry_cost_code_id ON time_entry (cost_code_id);
+CREATE INDEX idx_time_entry_project_id ON time_entry (project_id);
+CREATE INDEX idx_time_entry_contact_id ON time_entry (contact_id);
+CREATE INDEX idx_user_project_scope_project_id ON user_project_scope (project_id);

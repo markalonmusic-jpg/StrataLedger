@@ -80,7 +80,7 @@ Only state that legitimately changes after posting, plus the seal itself:
 **Column classification test.** `ledger_chain.py` declares `HASHED_ENTRY`, `EXCLUDED_ENTRY`, `HASHED_LINE`
 and `EXCLUDED_LINE`. A static test compares them with the columns of `journal_entry`, `journal_line` and
 `journal_line_dimension`, so a new column (for example B13's `source_doc_type` / `source_doc_id`) fails the
-build until someone decides which list it belongs in. A newly hashed field bumps `chain_version`. The
+build until someone decides which list it belongs in. From the first release a newly hashed field bumps `chain_version` (before it, RP8). The
 verifier keeps every old version, and old entries keep their version.
 
 ### 2.4 Canonical serialization, database-agnostic (owner item i)
@@ -103,7 +103,8 @@ backup and restore. So the canonical form is defined on **values**, never on dri
 **Golden vectors.** `tests/data/ledger_chain_vectors.json` holds fixed inputs: a key, a company code, a
 previous hash and an entry with lines. It also holds the exact canonical bytes (hex) and the resulting
 `chain_hash`. A test checks them byte for byte. The same file must pass unchanged against the PostgreSQL
-port. Changing it means a new `chain_version`, never an edit.
+port. From the first release, changing it means a new `chain_version`, never an edit. Before it, version 1
+is edited in place like the baseline (RP8, 2026-11-16: `entity_id` and `clearing_id` joined the line fields).
 
 ### 2.5 Posting, concurrency and rollback (owner items c and j)
 The seal is computed **inside the posting write transaction**, in Python (H4, H5), in this order:
@@ -799,6 +800,7 @@ SQLite-only constructs in the baseline that the PostgreSQL schema must rewrite. 
 | `IS` / `IS NOT` comparing values | lock triggers (`NEW.x IS OLD.x`) | `IS NOT DISTINCT FROM` |
 | Partial unique indexes (`WHERE ...`) | `journal_entry_chain_hash_unique`, `ledger_chain_key_one_active`, the reversal slots; Step 1d master `installation_key_one_active` | Supported as is |
 | Step 1d master `installation_key` triggers | `installation_key_retired_is_final`, `installation_key_retire_only` (RAISE with `WHEN` and `IS NOT` comparisons, as above); `installation_key.id` AUTOINCREMENT | As the rows above |
+| Replan STOP 1 (2026-11-16) | `GLOB 'VCH-*'` on `invoice.voucher_number`; `x IS date(x)` date CHECKs (also older tables); the at-most-one-value CHECK on `custom_field_value` that adds booleans; new RAISE locks (`payment_allocation_lock_*`, `bank_statement_match_*`, `stage_trigger_run_no_*`, `cost_code_parent_level_*`, `custom_field_value_type_*`, `pay_run_line_bill_*`); partial indexes on `clearing_id`, `voucher_number`, `bank_statement_line.external_id` | `LIKE 'VCH-%'`; a `DATE` column type; `num_nonnulls(...) <= 1`; trigger functions and partial indexes as the rows above |
 | `BLOB` with `typeof(x) = 'blob'` and `length(x)` | Step 1c master `installation_key` (`machine_blob`, `recovery_salt`, `recovery_blob`) and `company_key.wrapped_key`; their `GLOB` fingerprints and RAISE triggers are as above | `bytea` with `octet_length(x)`; drop the `typeof` CHECK |
 
 The chain itself is unaffected: the canonical form (2.4) is defined on values, the golden vectors must pass

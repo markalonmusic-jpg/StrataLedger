@@ -105,7 +105,9 @@ DOCUMENT_SOURCE_WORDS = {"Invoice": ("an invoice", "invoice"), "Bill": ("a bill"
 ONLY_A_PERSON_REVERSES = "Only a person can void or correct an entry; sign in and do it from the entry."
 # The line fields a reversal copies as they are (debit and credit are swapped), R45.
 MIRRORED_LINE_FIELDS = ("account_id", "memo", "contact_id", "project_id", "cost_code_id", "deferral_id", "batch_id",
-                        "is_retainage_line", "external_ref", "is_control_override", "is_rounding_adjustment")
+                        "is_retainage_line", "external_ref", "is_control_override", "is_rounding_adjustment",
+                        # RP2: a reversal stays in its original's entity and clearing group, so the group nets out.
+                        "entity_id", "clearing_id")
 _UNSET = object()
 
 

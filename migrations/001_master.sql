@@ -37,7 +37,10 @@ CREATE TABLE audit_log (
 
     software_version_tag TEXT,
 
-    terminal_id TEXT
+    terminal_id TEXT,
+
+    -- Replan: why a change was made (filled through audit_context by a later step; H4).
+    reason TEXT
 
 );
 
@@ -564,3 +567,84 @@ BEFORE DELETE ON company_key
 BEGIN
     SELECT RAISE(ABORT, 'Stored company keys cannot be deleted');
 END;
+
+
+-- ===========================================================================
+-- Consolidated replan update, STOP 1 (RP10): several roles per user per company. Schema only: authz still
+-- reads user_company_access.role_code until a later step switches it. role_code names a role in the company
+-- file, so there is no cross-file foreign key.
+-- ===========================================================================
+CREATE TABLE user_company_role (
+    user_id INTEGER NOT NULL REFERENCES app_user(user_id) ON DELETE CASCADE,
+    company_id INTEGER NOT NULL REFERENCES company_registry(company_id) ON DELETE CASCADE,
+    role_code TEXT NOT NULL,
+    granted_by INTEGER,
+    granted_at TEXT,
+    PRIMARY KEY (user_id, company_id, role_code)
+);
+
+CREATE TRIGGER audit_user_company_role_insert
+AFTER INSERT ON user_company_role
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_company_role', NEW.rowid,
+        'Insert',
+        NULL,
+        json_object(
+            'user_id', NEW.user_id,
+            'company_id', NEW.company_id,
+            'role_code', NEW.role_code,
+            'granted_by', NEW.granted_by,
+            'granted_at', NEW.granted_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_user_company_role_update
+AFTER UPDATE ON user_company_role
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_company_role', NEW.rowid,
+        'Update',
+        json_object(
+            'user_id', OLD.user_id,
+            'company_id', OLD.company_id,
+            'role_code', OLD.role_code,
+            'granted_by', OLD.granted_by,
+            'granted_at', OLD.granted_at),
+        json_object(
+            'user_id', NEW.user_id,
+            'company_id', NEW.company_id,
+            'role_code', NEW.role_code,
+            'granted_by', NEW.granted_by,
+            'granted_at', NEW.granted_at),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_user_company_role_delete
+AFTER DELETE ON user_company_role
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'user_company_role', OLD.rowid,
+        'Delete',
+        json_object(
+            'user_id', OLD.user_id,
+            'company_id', OLD.company_id,
+            'role_code', OLD.role_code,
+            'granted_by', OLD.granted_by,
+            'granted_at', OLD.granted_at),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+-- Every foreign key column is indexed (tests/test_schema_replan.py).
+CREATE INDEX idx_audit_log_user_id ON audit_log (user_id);
+CREATE INDEX idx_company_key_installation_key_id ON company_key (installation_key_id);
+CREATE INDEX idx_company_registry_parent_company_id ON company_registry (parent_company_id);
+CREATE INDEX idx_user_company_access_company_id ON user_company_access (company_id);
+CREATE INDEX idx_user_company_role_company_id ON user_company_role (company_id);

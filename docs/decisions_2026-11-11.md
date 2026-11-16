@@ -303,6 +303,19 @@ AQ. Architecture (owner, 2026-11-15; text in docs/design.md section 1, not in th
 - AQ1 Single-machine SQLite desktop; PostgreSQL on Azure for the hosted edition, same services
 - AQ2 One HTML/CSS/JS front end: pywebview (WebView2) over a local 127.0.0.1 Python API on desktop
 
+RP. Replan resolutions (owner, 2026-11-16; section "RP. Replan resolutions"):
+- RP1 Bank payee-ID upload replaces NACHA in v1.0; no vendor routing or account numbers (amends B9)
+- RP2 journal_line.clearing_id set at save/post on both sides, sealed in the chain; open items by group
+- RP3 Dimension depth limit 10
+- RP4 Service types and stages replace pipeline_stage (amends D7)
+- RP5 Three-level cost codes; Divisions non-postable; postings to active leaf codes
+- RP6 Local API bridge: per-process token, X-Strata-Token, fresh action_context; Theme serves CSS properties
+- RP7 docs/design.md is the system and product design; CLAUDE_UI.md the UI conventions (amends H6)
+- RP8 Chain v1 edited in place before the first release (entity_id, clearing_id); frozen at the first release
+- RP9 No approval_rule table: document_approval_setting covers every document type, all OFF
+- RP10 user_company_role in the master, schema only until authz reads it
+- RP11 Allocations of a posted source are released once, never deleted
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
@@ -472,6 +485,8 @@ Journal entries keep the existing `manual_entry_approval` setting as their
   is on.
 - B9 Check printing on standard stock with check numbers per bank account;
   NACHA ACH export.
+  **Amended 2026-11-16 (RP1):** in v1.0 a bank payee-ID upload file replaces the NACHA ACH export;
+  vendor routing and account numbers are never stored.
 - B10 Undo only the latest reconciliation per account, `bank.unreconcile`
   permission, reason required, logged.
 - B11 CSV and OFX/QFX statement import into a matching screen; no live
@@ -508,6 +523,8 @@ Journal entries keep the existing `manual_entry_approval` setting as their
 - D7 Completed = first Closeout stage (allows_costs = 1, allows_billing =
   1); add `pipeline_stage.allows_billing`; month-end Keep open / Close out
   review.
+  **Amended 2026-11-16 (RP4):** `service_type` / `service_stage` replace `pipeline_stage`; the
+  Completed stage is a `service_stage` with `allows_costs` and `allows_billing` set.
 - D8 T&M billing in v1.1: bill rates per role/employee
   (`time_entry.bill_rate_cents`), material markup, Unbilled T&M screen.
 - D9 Estimates use the Estimate approval chain (when on); only the primary
@@ -812,8 +829,9 @@ next touched. Paths use the real package name `modules/services/`.
 - Screen specs (layout zones, columns, the five states: empty, loading,
   editable, locked, error) are written before code, in docs/CLAUDE_UI.md
   and the module design docs. No separate UI_SCREEN_BLUEPRINTS.md unless
-  the owner asks for one; docs/design.md stays a draft subordinate to
-  docs/CLAUDE_UI.md.
+  the owner asks for one. **Amended 2026-11-16 (RP7):** docs/design.md is the
+  authoritative system and product design; docs/CLAUDE_UI.md governs UI conventions and
+  the pywebview front-end shell.
 - All visual values (colors, type scale, spacing, radii) live in
   config.Theme; views contain no literal styling. This also makes the
   deferred light theme a token change only.
@@ -1406,3 +1424,37 @@ Step 6 (rounding; owner, 2026-11-14, answering the Step 6 plan's Q1-Q3):
   exactly as read is recognised as the rounding line and worked out again, and an edit that is 2 cents or more off
   ends "Correct the amounts and save again."
 
+
+## RP. Replan resolutions (decided 2026-11-16)
+
+The owner approved these before the consolidated pre-release baseline update (STOP 1; docs/design.md sections
+10 and 11). RP8-RP11 are the owner's answers to the STOP 1 planning questions.
+
+- RP1 (amends B9) Bank payee-ID upload files replace standard NACHA ACH files in v1.0. StrataLedger never stores
+  vendor routing or account numbers. `contact` stores `bank_details_on_file` (0/1) and an optional
+  `bank_payee_id`; the export uses `vendor_code` when `bank_payee_id` is empty.
+- RP2 Posted `journal_line` rows are never edited after posting. `journal_line.clearing_id` is set at save or post
+  time on both sides of a clearing (the open item's line and the lines that settle it) and is sealed by the chain
+  (`ledger_chain.HASHED_LINE`). Open items per account are the groups of `(account_id, clearing_id)` whose
+  `SUM(debit_cents - credit_cents)` is not zero; `account.track_clearing_id` marks the accounts that keep them.
+- RP3 `MAX_DIMENSION_DEPTH` is 10 (was 3), in `database.py` and the dimension triggers it fills in.
+- RP4 (amends D7) `service_type`, `service_stage`, `stage_trigger` and `stage_trigger_run` replace `pipeline_stage`.
+  Triggers run in services (H4) and are idempotent: `stage_trigger_run` records each run once.
+- RP5 `cost_code` has `level` 1, 2 or 3 (1 Division, 2 Code, 3 Sub-code) and `parent_id`: level 1 has no parent,
+  a deeper code's parent is one level up. Divisions are not postable; postings go to active leaf codes (level 2,
+  or level 3 with no active children). The posting rule is a service check.
+- RP6 (AQ2) `app_strata.pyw` makes a 256-bit random token per process (`secrets.token_urlsafe(32)`) and passes it
+  to `pywebview`; it is never logged or saved. The `127.0.0.1` endpoints check `X-Strata-Token` in constant time
+  and build a fresh `action_context()` for every change. `config.Theme` serves the front end's CSS custom
+  properties, so Python stays the single source of visual values (H6).
+- RP7 (amends H6) docs/design.md is the authoritative system and product design; docs/CLAUDE_UI.md governs UI
+  conventions and the `pywebview` front-end shell.
+- RP8 Before the first release the chain's version 1 is edited in place, like the baseline: `entity_id` and
+  `clearing_id` join `HASHED_LINE` and the v1 golden vectors are regenerated. From the first release v1 is frozen
+  and a newly hashed field means a new `chain_version` (audit readiness design 2.4).
+- RP9 No separate `approval_rule` table: `document_approval_setting` covers every document type (Invoice, Credit
+  Memo, Vendor credit and Pay run added), each `requires_approval = 0` by default (1.6).
+- RP10 `user_company_role` (several roles per user per company) is added to the master as schema only;
+  `authz` keeps reading `user_company_access.role_code` until a later step switches it.
+- RP11 Allocations of a posted payment or credit memo are never deleted. Voiding the source releases each
+  allocation once (`released_at`, `released_by`, `release_reason`); the history shows what was applied and undone.
