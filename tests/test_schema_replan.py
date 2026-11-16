@@ -3,6 +3,7 @@
 Schema only: every addition is a column, table, CHECK, lock, audit trigger or index in the baselines. The services
 that use them come in STOP 2 (Phase 2.5 Step 7) and later steps.
 """
+import re
 import sqlite3
 
 import pytest
@@ -139,13 +140,39 @@ def test_a_posted_source_allocation_is_released_once_and_never_deleted(conn, sou
     # A release that also changes the amount is not a release.
     assert rejects(conn, "UPDATE payment_allocation SET released_at = '2026-03-25T09:00:00+00:00', released_by = 1, "
                          "release_reason = 'x', amount_applied_cents = 50 WHERE allocation_id = ?", (allocation_id,))
+    # RP11: release follows the void; a live posted source cannot be quietly unapplied.
+    assert rejects(conn, RELEASE, (allocation_id,))
+    post(conn, make_reversal(conn, entry_id, "Void"))
+    assert rejects(conn, "DELETE FROM payment_allocation WHERE allocation_id = ?", (allocation_id,))
+    # Each change keeps the row valid (one source, one target), so only the release-only lock can refuse it.
+    other_source = (("payment_id", make_payment(conn)) if source == "payment"
+                    else ("credit_memo_id", make_invoice(conn, itype="Credit Memo")))
+    for column, value in (other_source, ("invoice_id", make_invoice(conn, status="Sent")),
+                          ("created_by", 9), ("created_at", "2026-01-01T00:00:00+00:00")):
+        assert rejects(conn, "UPDATE payment_allocation SET released_at = '2026-03-25T09:00:00+00:00', released_by = 1, "
+                             f"release_reason = 'x', {column} = ? WHERE allocation_id = ?", (value, allocation_id)), column
     conn.execute(RELEASE, (allocation_id,))
     assert rejects(conn, "UPDATE payment_allocation SET release_reason = 'changed' WHERE allocation_id = ?",
                    (allocation_id,))
     assert rejects(conn, "UPDATE payment_allocation SET released_at = NULL, released_by = NULL, "
                          "release_reason = NULL WHERE allocation_id = ?", (allocation_id,))
-    post(conn, make_reversal(conn, entry_id, "Void"))
     assert rejects(conn, "DELETE FROM payment_allocation WHERE allocation_id = ?", (allocation_id,))
+
+
+def test_a_voided_credit_memo_cannot_be_applied(conn):
+    entry_id = posted_entry(conn)
+    memo = make_invoice(conn, itype="Credit Memo", status="Sent", entry_id=entry_id)
+    post(conn, make_reversal(conn, entry_id, "Void"))
+    invoice_id = make_invoice(conn, status="Sent")
+    assert rejects(conn, *insert_sql("payment_allocation", credit_memo_id=memo, invoice_id=invoice_id,
+                                     amount_applied_cents=100, applied_date="2026-03-21"))
+
+
+def test_switching_an_allocation_to_a_non_credit_memo_source_is_refused(conn):
+    memo = make_invoice(conn, itype="Credit Memo")
+    allocation_id = allocation(conn, credit_memo_id=memo)
+    sale = make_invoice(conn)
+    assert rejects(conn, "UPDATE payment_allocation SET credit_memo_id = ? WHERE allocation_id = ?", (sale, allocation_id))
 
 
 # --- ledger: entities and line clearing (RP2) ----------------------------------------------------------------
@@ -209,9 +236,33 @@ def test_contact_has_the_new_columns(conn):
     assert tuple(row) == ("Taxable", 0)
 
 
-def test_contact_never_stores_bank_routing_or_account_numbers(conn):
-    names = set(columns(conn, "contact")) | set(columns(conn, "contact_site"))
-    assert not [n for n in names if "routing" in n or "account_number" in n or "iban" in n]
+BANK_NUMBER_WORDS = re.compile(
+    r"(^|_)(routing\w*|account_n(o|um)\w*|acct_no|iban|swift|bic|sort_code|aba|bsb|clabe)(_|$)")
+
+
+def test_no_table_stores_third_party_bank_numbers(conn):
+    """RP1: only the company's own bank_account keeps (protected) numbers; no other table has a place for them."""
+    found = []
+    for (table,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
+        if table == "bank_account":
+            continue
+        found += [f"{table}.{name}" for name in columns(conn, table) if BANK_NUMBER_WORDS.search(name)]
+    assert found == []
+
+
+def test_contact_tax_ids_and_certificates_never_reach_the_audit_log(conn):
+    conn.execute("UPDATE audit_context SET user_id = 1, terminal_id = 'test' WHERE id = 1")
+    contact_id = make_contact(conn)
+    conn.execute("UPDATE contact SET tax_id = '12-3456789', tax_exempt_status = 'Exempt', exemption_reason = 'Resale', "
+                 "exemption_cert_no = 'CERT-55501234' WHERE contact_id = ?", (contact_id,))
+    conn.execute("UPDATE contact SET tax_id = '98-7654321' WHERE contact_id = ?", (contact_id,))
+    conn.execute("DELETE FROM contact WHERE contact_id = ?", (contact_id,))
+    everything = " ".join(str(tuple(r)) for r in conn.execute("SELECT * FROM audit_log"))
+    for secret in ("12-3456789", "123456789", "98-7654321", "987654321", "CERT-55501234", "55501234"):
+        assert secret not in everything
+    logged = [r["new_value"] for r in conn.execute(
+        "SELECT new_value FROM audit_log WHERE table_name = 'contact' AND action = 'Update' ORDER BY log_id")]
+    assert "6789" in logged[0] and "1234" in logged[0] and "4321" in logged[1]
 
 
 @pytest.mark.parametrize("column, value", [("customer_type", "Company"), ("tax_exempt_status", "Partly"),
@@ -271,14 +322,35 @@ def test_voucher_numbers_are_for_purchase_documents_and_unique(conn):
     assert rejects(conn, "UPDATE invoice SET voucher_number = 'VCH-000001' WHERE invoice_id = ?", (other_bill,))
 
 
-def test_a_sent_invoice_records_who_it_was_sent_to_once(conn):
+@pytest.mark.parametrize("column", ["sent_at", "sent_to", "void_reason"])
+def test_a_sent_invoice_records_send_and_void_details_once(conn, column):
     invoice_id = make_invoice(conn, status="Sent", entry_id=posted_entry(conn))
-    conn.execute("UPDATE invoice SET sent_at = '2026-03-02T10:00:00+00:00', sent_to = 'ap@client.test' "
-                 "WHERE invoice_id = ?", (invoice_id,))
-    assert rejects(conn, "UPDATE invoice SET sent_to = 'other@client.test' WHERE invoice_id = ?", (invoice_id,))
-    assert rejects(conn, "UPDATE invoice SET memo = 'changed' WHERE invoice_id = ?", (invoice_id,))
-    assert rejects(conn, "UPDATE invoice SET voucher_number = NULL, revision_no = 2 WHERE invoice_id = ?",
-                   (invoice_id,))
+    conn.execute(f"UPDATE invoice SET {column} = 'first' WHERE invoice_id = ?", (invoice_id,))
+    assert rejects(conn, f"UPDATE invoice SET {column} = 'second' WHERE invoice_id = ?", (invoice_id,))
+    assert rejects(conn, f"UPDATE invoice SET {column} = NULL WHERE invoice_id = ?", (invoice_id,))
+
+
+@pytest.mark.parametrize("column, value", [("memo", "changed"), ("revision_no", 2), ("is_opening", 1),
+                                           ("supersedes_id", "other"), ("payment_term_id", "term")])
+def test_new_invoice_columns_are_frozen_once_sent(conn, column, value):
+    invoice_id = make_invoice(conn, status="Sent", entry_id=posted_entry(conn))
+    if value == "other":
+        value = make_invoice(conn)
+    elif value == "term":
+        value = insert(conn, "payment_term", name="Net 10", days_due=10)
+    assert rejects(conn, f"UPDATE invoice SET {column} = ? WHERE invoice_id = ?", (value, invoice_id))
+
+
+def test_a_sent_bills_voucher_number_is_frozen(conn):
+    bill = make_invoice(conn, itype="Bill")
+    conn.execute("UPDATE invoice SET voucher_number = 'VCH-000009' WHERE invoice_id = ?", (bill,))
+    conn.execute("UPDATE invoice SET status = 'Sent', invoice_number = 'B-9' WHERE invoice_id = ?", (bill,))
+    assert rejects(conn, "UPDATE invoice SET voucher_number = 'VCH-000010' WHERE invoice_id = ?", (bill,))
+
+
+def test_a_sales_invoice_never_enters_a_pay_run(conn):
+    sale = make_invoice(conn, status="Sent")
+    assert rejects(conn, "UPDATE invoice SET status = 'In pay run' WHERE invoice_id = ?", (sale,))
 
 
 def test_a_bill_moves_into_and_out_of_a_pay_run(conn):
@@ -349,6 +421,25 @@ def test_cost_code_levels(conn):
     assert rejects(conn, "UPDATE cost_code SET is_active = 2 WHERE cost_code_id = ?", (code,))
 
 
+def test_a_cost_code_with_sub_codes_cannot_change_level(conn):
+    division = cost_code(conn, "04")
+    code = cost_code(conn, "04-200", 2, division)
+    cost_code(conn, "04-200-10", 3, code)
+    # Level 1 with no parent passes the parent checks; only the children rule refuses it.
+    assert rejects(conn, "UPDATE cost_code SET level = 1, parent_id = NULL WHERE cost_code_id = ?", (code,))
+    childless = cost_code(conn, "04-300", 2, division)
+    assert not rejects(conn, "UPDATE cost_code SET level = 1, parent_id = NULL WHERE cost_code_id = ?", (childless,))
+
+
+def test_re_parenting_a_cost_code_keeps_one_level_up(conn):
+    division = cost_code(conn, "05")
+    code = cost_code(conn, "05-100", 2, division)
+    other = cost_code(conn, "05-200", 2, division)
+    sub_code = cost_code(conn, "05-100-10", 3, code)
+    assert rejects(conn, "UPDATE cost_code SET parent_id = ? WHERE cost_code_id = ?", (division, sub_code))
+    assert not rejects(conn, "UPDATE cost_code SET parent_id = ? WHERE cost_code_id = ?", (other, sub_code))
+
+
 def test_dimension_depth_limit_is_ten():
     assert database.MAX_DIMENSION_DEPTH == 10
 
@@ -403,6 +494,7 @@ def test_pay_run_and_lines(conn, bank):
     assert conn.execute("SELECT status FROM pay_run_line WHERE line_id = ?", (line,)).fetchone()[0] == "Open"
     assert rejects(conn, *insert_sql("pay_run_line", pay_run_id=run, invoice_id=bill, amount_cents=10))
     assert rejects(conn, *insert_sql("pay_run_line", pay_run_id=run, invoice_id=sale, amount_cents=10))
+    assert rejects(conn, "UPDATE pay_run_line SET invoice_id = ? WHERE line_id = ?", (sale, line))
     other_bill = make_invoice(conn, itype="Bill", status="Sent")
     assert rejects(conn, *insert_sql("pay_run_line", pay_run_id=run, invoice_id=other_bill, amount_cents=0))
     assert rejects(conn, *insert_sql("pay_run_line", pay_run_id=run, invoice_id=other_bill, amount_cents=10.5))
@@ -457,6 +549,10 @@ def test_statement_lines_of_a_completed_reconciliation_are_locked(conn, bank):
     conn.execute("UPDATE bank_statement_line SET recon_id = ? WHERE statement_line_id = ?", (recon, line))
     conn.execute("UPDATE bank_reconciliation SET is_complete = 1 WHERE recon_id = ?", (recon,))
     assert rejects(conn, "UPDATE bank_statement_line SET recon_id = NULL WHERE statement_line_id = ?", (line,))
+    assert rejects(conn, "DELETE FROM bank_statement_line WHERE statement_line_id = ?", (line,))
+    loose = insert(conn, "bank_statement_line", bank_account_id=bank, source="Manual", posted_date="2026-03-04",
+                   amount_cents=5)
+    assert not rejects(conn, "DELETE FROM bank_statement_line WHERE statement_line_id = ?", (loose,))
 
 
 def test_close_tasks_and_dependencies(conn):
@@ -496,6 +592,23 @@ def test_custom_fields_store_one_typed_value(conn):
     assert rejects(conn, *insert_sql("custom_field_value", field_id=text, record_id=2, value_text="a",
                                      value_number=1.0))
     assert rejects(conn, *insert_sql("custom_field_value", field_id=money, record_id=3, value_cents=1.5))
+    money_value = conn.execute("SELECT value_id FROM custom_field_value WHERE field_id = ?", (money,)).fetchone()[0]
+    assert rejects(conn, "UPDATE custom_field_value SET value_cents = NULL, value_text = '25' WHERE value_id = ?",
+                   (money_value,))
+
+
+@pytest.mark.parametrize("data_type, right, wrong", [
+    ("Number", ("value_number", 2.5), ("value_text", "2.5")),
+    ("Date", ("value_date", "2026-03-01"), ("value_text", "2026-03-01")),
+    ("Yes/No", ("value_bool", 1), ("value_number", 1.0)),
+    ("Choice", ("value_text", "Red"), ("value_bool", 1)),
+    ("Text", ("value_text", "x"), ("value_cents", 5)),
+])
+def test_each_custom_field_type_uses_its_own_column(conn, data_type, right, wrong):
+    field = insert(conn, "custom_field_def", record_type="Invoice", field_key=f"f_{data_type}", label=data_type,
+                   data_type=data_type)
+    assert not rejects(conn, *insert_sql("custom_field_value", field_id=field, record_id=1, **{right[0]: right[1]}))
+    assert rejects(conn, *insert_sql("custom_field_value", field_id=field, record_id=2, **{wrong[0]: wrong[1]}))
 
 
 def test_list_preferences_saved_views_and_dismissals(conn):

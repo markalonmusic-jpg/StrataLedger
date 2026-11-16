@@ -163,7 +163,7 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-15):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1-6: chain and verify,
+**Where we are (2026-11-16):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1-6: chain and verify,
 keystore and key-lost (KS1-KS21; the service can post, no posting screen yet), approvals in posting (R15-R39),
 reversals (R40-R48), rounding and `create_document_entry` (R49-R55); details in docs/status_log.md. Design batch
 accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15; the consolidated

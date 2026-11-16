@@ -132,7 +132,7 @@ pipeline
   applies_to               TEXT      [Job, Service case]
   is_active                BOOL
 
-pipeline_stage
+pipeline_stage   (replaced by service_type / service_stage, decision RP4, 2026-11-16; the baseline has those)
   stage_id                 INTEGER   PK
   pipeline_id              INTEGER   FK -> pipeline.pipeline_id
   name                     TEXT

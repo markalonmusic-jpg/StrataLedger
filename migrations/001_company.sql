@@ -1531,7 +1531,8 @@ WHEN EXISTS (SELECT 1 FROM journal_entry WHERE entry_id = NEW.entry_id AND is_po
 BEGIN SELECT RAISE(ABORT, 'Posted journal entries cannot be changed'); END;
 
 -- RP11: allocations of a posted payment or credit memo are never deleted; voiding the source releases each
--- allocation once (released_at, released_by, release_reason). Allocations of a draft source stay editable.
+-- allocation once (released_at, released_by, release_reason), and only after the source's entry is voided.
+-- Allocations of a draft source stay editable.
 CREATE TRIGGER payment_allocation_lock_delete
 BEFORE DELETE ON payment_allocation
 WHEN EXISTS (SELECT 1 FROM payment WHERE payment_id = OLD.payment_id AND entry_id IS NOT NULL)
@@ -1554,8 +1555,18 @@ WHEN (EXISTS (SELECT 1 FROM payment WHERE payment_id IN (OLD.payment_id, NEW.pay
         AND NEW.applied_date IS OLD.applied_date
         AND NEW.created_by IS OLD.created_by
         AND NEW.created_at IS OLD.created_at
+        AND (EXISTS (SELECT 1 FROM payment AS p JOIN journal_entry AS e ON e.entry_id = p.entry_id
+                     WHERE p.payment_id = OLD.payment_id AND e.is_void = 1)
+          OR EXISTS (SELECT 1 FROM invoice AS i JOIN journal_entry AS e ON e.entry_id = i.entry_id
+                     WHERE i.invoice_id = OLD.credit_memo_id AND e.is_void = 1))
  )
-BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment or credit memo cannot be changed; release them instead'); END;
+BEGIN SELECT RAISE(ABORT, 'Allocations of a posted payment or credit memo cannot be changed; void the source to release them'); END;
+
+CREATE TRIGGER payment_allocation_no_voided_credit_memo
+BEFORE INSERT ON payment_allocation
+WHEN EXISTS (SELECT 1 FROM invoice AS i JOIN journal_entry AS e ON e.entry_id = i.entry_id
+             WHERE i.invoice_id = NEW.credit_memo_id AND e.is_void = 1)
+BEGIN SELECT RAISE(ABORT, 'A voided credit memo cannot be applied'); END;
 
 CREATE TRIGGER payment_allocation_credit_memo_source_insert
 BEFORE INSERT ON payment_allocation
@@ -3975,6 +3986,11 @@ WHEN EXISTS (SELECT 1 FROM bank_reconciliation
              WHERE recon_id IN (OLD.recon_id, NEW.recon_id) AND is_complete = 1)
 BEGIN SELECT RAISE(ABORT, 'Lines of a completed bank reconciliation cannot change'); END;
 
+CREATE TRIGGER bank_statement_line_recon_lock_delete
+BEFORE DELETE ON bank_statement_line
+WHEN EXISTS (SELECT 1 FROM bank_reconciliation WHERE recon_id = OLD.recon_id AND is_complete = 1)
+BEGIN SELECT RAISE(ABORT, 'Lines of a completed bank reconciliation cannot change'); END;
+
 -- A match is released once, never deleted, so the history shows what was matched and undone.
 CREATE TABLE bank_statement_match (
     match_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4113,6 +4129,8 @@ CREATE TABLE alert_dismissal (
     PRIMARY KEY (user_id, alert_key)
 );
 
+-- A contact's tax id and exemption certificate number reach the audit log as their last four characters only
+-- (K4: tax ids are masked outside the contact record).
 CREATE TRIGGER audit_contact_insert
 AFTER INSERT ON contact
 BEGIN
@@ -4132,7 +4150,7 @@ BEGIN
             'email', NEW.email,
             'phone', NEW.phone,
             'address', NEW.address,
-            'tax_id', NEW.tax_id,
+            'tax_id_last4', substr(NEW.tax_id, -4),
             'is_active', NEW.is_active,
             'mailing_street', NEW.mailing_street,
             'mailing_city', NEW.mailing_city,
@@ -4145,7 +4163,7 @@ BEGIN
             'last_name', NEW.last_name,
             'tax_exempt_status', NEW.tax_exempt_status,
             'exemption_reason', NEW.exemption_reason,
-            'exemption_cert_no', NEW.exemption_cert_no,
+            'exemption_cert_no_last4', substr(NEW.exemption_cert_no, -4),
             'exemption_expires_at', NEW.exemption_expires_at,
             'bank_details_on_file', NEW.bank_details_on_file,
             'bank_payee_id', NEW.bank_payee_id,
@@ -4173,7 +4191,7 @@ BEGIN
             'email', OLD.email,
             'phone', OLD.phone,
             'address', OLD.address,
-            'tax_id', OLD.tax_id,
+            'tax_id_last4', substr(OLD.tax_id, -4),
             'is_active', OLD.is_active,
             'mailing_street', OLD.mailing_street,
             'mailing_city', OLD.mailing_city,
@@ -4186,7 +4204,7 @@ BEGIN
             'last_name', OLD.last_name,
             'tax_exempt_status', OLD.tax_exempt_status,
             'exemption_reason', OLD.exemption_reason,
-            'exemption_cert_no', OLD.exemption_cert_no,
+            'exemption_cert_no_last4', substr(OLD.exemption_cert_no, -4),
             'exemption_expires_at', OLD.exemption_expires_at,
             'bank_details_on_file', OLD.bank_details_on_file,
             'bank_payee_id', OLD.bank_payee_id,
@@ -4203,7 +4221,7 @@ BEGIN
             'email', NEW.email,
             'phone', NEW.phone,
             'address', NEW.address,
-            'tax_id', NEW.tax_id,
+            'tax_id_last4', substr(NEW.tax_id, -4),
             'is_active', NEW.is_active,
             'mailing_street', NEW.mailing_street,
             'mailing_city', NEW.mailing_city,
@@ -4216,7 +4234,7 @@ BEGIN
             'last_name', NEW.last_name,
             'tax_exempt_status', NEW.tax_exempt_status,
             'exemption_reason', NEW.exemption_reason,
-            'exemption_cert_no', NEW.exemption_cert_no,
+            'exemption_cert_no_last4', substr(NEW.exemption_cert_no, -4),
             'exemption_expires_at', NEW.exemption_expires_at,
             'bank_details_on_file', NEW.bank_details_on_file,
             'bank_payee_id', NEW.bank_payee_id,
@@ -4244,7 +4262,7 @@ BEGIN
             'email', OLD.email,
             'phone', OLD.phone,
             'address', OLD.address,
-            'tax_id', OLD.tax_id,
+            'tax_id_last4', substr(OLD.tax_id, -4),
             'is_active', OLD.is_active,
             'mailing_street', OLD.mailing_street,
             'mailing_city', OLD.mailing_city,
@@ -4257,7 +4275,7 @@ BEGIN
             'last_name', OLD.last_name,
             'tax_exempt_status', OLD.tax_exempt_status,
             'exemption_reason', OLD.exemption_reason,
-            'exemption_cert_no', OLD.exemption_cert_no,
+            'exemption_cert_no_last4', substr(OLD.exemption_cert_no, -4),
             'exemption_expires_at', OLD.exemption_expires_at,
             'bank_details_on_file', OLD.bank_details_on_file,
             'bank_payee_id', OLD.bank_payee_id,

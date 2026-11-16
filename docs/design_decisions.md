@@ -227,7 +227,8 @@ before building; the database wins on naming.
   `purchase_order_subcontract` (replaced by the PO design). Their roles are
   taken by `project` (a lead is a project), `change_order`,
   `change_order_line`, `activity`, `project_stage_history`, `pipeline` and
-  `pipeline_stage` (docs/crm_pm_design.md section 4).
+  `pipeline_stage` (docs/crm_pm_design.md section 4). **Amended 2026-11-16 (RP4):** `service_type` /
+  `service_stage` replace `pipeline` and `pipeline_stage`.
 - `crm_approval_rule` and `crm_approval_instance` are replaced by the
   approval tables (`approval_policy`, `approval_step`, `approval_request`,
   `approval_action`, in the baseline; docs/roles_permissions_design.md

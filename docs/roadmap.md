@@ -314,7 +314,10 @@ Planned schema work, in build order (names only):
   tests first, the previous baselines saved to `archive/` with a tag, and one rebuild of the development
   databases; (2) Phase 2.5 Step 7 on the new baseline: `sequences.next_invoice_number` and
   `services/payments.py` allocations, closing the 5 remaining xfails (docs/next_step.md).
-- The update's contents (docs/design.md section 10): `company_entity` and `journal_line.entity_id`;
+- **Done 2026-11-16 (STOP 1, RP1-RP11; commit d8c28b7 and its review fixes).** Contents as built in
+  docs/design.md section 10. Estimate signing with the signed PDF and the intercompany and elimination entries
+  were left for their own steps.
+- The update's planned contents (docs/design.md section 10): `company_entity` and `journal_line.entity_id`;
   `journal_line.clearing_id` (covered by the ledger chain) and the open-item account marker; document versions
   and the `Lock documents after posting` setting; `bank_statement_line` and its matches; pay run tables, the
   `In pay run` status and `contact.bank_payee_id`; service types, stages and triggers; estimate signing with the
@@ -386,6 +389,5 @@ archive/design_drafts_2026-11/export_design.md section 13.
 7. CRM / project design open questions: see docs/crm_pm_design.md section
    12 (optional case fields, linear stages, warranty length, pausing cases,
    prospect in the wizard, closing checklist, desktop to hosted sync).
-8. The 2026-11-15 design's open questions: docs/design.md section 11 (B9 NACHA vs
-   `bank_payee_id`, `clearing_id` and the chain, dimension depth, service types vs
-   `pipeline_stage`, bridge security and theme tokens, cost code levels).
+8. ANSWERED 2026-11-16 (RP1-RP7): the 2026-11-15 design's open questions (docs/design.md
+   section 11).

@@ -204,7 +204,7 @@ def test_audit_records_the_new_entry_and_line_columns(conn):
     assert inserted["auto_reverse_date"] == "2026-04-01"
     posted = json.loads(next(r for r in audit_rows(conn, reversal) if r["action"] == "Post")["new_value"])
     assert posted["reversal_note"] == "Entered twice"
-    assert {"is_control_override", "is_rounding_adjustment"} <= set(posted["lines"][0])
+    assert {"is_control_override", "is_rounding_adjustment", "entity_id", "clearing_id"} <= set(posted["lines"][0])
     for trigger in ("audit_journal_entry_insert", "audit_journal_entry_update", "audit_journal_entry_delete"):
         sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = ?", (trigger,)).fetchone()[0]
         assert "'auto_reverse_date'" in sql and "'reversal_note'" in sql

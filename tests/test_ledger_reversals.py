@@ -100,7 +100,8 @@ def assert_mirror(env, original_id, reversal_id):
     original, reversal = lines_of(env, original_id), lines_of(env, reversal_id)
     assert len(original) == len(reversal)
     copied = ("account_id", "memo", "contact_id", "project_id", "cost_code_id", "deferral_id", "batch_id",
-              "is_retainage_line", "external_ref", "is_control_override", "is_rounding_adjustment")
+              "is_retainage_line", "external_ref", "is_control_override", "is_rounding_adjustment",
+              "entity_id", "clearing_id")
     for old, new in zip(original, reversal):
         assert {k: new[k] for k in copied} == {k: old[k] for k in copied}
         assert (new["debit_cents"], new["credit_cents"]) == (old["credit_cents"], old["debit_cents"])
@@ -264,6 +265,26 @@ def test_void_copies_dimensions_memos_contacts_and_flags(rev):
     reversal_id = void(rev, entry_id)["entry_id"]
     assert_mirror(rev, entry_id, reversal_id)
     assert lines_of(rev, reversal_id)[0]["is_control_override"] == 1
+    assert verify(rev)["ok"]
+
+
+def test_a_reversal_stays_in_its_originals_entity_and_clearing_group(rev):
+    """RP2: the reversal lines carry the original's entity_id and clearing_id, so the open item nets to zero."""
+    entry_lines = [{"account_id": A(rev, "ar"), "debit_cents": 1000, "contact_id": rev.customer},
+                   {"account_id": A(rev, "sales"), "credit_cents": 1000}]
+    entry_id = draft(rev, entry_lines=entry_lines)
+    with rev._company("PARENT") as c:
+        entity = c.execute("INSERT INTO company_entity (code, name) VALUES ('E1', 'Entity') RETURNING entity_id"
+                           ).fetchone()[0]
+        first = c.execute("SELECT MIN(line_id) FROM journal_line WHERE entry_id = ?", (entry_id,)).fetchone()[0]
+        c.execute("UPDATE journal_line SET entity_id = ? WHERE entry_id = ?", (entity, entry_id))
+        c.execute("UPDATE journal_line SET clearing_id = 41 WHERE line_id = ?", (first,))
+    ledger.post_journal_entry(ctx(rev), entry_id, confirm=True)
+    reversal_id = void(rev, entry_id)["entry_id"]
+    assert_mirror(rev, entry_id, reversal_id)
+    reversed_lines = lines_of(rev, reversal_id)
+    assert {line["entity_id"] for line in reversed_lines} == {entity}
+    assert sorted(line["clearing_id"] or 0 for line in reversed_lines) == [0, 41]
     assert verify(rev)["ok"]
 
 

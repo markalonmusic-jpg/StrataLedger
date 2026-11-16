@@ -725,4 +725,10 @@ Rotation and key-lost text as it stood before the trim:
 
   Reversals mirror `entity_id` and `clearing_id`. Development master rebuilt. Suite 2798 passed, 7 deselected,
   5 xfailed. STOP 2 (Step 7) planned in docs/next_step.md.
-
+  Review fixes:
+  - step-reviewer: release only after the source is voided; no allocation from a voided credit memo; no delete
+    of a reconciled statement line; a test per lock clause; reversal mirroring of the two new ids proven;
+    docs.
+  - secrets-auditor: contact tax id and certificate number masked to the last four in the audit log; RP1
+    test widened to every table.
+  Suite 2818 passed, 7 deselected, 5 xfailed.

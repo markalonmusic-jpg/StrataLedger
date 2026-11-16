@@ -1457,4 +1457,6 @@ The owner approved these before the consolidated pre-release baseline update (ST
 - RP10 `user_company_role` (several roles per user per company) is added to the master as schema only;
   `authz` keeps reading `user_company_access.role_code` until a later step switches it.
 - RP11 Allocations of a posted payment or credit memo are never deleted. Voiding the source releases each
-  allocation once (`released_at`, `released_by`, `release_reason`); the history shows what was applied and undone.
+  allocation once (`released_at`, `released_by`, `release_reason`), and only after the source's entry is voided,
+  so a live posted payment cannot be quietly unapplied; the history shows what was applied and undone. (A later
+  "unapply" of a live payment would be a new decision.)

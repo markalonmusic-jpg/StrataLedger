@@ -36,6 +36,14 @@ portable SQL. Moving a desktop company to the cloud follows CM1-CM3.
 Decided (RP6): `app_strata.pyw` makes a per-process token (`secrets.token_urlsafe(32)`, never logged or saved)
 and passes it to `pywebview`; the endpoints check `X-Strata-Token` in constant time and build a fresh
 `action_context()` per change. `config.Theme` serves the CSS custom properties.
+Token handling when the bridge is built:
+- the token reaches the page through pywebview's `js_api` / `evaluate_js`, never in a URL, argv or an
+  environment variable;
+- the bridge logs no headers or query strings, and its access log is off or path-only;
+- errors never echo request headers;
+- WebView2 devtools are off in a release build (`debug=False`);
+- the token is held in a redacted-repr wrapper like `keys.SecretKey`, and a test proves it never reaches the
+  log file.
 
 ## 2. Databases and entities
 

@@ -6,7 +6,7 @@ Status: **STOP 1 is committed: both baselines carry the replan schema (RP1-RP11,
 the previous baselines are in archive/baseline_pre_replan/ (tag `baseline-pre-replan`), and the development
 master was rebuilt. Step 7 is not started.**
 
-**State:** suite **2798 passed, 7 deselected, 5 xfailed** (was 2745; 53 new). The 5 xfails in tests/test_service_rules_pending.py are the Step 7 work below.
+**State:** suite **2818 passed, 7 deselected, 5 xfailed** (was 2745; 73 new tests). The 5 xfails in tests/test_service_rules_pending.py are the Step 7 work below.
 Rebuild needed before running the app on an older development file: `python scripts/create_fresh_databases.py
 --apply`. `Companies/COMBUZZ.db` predates this baseline, and the hash guard refuses it.
 
@@ -39,7 +39,19 @@ Rebuild needed before running the app on an older development file: `python scri
 - **Tests:** tests/test_schema_replan.py (new); tests/test_ledger_chain.py and tests/test_database.py (depth 10
   allowed, 11 rejected, and a subtree move past 10); allocation fixtures in test_controls_003 and
   test_schema_ledger_2_5. `test_allocations_of_posted_payment` now asserts release-not-delete (RP11).
-- **Reviews:** REVIEWS_HERE
+- **Reviews:**
+  - **step-reviewer:** approve with changes, all fixed in the review-fix commit:
+    - H1: a posted source's allocation is released only after its entry is voided (RP11);
+    - M1: a voided credit memo cannot be applied;
+    - M2: statement lines of a completed reconciliation cannot be deleted;
+    - M3 and M4: one test per lock clause, and reversals proven to mirror a real `entity_id` and `clearing_id`;
+    - M5 and L3: the docs.
+    The L1/L2 items that the schema leaves to services are in Part 3.
+  - **secrets-auditor:** nothing leaks. Fixed: contact `tax_id` and `exemption_cert_no` reach the audit log
+    as their last four characters only, and the RP1 test now covers every table and more name patterns.
+    Recorded: the custom-field bank-number check (Part 3) and the bridge token handling (docs/design.md
+    section 1).
+  - **mutation-tester:** MUTATION_HERE
 
 ## STOP 2 plan: Step 7
 
@@ -75,11 +87,28 @@ Each function follows rule 10: validate, `authorize`, then the write transaction
   and tests it.
 - Permissions: reuse the receive / pay permissions (`payment.receive`, `payment.make` or the existing names) or add
   `payment.allocate` (open question 4). Agent never (section 0).
-- `clearing_id`: when an allocation's payment entry and the invoice entry exist, the service sets the same
-  clearing id on the AR/AP line of each at save or post time (RP2). In Step 7 only `allocate` and the release
-  touch it; the document posting services set it in Phase 4. Open question 8.
+- `clearing_id`: `allocate` never writes it. Posted lines are frozen (RP2, `journal_line_lock_update_posted`),
+  so each line gets its clearing id when its own entry is saved or posted. The open item's line (the invoice's
+  AR line) gets a new id when the invoice posts; a settling payment line copies that id when the payment posts.
+  The document posting services do this in Phase 4. Step 7 only links documents through allocations. Open
+  question 8.
 
 ### Part 3. Smaller items found in STOP 1
+
+- **Service checks the schema leaves open** (step-reviewer, STOP 1):
+  - re-check that a cost code is a leaf after any move (a childless level-2 code can become level 3 under
+    another code);
+  - `void_reason` only on a voided document;
+  - ISO format for the new `_at` columns (`sent_at`, `created_at`, `released_at`, ...), set by services (H2);
+  - an allocation is never inserted already released;
+  - a custom field's `data_type` does not change while values of the old type exist;
+  - no cycles in `close_task_dependency`;
+  - a bill is in at most one open pay run (the UNIQUE is per run).
+- **From the secrets audit (STOP 1):**
+  - a contact custom field whose label or key looks like a bank number (routing, account number, IBAN,
+    SWIFT, ...) is refused with one sentence pointing to `bank_payee_id` (RP1; 2.7 or Phase 4);
+  - contact `tax_id` and `exemption_cert_no` reach the audit log as their last four characters only (fixed
+    in STOP 1).
 
 - `DOCUMENT_ENTRY_CALLERS`: payments are made only by `services/payments.py`, so the billing row shrinks to
   `{"Invoice"}` (allow-lists only shrink).
