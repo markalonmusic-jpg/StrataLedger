@@ -107,3 +107,14 @@ def test_the_issue_date_must_be_an_iso_date(env, issue_date):
 def test_an_unknown_document_type_is_refused(env):
     with pytest.raises(ValidationError, match="Invoice or Credit Memo"):
         next_number(env, "Bill")
+
+
+def test_with_no_usable_series_the_oldest_ones_problem_is_reported(env):
+    """Mutation check: the first problem found is kept, so the message names the oldest series."""
+    with env._company("PARENT") as c:
+        lh.make_series(c, "Invoice", "OLD-", registered=(1, 1))
+        c.execute("UPDATE invoice_series SET last_number = 1 WHERE prefix = 'OLD-'")
+        lh.make_series(c, "Invoice", "EXP-", registered=(1, 9), valid_until="2026-01-31")
+    with pytest.raises(ValidationError, match="OLD- series is used up"):
+        next_number(env)
+

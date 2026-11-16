@@ -7,7 +7,7 @@
 import pytest
 
 from modules.services import ledger
-from modules.services.errors import PostingError, ValidationError
+from modules.services.errors import PeriodClosedError, PostingError, ValidationError
 from modules.services.tx import write_transaction
 from tests import ledger_helpers as lh
 from tests.authz_world import world  # noqa: F401  (fixture)
@@ -59,9 +59,12 @@ def test_a_line_joins_an_existing_group_on_the_same_account(env):
     assert total == 0
 
 
-@pytest.mark.parametrize("clearing", [9999, "sideways", 1.5, True])
-def test_an_unknown_group_or_a_bad_value_is_refused(env, clearing):
-    with pytest.raises(ValidationError, match="clearing"):
+@pytest.mark.parametrize("clearing, match", [(9999, "not an open item posted"),
+                                             ("sideways", "a new group or an existing group's number"),
+                                             (1.5, "a new group or an existing group's number"),
+                                             (True, "a new group or an existing group's number")])
+def test_an_unknown_group_or_a_bad_value_is_refused(env, clearing, match):
+    with pytest.raises(ValidationError, match=match):
         document_entry(env, [ar_line(env, 1000, clearing=clearing), sales_line(env, 1000)])
 
 
@@ -201,3 +204,94 @@ def test_ar_and_ap_accounts_keep_open_items_from_the_start(env, control_type, tr
     assert env.rows("PARENT", "SELECT track_clearing_id FROM account WHERE account_id = ?",
                     (account_id,))[0]["track_clearing_id"] == tracked
     assert accounts.tracks_open_items(control_type) == tracked
+
+
+# --- step 7 mutation check -----------------------------------------------------------------------------------
+
+def test_a_group_on_another_tracked_account_cannot_be_joined(env):
+    with env._company("PARENT") as c:
+        env.accts["ar2"] = lh.make_account(c, "1210", control_type="AR", track_clearing_id=1)
+    first = document_entry(env, [ar_line(env, 1000), sales_line(env, 1000)])
+    group = lines_of(env, first)[0]["clearing_id"]
+    other = dict(ar_line(env, 1000, debit=False, clearing=group), account_id=A(env, "ar2"))
+    with pytest.raises(ValidationError, match="not an open item posted on this account"):
+        document_entry(env, [{"account_id": A(env, "cash"), "debit_cents": 1000}, other], source="Payment")
+
+
+def void_directly(env, entry_id, *, entry_date="2026-03-20", note="released"):
+    context = ctx_for(env, "System")
+    with write_transaction(context.company_db_path, context) as conn:
+        return ledger.void_document_entry(conn, context, entry_id, entry_date=entry_date, note=note)
+
+
+def posted_document(env, entry_date="2026-03-15"):
+    context = ctx_for(env, "System")
+    with write_transaction(context.company_db_path, context) as conn:
+        return ledger.create_document_entry(conn, context, source="Payment", entry_date=entry_date,
+                                            lines=lines(env), post=True)["entry_id"]
+
+
+@pytest.mark.parametrize("note", ["", "   ", None])
+def test_void_document_entry_needs_a_note(env, note):
+    with pytest.raises(ValidationError, match="Say why in the note"):
+        void_directly(env, posted_document(env), note=note)
+
+
+@pytest.mark.parametrize("day", ["2026-3-20", "20/03/2026", None])
+def test_void_document_entry_needs_an_iso_date(env, day):
+    with pytest.raises(ValidationError, match="YYYY-MM-DD"):
+        void_directly(env, posted_document(env), entry_date=day)
+
+
+def test_void_document_entry_refuses_a_draft(env):
+    context = ctx_for(env, "System")
+    with write_transaction(context.company_db_path, context) as conn:
+        entry_id = ledger.create_document_entry(conn, context, source="Payment", entry_date="2026-03-15",
+                                                lines=lines(env))["entry_id"]
+    before = env.rows("PARENT", "SELECT COUNT(*) AS n FROM journal_entry")[0]["n"]
+    with pytest.raises(ValidationError, match="Only a posted entry"):
+        void_directly(env, entry_id)
+    assert env.rows("PARENT", "SELECT COUNT(*) AS n FROM journal_entry")[0]["n"] == before
+
+
+def test_void_document_entry_refuses_an_entry_already_corrected(env):
+    entry_id = posted_document(env)
+    with env._company("PARENT") as c:
+        number = c.execute("SELECT entry_number FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()[0]
+        c.execute("INSERT INTO journal_entry (entry_date, period_id, reverses_entry_id, reversal_reason, reversal_note, "
+                  "created_by) VALUES ('2026-03-16', ?, ?, 'Correction', 'wrong', 1)",
+                  (lh.ensure_period(c, "2026-03-16"), entry_id))
+    with pytest.raises(PostingError, match="already been voided or corrected"):
+        void_directly(env, entry_id)
+    assert number
+
+
+def test_void_document_entry_takes_the_period_of_its_own_date(env):
+    entry_id = posted_document(env, "2026-03-15")
+    reversal = void_directly(env, entry_id, entry_date="2026-04-02")
+    period = env.rows("PARENT", "SELECT p.start_date FROM journal_entry AS e JOIN fiscal_period AS p "
+                                "ON p.period_id = e.period_id WHERE e.entry_id = ?", (reversal,))[0]["start_date"]
+    assert period == "2026-04-01"
+    other = posted_document(env, "2026-03-15")
+    with env._company("PARENT") as c:
+        may = c.execute("SELECT period_id FROM fiscal_period WHERE start_date = '2026-05-01' "
+                        "AND is_adjustment_period = 0").fetchone()[0]
+        lh.set_period_closed(c, may, True)
+    with pytest.raises(PeriodClosedError):
+        void_directly(env, other, entry_date="2026-05-04")
+
+
+def test_chart_template_ar_and_ap_accounts_keep_open_items(fresh_company):
+    """R60 through the chart templates (accounts.seed_chart): AR and AP control accounts are marked."""
+    import modules.database as database
+    from modules.services import accounts, chart_templates
+    rows = chart_templates.load_template("construction")
+    conn = database.get_connection(fresh_company)
+    try:
+        accounts.seed_chart(conn, rows)
+        marked = {(r["control_type"], r["track_clearing_id"]) for r in conn.execute(
+            "SELECT control_type, track_clearing_id FROM account")}
+    finally:
+        conn.close()
+    assert ("AR", 1) in marked and ("AP", 1) in marked
+    assert all(tracked == (1 if control in ("AR", "AP") else 0) for control, tracked in marked)

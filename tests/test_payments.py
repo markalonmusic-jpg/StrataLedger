@@ -592,3 +592,93 @@ def test_a_refused_release_writes_nothing(pay):
     before = state(pay)
     refused(lambda: release(pay, ("payment", source)), "Void the payment")
     assert state(pay) == before
+
+
+# --- step 7 mutation check: one test per surviving mutant -----------------------------------------------------
+
+def test_a_void_credit_memo_without_an_entry_is_still_refused(pay):
+    """Status Void alone (a memo sent with no entry, then voided) refuses it; it is not taken for a draft."""
+    invoice = document(pay, "invoice")
+    with pay._company("PARENT") as c:
+        memo = lh.make_invoice(c, itype="Credit Memo", contact_id=pay.customer, lines=((1, 300),))
+        lh.send_invoice(c, memo)
+        c.execute("UPDATE invoice SET status = 'Void' WHERE invoice_id = ?", (memo,))
+    refused(lambda: allocate(pay, ("credit_memo", memo), ("invoice", invoice), 100), "voided")
+    assert allocations(pay) == []
+
+
+@pytest.mark.parametrize("applied", ["20260306", "2026-02-30"])
+def test_the_applied_date_must_be_a_real_dashed_date(pay, applied):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100, applied_date=applied), "a date like")
+
+
+def test_the_release_date_must_be_a_real_date(pay):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    allocate(pay, ("payment", source), ("invoice", invoice), 100)
+    refused(lambda: release(pay, ("payment", source), day="2026-02-30"), "a date like")
+
+
+def test_a_payment_with_no_direction_is_not_a_source(pay):
+    invoice = document(pay, "invoice")
+    with pay._company("PARENT") as c:
+        source = c.execute("INSERT INTO payment (contact_id, payment_date, amount_cents) VALUES (?, '2026-03-05', 500) "
+                           "RETURNING payment_id", (pay.customer,)).fetchone()[0]
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100), "Choose the payment or credit memo")
+
+
+def test_an_agent_is_refused_before_anything_is_looked_up(pay):
+    with pytest.raises(PermissionDeniedError):
+        allocate(pay, ("payment", 999999), ("invoice", 999999), 100, context=ctx(pay, "Agent"))
+
+
+def test_a_source_whose_side_changes_between_the_reads_is_refused(pay, monkeypatch):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    monkeypatch.setattr(payments, "_source_side", lambda conn, ref: "Purchase")
+    before = state(pay)
+    refused(lambda: allocate(pay, ("payment", source), ("invoice", invoice), 100), "changed while you were applying")
+    assert state(pay) == before
+
+
+def test_the_release_stamps_who_when_and_the_trimmed_reason(pay):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    allocate(pay, ("payment", source), ("invoice", invoice), 100)
+    release(pay, ("payment", source), reason="  Payment voided  ")
+    row = allocations(pay)[0]
+    assert (row["release_reason"], row["released_at"], row["released_by"]) == \
+        ("Payment voided", ctx_for(pay, "System").now, pay.user_id)
+
+
+def test_the_release_may_be_dated_the_same_day_as_the_application(pay):
+    invoice, source = document(pay, "invoice"), payment(pay)
+    allocate(pay, ("payment", source), ("invoice", invoice), 1000, applied_date="2026-03-10")
+    void_document_entry(pay, entry_of(pay, "payment", "payment_id", source), day="2026-03-10")
+    result = release(pay, ("payment", source), day="2026-03-10")
+    assert len(result["entries"]) == 1
+    assert pay.rows("PARENT", "SELECT is_posted FROM journal_entry WHERE entry_id = ?",
+                    (result["entries"][0],))[0]["is_posted"] == 1
+
+
+def test_clearing_lines_join_each_group_on_its_own_account(pay):
+    with pay._company("PARENT") as c:
+        pay.accts["ar2"] = lh.make_account(c, "1210", control_type="AR", track_clearing_id=1)
+    invoice = document(pay, "invoice", 300)                  # opened on the first AR account
+    with pay._company("PARENT") as c:
+        split = payments.clearing_lines(c, side="Sales", account_id=A(pay, "ar2"), contact_id=pay.customer,
+                                        amount_cents=500, allocations=[(invoice, 300)])
+    assert [line["account_id"] for line in split] == [A(pay, "ar"), A(pay, "ar2")]
+
+
+@pytest.mark.parametrize("kwargs, match", [
+    ({"side": "Other", "allocations": []}, "Sales or Purchase"),
+    ({"side": "Sales", "allocations": [("INVOICE", 0)]}, "positive"),
+    ({"side": "Sales", "allocations": [("INVOICE", -5)]}, "positive"),
+    ({"side": "Sales", "allocations": [(999999, 100)]}, "no open receivable line"),
+])
+def test_clearing_lines_check_their_inputs(pay, kwargs, match):
+    invoice = document(pay, "invoice", 300)
+    allocs = [(invoice if doc == "INVOICE" else doc, part) for doc, part in kwargs["allocations"]]
+    with pay._company("PARENT") as c:
+        with pytest.raises(ValidationError, match=match):
+            payments.clearing_lines(c, side=kwargs["side"], account_id=A(pay, "ar"), contact_id=pay.customer,
+                                    amount_cents=500, allocations=allocs)
