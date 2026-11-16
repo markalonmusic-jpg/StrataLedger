@@ -1,9 +1,35 @@
-# Next step: Phase 2.5 Step 7 (plan for the owner's approval)
+# Next step: the consolidated baseline update, then Phase 2.5 Step 7 (plans for the owner's approval)
 
-Written 2026-11-14, at the STOP after R55 was made final. Overwritten at each STOP (CLAUDE.md section 8).
-Status: **R55 is final and committed. Step 7 is planned below and not started. No Step 7 code is written.**
+Written 2026-11-14 at the STOP after R55; updated 2026-11-15 with the owner's architecture and design rulings
+(AQ1, AQ2, docs/design.md). Overwritten at each STOP (CLAUDE.md section 8).
+Status: **R55 is final and committed. The 2026-11-15 rulings are recorded in CLAUDE.md and docs/design.md
+(docs only). Neither the baseline update nor Step 7 is started; no code is written.**
 
-**State:** suite **2745 passed, 7 deselected, 5 xfailed**. The baseline did not change in this session, so no rebuild is needed.
+**State:** suite **2745 passed, 7 deselected, 5 xfailed**. The baseline did not change, so no rebuild is needed.
+
+## Order (owner, 2026-11-15; docs/roadmap.md "Target architecture and the consolidated baseline update")
+
+1. **One consolidated pre-release baseline update** of `migrations/001_company.sql` and `001_master.sql`.
+2. **Step 7** on the new baseline (plan below): `sequences.next_invoice_number` and `services/payments.py`
+   allocations, closing the 5 xfails.
+
+## Plan outline: the consolidated baseline update
+
+To be detailed into a column-by-column plan and approved before any edit.
+- Failing schema tests first, one test file per area (or the existing schema test file for that table).
+- Save the current baselines to `archive/baseline_pre_<tag>/` with a git tag, as earlier steps did.
+- One edit of both baselines, one rebuild (`python scripts/create_fresh_databases.py --apply`); the master and
+  company development files hold no real data.
+- Contents (docs/design.md section 10): `company_entity` and `journal_line.entity_id`; `journal_line.clearing_id`
+  and the open-item account marker; document versions and the `Lock documents after posting` setting;
+  `bank_statement_line` and its matches; pay run tables, `In pay run` and `contact.bank_payee_id`; service types,
+  stages and triggers; estimate signing with the signed PDF; 3-level cost codes; dimension depth; Step 7's
+  `payment_allocation` columns (part 3 below, including open questions 1 and 3).
+- Existing tests that change with it: the dimension depth tests (tests/test_database.py,
+  `MAX_DIMENSION_DEPTH = 3`) if the cap goes; the chain canonical form and its vectors
+  (tests/data/ledger_chain_vectors.json) if `clearing_id` and `entity_id` are sealed.
+- Needs the owner first: docs/design.md section 11 questions 1-4 and 7 (B9 vs `bank_payee_id`, `clearing_id`
+  and the chain, dimension depth, service types vs `pipeline_stage`, cost code levels).
 
 ## Done this session: R55 final (owner, 2026-11-14, Conversion added)
 
@@ -58,8 +84,8 @@ payment's entry already moved AR or AP; an allocation is the subledger link), so
 New module `services/payments.py` with `allocate(context, ...)` and `release_allocations(conn, context, ...)`
 (called by a payment void later). Shape per rule 10: validate, `authorize`, then the write transaction.
 
-**Baseline change (blocks every existing development database until it is rebuilt with
-`scripts/create_fresh_databases.py --apply`; the master and company files are empty today):**
+**Baseline change (made in the consolidated baseline update above, not as a separate edit; it blocks every
+existing development database until it is rebuilt with `scripts/create_fresh_databases.py --apply`):**
 `payment_allocation` gains
 - `applied_date TEXT NOT NULL` (B4, CB1: cash basis recognizes revenue on the date applied; the closed-period check
   uses it);
@@ -133,8 +159,9 @@ Checked against migrations/001_company.sql. "Later" names the step in docs/roadm
    `amount_cents >= 0`, and a $0.00 payment posts no entry), or record a credit-only application as allocation rows
    from the credit memo with their own date and show it on screen as a $0.00 payment (no CHECK change)?
    Recommendation: the second; one less record that posts nothing.
-2. **Which Pay screen is multi-vendor** (Pay Bills single-vendor vs a multi-vendor Pay Run). Not decided here.
-   Not needed for Step 7.
+2. **Which Pay screen is multi-vendor** (Pay Bills single-vendor vs a multi-vendor Pay Run). The 2026-11-15
+   design describes a two-step Pay Run across approved bills (docs/design.md section 6); confirm that this
+   answers it. Not needed for Step 7.
 3. **Releasing allocations.** Today the baseline lets a voided payment's allocation rows be deleted (logged). Keep
    that, or keep the rows and mark them released (who, when, why), so the history shows what was applied and
    undone? Recommendation: mark them released; corrections stay visible. Decides two or three columns in the

@@ -1,110 +1,179 @@
-# StrataLedger Design System & Look-and-Feel Specification (`docs/design.md`)
+# StrataLedger system and product design
 
-**Status:** DRAFT - to be reconciled with docs/CLAUDE_UI.md in Phase 3; CLAUDE_UI.md wins on conflicts  
-**Applies To:** `app_strata.pyw`, `config.py`, `modules/ui_components.py`, and all `modules/views_*.py` screens.  
-**Rulebook Alignment:** Enforces `docs/CLAUDE_UI.md` (zero raw hex codes in views, zero `tkinter.messagebox`, zero `ttk.Scrollbar`, and strict separation between UI widgets and `services/*.py`).  
-**Related Docs:** `docs/help_system_design.md` (the built-in help panel, `?` / F1, and the `page_key` every screen declares).
+Status: owner rulings of 2026-11-15, recorded here as the authoritative system and product design. CLAUDE.md
+holds the rules; this file holds the design they point to. What is BUILT is in the baseline
+(`migrations/001_company.sql`, `001_master.sql`) and the services; everything marked PLANNED is target design
+and is not in the baseline yet. Where this file and the baseline differ, the baseline describes the code as it
+is (CLAUDE.md section 5.3); section 10 lists the differences the consolidated pre-release baseline update
+closes. Screen rules stay in docs/CLAUDE_UI.md. The CustomTkinter visual spec that this file used to hold is
+archived as archive/design_drafts_2026-11/visual_spec_customtkinter.md.
 
----
-
-## 1. Visual Philosophy & Aesthetic Direction
-- **Identity:** Precision dark-slate financial & construction cockpit. Designed for high-density accounting, job costing, and Schedule of Values (SOV) workflows without visual fatigue.
-- **Depth Through Flat Elevation (No Shadows or Blur):** CustomTkinter does not support CSS drop shadows or glass blur. Create clear visual hierarchy strictly through **3 stepped dark-slate surface elevations** paired with crisp **`1px` hairline borders**:
-  1. **Canvas (`Theme.bg_color` = `#090D16`):** Deepest obsidian base for the main application window and modal backdrop.
-  2. **Chrome / Rail (`Theme.sidebar_bg` = `#0E1320`):** Fixed left navigation rail and right AI Copilot drawer.
-  3. **Elevated Card (`Theme.glass_panel` = `#131824`):** Content cards, numbered step sections, KPI tiles, data tables, and modals, framed by `Theme.glass_border` (`#242C3E`).
-  4. **Recessed Input (`Theme.input_bg` = `#0F131C`):** Form entries, dropdowns, code/detail boxes, and inactive segmented-control tracks.
+Decision codes: AQ1 and AQ2 (architecture, indexed in docs/decisions_2026-11-11.md). Earlier decisions that
+these rulings amend are named where they apply.
 
 ---
 
-## 2. Color System & Semantic Tokens (`config.Theme`)
+## 1. Architecture (AQ1, AQ2)
 
-Never hardcode hex colors inside views. Every color must come from `Theme`:
+**AQ1. Data tier.** The desktop edition is a single-machine app on SQLite: one master file and one file per
+standalone company (section 2), in `config.DATA_DIR`. The hosted edition runs on Azure with PostgreSQL. The
+same services run on both, which is why rule 15 (H1-H6) exists: no UI or OS imports in services, the clock and
+"today" from the context, files through `storage.py`, workflow rules in services rather than new triggers, and
+portable SQL. Moving a desktop company to the cloud follows CM1-CM3.
 
-| Role | Token | Hex | Usage Rules |
-| :--- | :--- | :--- | :--- |
-| **App Background** | `Theme.bg_color` | `#090D16` | Root window background, scrollbar tracks |
-| **Sidebar / Drawer** | `Theme.sidebar_bg` | `#0E1320` | Left navigation rail, right AI drawer, table headers |
-| **Card Surface** | `Theme.glass_panel` | `#131824` | Cards, step containers, modals, table rows |
-| **Input Surface** | `Theme.input_bg` | `#0F131C` | Text inputs, dropdowns, nested sub-cards |
-| **Hairline Border** | `Theme.glass_border` | `#242C3E` | `1px` borders on cards, dividers, inputs |
-| **Active Focus Ring** | `Theme.focus_border` | `#3B82F6` | `2px` border highlight when AI composer or input is focused |
-| **Primary Action** | `Theme.btn_primary` | `#2563EB` | One primary CTA per screen (`Save`, `Post`, `+ New`), active pills |
-| **Primary Hover** | `Theme.btn_primary_hover` | `#1D4ED8` | Hover state for primary buttons |
-| **Secondary Action** | `Theme.btn_secondary` | `#1E293B` | Cancel, Back, secondary shortcuts, user chat bubbles |
-| **Secondary Border** | `Theme.btn_secondary_border` | `#334155` | `1px` outline on secondary buttons |
-| **Destructive Fill** | `Theme.btn_danger_bg` | `#2A1519` | Muted dark rose fill for `Logout`, `Void`, `Make Inactive` |
-| **Destructive Text** | `Theme.btn_danger_text` | `#FCA5A5` | High-contrast rose text on destructive buttons |
-| **Primary Text** | `Theme.text_primary` | `#F8FAFC` | Page titles, card headings, input values, primary figures |
-| **Secondary Text** | `Theme.text_secondary` | `#94A3B8` | Subtitles, body copy, table headers, descriptions |
-| **Muted Text** | `Theme.text_muted` | `#64748B` | Uppercase field labels, breadcrumbs, timestamps, hints |
-| **Success / Posted** | `Theme.success_glow` | `#34D399` | Posted badges, connected status dot, positive deltas |
-| **Warning / Review** | `Theme.warning_glow` | `#F59E0B` | Stalled deals, imported batches needing review, near-limit caps |
-| **Error / Locked** | `Theme.error_glow` | `#F87171` | Validation errors, void badges, overdue items |
+**AQ2. Front end.** The UI moves from CustomTkinter to one HTML/CSS/JS front end used by both editions:
+- Desktop: `pywebview` hosts the page in a native window (WebView2 on Windows). A local Python API bridge
+  listens on `127.0.0.1` only and calls the services with a `ServiceContext` built for the signed-in user.
+- Hosted: the same front end is served to the browser; the hosted API calls the same services.
+- `modules/services/*` never import UI or HTTP framework modules. The bridge (or the hosted API) catches the
+  typed exceptions from `errors.py` and turns them into responses the page shows as one plain sentence
+  (rules 5 and 12; R27 wording).
+- Permissions stay in `authorize` (rule 10); the page only hides what the user cannot do.
+- Until a screen is rebuilt, the existing CustomTkinter screens keep working. CLAUDE_UI.md and section 0b
+  govern every screen in either technology.
 
-### Strict Color Discipline
-- **One Primary Button Per View:** Only the main forward action on a screen uses `Theme.btn_primary` (`#2563EB`). All supporting actions use `Theme.btn_secondary` (`#1E293B`) or ghost/transparent buttons.
-- **Status Never Relies on Color Alone:** Every semantic color must accompany an uppercase text pill (`POSTED · LOCKED`, `DRAFT`, `VOID`, `STALLED`, `ACTIVE`) or glyph.
+Open (section 11): how the bridge authenticates the page (a per-launch token), and how `config.Theme` (H6)
+becomes the front end's CSS tokens.
 
----
+## 2. Databases and entities
 
-## 3. Typography (`Inter` Type Scale)
+- `system_master.db`: users, the company registry, access. Never company accounting tables (rule 3).
+- One SQLite file per standalone company (BUILT; `company_registry.parent_company_id` already links a
+  subsidiary to its parent).
+- PLANNED: a parent's subsidiaries may instead live as entities inside the parent's file, for consolidated
+  reporting:
+  - `company_entity` (one row per legal entity in the file; the parent is an entity too);
+  - `journal_line.entity_id` (every line belongs to exactly one entity; a balanced entry balances per entity,
+    or posts through intercompany accounts);
+  - intercompany due-to / due-from accounts, and elimination entries for consolidated reports.
+- A company chooses separate files or entities-in-file per subsidiary. Consolidation across separate files is
+  a report over several files; inside one file it is a report over entities.
 
-- **Font Provisioning:** `modules/font_loader.py` ensures **`Inter`** is loaded at startup (downloading and registering privately via Windows GDI if absent, falling back cleanly to `Segoe UI` only if offline).
-- **Scale & Hierarchy:**
-  - **Page Title (`Theme.title_font`):** `24px Bold` (`#F8FAFC`) — Top of every screen and large KPI values.
-  - **Card / Modal Title (`Theme.semi_title_font`):** `16px Regular/Medium` (`#F8FAFC`) — Modal headers, empty-state titles, sidebar brand.
-  - **Section Heading (`Theme.section_font`):** `13px Bold` — Uppercase step titles (`CORPORATE ENTITY CLASSIFICATION`), primary button labels.
-  - **Body & Inputs (`Theme.body_font`):** `13px Regular` — Form entries, chat messages, table cells, descriptions.
-  - **Small / Secondary (`Theme.small_font`):** `12px Regular` — Subtitles, helper text, filter pills, status context lines.
-  - **Micro Labels & Breadcrumbs (`Theme.caption_font`):** `11px Regular/Bold` — Uppercase field labels (`CUSTOMER NAME`), top breadcrumbs (`PLATFORM > CUSTOMERS > NEW INTAKE`), semantic pill badges.
-- **Number Alignment:** All currency, quantity, and percentage columns in tables align **right** (`anchor="e"`), formatted with thousands separators and two decimals (`$1,250.00` — never raw cents).
+## 3. Ledger: append-only lines, clearing and open items
 
----
+- Posted `journal_line` rows are append-only: never updated, never deleted (integrity, section 0). Posted
+  entries are sealed into the keyed hash chain (BUILT, audit readiness design section 2).
+- PLANNED: a line-level `clearing_id` groups the lines that settle each other (an invoice's AR line with the
+  payment lines applied to it, a bill's AP line with its payments, a GRNI receipt with its bill). The chain
+  covers `clearing_id`, so a clearing cannot be changed silently.
+- PLANNED: per-account open-item tracking. An account marked open-item (AR, AP, GRNI, clearing and
+  undeposited accounts) shows each uncleared line or group with its open amount; a group is cleared when its
+  lines net to zero.
+- Payment allocation (Step 7, `payment_allocation`) is the subledger link between payments, credit memos and
+  documents; clearing is its ledger-side mirror.
 
-## 4. Layout Grid, Spacing & Geometry
+## 4. Posted documents versus posted journal entries
 
-- **Window Target:** Designed for `1280 × 720` minimum up to widescreen displays (`1920 × 1080+`).
-- **3-Column Shell (`app_strata.pyw`):**
-  1. **Left Navigation Rail (`width = 240px`):** Brand header -> collapsible tree groups (`Customers ▾`, `Revenue ▾`, `Operations ▾`, `Projects ▾`, `Accounting ▾`, `Imports ▾`, `Settings ▾`) -> active row tinted `#16233F` with `3px` left accent bar -> bottom user card + `Toggle Assistant`.
-  2. **Center Workspace (`flex = 1`):**
-     - Fixed `36px` top bar with dynamic uppercase breadcrumb on the left (`PLATFORM > SECTION > PAGE`) and persistent **Company & Period Context Pill** (`COMBUZZ · USD · 2026-11`) on the right.
-     - Scrollable or full-height content area (`padding = 24px–30px`).
-     - Forms cap at `max_width ~ 960px` (or centered step cards); dashboards and data tables stretch full width.
-  3. **Right AI Copilot Drawer (`width = 340px`, collapsible):** Minimal header (`Strata AI` + status dot + `+` New Chat + `⚙` Settings) -> scrollable chat feed (right-aligned `#1E293B` user bubbles, left-aligned `#131824` assistant cards) -> unified bottom composer card (`corner_radius = 12`) that highlights its border to `#3B82F6` (`2px`) on focus.
-- **Consistent Corner Radii & Spacing:**
-  - Cards & Modals: `Theme.radius_lg` (`12px`)
-  - Inputs, Buttons & Tables: `Theme.radius` (`8px`)
-  - Badges & Pills: `Theme.radius_sm` (`6px`)
-  - Internal Card Padding: `20px–24px`
-  - Field Vertical Gap: `12px`
+- **Journal entries** are strictly reverse-only. A posted entry is corrected with `Reverse…` (BUILT in Step 5:
+  `void_entry`, `reverse_entry`, a reason and a confirm), never edited.
+- **Documents** (invoice, credit memo, bill, vendor credit), PLANNED. While the control
+  `Lock documents after posting` is OFF (the default, section 0), a posted document can be edited:
+  - Saving the edit runs one atomic reverse-and-repost: the document's current entry is reversed and a new
+    entry posts under the same document number, in one write transaction. No `journal_line` row changes.
+  - Every save keeps a version (who, when, what changed); the document shows its version history and each
+    version links to its entries.
+  - Refused, with a one-sentence reason, when the period or area is locked (closed period, books closed
+    through, year closed), when the new total is below the amount already paid or applied, or when the
+    document sits in a submitted pay app or a pay run.
+  - The repost passes the same checks as a first post (approvals when on, controlled accounts, the chain).
+  - With the control ON, a posted document is changed only by a void or a credit memo / vendor credit.
+- Gapless registered series (Philippines add-on) keep the same number; the edit never consumes a new one.
+- This amends decision section 0 "Posted records are locked; corrections are reversals or new documents" for
+  documents only.
 
----
+## 5. Bank: one staging table and tick-off reconciliation
 
-## 5. Standardized Component Patterns (`modules/ui_components.py`)
+- PLANNED: one `bank_statement_line` table stages every bank and card line, from CSV / OFX / QFX files (B11)
+  and from feeds (B11a, BF1). A line is matched to payments, deposits or transfers, or creates one on match
+  (an Import-origin record, so a person reviews it, R18/R55).
+- Reconciliation is QBO-style: pick the account and statement ending balance and date, tick cleared items, and
+  finish when `Difference = $0.00`. A match can be opened and edited in place (change the matched items,
+  unmatch) without leaving the screen.
+- BUILT today: `bank_reconciliation` and `journal_line.recon_id`, with a completed reconciliation locked;
+  B10 allows undoing only the latest. The 2026-11-14 payments message adds `date_cleared` and reopen-with-reason
+  for Phase 4 (docs/next_step.md).
 
-Every screen must assemble its layout from these shared widgets rather than building custom one-off frames:
+## 6. Payables: two-step Pay Run and bank upload
 
-1. **`PageHeader`:** Left-aligned `24px` title + `13px` subtitle, paired with right-aligned cross-page shortcut buttons (secondary) and one `+ New ...` primary CTA button.
-2. **Master List Pattern (`DataTable` + Filter Bar):**
-   - Live search entry (`height = 38px`) + **Status Filter Pills defaulting to `Active`** (`Active` selected in `Theme.btn_primary`, `Inactive`, `All` in `Theme.btn_secondary`).
-   - Contextual row action bar (`Edit`, `New Related Document`, `Make Inactive / Reactivate`).
-   - `DataTable` (`rowheight = 36px`, uppercase `11px` headers, `#16233F` selection tint) paired with `Theme.create_scrollbar()`.
-3. **Multi-Step Forms (`StepSection`):** Numbered circular blue badges (`1`, `2`, `3`) beside uppercase section headers, 2-column balanced field grids, uppercase `11px` field labels above `38px` inputs, and a pinned `SummaryBar` footer with progress indicators.
-4. **Transaction & Billing Screens (`Banner` + Line Grid + `SummaryBar`):**
-   - Top semantic `Banner` (`DRAFT`, `POSTED · LOCKED`, `VOID`, `IMPORTED · NEEDS REVIEW`, `AI SUGGESTED`).
-   - Full-width line-item grid with inline auto-calculations (`Qty × Price`, `% ↔ $` linked inputs) and disabled `Post` button until balanced (`Difference == $0.00`).
-   - Collapsible **GL Posting Impact Preview** above the sticky `SummaryBar`.
-5. **Custom Dark Modals (`StrataModal`):**
-   - Native `tkinter.messagebox` is banned. All alerts and confirmations use `show_info`, `show_success`, `show_warning`, `show_error` (with collapsible technical details), and `ask_confirm` (using `destructive=True` for irreversible/void/inactive actions).
-6. **Slim Dark Scrollbars (`Theme.create_scrollbar` / `Theme.style_scrollable_frame`):**
-   - Every scrollable frame and table uses an `8px`-wide, `4px`-radius scrollbar (`#090D16` track, `#2A3446` thumb, `#3B82F6` hover).
+- PLANNED: a Pay Run selects approved bills (B8: approved when approval is on, off compliance hold) across
+  vendors.
+  1. **Approve the run.** Each bill on it is locked with the status `In pay run`: it cannot be edited (section
+     4). Nothing posts.
+  2. **Complete each line.** When a line is paid, the user enters `date_paid` and the payment reference; that
+     line posts its payment then.
+- Vendors carry a `bank_payee_id`: the payee's identifier as registered in the company's online banking. No
+  bank routing or account numbers are stored. A run exports a bank upload file listing `bank_payee_id`, amount
+  and reference for the lines being paid.
+- `date_paid` is the UI word; the baseline column is `payment.payment_date` (rename only if the owner asks).
 
----
+## 7. Sales and delivery: Service types and Estimate = Contract
 
-## 6. Interaction & UX Guardrails
+- PLANNED: **Service types.** Each service type (for example Remodel, Maintenance contract, SaaS onboarding)
+  defines its own sales stages and delivery stages, customizable per company, and automation triggers written
+  as `When <event> then <action>` (for example "When the estimate is signed, then create the job and its
+  budget"). Triggers run in services (H4, not SQL triggers) and are idempotent: an event handled twice does
+  the action once. The AI never fires money actions (section 0).
+- PLANNED: **Estimate = Contract.** The estimate is the contract; there is no separate contract record to keep
+  in step. A two-pane guided editor (the document on one side, guided steps and checks on the other) builds
+  it. Signing it requires uploading the signed PDF; signing locks the signed revision and creates the budget
+  and SOV (D9). Estimate Approval follows 1.6 and D9: OFF by default; when on, the Estimate approval chain
+  applies before signing.
 
-- **Cross-Page Shortcuts:** Every list and detail screen exposes direct buttons to its immediate next workflows (e.g., Customer List -> `+ New Customer`, `Import CSV`, `New Invoice`, `Make Inactive`; Project -> `+ New Pay App`, `Change Order`, `Enter Bill`).
-- **All 5 UI States Required:** Every view must cleanly handle **Empty** (`EmptyState` with CTA), **Loading**, **Editable** (inline field errors), **Locked** (`Banner` + read-only fields + `Reverse`/`Void`), and **Error** (`show_error` modal).
-- **Keyboard Ergonomics:** `Tab` navigates fields in logical left-to-right, top-to-bottom order; `Enter` submits modals/chat (`Shift+Enter` for newline); `Esc` dismisses open modals.
-- **No Emoji Clutter:** Rely on crisp `Inter` labels, semantic badges, and minimal geometric glyphs (`▸`, `▾`, `+`, `↑`, `●`) rather than multi-colored emojis.
+## 8. Construction and costing
+
+- **Cost codes, 3 levels** (PLANNED). Level names and which level a line posts to are decided with the
+  baseline update (section 11).
+- **Dimensions, unlimited depth** (PLANNED). Dimension values nest under parents; JD1 (a line's job sets its
+  dimensions) is unchanged.
+- **Receiving: Direct-to-site vs. Stock** (PLANNED; accounting in docs/po_ap_matching_design.md section 4).
+  Stock: Dr Inventory / Cr GRNI at receipt, the job costed later at the pull ticket. Direct-to-site: a
+  delivery ticket charges the job at receipt against GRNI. The bill clears GRNI (A5; section 3 open items).
+- **Pay applications, Owner and Sub** (PLANNED, v1.1). Owner pay apps bill the customer against the SOV, with
+  retainage receivable; Sub pay apps are the subcontractor's applications against a subcontract, with
+  retainage payable. A document in a submitted pay app cannot be edited (section 4). Earlier draft:
+  archive/design_drafts_2026-11/pay_applications_design.md.
+
+## 9. Controls these rulings add (section 0)
+
+| Control | Default |
+|---|---|
+| `Lock documents after posting` | OFF |
+| Estimate Approval (with every other per-document approval toggle) | OFF |
+
+Each is listed on Company Settings > Controls and every change is audit-logged.
+
+## 10. Baseline today versus this design
+
+The consolidated pre-release baseline update (docs/roadmap.md, docs/next_step.md) adds these, with failing tests
+first, in one edit of `001_company.sql` and `001_master.sql` and one rebuild:
+
+| Design | Baseline today |
+|---|---|
+| `company_entity`, `journal_line.entity_id`, intercompany and elimination support | Not there; one company per file |
+| `journal_line.clearing_id`, open-item account marker | Not there; `journal_line.recon_id` only |
+| Document versions for reverse-and-repost; `Lock documents after posting` setting | Not there |
+| `bank_statement_line` and match records | Not there (already a Phase 4 gap) |
+| Pay run tables; `In pay run` status; `contact.bank_payee_id` | Not there (`invoice.status` has no pay-run state) |
+| Service types, their stages and triggers | Not there; `pipeline_stage` exists (D7) |
+| Estimate signing with the signed PDF | Not there |
+| 3-level cost codes | `cost_code` is flat (`code`, `name`, `cost_type_label`, `account_id`) |
+| Unlimited-depth dimensions | `dimension_value.parent_value_id` exists, capped at `database.MAX_DIMENSION_DEPTH = 3` (tested in tests/test_database.py) |
+| Step 7 `payment_allocation` columns (`applied_date`, `credit_memo_id`, who and when) | Planned in docs/next_step.md |
+
+## 11. Open questions for the owner
+
+1. **B9 vs `bank_payee_id`.** B9 promises a NACHA ACH export, which needs the payee's routing and account
+   numbers. This design stores none. Does the bank upload replace NACHA (B9 amended), or does NACHA stay as a
+   later option with its own stored numbers?
+2. **`clearing_id` and the chain.** Posted lines are append-only and sealed, but clearing happens after the
+   cleared line posted. Is the id fixed at posting (the clearing entry's lines carry it and name the open item
+   they settle) or kept in a separate append-only clearing record that the chain also seals? This decides the
+   column's shape in the baseline update.
+3. **Dimension depth.** Unlimited depth means removing the cap of 3 and its tests, or keeping a high safety cap
+   (for example 10) for the recursive checks?
+4. **Service types and `pipeline_stage`.** Do service type stages replace `pipeline_stage` (D7's
+   `allows_costs` / `allows_billing` carried over), or sit beside it?
+5. **Bridge security and theme tokens** (section 1).
+6. **Pay Run** answers next_step open question 2 (multi-vendor Pay Run) if the owner confirms.
+7. **Cost code levels.** The names of the three levels, and whether lines may post to any level or only the
+   lowest. Today `cost_code` is flat.

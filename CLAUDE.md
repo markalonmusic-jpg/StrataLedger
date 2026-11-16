@@ -1,10 +1,11 @@
 # StrataLedger (Accounting LibreBase) - project rules for Claude Code
 
-Desktop accounting app for Windows: Python 3.11, CustomTkinter, SQLite. Subscription-free, local data. A
-hosted version (FastAPI + PostgreSQL) comes later, so services stay portable (rule 15).
+Desktop accounting app for Windows: Python 3.11, SQLite, CustomTkinter today (moving to an HTML front end,
+AQ2). Subscription-free, local data. A hosted version (PostgreSQL on Azure, AQ1) comes later, so services stay
+portable (rule 15). The system and product design is docs/design.md.
 
 This file holds what every session needs: the rules, the file map and where the project stands. Keep it
-under 200 lines. Dated history goes in docs/status_log.md, plans in docs/roadmap.md, design decisions in
+to about 210 lines. Dated history goes in docs/status_log.md, plans in docs/roadmap.md, design decisions in
 docs/design_decisions.md and docs/decisions_2026-11-11.md. Code comments and tests cite the section and
 rule numbers below, so keep the numbering.
 
@@ -20,11 +21,11 @@ Commands (from the repo root):
 
 StrataLedger defaults to QuickBooks-level flexibility for a small business; a company switches on stronger
 controls as it grows. It is not a NetSuite clone. Source: docs/decisions_2026-11-11.md section 0, which wins
-over any design doc.
+over any design doc, as amended by the owner's rulings of 2026-11-15 (this file and docs/design.md).
 
 **Integrity rules: always on, never configurable.**
 - Integer cents; balanced double entry checked in the posting transaction.
-- Posted records are locked; corrections are reversals or new documents.
+- Posted `journal_line` rows are append-only; posted journal entries are reverse-only (documents: rule 8).
 - The audit log records every change and cannot be edited or deleted.
 - Nothing posts into a closed period (closing periods is optional).
 - Registered invoice series (Philippines add-on) stay gapless.
@@ -32,9 +33,10 @@ over any design doc.
 - Agent-origin entries always need a human approval; import-origin batches always need one human review.
 
 **Controls: configurable, OFF or permissive by default**, switched on in Company Settings > Controls by an
-Admin or the Master, every change audit-logged: separation of duties, approval per document type, manual
-entries to controlled accounts, PO matching and tolerances, compliance holds, close-checklist blocks,
-project scope, approval limits and chains, a second approver for imports.
+Admin or the Master, every change audit-logged: separation of duties, approval per document type (Estimate
+Approval included; every approval toggle starts OFF), `Lock documents after posting`, manual entries to
+controlled accounts, PO matching and tolerances, compliance holds, close-checklist blocks, project scope,
+approval limits and chains, a second approver for imports.
 
 Rule for new features: a check that could reasonably be optional is a setting with a permissive default,
 listed on the Controls page and logged. When unsure whether something is integrity or control, ask.
@@ -75,8 +77,10 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
   developer tools.
 - `docs/` - design docs. Read the one for an area before touching it; docs/file_map.md lists each with its
   build status and has the longer notes on individual modules.
-- `archive/` - old baselines and prompts. Do not read, search or copy from it unless the task names it;
-  never apply anything there.
+- `archive/` - old baselines and prompts. Do not read, search or copy from it unless the task names it or
+  docs/roadmap.md or the decisions file cites a file in `archive/design_drafts_2026-11/`; never apply it.
+- UI (AQ2): CustomTkinter screens move to one HTML/CSS/JS front end in `pywebview` (WebView2) over a local
+  `127.0.0.1` Python API; hosted serves the same front end. Services never import UI or HTTP frameworks.
 - `.claude/agents/` - subagents. `.claude/rules/` - rules that load only for matching files.
 - `.db` files, `fonts/`, `Backups/` and `Logs/` are not tracked by git.
 
@@ -87,16 +91,21 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
 2. **Balanced double entry.** Posting checks `SUM(debit_cents) == SUM(credit_cents)` in the posting
    transaction. Unbalanced drafts may be saved.
 3. **Two kinds of database.** `system_master.db` (users, company registry, access) and one isolated file
-   per company. Never put company accounting tables in the master. Services reach the open company through
-   the `ServiceContext`.
+   per standalone company; a parent's subsidiaries may be entities in the parent's file (`company_entity`,
+   `journal_line.entity_id`, intercompany accounts, eliminations) for consolidation (planned). Never put
+   company accounting tables in the master. Services reach the open company through the `ServiceContext`.
 4. **Foreign keys on** for every connection.
 5. **Separation of concerns.** `database.py` and services never show dialogs. They raise typed exceptions;
-   the UI catches and displays them.
+   the UI (with AQ2, through the local API bridge) catches and displays them.
 6. **Security.** Never commit plaintext credentials or tokens. Passwords: rule 13.
 7. **All writes go through `modules/services/`.** The UI and the AI agent never run SQL writes.
    `ledger.py` is the only writer of the journal tables. The agent's own connection will be read-only
    (Phase 6); today no agent code exists, only `authorize`'s `AGENT_ALLOWED` allow-list.
-8. **Posted records are locked.** Corrections are reversing entries, never edits or deletes.
+8. **Posted records are locked.** Posted `journal_line` rows are never edited or deleted; a posted journal
+   entry is corrected only by a reversal (`Reverse…`). A posted invoice, credit memo, bill or vendor credit
+   may be edited while `Lock documents after posting` is OFF (default): one transaction reverses and reposts
+   it under the same number, with version history; refused if the period or area is locked, the total drops
+   below the amount paid, or it is in a submitted pay app or pay run (docs/design.md section 4; planned).
 9. **Never delete or rewrite a database file without asking.** Back up a file that holds real data before
    any schema change (section 5).
 10. **Every service that writes, or reads protected data, calls `authorize(context, permission, project_id)`
@@ -138,6 +147,9 @@ User ids in a company file are plain integers (the user table is in the master; 
 3. `docs/accounting_schema.txt` is a planning reference; its names may differ from the baseline. Where a
    doc and the baseline differ, the baseline wins. Do not change either to match the other without asking;
    report the difference.
+4. **Domain summary (planned 2026-11-15; docs/design.md; not in the baseline):** vendor `bank_payee_id` (no
+   bank numbers stored); one `bank_statement_line` staging and QBO-style tick-off reconciliation (Difference =
+   $0.00, matches edited in place); `Service types` (custom stages, `When … then …` triggers); Estimate = Contract.
 
 ## 6. Design decisions already made
 
@@ -151,13 +163,12 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-14):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1, 2, 1b, 3, 3b, 1c (keystore
-KS1-KS11; the service can post, no posting screen yet), 1d (key-lost checkpoint, replacing a lost installation
-key, KS12-KS21), 4 (approvals in posting, R15-R26; owner follow-ups R27-R39), 5 (reversals and automatic
-reversals, R40-R48; R48 final) and 6 (rounding and `create_document_entry`, R49-R55; R55 final, Conversion added). Design
-batch accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1; gaps placed by step in docs/roadmap.md). Next: step 7
-(the five xfails and payment allocation; plan in docs/next_step.md, waiting for approval), then 2.7, 2.8
-(PW1-PW11), Phase 3.
+**Where we are (2026-11-15):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1-6: chain and verify,
+keystore and key-lost (KS1-KS21; the service can post, no posting screen yet), approvals in posting (R15-R39),
+reversals (R40-R48), rounding and `create_document_entry` (R49-R55); details in docs/status_log.md. Design batch
+accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15. Next: one
+consolidated pre-release baseline update, then step 7 (the five xfails and payment allocation; docs/next_step.md,
+waiting for approval), then 2.7, 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.

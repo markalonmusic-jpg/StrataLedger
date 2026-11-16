@@ -95,7 +95,9 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     `as_system`/`as_import` and a static caller test; `create_entry` takes manual sources only; a 1-cent Import,
     Payroll or Conversion entry gets a flagged rounding line when saved, 2 cents or more is refused when saved;
     posting checks every rounding line again.
-    Then step 7. Step 1c landed before any screen can post; 2.5 is not done until step 7 is.
+    Next (owner, 2026-11-15): **the consolidated pre-release baseline update** (below, "Target architecture
+    and the consolidated baseline update"), then step 7. Step 1c landed before any screen can post; 2.5 is not
+    done until step 7 is.
     Accepted until step 2.8: the Master can change the password without the recovery code
     (`auth.change_password`).
   - **2.6 Customer and vendor codes (done):** `customer_number` and
@@ -300,6 +302,28 @@ Planned schema work, in build order (names only):
 - At the first release the baseline is frozen and the pre-release hash guard
   is replaced by versioned migrations (002 and up).
 
+**Target architecture and the consolidated baseline update (owner, 2026-11-15; docs/design.md).**
+- AQ1: the desktop edition is single-machine SQLite (master file plus one file per standalone company, or a
+  parent file holding its subsidiaries as entities); the hosted edition is PostgreSQL on Azure, running the
+  same services (rule 15).
+- AQ2: one HTML/CSS/JS front end. On the desktop `pywebview` (WebView2) shows it over a local `127.0.0.1`
+  Python API bridge; the hosted edition serves the same pages. Services never import UI or HTTP frameworks.
+  Screens move from CustomTkinter as Phase 3 rebuilds them; the bridge, its sign-in token and the theme tokens
+  are designed with the first rebuilt screen (docs/design.md section 11, question 5).
+- Order: (1) one consolidated pre-release update of `001_company.sql` and `001_master.sql`, with failing schema
+  tests first, the previous baselines saved to `archive/` with a tag, and one rebuild of the development
+  databases; (2) Phase 2.5 Step 7 on the new baseline: `sequences.next_invoice_number` and
+  `services/payments.py` allocations, closing the 5 remaining xfails (docs/next_step.md).
+- The update's contents (docs/design.md section 10): `company_entity` and `journal_line.entity_id`;
+  `journal_line.clearing_id` (covered by the ledger chain) and the open-item account marker; document versions
+  and the `Lock documents after posting` setting; `bank_statement_line` and its matches; pay run tables, the
+  `In pay run` status and `contact.bank_payee_id`; service types, stages and triggers; estimate signing with the
+  signed PDF; 3-level cost codes; dimension depth; and Step 7's `payment_allocation` columns. Items here that
+  the gap list below places in a later phase (bank feeds tables, B13) move into this update only where the plan
+  for it says so; the plan is written to docs/next_step.md and approved before the edit.
+- Open questions that shape the columns: docs/design.md section 11 (B9 vs `bank_payee_id`, `clearing_id` and the
+  chain, dimension depth, service types vs `pipeline_stage`, cost code levels).
+
 **Baseline gaps from the 2026-11-13 design batch, by the step that builds them** (owner, 2026-11-13). Each is
 added with failing tests first when its step is built; none is in the baseline yet. Sources: CB1/CF1 and JD1
 (backlog 6, Phase 4 notes above), archive/design_drafts_2026-11/cloud_migration_design.md section 9, archive/design_drafts_2026-11/bank_feeds_design.md section 14,
@@ -309,8 +333,8 @@ archive/design_drafts_2026-11/export_design.md section 13.
   `auto_reverse_date` and its own `reversal_reason = 'Accrual reversal'` and `reverses_entry_id`, and a reversal
   keeps its original's `source`, so the cash view can drop an accrual together with its reversal.
 - **Step 6 (rounding):** none (built with no baseline change).
-- **Step 7 (the remaining xfails, including payment allocation and one allocation target):** `payment_allocation`
-  gets its own apply date (CB1 recognizes cash on the date a payment is applied, B4) and room for a credit-memo
+- **Step 7 (the remaining xfails, including payment allocation and one allocation target; its columns go into
+  the consolidated baseline update above):** `payment_allocation` gets its own apply date (CB1 recognizes cash on the date a payment is applied, B4) and room for a credit-memo
   target (B6). The `allocation_one_target` CHECK (invoice or deferral) is the one Step 7 already tests, so the
   target list is decided there; the loan target waits for the loans step.
 - **Step 2.8 (password recovery, PW1-PW11):** `app_user.email` required (not empty), valid in form and unique
@@ -362,3 +386,6 @@ archive/design_drafts_2026-11/export_design.md section 13.
 7. CRM / project design open questions: see docs/crm_pm_design.md section
    12 (optional case fields, linear stages, warranty length, pausing cases,
    prospect in the wizard, closing checklist, desktop to hosted sync).
+8. The 2026-11-15 design's open questions: docs/design.md section 11 (B9 NACHA vs
+   `bank_payee_id`, `clearing_id` and the chain, dimension depth, service types vs
+   `pipeline_stage`, bridge security and theme tokens, cost code levels).

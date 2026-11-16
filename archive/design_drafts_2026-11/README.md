@@ -13,3 +13,6 @@ others) stay in docs/decisions_2026-11-11.md, which wins over these files. Paths
 - loans_design.md: loans payable. NOT BUILT.
 - pay_applications_design.md: pay applications and retainage receivable (v1.1). NOT BUILT.
 - philippines_tax_design.md: Philippines tax add-on. NOT BUILT; needs a Philippine tax professional's review.
+- visual_spec_customtkinter.md: the CustomTkinter look-and-feel spec that was docs/design.md until 2026-11-15,
+  when docs/design.md became the system and product design and AQ2 moved the UI to an HTML front end.
+  docs/CLAUDE_UI.md governs screens; `config.Theme` still holds the tokens it lists.

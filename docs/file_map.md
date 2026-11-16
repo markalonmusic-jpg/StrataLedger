@@ -44,7 +44,8 @@ in code (`tests/test_config_paths.py` fails on one).
 - `archive/instructions/` - superseded Claude Code prompts and addenda. History only.
 - `archive/design_drafts_2026-11/` - design drafts for unbuilt areas that nothing but other docs cited (moved
   2026-11-15): AI Copilot, bank feeds, cloud migration, export, inventory and fixed assets, loans, pay
-  applications, Philippines tax. Its README lists them; move one back to `docs/` when its step starts.
+  applications, Philippines tax; and the old CustomTkinter visual spec (from `docs/design.md`, 2026-11-15).
+  Its README lists them; move one back to `docs/` when its step starts.
 - `accounting_librebase.db` - reference snapshot of the company baseline,
   generated on demand (see section 5). Not read at runtime; not kept in git.
 - `system_master.db` - global authentication and routing database
@@ -90,8 +91,14 @@ in code (`tests/test_config_paths.py` fails on one).
 - `docs/next_step.md` - the next step's plan, open questions, counts and HEAD, overwritten at each STOP; a new
   session reads it first (CLAUDE.md section 8).
 - `docs/decisions_2026-11-11.md` - the owner's decisions by code, with an index of every code at the top (find
-  one by searching its code). `docs/design.md` -
-  DRAFT visual spec (docs/CLAUDE_UI.md wins). `docs/role_templates.md`, `docs/csv_import_design.md`.
+  one by searching its code). `docs/role_templates.md`, `docs/csv_import_design.md`.
+- `docs/design.md` - the authoritative system and product design (owner rulings, 2026-11-15; AQ1, AQ2):
+  databases and in-file entities, append-only lines and `clearing_id`, editable posted documents vs reverse-only
+  journal entries, `bank_statement_line` and tick-off reconciliation, the two-step Pay Run and `bank_payee_id`,
+  service types, Estimate = Contract, cost codes, dimensions, receiving, pay apps, the `pywebview` front end.
+  Mostly PLANNED; section 10 lists what the baseline lacks, section 11 the open questions. Its earlier
+  CustomTkinter visual spec is archive/design_drafts_2026-11/visual_spec_customtkinter.md (CLAUDE_UI.md governs
+  screens).
 - `modules/services/` - the service layer (rules 7, 10, 11, 15): every write and every protected read.
   `tx.py` (the write transaction and read connection; a database error in a write is logged and raised as
   `SaveFailedError`, R35), `context.py` (`ServiceContext`), `authz.py`

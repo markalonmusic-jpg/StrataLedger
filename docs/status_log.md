@@ -697,3 +697,15 @@ Rotation and key-lost text as it stood before the trim:
   baselines, agents or rules stay in docs/. Empty stubs modules/_init_.py and app_stratacrm.py removed.
   docs/file_map.md updated (also lists archive/baseline_pre_2_5_1d, baseline_pre_2_5_4, instructions). Suite 2745
   passed, 7 deselected, 5 xfailed.
+
+- 2026-11-15: Owner architecture and design rulings recorded (docs only; no code, test or baseline change).
+  CLAUDE.md: posted journal lines append-only and journal entries reverse-only; posted invoices, credit memos,
+  bills and vendor credits editable by reverse-and-repost while `Lock documents after posting` is OFF (default);
+  every approval toggle, Estimate Approval included, OFF by default; subsidiaries may be entities in the parent's
+  file (rule 3); the HTML front end over `pywebview` and a local API (AQ2; rule 5, section 2); a planned domain
+  summary (section 5.4); reading `archive/design_drafts_2026-11/` allowed when roadmap or decisions cite it.
+  docs/design.md rewritten as the system and product design (old visual spec archived); AQ1/AQ2 index rows in
+  docs/decisions_2026-11-11.md; roadmap and next_step: the consolidated pre-release baseline update, then Step 7.
+  Open questions in docs/design.md section 11 (B9 NACHA vs `bank_payee_id`, `clearing_id` and the chain,
+  dimension depth cap of 3, service types vs `pipeline_stage`, cost code levels). Suite 2745 passed,
+  7 deselected, 5 xfailed.

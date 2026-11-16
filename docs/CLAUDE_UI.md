@@ -2,8 +2,9 @@
 
 Read this before creating or changing any view in `modules/`. It applies to
 every screen. The root CLAUDE.md still governs: if this file and the root
-CLAUDE.md disagree, the root CLAUDE.md wins. docs/design.md is a DRAFT with
-more visual detail; where it and this file disagree, this file wins.
+CLAUDE.md disagree, the root CLAUDE.md wins. docs/design.md is the system and
+product design (since 2026-11-15); on screens, this file wins. The earlier
+visual draft is archive/design_drafts_2026-11/visual_spec_customtkinter.md.
 
 Source: three mockups (Command Center, Customer Intake Form, New Transaction
 Posting). The mockups are the VISUAL DIRECTION only. They contain mock data

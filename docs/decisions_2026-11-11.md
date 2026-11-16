@@ -299,6 +299,10 @@ CM. Moving a company to the cloud (same section; archive/design_drafts_2026-11/c
 EX. Export (same section; archive/design_drafts_2026-11/export_design.md):
 - EX1 Export design questions 1-8 answered as proposed
 
+AQ. Architecture (owner, 2026-11-15; text in docs/design.md section 1, not in this file):
+- AQ1 Single-machine SQLite desktop; PostgreSQL on Azure for the hosted edition, same services
+- AQ2 One HTML/CSS/JS front end: pywebview (WebView2) over a local 127.0.0.1 Python API on desktop
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
