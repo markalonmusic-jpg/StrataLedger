@@ -94,3 +94,13 @@ def test_scopes_and_template_sets():
     assert rt.roles_for_template("construction") == list(rt.ROLES)
     assert set(rt.roles_for_template("general")) == set(rt.ROLES) - {
         "Project Manager", "General Manager", "Warehouse", "Foreman"}
+
+
+def test_every_sensitive_code_has_a_row_in_section_3():
+    _, body = _table(_sections()["3. Sensitive permissions, per role (Yes = granted)"])
+    listed = {row[0].strip("`") for row in body}
+    assert listed == {c for c, perm in permissions.PERMISSIONS.items() if perm.is_sensitive}
+
+
+def test_admin_holds_every_code_as_the_doc_says():
+    assert f"Admin is fixed and holds all {len(permissions.PERMISSIONS)} codes" in DOC.read_text(encoding="utf-8")

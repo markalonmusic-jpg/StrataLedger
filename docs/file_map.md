@@ -116,13 +116,18 @@ in code (`tests/test_config_paths.py` fails on one).
   from the entry after it and reports the earlier range as unverified (`unverified_note`).
   `installation_keys.py` (Step 1d) replaces a lost installation key (Master, typed `NEW LEDGER KEY`) and starts a
   key-lost epoch in every company; `remaining_companies` / `finish_remaining_companies` complete any left behind.
+  `hooks.py` and `addons.py` (Phase 2.7 STOP B, HA1-HA7): `ledger._seal_and_post` fires `entry.posted` (and
+  `entry.voided` for a Void) through `hooks.fire`, inside the posting transaction; only enabled add-ons' handlers
+  run, under `database.addon_write_guard`. `addons.py` is the only importer of add-on code, from
+  `RESOURCE_DIR/addons/<key>/` (`addon.json`, `addon.py`, `migrations/<key>_NNN.sql`); `addon.manage` gates it.
 - `tests/` - pytest suite. `scripts/` and `tools/` - developer tools. `.claude/agents/` - subagents.
 - `modules/` - screens and the database layer. LEGACY screens (the files in `CONNECT_ALLOW_LIST` in
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,
   `views_user_profile.py`, and the launcher in `app_strata.pyw`) still run their own SQL; Phase 3 rewrites
   them. Do not copy their patterns. The pattern to copy is `views_first_run.py` + `first_run_model.py`.
   - `database.py` - connections (`PRAGMA foreign_keys=ON`), the baseline
-    runner and the pre-release hash guard.
+    runner and the pre-release hash guard; the add-on handler write guard (SQLite authorizer, HA2) and the
+    add-on migration runner (`apply_addon_migrations`, HA4, HA6).
   - `views_dashboard.py` - Customers Command Center / Flight Deck.
   - `views_registry.py` - Customer Master List with live SQL search filtering.
   - `views_wizard.py` - Customer Intake & Edit form (Construction and B2B SaaS

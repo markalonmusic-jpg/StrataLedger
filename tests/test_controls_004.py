@@ -546,8 +546,15 @@ def test_no_fx_before_phase_4(conn):
 def test_addon_tables(conn):
     conn.execute("INSERT INTO company_addon (addon_key, enabled, enabled_at, enabled_by, addon_version) "
                  "VALUES ('ph_tax', 1, '2026-03-01 00:00:00', 1, '0.1')")
-    conn.execute("INSERT INTO addon_schema_version (addon_key, version) VALUES ('ph_tax', 1)")
-    assert rejects(conn, "INSERT INTO addon_schema_version (addon_key, version) VALUES ('ph_tax', 1)")
+    digest = "a" * 64
+    assert rejects(conn, "INSERT INTO addon_schema_version (addon_key, version) VALUES ('ph_tax', 1)")   # HA6
+    assert rejects(conn, "INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES ('ph_tax', 1, 'abc')")
+    for bad in ("G" * 64, "A" * 64, "a" * 63 + " "):          # lower-case hex only, like hashlib's hexdigest
+        assert rejects(conn, "INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES ('ph_tax', 1, ?)",
+                       (bad,))
+    conn.execute("INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES ('ph_tax', 1, ?)", (digest,))
+    assert rejects(conn, "INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES ('ph_tax', 1, ?)",
+                   (digest,))
     assert rejects(conn, "UPDATE company_addon SET enabled = 2")
     for table in ("company_addon", "addon_schema_version"):
         assert conn.execute(f"SELECT COUNT(*) FROM pragma_foreign_key_list('{table}')").fetchone()[0] == 0

@@ -329,13 +329,15 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - MR5 One person fills at most one slot of an approval chain, even through two roles
 - MR6 allocate reads the source's side, then authorizes that side; neither right: one sentence (LOW 2)
 - MR7 CLAUDE.md stays at 200 lines or fewer, trimmed at each STOP (amends the 210-line budget)
-- MR8 grant_access and set_role replace a user's role rows in that company; deny_access clears them (review)
+- MR8 grant_access and set_role replace a user's role rows; deny_access clears them; removal confirmed first (owner)
+- MR9 allocate: one sentence for a missing id and an other-side id for a one-right holder (LOW-A)
 - HA1 Hook events entry.posted and entry.voided fired from ledger; stage.entered and stage.left declared only
 - HA2 Hook handlers write only their add-on's <key>_ tables (SQLite authorizer); an error rolls back the caller
 - HA3 Add-ons load only from RESOURCE_DIR/addons, never from DATA_DIR
 - HA4 Add-on migrations refuse objects outside their prefix, triggers and indexes on other tables, PRAGMA, ATTACH
 - HA5 Permission addon.manage, Admin and Master only
 - HA6 addon_schema_version.sha256, checked like the baseline hash
+- HA7 Add-on keys, handler handle, broken add-ons at open (STOP B build details)
 - FR1 Field Registry is the custom fields service: planned at STOP B, built only after approval
 
 ---
@@ -1538,10 +1540,20 @@ The owner's answers to the Phase 2.7 plan.
   nor `payment.make` is refused with one sentence whether the source exists or not and on either side (an inactive
   user or one without access gets that sentence instead). No `has_permission` alias: `authz.is_allowed` is used.
 - MR7 CLAUDE.md is trimmed to 200 lines or fewer at each STOP.
-- MR8 (step-reviewer fix, for the owner to confirm) Until a service manages several roles, `users.grant_access` and
-  `users.set_role` replace the user's `user_company_role` rows in that company with the one role they set, and
-  `users.deny_access` clears them, in the same transaction. Otherwise a Deny would leave an Admin role row that a
-  later grant by a non-Master revives, and a single-role change would silently do nothing.
+- MR8 (step-reviewer fix; confirmed by the owner 2026-11-17, with the addition below) Until a service manages several
+  roles, `users.grant_access` and `users.set_role` replace the user's `user_company_role` rows in that company with
+  the one role they set, and `users.deny_access` clears them, in the same transaction. Otherwise a Deny would leave
+  an Admin role row that a later grant by a non-Master revives, and a single-role change would silently do nothing.
+  Addition (owner): before rows are removed, the service names them so the screen can show "This removes: <roles>"
+  first. All three services take `confirm_removal`; without it, a change that would remove a role row other than
+  the role being set raises `ConfirmationRequiredError` (`removed_roles`; nothing saved), and every other refusal
+  (the Admin guards, the last-Admin check) comes first. They return `{'removed_roles'}`. The audit log records each
+  removed row (the `user_company_role` delete trigger, with the actor).
+- MR9 (owner, 2026-11-17; closes LOW-A of the STOP A secrets audit) In `payments.allocate`, someone holding exactly
+  one of `payment.receive` and `payment.make` gets one sentence, one error type and one denial log row (the
+  permission they lack, no record id) for a missing payment or credit memo and for one on the side they have no
+  right to (`payments.ONE_SIDE_ONLY`, keyed by the right they hold), so ids cannot be probed. Someone holding both
+  is still told the source is missing.
 - HA1 Hook events: `entry.posted` and `entry.voided`, fired from `ledger`; `stage.entered` and `stage.left` are
   declared only. No `stage_trigger_run` writer until the CRM step.
 - HA2 A hook handler may write only its own add-on's `<key>_` tables, enforced in `modules/database.py` with the
@@ -1553,6 +1565,14 @@ The owner's answers to the Phase 2.7 plan.
 - HA5 A new permission `addon.manage`, held by Admin and the Master only; the role templates are updated.
 - HA6 `addon_schema_version` gets a `sha256` column, checked like the baseline runner's hash (a baseline edit:
   failing tests first, then the empty development databases are rebuilt).
+- HA7 (STOP B build details) An add-on key is 2-31 lower-case letters and digits; a key whose `<key>_` prefix
+  matches a core table (read from the baseline) is refused, and `sqlite` is reserved. A handler gets
+  `handler(db, payload)`: `db.execute` returns rows as dicts and closes when the handler returns; the payload is
+  read-only. The authorizer is installed per handler (installing it expires earlier prepared statements, so a
+  cached core statement is checked again) and also checks trigger bodies. A migration's trigger whose body writes a
+  table outside the prefix is refused. Company open applies pending migrations of enabled add-ons; one that fails
+  is logged and its hooks refuse posting with a sentence, so the company still opens and an Admin can disable it.
+  An enabled add-on missing from the computer refuses posting the same way. `addon.manage` is sensitive.
 - FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
   following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
   stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built

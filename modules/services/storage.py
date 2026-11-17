@@ -53,6 +53,21 @@ def list_resources(relative_dir, suffix=""):
                   if name.lower().endswith(suffix.lower()) and os.path.isfile(os.path.join(path, name)))
 
 
+def list_resource_dirs(relative_dir):
+    """Sorted folder names in a resource folder (empty if it does not exist); each stays inside it."""
+    path = resource_path(relative_dir)
+    if not os.path.isdir(path):
+        return []
+    names = []
+    for name in sorted(os.listdir(path)):
+        try:
+            if os.path.isdir(resource_path(f"{relative_dir}/{name}")):     # refuses a link that leaves the folder
+                names.append(name)
+        except ValidationError:
+            continue
+    return names
+
+
 # --- Writable data -----------------------------------------------------------------------------
 
 def data_path(relative):

@@ -334,7 +334,8 @@ def test_the_last_admin_through_a_role_row_cannot_be_denied(world, org):
     world.grant(org["admin2"], "PARENT", "Viewer")
     world.add_roles(org["admin2"], "PARENT", "Admin")
     users.set_role(org["s"]("master"), org["admin"], org["cid"]("PARENT"), "Viewer")
-    with pytest.raises(ValidationError):
+    # MR8: the last-Admin refusal comes before the confirmation of the removed Admin row.
+    with pytest.raises(ValidationError, match="without an Admin"):
         users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"))
 
 
@@ -349,7 +350,7 @@ def test_deny_access_clears_the_role_rows_so_a_later_grant_cannot_revive_an_admi
     """The reviewer's path: Master denies a role-row Admin; a non-Master Admin's later grant gives only its role."""
     world.grant(org["admin2"], "PARENT", "Viewer")
     world.add_roles(org["admin2"], "PARENT", "Admin", "Viewer")
-    users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"))
+    users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"), confirm_removal=True)
     assert _role_rows(world, org["admin2"], org["cid"]("PARENT")) == []
     users.grant_access(org["s"]("admin"), org["admin2"], org["cid"]("PARENT"), "Viewer")
     assert not can(world, org["admin2"], "PARENT", "company.settings")
@@ -359,7 +360,7 @@ def test_deny_access_clears_the_role_rows_so_a_later_grant_cannot_revive_an_admi
 @pytest.mark.parametrize("service", ["grant_access", "set_role"])
 def test_setting_one_role_replaces_the_role_rows(world, org, service):
     world.add_roles(org["staff"], "PARENT", "Viewer", "Broad")
-    getattr(users, service)(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr")
+    getattr(users, service)(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr", confirm_removal=True)
     assert _role_rows(world, org["staff"], org["cid"]("PARENT")) == []
     assert authz.current_access(world.ctx(org["staff"], "PARENT")).role_codes == ("UserMgr",)
     assert not can(world, org["staff"], "PARENT", "je.post")
@@ -368,9 +369,57 @@ def test_setting_one_role_replaces_the_role_rows(world, org, service):
 def test_role_rows_of_another_company_are_kept(world, org):
     world.grant(org["staff"], "OTHER", "Viewer")
     world.add_roles(org["staff"], "OTHER", "Viewer")
-    users.set_role(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr")
+    world.add_roles(org["staff"], "PARENT", "Broad")
+    users.set_role(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr", confirm_removal=True)
     users.deny_access(org["s"]("master"), org["staff"], org["cid"]("PARENT"))
     assert _role_rows(world, org["staff"], org["cid"]("OTHER")) == ["Viewer"]
+
+
+# --- MR8 (owner, 2026-11-17): removing role rows is confirmed first and audit-logged ------------------------
+
+def _role_audit(world, action="Delete"):
+    import json
+    return [(r["user_id"], json.loads(r["old_value"])["role_code"]) for r in world.master_rows(
+        "SELECT user_id, old_value FROM audit_log WHERE table_name = 'user_company_role' AND action = ? "
+        "ORDER BY log_id", (action,))]
+
+
+@pytest.mark.parametrize("service, args, removed", [
+    ("grant_access", ("UserMgr",), ["Broad", "Viewer"]),
+    ("set_role", ("UserMgr",), ["Broad", "Viewer"]),
+    ("set_role", ("Viewer",), ["Broad"]),              # the role being set is not "removed"
+    ("deny_access", (), ["Broad", "Viewer"]),
+])
+def test_removing_role_rows_needs_confirmation_and_names_them(world, org, service, args, removed):
+    world.add_roles(org["staff"], "PARENT", "Viewer", "Broad")
+    call = getattr(users, service)
+    before = world.master_rows("SELECT * FROM user_company_access ORDER BY user_id, company_id")
+    with pytest.raises(users.ConfirmationRequiredError) as refused:
+        call(org["s"]("master"), org["staff"], org["cid"]("PARENT"), *args)
+    assert refused.value.removed_roles == removed
+    assert str(refused.value) == f"This removes: {', '.join(removed)}. Confirm to continue."
+    assert isinstance(refused.value, ValidationError)
+    assert _role_rows(world, org["staff"], org["cid"]("PARENT")) == ["Broad", "Viewer"]       # nothing changed
+    assert world.master_rows("SELECT * FROM user_company_access ORDER BY user_id, company_id") == before
+    assert _role_audit(world) == []
+    result = call(org["s"]("master"), org["staff"], org["cid"]("PARENT"), *args, confirm_removal=True)
+    assert result == {"removed_roles": removed}
+    assert sorted(code for _, code in _role_audit(world)) == removed                         # audit-logged
+    assert {user for user, _ in _role_audit(world)} == {org["master"]}                       # by the actor
+
+
+@pytest.mark.parametrize("service, args", [("grant_access", ("UserMgr",)), ("set_role", ("UserMgr",)),
+                                           ("deny_access", ())])
+def test_no_role_rows_needs_no_confirmation(world, org, service, args):
+    assert getattr(users, service)(org["s"]("master"), org["staff"], org["cid"]("PARENT"), *args) == {
+        "removed_roles": []}
+
+
+def test_the_role_being_set_keeps_its_row(world, org):
+    world.add_roles(org["staff"], "PARENT", "Viewer")
+    assert users.set_role(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "Viewer") == {"removed_roles": []}
+    assert _role_rows(world, org["staff"], org["cid"]("PARENT")) == ["Viewer"]
+    assert _role_audit(world) == []
 
 
 def test_a_refused_change_keeps_the_role_rows(world, org):

@@ -19,6 +19,7 @@ SENSITIVE = {
     "bill.override_match", "period.reopen", "year.reopen", "payment.release_hold",
     "company.restore", "audit.view", "ledger.verify",
     "je.approve", "payment.approve", "asset.approve", "contract.approve",
+    "addon.manage",                                                        # HA5
 }
 
 NEW_TABLES = {

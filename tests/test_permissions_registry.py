@@ -103,3 +103,14 @@ def test_document_maps_are_the_decided_ones():
     assert p.APPROVE_PERMISSION["Journal entry"] != "je.post"
     for code in p.APPROVE_PERMISSION.values():
         assert p.PERMISSIONS[code].is_sensitive and code not in p.AGENT_ALLOWED
+
+
+# --- HA5: addon.manage, Admin and the Master only -------------------------------------------------------------
+
+def test_addon_manage_is_admin_and_master_only(conn):
+    from modules.services import role_templates
+    assert p.PERMISSIONS["addon.manage"] == p.Permission("Company", "Turn add-ons on and off", True)
+    assert "addon.manage" not in p.AGENT_ALLOWED
+    assert not [role for role in role_templates.ROLES if "addon.manage" in role_templates.permissions_for(role)]
+    holders = {r[0] for r in conn.execute("SELECT role_code FROM role_permission WHERE permission_code = 'addon.manage'")}
+    assert holders == {"Admin"}

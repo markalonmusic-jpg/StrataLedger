@@ -20,7 +20,7 @@ from modules.services import auth, authz, passwords
 from modules.services.auth import _Actor, active_user, require_master
 from modules.services.authz import authorize
 from modules.services.context import ServiceContext
-from modules.services.errors import NotFoundError, ValidationError
+from modules.services.errors import ConfirmationRequiredError, NotFoundError, ValidationError
 from modules.services.paths import resolve_company_path
 from modules.services.tx import read_connection, write_transaction
 
@@ -117,10 +117,11 @@ def authorize_reset(session, actor, target):
 
 # --- Access ----------------------------------------------------------------------------------
 
-def grant_access(session, target_user_id, company_id, role_code):
+def grant_access(session, target_user_id, company_id, role_code, *, confirm_removal=False):
     """Give a user access to a company with a role (creates or replaces the row as a Grant).
 
-    The role replaces any user_company_role rows the user has in that company (MR8)."""
+    The role replaces any user_company_role rows the user has in that company (MR8): removing any but the role
+    being set needs confirm_removal=True, else ConfirmationRequiredError names them. Returns {'removed_roles'}."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -135,13 +136,15 @@ def grant_access(session, target_user_id, company_id, role_code):
             "INSERT INTO user_company_access (user_id, company_id, role_code, access_mode) VALUES (?, ?, ?, 'Grant') "
             "ON CONFLICT (user_id, company_id) DO UPDATE SET role_code = excluded.role_code, access_mode = 'Grant'",
             (target_user_id, company_id, role_code))
-        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
-                     (target_user_id, company_id))
+        removed = _remove_role_rows(conn, target_user_id, company_id, keep=role_code)
         _check_admins_kept(conn, before)
+        _confirm_removal(removed, confirm_removal)
+    return {"removed_roles": removed}
 
 
-def set_role(session, target_user_id, company_id, role_code):
-    """Change the role on an existing Grant row; it replaces the user's role rows in that company (MR8)."""
+def set_role(session, target_user_id, company_id, role_code, *, confirm_removal=False):
+    """Change the role on an existing Grant row; it replaces the user's role rows in that company (MR8), confirmed
+    as in grant_access. Returns {'removed_roles'}."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -160,13 +163,15 @@ def set_role(session, target_user_id, company_id, role_code):
         before = _companies_without_admin(conn)
         conn.execute("UPDATE user_company_access SET role_code = ? WHERE user_id = ? AND company_id = ?",
                      (role_code, target_user_id, company_id))
-        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
-                     (target_user_id, company_id))
+        removed = _remove_role_rows(conn, target_user_id, company_id, keep=role_code)
         _check_admins_kept(conn, before)
+        _confirm_removal(removed, confirm_removal)
+    return {"removed_roles": removed}
 
 
-def deny_access(session, target_user_id, company_id):
-    """Deny a user this company (also narrows access inherited from a parent); clears its role rows (MR8)."""
+def deny_access(session, target_user_id, company_id, *, confirm_removal=False):
+    """Deny a user this company (also narrows access inherited from a parent); clears its role rows (MR8), confirmed
+    as in grant_access. Returns {'removed_roles'}."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -180,12 +185,32 @@ def deny_access(session, target_user_id, company_id):
             "INSERT INTO user_company_access (user_id, company_id, role_code, access_mode) VALUES (?, ?, NULL, 'Deny') "
             "ON CONFLICT (user_id, company_id) DO UPDATE SET role_code = NULL, access_mode = 'Deny'",
             (target_user_id, company_id))
-        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
-                     (target_user_id, company_id))
+        removed = _remove_role_rows(conn, target_user_id, company_id, keep=None)
         _check_admins_kept(conn, before)
+        _confirm_removal(removed, confirm_removal)
+    return {"removed_roles": removed}
 
 
 # --- internals -------------------------------------------------------------------------------
+
+def _remove_role_rows(conn, user_id, company_id, *, keep):
+    """MR8: delete the user's role rows in that company except `keep` (the role being set); the audit triggers log
+    each deleted row. Returns the removed role codes, sorted."""
+    removed = sorted(r["role_code"] for r in conn.execute(
+        "SELECT role_code FROM user_company_role WHERE user_id = ? AND company_id = ?", (user_id, company_id))
+        if r["role_code"] != keep)
+    for role_code in removed:
+        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ? AND role_code = ?",
+                     (user_id, company_id, role_code))
+    return removed
+
+
+def _confirm_removal(removed, confirmed):
+    """Raised inside the transaction after every other check, so it rolls back and the person confirms only a
+    change that would otherwise be saved (owner, 2026-11-17)."""
+    if removed and confirmed is not True:
+        raise ConfirmationRequiredError(removed)
+
 
 def _company_context(session, company_id):
     """A ServiceContext for the target company, its file resolved from the registry."""

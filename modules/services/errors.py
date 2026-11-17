@@ -95,5 +95,22 @@ class DuplicateContactError(ValidationError):
         self.matches = matches
 
 
+class ConfirmationRequiredError(ValidationError):
+    """A change would remove a user's role rows in a company; nothing was saved (MR8, owner 2026-11-17).
+
+    `removed_roles` lists the role codes it would remove, sorted, so the screen can show "This removes: ..." and
+    call again with confirm_removal=True.
+    """
+
+    def __init__(self, removed_roles):
+        self.removed_roles = list(removed_roles)
+        super().__init__(f"This removes: {', '.join(self.removed_roles)}. Confirm to continue.")
+
+
+class AddonError(ServiceError):
+    """An add-on could not do its part, so the caller's transaction was rolled back (HA2). The sentence names the
+    add-on and the next step; the details go to the log only."""
+
+
 class InstallationError(ServiceError):
     """Something the installation must provide is missing or damaged (for example time zone data)."""

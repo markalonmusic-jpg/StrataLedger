@@ -724,10 +724,50 @@ def test_an_inactive_user_or_one_without_access_is_told_that(pay, case, sentence
 
 
 @pytest.mark.parametrize("held", ["payment.receive", "payment.make"])
-def test_someone_with_either_permission_is_told_the_source_is_missing(pay, held):
+def test_someone_with_one_permission_cannot_tell_a_missing_source_from_the_other_side(pay, held):
+    """LOW-A (owner, 2026-11-17): one sentence, one error type and one access_event for a missing id and for an
+    existing id on the side the person has no right to; nothing else changes."""
+    lacked = "payment.make" if held == "payment.receive" else "payment.receive"
     invoice = document(pay, "invoice")
-    pay.remove_permission("PARENT", "POSTER", "payment.make" if held == "payment.receive" else "payment.receive")
+    received, made = payment(pay, posted=False), payment(pay, "Made", posted=False)
+    memo, vendor_credit = document(pay, "credit_memo"), document(pay, "vendor_credit")
+    pay.remove_permission("PARENT", "POSTER", lacked)
+    other_side = [("payment", made), ("credit_memo", vendor_credit)] if held == "payment.receive" else [
+        ("payment", received), ("credit_memo", memo)]
+    refs = [("payment", 999999), ("credit_memo", 999999)] + other_side
+    before, events = state(pay), len(pay.events("PARENT"))
+    sentences = set()
+    for ref in refs:
+        with pytest.raises(PermissionDeniedError) as denied:
+            allocate(pay, ref, ("invoice", invoice), 100)
+        assert type(denied.value) is PermissionDeniedError
+        sentences.add(str(denied.value))
+    assert sentences == {payments.ONE_SIDE_ONLY[held]}
+    written = pay.events("PARENT")[events:]
+    assert [(e["event_type"], e["permission_code"], e["record_type"], e["record_id"]) for e in written] == [
+        ("Denied", lacked, "payment_allocation", None)] * len(refs)
+    assert state(pay) == before
+
+
+def test_the_one_side_sentences_name_no_document():
+    for sentence in payments.ONE_SIDE_ONLY.values():
+        assert sentence.endswith(".") and "ask an Admin" in sentence
+    assert payments.ONE_SIDE_ONLY["payment.receive"] != payments.ONE_SIDE_ONLY["payment.make"]
+
+
+def test_someone_with_both_permissions_is_told_the_source_is_missing(pay):
+    invoice = document(pay, "invoice")
     refused(lambda: allocate(pay, ("payment", 999999), ("invoice", invoice), 100), "Choose the payment or credit memo")
+
+
+@pytest.mark.parametrize("held", ["payment.receive", "payment.make"])
+def test_someone_with_one_permission_still_applies_their_own_side(pay, held):
+    if held == "payment.receive":
+        target, source = document(pay, "invoice"), payment(pay, posted=False)
+    else:
+        target, source = document(pay, "bill"), payment(pay, "Made", posted=False)
+    pay.remove_permission("PARENT", "POSTER", "payment.make" if held == "payment.receive" else "payment.receive")
+    assert allocate(pay, ("payment", source), ("invoice", target), 100)["allocation_id"]
 
 
 @pytest.mark.parametrize("direction, permission", [("Received", "payment.receive"), ("Made", "payment.make")])

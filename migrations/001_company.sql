@@ -383,9 +383,11 @@ CREATE TABLE company_addon (
     addon_version TEXT
 );
 
+-- HA6: each applied add-on migration file's SHA-256 (line endings ignored), checked like the baseline's hash.
 CREATE TABLE addon_schema_version (
     addon_key TEXT NOT NULL,
     version INTEGER NOT NULL CHECK (version > 0),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
     PRIMARY KEY (addon_key, version)
 );
 
@@ -1179,6 +1181,7 @@ INSERT INTO permission (permission_code, module, description, is_sensitive) VALU
     ('company.backup', 'Company', 'Back up and export the company', 0),
     ('company.restore', 'Company', 'Restore the company from a backup', 1),
     ('company.create', 'Company', 'Create a subsidiary company', 0),
+    ('addon.manage', 'Company', 'Turn add-ons on and off', 1),
     ('period.close', 'Periods', 'Close a fiscal period', 0),
     ('period.reopen', 'Periods', 'Reopen a closed fiscal period (reason required)', 1),
     ('year.reopen', 'Periods', 'Reopen a period in a closed fiscal year (reason required)', 1),

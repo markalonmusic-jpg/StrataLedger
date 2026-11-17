@@ -11,8 +11,8 @@ import unicodedata
 import uuid
 
 import modules.database as database
-from modules.services import (accounts, auth, authz, chart_templates, clock, company_settings, key_store, keys,
-                              ledger_chain, periods, role_templates, storage)
+from modules.services import (accounts, addons, auth, authz, chart_templates, clock, company_settings, key_store,
+                              keys, ledger_chain, periods, role_templates, storage)
 from modules.services.context import ServiceContext
 from modules.services.errors import NotFoundError, ServiceError, ValidationError
 from modules.services.paths import resolve_company_path
@@ -33,6 +33,7 @@ def open_company(session, company_id):
     6. The context's `today` is the company-local date from company_settings.timezone (decision H2).
     7. An archived company opens for the Master only (decision S9).
     8. Fiscal years due within 60 days are created (S3).
+    9. Enabled add-ons' pending migrations are applied and their code loaded (HA4; addons.prepare_company).
     """
     auth.active_user(session)
     conn = read_connection(session.master_db_path)
@@ -55,6 +56,7 @@ def open_company(session, company_id):
     authz.record_company_open(context)
     context = dataclasses.replace(context, today=clock.local_today(context.now, _company_timezone(path)))
     periods.ensure_upcoming_years(context)
+    addons.prepare_company(context)          # HA4: enabled add-ons' pending migrations; their code is loaded
     return context
 
 

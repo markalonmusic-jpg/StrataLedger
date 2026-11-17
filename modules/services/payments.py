@@ -231,6 +231,14 @@ def _settle_status(conn, invoice_id):
 
 CANNOT_APPLY = ("Your role does not allow you to apply payments or credits; ask an Admin to add receiving or "
                 "making payments to your role.")
+# LOW-A (owner, 2026-11-17): for someone holding one payment right, a missing id and an id on the other side get
+# the same sentence (keyed by the right they hold), so neither tells them whether the id exists.
+ONE_SIDE_ONLY = {
+    "payment.receive": "Choose a customer payment or credit memo; your role cannot apply vendor payments or credits, "
+                       "so ask an Admin if you need to.",
+    "payment.make": "Choose a vendor payment or credit; your role cannot apply customer payments or credit memos, "
+                    "so ask an Admin if you need to.",
+}
 
 
 def allocate(context, *, source, target, amount_cents, applied_date):
@@ -254,7 +262,12 @@ def allocate(context, *, source, target, amount_cents, applied_date):
             side, missing = None, error
     finally:
         conn.close()
-    if not any(authz.is_allowed(context, code) for code in SIDE_PERMISSION.values()):
+    held = [s for s, code in SIDE_PERMISSION.items() if authz.is_allowed(context, code)]
+    if len(held) == 1 and side != held[0]:        # LOW-A: missing, or on the side they have no right to
+        lacked = SIDE_PERMISSION["Purchase" if held[0] == "Sales" else "Sales"]
+        authz.deny(context, lacked, record_type="payment_allocation",
+                   message=ONE_SIDE_ONLY[SIDE_PERMISSION[held[0]]])
+    if not held:
         authz.check_company_access(context)       # an inactive user or no access: that sentence instead
         if not authz.current_access(context).is_master:
             authz.deny(context, SIDE_PERMISSION[side or "Sales"], record_type="payment_allocation",

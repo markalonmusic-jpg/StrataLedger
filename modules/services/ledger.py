@@ -62,7 +62,7 @@ builds batch review (R18).
 import sqlite3
 from datetime import date
 
-from modules.services import approvals, keys, ledger_chain, money, periods
+from modules.services import approvals, hooks, keys, ledger_chain, money, periods
 from modules.services.authz import authorize, deny
 from modules.services.errors import (
     KeyUnavailableError, NotFoundError, PeriodClosedError, PostingError, ValidationError,
@@ -945,7 +945,22 @@ def _seal_and_post(conn, context, entry_id, company_code, key_id, key, approved_
         "chain_hash = ? WHERE entry_id = ?",
         (number, context.user_id, context.now, approved_by, approved_at, ledger_chain.CHAIN_VERSION, key_id,
          prev_hash, chain_hash, entry_id))
+    _fire_posted(conn, context, header, number, sealed_lines)
     return number
+
+
+def _fire_posted(conn, context, header, number, sealed_lines):
+    """HA1: enabled add-ons hear of every posted entry, inside this transaction (an add-on error rolls it back,
+    HA2); a Void reversal also tells them which entry it voided."""
+    hooks.fire(conn, context, "entry.posted", {
+        "entry_id": header["entry_id"], "entry_number": number, "entry_date": header["entry_date"],
+        "source": header["source"], "origin": header["origin"], "reverses_entry_id": header["reverses_entry_id"],
+        "reversal_reason": header["reversal_reason"],
+        "debit_cents": sum(line["debit_cents"] for line in sealed_lines)})
+    if header["reversal_reason"] == "Void":
+        hooks.fire(conn, context, "entry.voided", {
+            "entry_id": header["reverses_entry_id"], "void_entry_id": header["entry_id"],
+            "void_entry_number": number, "entry_date": header["entry_date"]})
 
 
 # --- Reversals (step 5) ---------------------------------------------------------------------------------------
