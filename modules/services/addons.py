@@ -155,7 +155,7 @@ def enable(context, addon_key):
     if info is None:
         raise NotFoundError("That add-on is not installed on this computer; install it first.")
     applied = _migrate(context, info)
-    hooks.clear_broken(addon_key)
+    hooks.clear_broken(context.company_db_path, addon_key)
     load(addon_key)
     with write_transaction(context.company_db_path, context) as conn:
         conn.execute(
@@ -179,7 +179,9 @@ def disable(context, addon_key):
 
 def prepare_company(context):
     """When a company opens: bring each enabled, installed add-on's tables up to date and load it. A failure is
-    logged and the add-on marked, so its hooks refuse with a sentence while the company still opens."""
+    logged and the add-on marked for this company file, so its hooks refuse with a sentence while the company still
+    opens. A read-only open applies no migrations. System upkeep like periods.ensure_upcoming_years: no permission
+    applies (it runs as the opening user)."""
     rows, _ = _company_rows(context)
     installed = None
     for key in sorted(k for k, row in rows.items() if row["enabled"]):
@@ -188,12 +190,13 @@ def prepare_company(context):
         if info is None:
             _logger.error("add-on %s is enabled in company %s but not installed", key, context.company_id)
             continue
-        try:
-            _migrate(context, info)
-        except ValidationError:
-            hooks.mark_broken(key, info["name"])
-            continue
-        hooks.clear_broken(key)
+        if not context.read_only:            # a read-only open (Auditor) writes nothing, add-on tables included
+            try:
+                _migrate(context, info)
+            except ValidationError:
+                hooks.mark_broken(context.company_db_path, key, info["name"])
+                continue
+            hooks.clear_broken(context.company_db_path, key)
         try:
             load(key)
         except AddonError:

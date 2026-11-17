@@ -210,13 +210,15 @@ def test_a_failing_handler_rolls_the_posting_back_and_names_the_addon(setup, res
     addons.enable(admin(setup), "demo")
     addons.enable(admin(setup), "bad")
     entry_id = draft(setup)
-    before = journal(setup), setup.rows("PARENT", "SELECT * FROM entry_number_sequence")
+    before = (journal(setup), setup.rows("PARENT", "SELECT * FROM entry_number_sequence"),
+              setup.rows("PARENT", "SELECT * FROM audit_log ORDER BY log_id"))
     with caplog.at_level(logging.ERROR, logger="strataledger"):
         with pytest.raises(AddonError) as failed:
             ledger.post_journal_entry(ctx_for(setup), entry_id, confirm=True)
     assert str(failed.value) == ("The Bad Helper add-on could not finish, so nothing was saved; disable it in "
                                  "Company Settings > Add-ons and try again.")
-    assert (journal(setup), setup.rows("PARENT", "SELECT * FROM entry_number_sequence")) == before
+    assert (journal(setup), setup.rows("PARENT", "SELECT * FROM entry_number_sequence"),
+            setup.rows("PARENT", "SELECT * FROM audit_log ORDER BY log_id")) == before
     assert setup.rows("PARENT", "SELECT * FROM bad_log") == [] and seen(setup) == []
     assert "bad" in caplog.text and "entry.posted" in caplog.text            # the details go to the log
     assert "secret detail" not in str(failed.value)
@@ -489,3 +491,95 @@ def test_only_the_addon_registry_imports_code_by_path():
 def test_hooks_run_inside_the_callers_transaction():
     source = (ROOT / "modules" / "services" / "hooks.py").read_text(encoding="utf-8")
     assert "write_transaction" not in source and "get_connection" not in source
+
+
+# --- step-reviewer fixes (STOP B) ------------------------------------------------------------------------------
+
+def test_a_handler_that_swallows_a_refused_write_still_fails(setup, resources):
+    write_addon(resources, "quiet", name="Quiet One", code="""
+        def register(hooks):
+            hooks.on("entry.posted", handler)
+
+        def handler(db, payload):
+            try:
+                db.execute("UPDATE journal_entry SET description = 'x'")
+            except Exception:
+                pass
+        """, files={})
+    addons.enable(admin(setup), "quiet")
+    entry_id = draft(setup)
+    with pytest.raises(AddonError, match="The Quiet One add-on could not finish"):
+        ledger.post_journal_entry(ctx_for(setup), entry_id, confirm=True)
+    assert journal(setup)[-1]["is_posted"] == 0
+
+
+def test_the_handle_holds_no_connection_attribute(setup, resources):
+    write_addon(resources, "probe", code="""
+        def register(hooks):
+            hooks.on("entry.posted", handler)
+
+        def handler(db, payload):
+            names = [n for n in dir(db) if not n.startswith("__")]
+            db.execute("INSERT INTO probe_n (names) VALUES (?)", (",".join(names),))
+        """, files={"probe_001.sql": "CREATE TABLE probe_n (names TEXT);\n"})
+    addons.enable(admin(setup), "probe")
+    post(setup)
+    assert setup.rows("PARENT", "SELECT names FROM probe_n") == [{"names": "execute"}]
+
+
+def test_a_broken_addon_in_one_company_does_not_stop_another(setup, resources):
+    """The broken mark is per company file: CHILD's failed migration leaves PARENT posting."""
+    import dataclasses
+    other = admin(setup)
+    child = dataclasses.replace(other, company_id=setup.company_id("CHILD"), company_db_path=str(setup.path("CHILD")))
+    addons.enable(other, "demo")
+    addons.enable(child, "demo")
+    (resources / "addons" / "demo" / "migrations" / "demo_002.sql").write_text("CREATE TABLE demo_more (x);\n",
+                                                                                  encoding="utf-8")
+    with setup._company("CHILD") as c:              # CHILD's copy is now out of step: version 2 "applied" wrongly
+        c.execute("INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES ('demo', 2, ?)", ("0" * 64,))
+    addons.prepare_company(other)                   # PARENT is fine
+    addons.prepare_company(child)                   # marks demo broken in CHILD only
+    post(setup)
+    assert len(seen(setup)) == 1
+    child_entry = None
+    with pytest.raises(AddonError, match="could not set up its tables"):
+        with write_transaction(child.company_db_path, child) as conn:
+            hooks.fire(conn, child, "entry.posted", {"entry_id": child_entry})
+    addons.prepare_company(other)                   # opening PARENT again does not clear CHILD's mark
+    with pytest.raises(AddonError, match="could not set up its tables"):
+        with write_transaction(child.company_db_path, child) as conn:
+            hooks.fire(conn, child, "entry.posted", {"entry_id": child_entry})
+
+
+def test_a_read_only_open_applies_no_migrations(setup, resources):
+    import dataclasses
+    addons.enable(admin(setup), "demo")
+    write_addon(resources, "demo", name="Demo Notes", files={
+        "demo_001.sql": DEMO_001, "demo_002.sql": "CREATE TABLE demo_more (x);\n"})
+    addons.prepare_company(dataclasses.replace(admin(setup), read_only=True))
+    assert setup.rows("PARENT", "SELECT name FROM sqlite_master WHERE name = 'demo_more'") == []
+
+
+def test_company_open_with_an_enabled_addon_missing_from_this_computer(setup, caplog):
+    import shutil
+    addons.enable(admin(setup), "demo")
+    hooks._clear()
+    shutil.rmtree(setup.resources / "addons" / "demo")
+    with caplog.at_level(logging.ERROR, logger="strataledger"):
+        companies.open_company(setup.session(setup.admin), setup.company_id("PARENT"))
+    assert "not installed" in caplog.text
+
+
+def test_a_migration_file_that_is_not_utf8_does_not_stop_company_open(setup, resources, caplog):
+    addons.enable(admin(setup), "demo")
+    (resources / "addons" / "demo" / "migrations" / "demo_002.sql").write_bytes(
+        "CREATE TABLE demo_café (x);\n".encode("cp1252"))
+    hooks._clear()
+    with caplog.at_level(logging.ERROR, logger="strataledger"):
+        companies.open_company(setup.session(setup.admin), setup.company_id("PARENT"))
+    entry_id = draft(setup)
+    with pytest.raises(AddonError, match="could not set up its tables"):
+        ledger.post_journal_entry(ctx_for(setup), entry_id, confirm=True)
+    with pytest.raises(ValidationError, match="could not set up its tables"):
+        addons.enable(admin(setup), "demo")

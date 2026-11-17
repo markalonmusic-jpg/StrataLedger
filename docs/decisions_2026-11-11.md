@@ -1552,8 +1552,8 @@ The owner's answers to the Phase 2.7 plan.
 - MR9 (owner, 2026-11-17; closes LOW-A of the STOP A secrets audit) In `payments.allocate`, someone holding exactly
   one of `payment.receive` and `payment.make` gets one sentence, one error type and one denial log row (the
   permission they lack, no record id) for a missing payment or credit memo and for one on the side they have no
-  right to (`payments.ONE_SIDE_ONLY`, keyed by the right they hold), so ids cannot be probed. Someone holding both
-  is still told the source is missing.
+  right to (`payments.ONE_SIDE_ONLY`, keyed by the right they hold), so ids cannot be probed. The same holds for
+  the target invoice or bill (step-reviewer, STOP B). Someone holding both is still told the source is missing.
 - HA1 Hook events: `entry.posted` and `entry.voided`, fired from `ledger`; `stage.entered` and `stage.left` are
   declared only. No `stage_trigger_run` writer until the CRM step.
 - HA2 A hook handler may write only its own add-on's `<key>_` tables, enforced in `modules/database.py` with the
@@ -1573,6 +1573,11 @@ The owner's answers to the Phase 2.7 plan.
   table outside the prefix is refused. Company open applies pending migrations of enabled add-ons; one that fails
   is logged and its hooks refuse posting with a sentence, so the company still opens and an Admin can disable it.
   An enabled add-on missing from the computer refuses posting the same way. `addon.manage` is sensitive.
+  Review fixes: an add-on table may not reference a table outside its prefix (a cascade from a core table would run
+  its triggers unguarded); comments and strings cannot hide a trigger's write; a broken mark is per company file;
+  a refused write the handler catches is still a failure; a read-only open applies no migrations; an unreadable
+  migration file is a refusal. Add-ons are trusted installation code: the guards stop SQL mistakes, not hostile
+  Python (hosted: a database role per add-on, audit design section 16).
 - FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
   following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
   stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built

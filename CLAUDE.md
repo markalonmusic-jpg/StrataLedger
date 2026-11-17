@@ -156,8 +156,9 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-17):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
 rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
-STOPs (MR1): STOP A, multi-role permissions (MR2-MR7), is done. Next: STOP B (hooks, add-ons, add-on migrations;
-HA1-HA6; docs/next_step.md), STOP C (custom fields, FR1), 2.8 (PW1-PW11), Phase 3. History: docs/status_log.md.
+STOPs (MR1): STOP A, multi-role permissions (MR2-MR9), and STOP B, hooks, add-ons and add-on migrations (HA1-HA7;
+add-ons live in RESOURCE_DIR/addons), are done. Next: STOP C (custom fields, FR1; planned in docs/next_step.md, built
+only after the owner approves), 2.8 (PW1-PW11), Phase 3. History: docs/status_log.md.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.

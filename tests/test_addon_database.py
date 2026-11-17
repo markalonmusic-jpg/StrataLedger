@@ -252,6 +252,16 @@ BAD_SCRIPTS = [
     ("VACUUM;", "VACUUM"),
     ("CREATE TEMP TABLE demo_t (x);", "outside"),
     ("CREATE TABLE demo_ok (x", "incomplete"),
+    # step-reviewer finding 1: a comment or a string must not hide a trigger's write to a core table
+    ("CREATE TABLE demo_ok (x);\nCREATE TRIGGER demo_tr AFTER INSERT ON demo_ok BEGIN "
+     "INSERT/**/INTO company_addon (addon_key, enabled) VALUES ('evil', 1); END;", "outside"),
+    ("CREATE TABLE demo_ok (x);\nCREATE TRIGGER demo_tr AFTER INSERT ON demo_ok BEGIN "
+     "SELECT '--'; UPDATE journal_entry SET description = 'x'; END;", "outside"),
+    # ... and an add-on table may not reference a core table (a cascade would run its triggers unguarded)
+    ("CREATE TABLE demo_link (addon_key TEXT REFERENCES company_addon(addon_key) ON DELETE CASCADE);", "refer"),
+    ("CREATE TABLE demo_link (entry_id INTEGER REFERENCES journal_entry(entry_id));", "refer"),
+    ("CREATE TABLE demo_ok (x);\nALTER TABLE demo_ok ADD COLUMN e INTEGER REFERENCES journal_entry(entry_id);",
+     "refer"),
 ]
 
 
@@ -289,3 +299,25 @@ def test_core_tables_still_work_after_an_addon_migration(company, tmp_path):
     finally:
         conn.close()
     database.ensure_company_database(company)      # the baseline guard still accepts the file
+
+
+def test_an_addon_table_may_reference_its_own_tables(company, tmp_path):
+    folder = migrations(tmp_path, {"demo_001.sql": "CREATE TABLE demo_parent (id INTEGER PRIMARY KEY);\n"
+                                                   "CREATE TABLE demo_child (parent_id INTEGER REFERENCES "
+                                                   "demo_parent(id) ON DELETE CASCADE);\n"})
+    assert database.apply_addon_migrations(company, KEY, folder) == [1]
+
+
+@pytest.mark.parametrize("problem", ["not utf-8", "folder is a file"])
+def test_a_file_that_cannot_be_read_is_a_migration_error(company, tmp_path, problem):
+    """step-reviewer finding 2: every failure is an AddonMigrationError, so the caller can say so."""
+    if problem == "not utf-8":
+        folder = migrations(tmp_path, {})
+        (folder / "demo_001.sql").write_bytes("CREATE TABLE demo_café (x);\n".encode("cp1252"))
+    else:
+        folder = tmp_path / "migrations"
+        folder.write_text("not a folder", encoding="utf-8")
+    before = objects(company)
+    with pytest.raises(database.AddonMigrationError):
+        database.apply_addon_migrations(company, KEY, folder)
+    assert objects(company) == before

@@ -11,8 +11,13 @@
 * A handler is called as `handler(db, payload)`: `db.execute(sql, params)` returns the rows as dicts, and works
   only while the handler runs; `payload` is read-only and also holds the event, company, user and time. While it
   runs, `database.addon_write_guard` lets it write only its own `<key>_` tables (HA2).
-* Any handler error (its own, or a refused write) is logged with its details and raised as AddonError with one
-  sentence naming the add-on and the next step; the caller's transaction then rolls back.
+* Any handler error (its own, or a refused write, even one the handler caught) is logged with its details and
+  raised as AddonError with one sentence naming the add-on and the next step; the caller's transaction then rolls
+  back.
+* Trust (HA3, HA7): an add-on is code shipped in the installation and runs in this process. The authorizer and the
+  narrow handle guard against an add-on's mistakes in SQL; they cannot stop Python code that sets out to get
+  around them. Only RESOURCE_DIR/addons is trusted. The hosted version replaces the authorizer with a database
+  role per add-on (docs/audit_readiness_design.md section 16).
 """
 import logging
 from types import MappingProxyType
@@ -35,7 +40,7 @@ AGENT_REFUSED = "Add-ons do not run for an agent's actions; a person does this."
 _logger = logging.getLogger("strataledger")
 _handlers = {}     # addon_key -> {event: [handler, ...]}
 _names = {}        # addon_key -> name, for every loaded add-on
-_broken = {}       # addon_key -> name: its tables could not be brought up to date when the company opened
+_broken = {}       # (company file, addon_key) -> name: its tables could not be brought up to date at company open
 
 
 def _check_event(event):
@@ -74,12 +79,12 @@ def is_loaded(addon_key):
     return addon_key in _names
 
 
-def mark_broken(addon_key, name):
-    _broken[addon_key] = name
+def mark_broken(company_db_path, addon_key, name):
+    _broken[(str(company_db_path), addon_key)] = name
 
 
-def clear_broken(addon_key):
-    _broken.pop(addon_key, None)
+def clear_broken(company_db_path, addon_key):
+    _broken.pop((str(company_db_path), addon_key), None)
 
 
 def _clear():
@@ -90,17 +95,26 @@ def _clear():
 
 
 class _HandlerDb:
-    """A handler's view of the caller's connection: execute only, rows as dicts, closed when the handler returns."""
+    """A handler's view of the caller's connection: `execute` only, rows as dicts. The connection is held in a
+    closure, not an attribute, and the handle stops working when the handler returns."""
 
-    __slots__ = ("_conn",)
+    __slots__ = ("execute",)
 
-    def __init__(self, conn):
-        self._conn = conn
 
-    def execute(self, sql, params=()):
-        if self._conn is None:
+def _handle(conn):
+    held = [conn]
+
+    def execute(sql, params=()):
+        if held[0] is None:
             raise RuntimeError("This database handle is closed; it works only while the handler runs.")
-        return [dict(row) for row in self._conn.execute(sql, params).fetchall()]
+        return [dict(row) for row in held[0].execute(sql, params).fetchall()]
+
+    def close():
+        held[0] = None
+
+    handle = _HandlerDb()
+    handle.execute = execute
+    return handle, close
 
 
 def fire(conn, context, event, payload):
@@ -111,8 +125,9 @@ def fire(conn, context, event, payload):
     enabled = [row["addon_key"] for row in conn.execute(
         "SELECT addon_key FROM company_addon WHERE enabled = 1 ORDER BY addon_key").fetchall()]
     for addon_key in enabled:
-        if addon_key in _broken:
-            raise AddonError(SETUP_FAILED.format(name=_broken[addon_key]))
+        broken = _broken.get((str(context.company_db_path), addon_key))
+        if broken is not None:
+            raise AddonError(SETUP_FAILED.format(name=broken))
         if addon_key not in _names:
             from modules.services import addons     # the registry imports this module, so it is imported here
             try:
@@ -128,7 +143,7 @@ def fire(conn, context, event, payload):
 
 
 def _run(conn, addon_key, event, handler, data):
-    handle = _HandlerDb(conn)
+    handle, close = _handle(conn)
     failure, refused = None, []
     try:
         with database.addon_write_guard(conn, addon_key) as guard:
@@ -138,7 +153,9 @@ def _run(conn, addon_key, event, handler, data):
                 failure = error
             refused = guard.refused
     finally:
-        handle._conn = None
+        close()
+    if failure is None and refused:          # a refused write the handler caught is still a failure
+        failure = RuntimeError("the handler's refused actions were caught by the handler")
     if failure is None and not conn.in_transaction:
         failure = RuntimeError("the handler ended the caller's transaction")
     if failure is not None:

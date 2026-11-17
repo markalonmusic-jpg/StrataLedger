@@ -749,6 +749,30 @@ def test_someone_with_one_permission_cannot_tell_a_missing_source_from_the_other
     assert state(pay) == before
 
 
+@pytest.mark.parametrize("held", ["payment.receive", "payment.make"])
+def test_someone_with_one_permission_cannot_tell_a_missing_target_from_the_other_side(pay, held):
+    """MR9 for the target (step-reviewer finding 5): with their own side's source, a missing invoice or bill id and
+    an existing one on the other side get the same sentence, error type and access_event."""
+    lacked = "payment.make" if held == "payment.receive" else "payment.receive"
+    if held == "payment.receive":
+        source, other_target = payment(pay, posted=False), document(pay, "bill")
+    else:
+        source, other_target = payment(pay, "Made", posted=False), document(pay, "invoice")
+    pay.remove_permission("PARENT", "POSTER", lacked)
+    before, events = state(pay), len(pay.events("PARENT"))
+    sentences = set()
+    for target in (("invoice", 999999), ("invoice", other_target)):
+        with pytest.raises(PermissionDeniedError) as denied:
+            allocate(pay, ("payment", source), target, 100)
+        assert type(denied.value) is PermissionDeniedError
+        sentences.add(str(denied.value))
+    assert sentences == {payments.ONE_SIDE_ONLY[held]}
+    written = pay.events("PARENT")[events:]
+    assert [(e["event_type"], e["permission_code"], e["record_type"], e["record_id"]) for e in written] == [
+        ("Denied", lacked, "payment_allocation", None)] * 2
+    assert state(pay) == before
+
+
 def test_the_one_side_sentences_name_no_document():
     for sentence in payments.ONE_SIDE_ONLY.values():
         assert sentence.endswith(".") and "ask an Admin" in sentence

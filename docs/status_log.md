@@ -774,3 +774,16 @@ Rotation and key-lost text as it stood before the trim:
   Mutation check (on 9e022b9): 87 mutants, 67 killed, 6 equivalent; tests for the other 14 are in
   tests/test_mutation_stop_a_extra.py. Suite 3027 passed, 7 deselected. STOP A done; STOP B planned in
   docs/next_step.md.
+
+- 2026-11-17: Phase 2.7 STOP B (hooks, add-ons, add-on migrations) built.
+  - Owner answers: MR8 confirmed with "This removes: <roles>" (`ConfirmationRequiredError`, `confirm_removal`,
+    `{'removed_roles'}`, audit-logged by the delete trigger); MR9 closes LOW-A for the source and the target.
+  - Baseline: `addon_schema_version.sha256` (HA6) and the `addon.manage` seed (HA5, sensitive, Admin and Master).
+    Previous baseline in archive/baseline_pre_2_7_b (tag baseline-pre-2.7-b); development master rebuilt.
+  - `database.py`: `check_addon_key`, `addon_write_guard` (SQLite authorizer, HA2), `apply_addon_migrations` (HA4).
+  - `hooks.py` and `addons.py` (HA1, HA3, HA7); `ledger._seal_and_post` fires `entry.posted` / `entry.voided`;
+    `open_company` calls `addons.prepare_company`.
+  - Commit 3c961c3. step-reviewer: approve with changes; fixes in the next commit (no references from add-on
+    tables to core tables, trigger text without comments or strings, per-company broken marks, a caught refusal
+    still fails, read-only opens apply nothing, unreadable files refused, the handle keeps no connection, MR9
+    for targets).

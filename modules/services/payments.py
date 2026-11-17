@@ -204,6 +204,17 @@ def _source_side(conn, source):
     return row["ledger_side"]
 
 
+def _target_side(conn, target):
+    """Only the side of the target (Sales for an invoice, Purchase for a bill), or None when there is none."""
+    try:
+        _, record_id = _ref(target, ("invoice",), "Choose the invoice or bill to apply it to")
+    except ValidationError:
+        return None
+    row = conn.execute("SELECT invoice_type FROM invoice WHERE invoice_id = ? AND invoice_type IN ('Invoice', 'Bill')",
+                       (record_id,)).fetchone()
+    return None if row is None else ("Sales" if row["invoice_type"] == "Invoice" else "Purchase")
+
+
 def _application_lines(plan, amount_cents):
     """Sales: Dr the source's group, Cr the target's. Purchase: Dr the target's group, Cr the source's."""
     src_item, tgt_item = plan["source_item"], plan["target_item"]
@@ -260,10 +271,13 @@ def allocate(context, *, source, target, amount_cents, applied_date):
             side, missing = _source_side(conn, source), None
         except ValidationError as error:
             side, missing = None, error
+        target_side = _target_side(conn, target)
     finally:
         conn.close()
     held = [s for s, code in SIDE_PERMISSION.items() if authz.is_allowed(context, code)]
-    if len(held) == 1 and side != held[0]:        # LOW-A: missing, or on the side they have no right to
+    # LOW-A (MR9): for someone with one right, a source or target that is missing or on the side they have no right
+    # to gets one sentence, so neither tells them whether the id exists.
+    if len(held) == 1 and (side, target_side) != (held[0], held[0]):
         lacked = SIDE_PERMISSION["Purchase" if held[0] == "Sales" else "Sales"]
         authz.deny(context, lacked, record_type="payment_allocation",
                    message=ONE_SIDE_ONLY[SIDE_PERMISSION[held[0]]])

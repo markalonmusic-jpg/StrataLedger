@@ -430,6 +430,8 @@ def _addon_files(addon_key, migrations_dir):
     """{version: path} for `<key>_NNN.sql`, refusing any other .sql file and any gap from 001."""
     pattern = re.compile(re.escape(addon_key) + r"_(\d{3})\.sql")
     files = {}
+    if os.path.exists(migrations_dir) and not os.path.isdir(migrations_dir):
+        raise AddonMigrationError(addon_key, "its migrations folder is a file; nothing was changed.")
     names = sorted(os.listdir(migrations_dir)) if os.path.isdir(migrations_dir) else []
     for name in names:
         if not name.lower().endswith(".sql"):
@@ -471,9 +473,20 @@ def _schema_objects(conn):
             for r in conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master")}
 
 
-def _check_schema_change(addon_key, before, after):
-    """HA4 by result: every object added, changed or dropped is named with the prefix and sits on a prefixed table,
-    and no new trigger body writes a table outside it."""
+_SQL_TEXT_RE = re.compile(r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/", re.DOTALL)
+
+
+def _sql_without_text(sql):
+    """SQL with its string literals emptied and its comments turned into a space, so neither can hide or join
+    words (`INSERT/**/INTO` stays two words)."""
+    return _SQL_TEXT_RE.sub(lambda m: "''" if m.group(0).startswith("'") else " ", sql or "")
+
+
+def _check_schema_change(conn, addon_key, before, after):
+    """HA4 by result: every object added, changed or dropped is named with the prefix and sits on a prefixed table;
+    no new trigger body writes a table outside it; and no add-on table references a table outside it (a cascade
+    from a core table would run the add-on's triggers with no guard on, and a plain reference would block core
+    deletes)."""
     prefix, core = addon_key + "_", core_table_names()
     for key in set(before) | set(after):
         if before.get(key) == after.get(key):
@@ -485,10 +498,15 @@ def _check_schema_change(addon_key, before, after):
             raise AddonMigrationError(addon_key, f"the {kind} {name} is outside the add-on's {prefix} tables; "
                                                  "nothing was changed.")
         if kind == "trigger" and key in after:
-            for target in _TRIGGER_WRITE_RE.findall(_COMMENT_RE.sub("", sql or "")):
+            for target in _TRIGGER_WRITE_RE.findall(_sql_without_text(sql)):
                 if not _owned(target, prefix, core):
                     raise AddonMigrationError(addon_key, f"the trigger {name} writes {target}, outside the "
                                                          f"add-on's {prefix} tables; nothing was changed.")
+        if kind == "table" and key in after:
+            for row in conn.execute("SELECT \"table\" AS parent FROM pragma_foreign_key_list(?)", (name,)):
+                if not _owned(row["parent"], prefix, core):
+                    raise AddonMigrationError(addon_key, f"the table {name} refers to {row['parent']}, outside "
+                                                         f"the add-on's {prefix} tables; nothing was changed.")
 
 
 def _applied_addon_versions(db_path, addon_key):
@@ -511,7 +529,15 @@ def apply_addon_migrations(db_path, addon_key, migrations_dir):
     check_addon_key(addon_key)
     db_path = os.fspath(db_path)
     _check_baseline(db_path, MIGRATIONS)
-    files = _addon_files(addon_key, os.fspath(migrations_dir))
+    try:
+        return _apply_addon_migrations(db_path, addon_key, os.fspath(migrations_dir))
+    except (UnicodeDecodeError, OSError) as error:      # a file that cannot be read, or the backup failed
+        raise AddonMigrationError(addon_key, f"a migration file could not be read, or the backup failed; nothing "
+                                             f"was changed. {error}") from error
+
+
+def _apply_addon_migrations(db_path, addon_key, migrations_dir):
+    files = _addon_files(addon_key, migrations_dir)
     done = _applied_addon_versions(db_path, addon_key)
     for version, digest in sorted(done.items()):
         name = f"{addon_key}_{version:03d}.sql"
@@ -541,7 +567,7 @@ def apply_addon_migrations(db_path, addon_key, migrations_dir):
                 conn.execute("INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES (?, ?, ?)",
                              (addon_key, version, digest))
             current = None
-            _check_schema_change(addon_key, before, _schema_objects(conn))
+            _check_schema_change(conn, addon_key, before, _schema_objects(conn))
             problems = _verify_schema(conn)
             if problems:
                 raise AddonMigrationError(addon_key, "the result failed verification; nothing was changed. "
