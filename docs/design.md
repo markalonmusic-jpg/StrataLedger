@@ -179,7 +179,7 @@ not use the new columns yet; STOP 2 (Step 7) and later steps do.
 | Dimensions (RP3) | depth limit 10 |
 | Step 7 allocations (RP11) | `payment_allocation.applied_date`, `credit_memo_id`, who and when, one-time release |
 | Contacts, documents, terms, custom fields, close tasks, list preferences | `contact` columns and `contact_site`; `invoice.voucher_number`, `sent_at`, `void_reason`, `is_opening`; `payment_term`; `custom_field_def`/`value`; `close_task`, `close_task_dependency`; `user_list_pref`, `saved_view`, `alert_dismissal` |
-| Multi-role (RP10) | master `user_company_role`, schema only |
+| Multi-role (RP10) | master `user_company_role`; `authz` reads it since Phase 2.7 STOP A (MR2-MR5) |
 | Approvals (RP9) | `document_approval_setting` covers every document type, all OFF |
 | Not in STOP 1 | Estimate signing with the signed PDF (with the estimate step); intercompany and elimination entries (with consolidation reports) |
 

@@ -297,3 +297,42 @@ def test_no_audit_row_ever_holds_a_password_hash(world, org):
     for row in world.master_rows("SELECT old_value, new_value FROM audit_log"):
         text = (row["old_value"] or "") + (row["new_value"] or "")
         assert "password_hash" not in text and "scrypt$" not in text
+
+
+# --- Several roles (MR2): the user services read the effective roles ---------------------------------------
+
+def test_a_manager_may_assign_a_role_its_roles_cover_together(world, org):
+    """Broad = ledger.view + je.post. Neither of mgr2's roles holds both; together they do."""
+    world.role("PARENT", "Poster", ["company.users.manage", "je.post"])
+    mgr2 = world.user("mgr2")
+    world.grant(mgr2, "PARENT", None)
+    world.add_roles(mgr2, "PARENT", "Viewer", "Poster")
+    users.grant_access(world.session(mgr2), org["admin2"], org["cid"]("PARENT"), "Broad")
+    assert can(world, org["admin2"], "PARENT", "je.post")
+
+
+def test_an_admin_through_a_role_row_is_protected_like_any_admin(world, org):
+    world.grant(org["admin2"], "PARENT", "Viewer")
+    world.add_roles(org["admin2"], "PARENT", "Admin")
+    with pytest.raises(PermissionDeniedError):
+        users.deny_access(org["s"]("admin"), org["admin2"], org["cid"]("PARENT"))
+    with pytest.raises(PermissionDeniedError):
+        users.set_role(org["s"]("admin"), org["admin2"], org["cid"]("PARENT"), "Viewer")
+    with pytest.raises(PermissionDeniedError):
+        users.reset_password(org["s"]("mgr"), org["admin2"], NEW)
+
+
+def test_an_admin_through_a_role_row_counts_as_the_companys_admin(world, org):
+    """With admin2 an Admin through a role row, the Master may remove the other Admin."""
+    world.grant(org["admin2"], "PARENT", "Viewer")
+    world.add_roles(org["admin2"], "PARENT", "Admin")
+    users.set_role(org["s"]("master"), org["admin"], org["cid"]("PARENT"), "Viewer")
+    assert can(world, org["admin2"], "PARENT", "company.settings")
+
+
+def test_the_last_admin_through_a_role_row_cannot_be_denied(world, org):
+    world.grant(org["admin2"], "PARENT", "Viewer")
+    world.add_roles(org["admin2"], "PARENT", "Admin")
+    users.set_role(org["s"]("master"), org["admin"], org["cid"]("PARENT"), "Viewer")
+    with pytest.raises(ValidationError):
+        users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"))

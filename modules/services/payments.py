@@ -17,7 +17,7 @@ it carry the same id, so a group that nets to zero is settled.
 import re
 from datetime import date
 
-from modules.services import ledger, money, periods
+from modules.services import authz, ledger, money, periods
 from modules.services.authz import authorize
 from modules.services.errors import NotFoundError, PeriodClosedError, ValidationError
 from modules.services.tx import read_connection, write_transaction
@@ -229,6 +229,10 @@ def _settle_status(conn, invoice_id):
     return row["status"]
 
 
+CANNOT_APPLY = ("Your role does not allow you to apply payments or credits; ask an Admin to add receiving or "
+                "making payments to your role.")
+
+
 def allocate(context, *, source, target, amount_cents, applied_date):
     """Apply a payment or credit memo (source) to an invoice or bill (target).
 
@@ -240,11 +244,22 @@ def allocate(context, *, source, target, amount_cents, applied_date):
         authorize(context, SIDE_PERMISSION["Sales"], record_type="payment_allocation")
     amount_cents = _amount(amount_cents)
     applied_date = _applied_date(applied_date)
+    # MR6 (LOW 2): the source's side is read first, so a denial logs that side's permission. Someone holding
+    # neither permission gets one sentence whether the source exists or not, and on either side.
     conn = read_connection(context.company_db_path)
     try:
-        side = _source_side(conn, source)
+        try:
+            side, missing = _source_side(conn, source), None
+        except ValidationError as error:
+            side, missing = None, error
     finally:
         conn.close()
+    if not any(authz.is_allowed(context, code) for code in SIDE_PERMISSION.values()):
+        authz.check_company_access(context)       # an inactive user or no access: that sentence instead
+        authz.deny(context, SIDE_PERMISSION[side or "Sales"], record_type="payment_allocation",
+                   message=CANNOT_APPLY)
+    if missing is not None:
+        raise missing
     authorize(context, SIDE_PERMISSION[side], record_type="payment_allocation")
     with write_transaction(context.company_db_path, context) as conn:
         plan = _plan(conn, source, target, amount_cents, applied_date)

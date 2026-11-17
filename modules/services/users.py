@@ -231,11 +231,13 @@ def _check_assignable(actor, context, role_code):
         return
     if role_code == "Admin":
         authz.deny(context, USERS_MANAGE, record_type="role", message=ADMIN_ROLE_IS_THE_MASTERS)
-    actor_role = authz.current_access(context).role_code
-    if actor_role == "Admin":
+    actor_access = authz.current_access(context)
+    if actor_access.is_admin:
         return
-    actor_info = _role_permissions(context, actor_role) if actor_role else None
-    if actor_info is None or not codes <= actor_info[1]:
+    held = set()                     # MR2: the union of the actor's active roles' permissions
+    for actor_role in actor_access.role_codes:
+        held |= _role_permissions(context, actor_role)[1]
+    if not codes <= held:
         authz.deny(context, USERS_MANAGE, record_type="role", message=BROADER_ROLE)
 
 
@@ -245,10 +247,10 @@ def _guard_admin_removal(actor, context, target_user_id, *, new_role):
         return
     conn = read_connection(context.master_db_path)
     try:
-        current = authz._access_role(conn, target_user_id, context.company_id)
+        is_admin = "Admin" in authz._access_roles(conn, target_user_id, context.company_id)
     finally:
         conn.close()
-    if current == "Admin":
+    if is_admin:
         authz.deny(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id,
                    message=ADMIN_CHANGE_IS_THE_MASTERS)
 
@@ -256,8 +258,10 @@ def _guard_admin_removal(actor, context, target_user_id, *, new_role):
 def _holds_admin_anywhere(session, user_id):
     conn = read_connection(session.master_db_path)
     try:
-        return conn.execute("SELECT 1 FROM user_company_access WHERE user_id = ? AND role_code = 'Admin' "
-                            "AND access_mode = 'Grant'", (user_id,)).fetchone() is not None
+        return conn.execute(
+            "SELECT 1 FROM user_company_access AS a WHERE a.user_id = ? AND a.access_mode = 'Grant' "
+            "AND (a.role_code = 'Admin' OR EXISTS (SELECT 1 FROM user_company_role AS r WHERE r.user_id = a.user_id "
+            "AND r.company_id = a.company_id AND r.role_code = 'Admin'))", (user_id,)).fetchone() is not None
     finally:
         conn.close()
 
@@ -267,7 +271,7 @@ def _granted_companies(session, user_id):
     conn = read_connection(session.master_db_path)
     try:
         companies = [r[0] for r in conn.execute("SELECT company_id FROM company_registry")]
-        return [c for c in companies if authz._access_role(conn, user_id, c) is not None]
+        return [c for c in companies if authz._access_roles(conn, user_id, c)]
     finally:
         conn.close()
 
@@ -279,7 +283,7 @@ def _companies_without_admin(conn):
         "AND user_id IN (SELECT user_id FROM user_company_access)")]
     missing = set()
     for (company_id,) in conn.execute("SELECT company_id FROM company_registry WHERE is_active = 1").fetchall():
-        if not any(authz._access_role(conn, user_id, company_id) == "Admin" for user_id in users):
+        if not any("Admin" in authz._access_roles(conn, user_id, company_id) for user_id in users):
             missing.add(company_id)
     return missing
 

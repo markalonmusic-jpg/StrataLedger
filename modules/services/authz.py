@@ -16,12 +16,16 @@ Decision order, first match wins:
     to everyone, except the Master for company.backup / company.restore.
  5. The Master (app_user.is_master = 1): allow.
  6. Master DB: the user's access row for the company, else the nearest one up
-    the parent_company_id chain. 'Deny', no row, or no role_code: deny.
- 7. Company DB: the role must exist and be active. Admin: allow. Otherwise the
-    role must hold the permission.
- 8. Project scope: a role with project_scope 'Assigned' may use a
-    PROJECT_SCOPED permission only for a project in user_project_scope, and is
-    denied when no project is given.
+    the parent_company_id chain. 'Deny' or no row: deny. The user's roles are
+    that row's company's user_company_role rows, else the row's role_code (MR2);
+    none: deny.
+ 7. Company DB: roles that do not exist or are inactive are skipped (none
+    exist: no access; none active: role inactive). Admin in any role: allow.
+    Otherwise at least one role must hold the permission; the permissions are
+    the union of the roles.
+ 8. Project scope: when every role granting a PROJECT_SCOPED permission has
+    project_scope 'Assigned' (MR3), it is allowed only for a project in
+    user_project_scope, and denied when no project is given.
 
 Both databases are read on EVERY call through fresh read-only connections, so a
 role, access or scope change applies on the next call. A denial raises
@@ -45,7 +49,16 @@ ACCESS_EVENT_BUSY_TIMEOUT_MS = 2000
 _MASTER_ONLY_WHEN_INACTIVE = frozenset({"company.backup", "company.restore"})
 _logger = logging.getLogger("strataledger")
 
-Access = namedtuple("Access", "is_master role_code")
+
+
+class Access(namedtuple("Access", "is_master role_codes")):
+    """The user's Master flag and the active role codes in the company, sorted (MR2)."""
+    __slots__ = ()
+
+    @property
+    def is_admin(self):
+        return "Admin" in self.role_codes
+
 
 # Why a permission check denied (decision R27). The sentence comes from the reason; the code goes to the log only.
 AGENT = "agent"                        # an agent asked for a code outside AGENT_ALLOWED
@@ -172,17 +185,37 @@ def deny(context, permission=None, *, record_type=None, record_id=None, message=
 
 
 def current_access(context):
-    """The user's Master flag and effective role code in the context's company (read fresh)."""
+    """The user's Master flag and active role codes in the context's company, read fresh (MR2)."""
     master = database.get_readonly_connection(context.master_db_path)
     try:
         user = master.execute("SELECT is_master FROM app_user WHERE user_id = ?", (context.user_id,)).fetchone()
         if user is None:
-            return Access(False, None)
+            return Access(False, ())
         if user["is_master"] == 1:
-            return Access(True, None)
-        return Access(False, _access_role(master, context.user_id, context.company_id))
+            return Access(True, ())
+        role_codes = _access_roles(master, context.user_id, context.company_id)
     finally:
         master.close()
+    if not role_codes:
+        return Access(False, ())
+    company = database.get_readonly_connection(context.company_db_path)
+    try:
+        return Access(False, tuple(r["role_code"] for r in _role_rows(company, role_codes) if r["is_active"] == 1))
+    finally:
+        company.close()
+
+
+def granting_roles(context, permission):
+    """The user's active role codes that hold the permission, sorted; Admin first when the user holds it (MR5)."""
+    access = current_access(context)
+    if not access.role_codes:
+        return ()
+    company = database.get_readonly_connection(context.company_db_path)
+    try:
+        holding = _holding(company, access.role_codes, permission)
+    finally:
+        company.close()
+    return (("Admin",) if access.is_admin else ()) + tuple(c for c in access.role_codes if c in holding)
 
 
 def record_company_open(context):
@@ -207,17 +240,20 @@ def check_approval_limit(context, document_type, amount_cents, project_id=None, 
     permission = permissions.APPROVE_PERMISSION[document_type]
     authorize(context, permission, project_id, record_type=record_type, record_id=record_id)
     access = current_access(context)
-    if access.is_master or access.role_code == "Admin":
+    if access.is_master or access.is_admin:
         return
     company = database.get_readonly_connection(context.company_db_path)
     try:
-        row = company.execute(
-            "SELECT max_amount_cents FROM approval_limit WHERE role_code = ? AND document_type = ?",
-            (access.role_code, document_type),
-        ).fetchone()
+        # MR4: the highest limit among the active roles that hold the approve permission.
+        holding = sorted(_holding(company, access.role_codes, permission))
+        limit = company.execute(
+            f"SELECT MAX(max_amount_cents) FROM approval_limit WHERE document_type = ? "
+            f"AND role_code IN ({_marks(holding)})", (document_type, *holding),
+        ).fetchone()[0] if holding else None
     finally:
         company.close()
-    if row is None or amount_cents > row["max_amount_cents"]:
+    if limit is None or amount_cents > limit:
+        row = None if limit is None else {"max_amount_cents": limit}
         names = _roles_that_can_approve(context, permission, document_type, amount_cents, not_counted)
         who = _ask_target(names, _admin_target(context, not_counted))
         if who is None:
@@ -264,7 +300,7 @@ def _admin_target(context, not_counted):
         users = master.execute("SELECT user_id, is_master FROM app_user WHERE is_active = 1 "
                                "ORDER BY user_id").fetchall()
         admins = {u["user_id"] for u in users if u["is_master"] == 0
-                  and _access_role(master, u["user_id"], context.company_id) == "Admin"}
+                  and "Admin" in _access_roles(master, u["user_id"], context.company_id)}
     finally:
         master.close()
     available = admins - set(not_counted)
@@ -304,9 +340,7 @@ def _held_roles(context, role_codes, not_counted=frozenset()):
                                    "ORDER BY user_id").fetchall():
             if user["user_id"] in not_counted:
                 continue
-            role_code = _access_role(master, user["user_id"], context.company_id)
-            if role_code in role_codes:
-                held.add(role_code)
+            held.update(set(_access_roles(master, user["user_id"], context.company_id)) & set(role_codes))
         return held
     finally:
         master.close()
@@ -337,8 +371,8 @@ def _decide(context, permission, project_id):
             return False, is_master, NO_COMPANY if is_master else NO_ACCESS
         # R36: a user without access learns only that, never whether the file is the registered one. The file is
         # still compared first, so a denial is never written into a file that is not the company's.
-        role_code = None if is_master else _access_role(master, context.user_id, context.company_id)
-        no_access = not is_master and role_code is None
+        role_codes = () if is_master else _access_roles(master, context.user_id, context.company_id)
+        no_access = not is_master and not role_codes
         try:
             registered = resolve_company_path(company["database_file_path"])
         except ValidationError:
@@ -361,20 +395,20 @@ def _decide(context, permission, project_id):
 
     company = database.get_readonly_connection(context.company_db_path)
     try:
-        role = company.execute(
-            "SELECT is_active, project_scope FROM role WHERE role_code = ?", (role_code,)
-        ).fetchone()
-        if role is None:
+        roles = _role_rows(company, role_codes)
+        if not roles:
             return False, False, NO_ACCESS
-        if role["is_active"] != 1:
+        active = [r for r in roles if r["is_active"] == 1]
+        if not active:
             return False, False, ROLE_INACTIVE
         if permission is None:  # check_company_access: an active role is enough
             return True, False, None
-        if role_code != "Admin" and company.execute(
-            "SELECT 1 FROM role_permission WHERE role_code = ? AND permission_code = ?", (role_code, permission)
-        ).fetchone() is None:
+        holding = _holding(company, [r["role_code"] for r in active], permission)
+        granting = [r for r in active if r["role_code"] == "Admin" or r["role_code"] in holding]
+        if not granting:
             return False, False, ROLE
-        if role["project_scope"] == "Assigned" and permission in permissions.PROJECT_SCOPED:
+        if (all(r["project_scope"] == "Assigned" for r in granting)
+                and permission in permissions.PROJECT_SCOPED):
             if project_id is None:
                 return False, False, NO_PROJECT
             if company.execute(
@@ -386,8 +420,12 @@ def _decide(context, permission, project_id):
         company.close()
 
 
-def _access_role(master, user_id, company_id):
-    """Role code from the nearest access row (this company, then up the parent chain); None if denied."""
+def _access_roles(master, user_id, company_id):
+    """The role codes from the nearest access row (this company, then up the parent chain), sorted (MR2).
+
+    A Deny row or no row: (). A Grant row: its own company's user_company_role rows, else its role_code. Whether
+    the roles exist and are active is the company file's business (_role_rows).
+    """
     seen = set()
     current = company_id
     while current is not None and current not in seen:
@@ -397,12 +435,42 @@ def _access_role(master, user_id, company_id):
             (user_id, current),
         ).fetchone()
         if row is not None:
-            return None if row["access_mode"] == "Deny" else row["role_code"]
+            if row["access_mode"] == "Deny":
+                return ()
+            rows = tuple(r["role_code"] for r in master.execute(
+                "SELECT role_code FROM user_company_role WHERE user_id = ? AND company_id = ? ORDER BY role_code",
+                (user_id, current)))
+            if rows:
+                return rows
+            return () if row["role_code"] is None else (row["role_code"],)
         parent = master.execute(
             "SELECT parent_company_id FROM company_registry WHERE company_id = ?", (current,)
         ).fetchone()
         current = parent["parent_company_id"] if parent else None
-    return None
+    return ()
+
+
+def _marks(values):
+    return ", ".join("?" for _ in values)
+
+
+def _role_rows(company, role_codes):
+    """The company's role rows (role_code, is_active, project_scope) for the codes that exist, by role_code."""
+    codes = sorted(set(role_codes))
+    if not codes:
+        return []
+    return company.execute(f"SELECT role_code, is_active, project_scope FROM role WHERE role_code IN "
+                           f"({_marks(codes)}) ORDER BY role_code", codes).fetchall()
+
+
+def _holding(company, role_codes, permission):
+    """The codes among role_codes whose role_permission rows hold the permission."""
+    codes = sorted(set(role_codes))
+    if not codes:
+        return set()
+    return {r["role_code"] for r in company.execute(
+        f"SELECT role_code FROM role_permission WHERE permission_code = ? AND role_code IN ({_marks(codes)})",
+        (permission, *codes))}
 
 
 def _actor_type(context, is_master):

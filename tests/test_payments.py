@@ -682,3 +682,46 @@ def test_clearing_lines_check_their_inputs(pay, kwargs, match):
         with pytest.raises(ValidationError, match=match):
             payments.clearing_lines(c, side=kwargs["side"], account_id=A(pay, "ar"), contact_id=pay.customer,
                                     amount_cents=500, allocations=allocs)
+
+
+# --- LOW 2 (MR6): the side is read first; a missing source is a denial for someone with neither right ---------
+
+@pytest.mark.parametrize("missing", [("payment", 999999), ("credit_memo", 999999)])
+def test_someone_with_neither_permission_cannot_tell_a_missing_source(pay, missing):
+    """One sentence for a missing source and for an existing one on either side; the log names the side's code."""
+    invoice, received, made = document(pay, "invoice"), payment(pay, posted=False), payment(pay, "Made", posted=False)
+    pay.remove_permission("PARENT", "POSTER", "payment.receive")
+    pay.remove_permission("PARENT", "POSTER", "payment.make")
+    sentences = set()
+    for ref in (missing, ("payment", received), ("payment", made)):
+        with pytest.raises(PermissionDeniedError) as denied:
+            allocate(pay, ref, ("invoice", invoice), 100)
+        sentences.add(str(denied.value))
+    assert sentences == {payments.CANNOT_APPLY}
+    assert [e["permission_code"] for e in pay.events("PARENT")[-3:]] == [
+        "payment.receive", "payment.receive", "payment.make"]
+    assert allocations(pay) == []
+
+
+def test_an_inactive_user_is_told_so_not_about_the_role(pay):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    pay.set_user_active(pay.user_id, False)
+    with pytest.raises(PermissionDeniedError, match="account is inactive"):
+        allocate(pay, ("payment", source), ("invoice", invoice), 100)
+
+
+@pytest.mark.parametrize("held", ["payment.receive", "payment.make"])
+def test_someone_with_either_permission_is_told_the_source_is_missing(pay, held):
+    invoice = document(pay, "invoice")
+    pay.remove_permission("PARENT", "POSTER", "payment.make" if held == "payment.receive" else "payment.receive")
+    refused(lambda: allocate(pay, ("payment", 999999), ("invoice", invoice), 100), "Choose the payment or credit memo")
+
+
+@pytest.mark.parametrize("direction, permission", [("Received", "payment.receive"), ("Made", "payment.make")])
+def test_the_denial_log_names_the_sources_side(pay, direction, permission):
+    target = document(pay, "invoice" if direction == "Received" else "bill")
+    source = payment(pay, direction, posted=False)
+    pay.remove_permission("PARENT", "POSTER", permission)
+    with pytest.raises(PermissionDeniedError):
+        allocate(pay, ("payment", source), ("invoice", target), 100)
+    assert pay.events("PARENT")[-1]["permission_code"] == permission

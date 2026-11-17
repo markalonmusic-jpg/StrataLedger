@@ -84,6 +84,12 @@ class World:
                 "access_mode = excluded.access_mode",
                 (user_id, self.company_id(company), role_code, mode))
 
+    def add_roles(self, user_id, company, *role_codes):
+        """Rows in user_company_role (MR2): several roles for the user in that company."""
+        with self._master() as c:
+            c.executemany("INSERT INTO user_company_role (user_id, company_id, role_code) VALUES (?, ?, ?)",
+                          [(user_id, self.company_id(company), code) for code in role_codes])
+
     def revoke(self, user_id, company):
         with self._master() as c:
             c.execute("DELETE FROM user_company_access WHERE user_id = ? AND company_id = ?",

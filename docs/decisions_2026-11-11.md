@@ -321,6 +321,22 @@ RP. Replan resolutions (owner, 2026-11-16; section "RP. Replan resolutions"):
 - RP10 user_company_role in the master, schema only until authz reads it
 - RP11 Allocations of a posted source are released once, never deleted
 
+MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
+- MR1 Phase 2.7 is three STOPs (A multi-role, B hooks and add-ons, C custom fields plan), a fresh session each
+- MR2 Effective roles: access row is the gate (Deny wins); its company's user_company_role rows, else role_code; union
+- MR3 Project scope only when every role granting the permission is Assigned
+- MR4 Approval limit: the highest among the active roles holding the approve permission
+- MR5 One person fills at most one slot of an approval chain, even through two roles
+- MR6 allocate reads the source's side, then authorizes that side; neither right: one sentence (LOW 2)
+- MR7 CLAUDE.md stays at 200 lines or fewer, trimmed at each STOP (amends the 210-line budget)
+- HA1 Hook events entry.posted and entry.voided fired from ledger; stage.entered and stage.left declared only
+- HA2 Hook handlers write only their add-on's <key>_ tables (SQLite authorizer); an error rolls back the caller
+- HA3 Add-ons load only from RESOURCE_DIR/addons, never from DATA_DIR
+- HA4 Add-on migrations refuse objects outside their prefix, triggers and indexes on other tables, PRAGMA, ATTACH
+- HA5 Permission addon.manage, Admin and Master only
+- HA6 addon_schema_version.sha256, checked like the baseline hash
+- FR1 Field Registry is the custom fields service: planned at STOP B, built only after approval
+
 ---
 
 ## 0. Design principle: graduated controls (top-level rule)
@@ -1494,3 +1510,45 @@ The owner approved these before the consolidated pre-release baseline update (ST
   allocation once (`released_at`, `released_by`, `release_reason`), and only after the source's entry is voided,
   so a live posted payment cannot be quietly unapplied; the history shows what was applied and undone. (A later
   "unapply" of a live payment would be a new decision.)
+
+## MR, HA, FR. Phase 2.7 (decided 2026-11-17)
+
+The owner's answers to the Phase 2.7 plan.
+
+- MR1 Phase 2.7 is split into three STOPs, each started in a fresh session: STOP A multi-role permissions; STOP B
+  the hook registry, the add-on registry and the add-on migration runner; STOP C the custom fields service, planned
+  at STOP B and built only after the owner approves the plan.
+- MR2 (completes RP10) `user_company_access` stays the gate: the user's row for the company, else the nearest one up
+  the parent chain; a Deny row or no row is no access. The user's roles are the `user_company_role` rows of the
+  company that row belongs to, else the row's `role_code` when there are none. Roles missing from the company file
+  or inactive are skipped (none exist: no access; none active: the inactive-role denial). The permissions are the
+  union of the active roles; Admin in any of them allows everything. The user services (assigning a role no broader
+  than the actor's, the Admin guards, the last-Admin check) read the same roles.
+- MR3 A project-scoped permission is limited to the user's assigned projects only when every active role that
+  grants it has `project_scope = 'Assigned'`; one granting role with All lifts the scope.
+- MR4 The approval limit is the highest `approval_limit` among the user's active roles that hold the document type's
+  approve permission. A role without that permission brings no limit; Master and Admin stay unlimited.
+- MR5 One person fills at most one slot of an approval request's chain, even when two of their roles match two
+  slots (the existing "already acted" refusal). A slot is matched against any of the person's active roles, the
+  first open slot in chain order. An any-role slot is recorded as Master, Admin, else the first of the person's
+  roles, by code, that holds the approve permission.
+- MR6 (closes LOW 2 of the STOP 2 secrets audit) `payments.allocate` reads the source's side first and then
+  authorizes that side's permission (R56), so the denial log names it. Someone holding neither `payment.receive`
+  nor `payment.make` is refused with one sentence whether the source exists or not and on either side (an inactive
+  user or one without access gets that sentence instead). No `has_permission` alias: `authz.is_allowed` is used.
+- MR7 CLAUDE.md is trimmed to 200 lines or fewer at each STOP.
+- HA1 Hook events: `entry.posted` and `entry.voided`, fired from `ledger`; `stage.entered` and `stage.left` are
+  declared only. No `stage_trigger_run` writer until the CRM step.
+- HA2 A hook handler may write only its own add-on's `<key>_` tables, enforced in `modules/database.py` with the
+  SQLite authorizer while the handler runs. A handler error rolls back the caller's transaction with a plain
+  sentence that names the add-on and the next step (disable it in Company Settings).
+- HA3 Add-ons load only from `RESOURCE_DIR/addons`, never from `DATA_DIR` (tested).
+- HA4 The add-on migration runner refuses objects outside the add-on's prefix, triggers and indexes on any table
+  outside it, and PRAGMA and ATTACH statements.
+- HA5 A new permission `addon.manage`, held by Admin and the Master only; the role templates are updated.
+- HA6 `addon_schema_version` gets a `sha256` column, checked like the baseline runner's hash (a baseline edit:
+  failing tests first, then the empty development databases are rebuilt).
+- FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
+  following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
+  stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built
+  before the owner approves.

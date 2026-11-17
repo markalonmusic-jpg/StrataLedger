@@ -4,10 +4,9 @@ Desktop accounting app for Windows: Python 3.11, SQLite, CustomTkinter today (mo
 AQ2). Subscription-free, local data. A hosted version (PostgreSQL on Azure, AQ1) comes later, so services stay
 portable (rule 15). The system and product design is docs/design.md.
 
-This file holds what every session needs: the rules, the file map and where the project stands. Keep it
-to about 210 lines. Dated history goes in docs/status_log.md, plans in docs/roadmap.md, design decisions in
-docs/design_decisions.md and docs/decisions_2026-11-11.md. Code comments and tests cite the section and
-rule numbers below, so keep the numbering.
+This file holds the rules, the file map and where the project stands; keep it to 200 lines or fewer (MR7).
+History: docs/status_log.md; plans: docs/roadmap.md; decisions: docs/design_decisions.md and
+docs/decisions_2026-11-11.md. Code comments and tests cite the section and rule numbers, so keep the numbering.
 
 Commands (from the repo root):
 - Full test suite: `python -m pytest -q`
@@ -19,9 +18,8 @@ Commands (from the repo root):
 
 ## 0. Design principle: graduated controls (top-level rule)
 
-StrataLedger defaults to QuickBooks-level flexibility for a small business; a company switches on stronger
-controls as it grows. It is not a NetSuite clone. Source: docs/decisions_2026-11-11.md section 0, which wins
-over any design doc, as amended by the owner's rulings of 2026-11-15 (this file and docs/design.md).
+QuickBooks-level flexibility for a small business by default; a company switches on stronger controls as it
+grows (not a NetSuite clone). Source: docs/decisions_2026-11-11.md section 0, as amended 2026-11-15.
 
 **Integrity rules: always on, never configurable.**
 - Integer cents; balanced double entry checked in the posting transaction.
@@ -51,18 +49,16 @@ next in one sentence. Screens follow docs/CLAUDE_UI.md.
 
 ## 1. Project vision and history
 
-A desktop, subscription-free accounting platform for businesses and CPAs who want local data ownership:
-multi-company, project costing, percentage of completion, construction contracts, deferrals, custom
-dimensions, imports from Gusto, Rippling and Ramp. Release order: v1.0 core accounting, v1.1 construction,
-v1.2 AI Copilot (docs/roadmap.md).
+Subscription-free desktop accounting for businesses and CPAs who own their data: multi-company, job costing,
+percentage of completion, construction contracts, deferrals, custom dimensions, Gusto, Rippling and Ramp imports.
+Releases: v1.0 core accounting, v1.1 construction, v1.2 AI Copilot (docs/roadmap.md).
 
 ## 2. Directory and file structure
 
 Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fonts, templates, help) and
 `DATA_DIR` (written: databases, `Companies/`, `Backups/`, `Logs/`, `Uploaded_Files/`). Never hardcode a path.
 
-- `app_strata.pyw` - entry point: first-run routing, launcher, login, shell (sidebar, workspace, Copilot
-  placeholder).
+- `app_strata.pyw` - entry point: first-run routing, launcher, login, shell (sidebar, workspace).
 - `config.py` - paths and `Theme` (every colour, font and size).
 - `modules/database.py` - connections, the baseline runner and the pre-release hash guard.
 - `modules/services/` - the service layer: every write and every protected read. `tx.py` (write transaction,
@@ -73,8 +69,7 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
 - LEGACY screens (the files in `CONNECT_ALLOW_LIST` in tests/test_static_rules.py) still run their own SQL
   and are rewritten in Phase 3. Do not copy their patterns.
 - `migrations/001_company.sql`, `001_master.sql` - the schema baseline (section 5).
-- `templates/coa/` - approved chart-of-accounts templates. `tests/` - pytest. `scripts/`, `tools/` -
-  developer tools.
+- `templates/coa/` - approved chart templates. `tests/` - pytest. `scripts/`, `tools/` - developer tools.
 - `docs/` - design docs. Read the one for an area before touching it; docs/file_map.md lists each with its
   build status and has the longer notes on individual modules.
 - `archive/` - old baselines and prompts. Do not read, search or copy from it unless the task names it or
@@ -86,8 +81,7 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
 
 ## 3. Non-negotiable engineering and accounting rules
 
-1. **Integer cents only.** Money is `INTEGER` cents everywhere, never `REAL`/`FLOAT`. (Quantities, hours
-   and percentages may be `REAL`.)
+1. **Integer cents only.** Money is `INTEGER` cents, never `REAL`/`FLOAT` (quantities, hours, percentages may be).
 2. **Balanced double entry.** Posting checks `SUM(debit_cents) == SUM(credit_cents)` in the posting
    transaction. Unbalanced drafts may be saved.
 3. **Two kinds of database.** `system_master.db` (users, company registry, access) and one isolated file
@@ -106,8 +100,7 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
    may be edited while `Lock documents after posting` is OFF (default): one transaction reverses and reposts
    it under the same number, with version history; refused if the period or area is locked, the total drops
    below the amount paid, or it is in a submitted pay app or pay run (docs/design.md section 4; planned).
-9. **Never delete or rewrite a database file without asking.** Back up a file that holds real data before
-   any schema change (section 5).
+9. **Never delete or rewrite a database file without asking.** Back up real data before a schema change (section 5).
 10. **Every service that writes, or reads protected data, calls `authorize(context, permission, project_id)`
     first**, before it opens its write transaction, and raises a typed exception on denial. The UI only hides.
 11. **Connections** come only from `modules/database.py`; services reach it through `tx.write_transaction`
@@ -116,10 +109,8 @@ Paths are defined once in `config.py`: `RESOURCE_DIR` (read-only: migrations, fo
 12. **No silent errors.** No `print()` in `modules/`. Services raise typed exceptions, the UI shows a
     dialog, and errors go to the log file (`config.LOG_FILE`).
 13. **Auth.** Passwords are hashed with `hashlib.scrypt` through `passwords.py`, never stored or compared as
-    plaintext; only `auth.py` and `users.py` touch `password_hash`. Opening a company checks
-    `user_company_access`.
-14. **Ease of use.** Every screen follows section 0b and docs/CLAUDE_UI.md. New optional checks follow
-    section 0.
+    plaintext; only `auth.py` and `users.py` touch `password_hash`. Opening a company checks access (MR2).
+14. **Ease of use.** Every screen follows section 0b and docs/CLAUDE_UI.md; new optional checks follow section 0.
 15. **Portability (hosted-ready).** In `modules/services/`: no UI or OS-specific imports (H1); no clock
     reads, `now` and `today` come from the context (H2); files go through `storage.py` (H3);
     `audit_context` is touched only in `tx.py`, and workflow rules live in services, not new triggers (H4);
@@ -163,12 +154,10 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-16):** Phase 2 (service layer). Done: 2.1-2.4, 2.6, 2.5 steps 1-6: chain and verify,
-keystore and key-lost (KS1-KS21; the service can post, no posting screen yet), approvals in posting (R15-R39),
-reversals (R40-R48), rounding and `create_document_entry` (R49-R55); details in docs/status_log.md. Design batch
-accepted (CB1, CF1, JD1, CM1-CM3, B11a, BF1, EX1); AQ1, AQ2 and docs/design.md recorded 2026-11-15; the consolidated
-baseline update (STOP 1, RP1-RP11) and 2.5 step 7 (allocations, clearing, numbering; R56-R60) done 2026-11-16:
-Phase 2.5 is done. Next: 2.7 (hooks and add-ons; docs/next_step.md), 2.8 (PW1-PW11), Phase 3.
+**Where we are (2026-11-17):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
+rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
+STOPs (MR1): STOP A, multi-role permissions (MR2-MR7), is done. Next: STOP B (hooks, add-ons, add-on migrations;
+HA1-HA6; docs/next_step.md), STOP C (custom fields, FR1), 2.8 (PW1-PW11), Phase 3. History: docs/status_log.md.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
@@ -178,7 +167,6 @@ Phase 2.5 is done. Next: 2.7 (hooks and add-ons; docs/next_step.md), 2.8 (PW1-PW
   launcher list shows archived companies. Phase 3.
 - `ui_components.DataTable` needs `Theme.create_scrollbar` (missing); modal badge styles hold hex colours. Phase 3.
 - `app_user.role` is legacy free text read only by the sidebar's `NAV_ITEMS`; Phase 3 replaces and removes it.
-- `user_company_role` (master, RP10) exists but `authz` still reads only `user_company_access.role_code`.
 - Tests share one hidden Tk window (`tk_app` in conftest.py); live-clipboard tests need `STRATALEDGER_LIVE_CLIPBOARD=1`.
 
 ## 8. Working agreement
@@ -203,9 +191,8 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
 - Find decisions by code with a text search (grep); never read docs/decisions_2026-11-11.md,
   docs/design_decisions.md or a design doc in full unless the task says so. A session that adds a decision code
   also adds its one-line row to the index at the top of docs/decisions_2026-11-11.md.
-- At each STOP, write the next step's plan, open questions and current counts to docs/next_step.md (overwrite
-  it). A new session starts by reading it.
-- Planning and review happen in the Claude chat; this tool performs the tasks from the prompts it is given.
+- At each STOP, overwrite docs/next_step.md with the next step's plan, open questions and counts; a new session
+  starts by reading it. Planning and review happen in the Claude chat; this tool performs the prompts' tasks.
 
 ## 9. Open decisions and notes for review
 

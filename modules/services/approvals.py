@@ -3,8 +3,8 @@
 A policy covers one document type and an amount band. Its steps run in order of
 step_no; steps with the same step_no are parallel. Each step names a role and
 how many DIFFERENT people holding it must approve. A person fills at most one
-slot per request. Normal users fill a slot only for their current role; the
-Master and Admin may fill any slot (still once). With no matching policy the
+slot per request, even through two roles (MR5). Normal users fill a slot only for
+one of their active roles; the Master and Admin may fill any slot (still once). With no matching policy the
 default chain is one approval by anyone holding the approve permission with a
 covering limit. The chain is copied onto the request at submit time, so policy
 changes never affect a request in progress. Any rejection ends the request.
@@ -44,7 +44,7 @@ ALREADY_ACTED = "You have already acted on this approval request; another approv
 _NOUN = {"journal_entry": "entry"}    # how a refusal names the record; "document" otherwise
 
 Slot = namedtuple("Slot", "step_no role_code")
-_Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privileged role_code")
+_Plan = namedtuple("_Plan", "request chain slot stored_role self_approved privileged role_codes")
 
 
 # --- The separate-approver rule (shared by approvals and later services) ---------------------
@@ -474,20 +474,21 @@ def _filled(slot, actions):
                and (slot["role_code"] is None or a["role_code"] == slot["role_code"]))
 
 
-def _open_slot(chain, actions, role_code, privileged):
-    """The slot this user would fill in the lowest open step, or None if they cannot fill one."""
+def _open_slot(chain, actions, role_codes, privileged):
+    """The slot this user would fill in the lowest open step (the first, in chain order, that one of their roles
+    fills), or None if they cannot fill one."""
     for step_no in sorted({s["step_no"] for s in chain}):
         open_slots = [s for s in chain if s["step_no"] == step_no and _filled(s, actions) < s["required_count"]]
         if not open_slots:
             continue
         for slot in open_slots:
-            if slot["role_code"] is None or privileged or slot["role_code"] == role_code:
+            if slot["role_code"] is None or privileged or slot["role_code"] in role_codes:
                 return Slot(step_no, slot["role_code"])
         return None
     return None
 
 
-def _no_slot_message(conn, chain, actions, role_code):
+def _no_slot_message(conn, chain, actions, role_codes):
     """Why this user cannot fill the open step, and who can (R27). Steps are counted by position, as in
     request_state, so the numbers match the posting refusal's "step X of Y"."""
     step_nos = sorted({s["step_no"] for s in chain})
@@ -503,7 +504,7 @@ def _no_slot_message(conn, chain, actions, role_code):
     who = " or ".join([", ".join(roles[:-1]), roles[-1]] if len(roles) > 1 else roles)
     position = f"Step {step_nos.index(first) + 1} of {len(step_nos)}"
     later = [n for n in open_steps[1:] if any(
-        s["step_no"] == n and (s["role_code"] is None or s["role_code"] == role_code)
+        s["step_no"] == n and (s["role_code"] is None or s["role_code"] in role_codes)
         and _filled(s, actions) < s["required_count"] for s in chain)]
     if later:
         return (f"{position} must be approved first by someone in the {who} role; "
@@ -525,21 +526,30 @@ def _plan(context, request):
         message=separation_message(noun, submitted=False), submitter_message=separation_message(noun, submitted=True),
         **record)
     access = authz.current_access(context)
-    privileged = access.is_master or access.role_code == "Admin"
+    privileged = access.is_master or access.is_admin
     chain = json.loads(request["chain_json"])
     conn = read_connection(context.company_db_path)
     try:
         actions = _actions(conn, request["request_id"])
-        slot = _open_slot(chain, actions, access.role_code, privileged)
-        no_slot = None if slot is not None else _no_slot_message(conn, chain, actions, access.role_code)
+        slot = _open_slot(chain, actions, access.role_codes, privileged)
+        no_slot = None if slot is not None else _no_slot_message(conn, chain, actions, access.role_codes)
     finally:
         conn.close()
     if any(a["user_id"] == context.user_id for a in actions):
         raise ValidationError(ALREADY_ACTED)
     if slot is None:
         authz.deny(context, permission, message=no_slot, **record)
-    stored_role = slot.role_code or access.role_code or ("Master" if access.is_master else None)
-    return _Plan(request, chain, slot, stored_role, self_approved, privileged, access.role_code)
+    stored_role = slot.role_code or _acting_role(context, access, permission)
+    return _Plan(request, chain, slot, stored_role, self_approved, privileged, access.role_codes)
+
+
+def _acting_role(context, access, permission):
+    """The role an open (any-role) slot is recorded under: Master, Admin, else the first of the user's roles, by
+    code, that holds the approve permission (MR5)."""
+    if access.is_master:
+        return "Master"
+    granting = authz.granting_roles(context, permission)
+    return granting[0] if granting else None
 
 
 def _record(conn, context, plan, decision, reason):
@@ -551,7 +561,7 @@ def _record(conn, context, plan, decision, reason):
     actions = _actions(conn, request_id)
     if any(a["user_id"] == context.user_id for a in actions):
         raise ValidationError(ALREADY_ACTED)
-    if _open_slot(plan.chain, actions, plan.role_code, plan.privileged) != plan.slot:
+    if _open_slot(plan.chain, actions, plan.role_codes, plan.privileged) != plan.slot:
         raise ValidationError("The approval request changed; try again")
     now = context.now
     conn.execute(

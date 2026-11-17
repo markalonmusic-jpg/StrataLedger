@@ -755,3 +755,14 @@ Rotation and key-lost text as it stood before the trim:
   - 115 killed, plus 1 by tests/test_voucher_sequence.py; 4 equivalent.
   - Tests for the other 22 in bd29f11; the rerun killed all 22.
   Suite 2959 passed, 7 deselected, 0 xfailed. STOP 2 done; Phase 2.7 planned in docs/next_step.md.
+
+- 2026-11-17: Phase 2.7 STOP A (multi-role permissions) built.
+  - Owner answers recorded as MR1-MR7 (STOP A), HA1-HA6 (STOP B) and FR1 (STOP C), with their index rows.
+  - `authz`: roles from `user_company_role` (else `role_code`), union of active roles, Admin in any role, project
+    scope only when every granting role is Assigned, the highest approval limit (MR2-MR4); `Access.role_codes`,
+    `granting_roles`.
+  - `approvals`: slots matched against any active role, one slot per person (MR5).
+  - `users`: the broader-role check, Admin guards and last-Admin check read the effective roles.
+  - `payments.allocate`: side first, one sentence for someone with neither right (MR6, closes LOW 2).
+  - CLAUDE.md trimmed to 199 lines (MR7).
+  - Suite 3002 passed, 7 deselected.
