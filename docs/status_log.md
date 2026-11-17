@@ -766,3 +766,11 @@ Rotation and key-lost text as it stood before the trim:
   - `payments.allocate`: side first, one sentence for someone with neither right (MR6, closes LOW 2).
   - CLAUDE.md trimmed to 199 lines (MR7).
   - Suite 3002 passed, 7 deselected.
+  Review fixes (4c46ef4, 9e022b9):
+  - step-reviewer (approve with changes): MR8, so the single-role services replace or clear the role rows; the
+    Admin-anywhere check reads the effective roles; ROLES_CHANGED; tests for Master and Admin any-role slots and
+    the full neither-right matrix.
+  - secrets-auditor: nothing leaks; LOW 2 closed; INFO-B (the Master's sentence) fixed; LOW-A left for the owner.
+  Mutation check (on 9e022b9): 87 mutants, 67 killed, 6 equivalent; tests for the other 14 are in
+  tests/test_mutation_stop_a_extra.py. Suite 3027 passed, 7 deselected. STOP A done; STOP B planned in
+  docs/next_step.md.
