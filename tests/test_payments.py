@@ -738,3 +738,12 @@ def test_the_denial_log_names_the_sources_side(pay, direction, permission):
     with pytest.raises(PermissionDeniedError):
         allocate(pay, ("payment", source), ("invoice", target), 100)
     assert pay.events("PARENT")[-1]["permission_code"] == permission
+
+
+def test_the_master_in_an_archived_company_gets_the_archived_sentence(pay):
+    invoice, source = document(pay, "invoice"), payment(pay, posted=False)
+    master = pay.user("owner", master=True)
+    pay.set_company_active("PARENT", False)
+    for ref in (("payment", source), ("payment", 999999)):
+        with pytest.raises(PermissionDeniedError, match="This company is archived"):
+            allocate(pay, ref, ("invoice", invoice), 100, context=ctx_for(pay, user=master))

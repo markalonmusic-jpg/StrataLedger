@@ -256,8 +256,11 @@ def allocate(context, *, source, target, amount_cents, applied_date):
         conn.close()
     if not any(authz.is_allowed(context, code) for code in SIDE_PERMISSION.values()):
         authz.check_company_access(context)       # an inactive user or no access: that sentence instead
-        authz.deny(context, SIDE_PERMISSION[side or "Sales"], record_type="payment_allocation",
-                   message=CANNOT_APPLY)
+        if not authz.current_access(context).is_master:
+            authz.deny(context, SIDE_PERMISSION[side or "Sales"], record_type="payment_allocation",
+                       message=CANNOT_APPLY)
+        # The Master (an archived company): authorize gives that sentence.
+        authorize(context, SIDE_PERMISSION[side or "Sales"], record_type="payment_allocation")
     if missing is not None:
         raise missing
     authorize(context, SIDE_PERMISSION[side], record_type="payment_allocation")
