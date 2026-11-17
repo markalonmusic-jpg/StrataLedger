@@ -3,9 +3,9 @@
 A policy covers one document type and an amount band. Its steps run in order of
 step_no; steps with the same step_no are parallel. Each step names a role and
 how many DIFFERENT people holding it must approve. A person fills at most one
-slot per request, even through two roles (MR5). Normal users fill a slot only for
-one of their active roles; the Master and Admin may fill any slot (still once). With no matching policy the
-default chain is one approval by anyone holding the approve permission with a
+slot per request, even through two roles (MR5). Normal users fill a slot only
+for one of their active roles; the Master and Admin may fill any slot (still
+once). With no matching policy the default chain is one approval by anyone holding the approve permission with a
 covering limit. The chain is copied onto the request at submit time, so policy
 changes never affect a request in progress. Any rejection ends the request.
 
@@ -40,6 +40,7 @@ ALLOWED_STATUS_CHANGES = {
 _CANCELLABLE = ("Pending", "Approved")
 ONLY_A_PERSON = "Only a person can approve or reject; sign in and do it yourself."
 REASON_NEEDED = "Give a reason for rejecting it, so the preparer knows what to fix."
+ROLES_CHANGED = "Your roles changed while you were approving; try again."
 ALREADY_ACTED = "You have already acted on this approval request; another approver completes the open step."
 _NOUN = {"journal_entry": "entry"}    # how a refusal names the record; "document" otherwise
 
@@ -540,6 +541,8 @@ def _plan(context, request):
     if slot is None:
         authz.deny(context, permission, message=no_slot, **record)
     stored_role = slot.role_code or _acting_role(context, access, permission)
+    if stored_role is None:      # the roles changed after the limit check: never a raw database error
+        raise ValidationError(ROLES_CHANGED)
     return _Plan(request, chain, slot, stored_role, self_approved, privileged, access.role_codes)
 
 

@@ -364,3 +364,29 @@ def test_the_later_step_hint_counts_every_role(world, chain):
     request_id = _request(chain, [(1, "Manager", 1), (2, "Controller", 1)])
     with pytest.raises(PermissionDeniedError, match="you can approve step 2 once it is complete"):
         approvals.approve(chain["ctx"]("both"), request_id)
+
+
+@pytest.mark.parametrize("who, stored", [("admin_code", "Admin"), ("admin_row", "Admin"), ("master", "Master")])
+def test_an_any_role_slot_records_master_or_admin(world, chain, who, stored):
+    """The default chain's slot is recorded as Master or Admin, also for an Admin through a role row next to a role
+    that sorts before Admin and holds the permission."""
+    people = {"master": world.user("owner", master=True), "admin_code": world.user("adm1"),
+              "admin_row": world.user("adm2")}
+    world.grant(people["admin_code"], CO, "Admin")
+    world.role(CO, "Aaa", ["bill.approve"])
+    world.grant(people["admin_row"], CO, None)
+    world.add_roles(people["admin_row"], CO, "Aaa", "Admin")
+    request_id = approvals.submit_for_approval(chain["ctx"]("clerk"), "Bill", "invoice", 1, 5_000,
+                                               created_by=chain["clerk"])
+    assert approvals.approve(world.ctx(people[who], CO), request_id) == "Approved"
+    assert _actions(world, request_id) == [(people[who], 1, stored)]
+
+
+def test_roles_that_change_before_the_slot_is_recorded_are_refused_plainly(world, chain, monkeypatch):
+    request_id = approvals.submit_for_approval(chain["ctx"]("clerk"), "Bill", "invoice", 1, 5_000,
+                                               created_by=chain["clerk"])
+    monkeypatch.setattr(authz, "granting_roles", lambda context, permission: ())
+    with pytest.raises(ValidationError, match="roles changed"):
+        approvals.approve(chain["ctx"]("both"), request_id)
+    assert _actions(world, request_id) == []
+

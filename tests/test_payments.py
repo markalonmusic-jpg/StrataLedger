@@ -688,26 +688,39 @@ def test_clearing_lines_check_their_inputs(pay, kwargs, match):
 
 @pytest.mark.parametrize("missing", [("payment", 999999), ("credit_memo", 999999)])
 def test_someone_with_neither_permission_cannot_tell_a_missing_source(pay, missing):
-    """One sentence for a missing source and for an existing one on either side; the log names the side's code."""
+    """One sentence for a missing source and for an existing payment or credit memo on either side; each refusal
+    writes one access_event naming the side's code, and nothing else changes."""
     invoice, received, made = document(pay, "invoice"), payment(pay, posted=False), payment(pay, "Made", posted=False)
+    memo, vendor_credit = document(pay, "credit_memo"), document(pay, "vendor_credit")
     pay.remove_permission("PARENT", "POSTER", "payment.receive")
     pay.remove_permission("PARENT", "POSTER", "payment.make")
+    refs = (missing, ("payment", received), ("payment", made), ("credit_memo", memo), ("credit_memo", vendor_credit))
+    before, events = state(pay), len(pay.events("PARENT"))
     sentences = set()
-    for ref in (missing, ("payment", received), ("payment", made)):
+    for ref in refs:
         with pytest.raises(PermissionDeniedError) as denied:
             allocate(pay, ref, ("invoice", invoice), 100)
         sentences.add(str(denied.value))
     assert sentences == {payments.CANNOT_APPLY}
-    assert [e["permission_code"] for e in pay.events("PARENT")[-3:]] == [
-        "payment.receive", "payment.receive", "payment.make"]
-    assert allocations(pay) == []
+    written = pay.events("PARENT")[events:]
+    assert [(e["event_type"], e["permission_code"], e["record_type"]) for e in written] == [
+        ("Denied", code, "payment_allocation") for code in
+        ("payment.receive", "payment.receive", "payment.make", "payment.receive", "payment.make")]
+    assert state(pay) == before
 
 
-def test_an_inactive_user_is_told_so_not_about_the_role(pay):
+@pytest.mark.parametrize("case, sentence", [("inactive", "account is inactive"), ("no access", "do not have access")])
+def test_an_inactive_user_or_one_without_access_is_told_that(pay, case, sentence):
     invoice, source = document(pay, "invoice"), payment(pay, posted=False)
-    pay.set_user_active(pay.user_id, False)
-    with pytest.raises(PermissionDeniedError, match="account is inactive"):
-        allocate(pay, ("payment", source), ("invoice", invoice), 100)
+    if case == "inactive":
+        pay.set_user_active(pay.user_id, False)
+    else:
+        pay.revoke(pay.user_id, "PARENT")
+    before = state(pay)
+    for ref in (("payment", source), ("payment", 999999)):
+        with pytest.raises(PermissionDeniedError, match=sentence):
+            allocate(pay, ref, ("invoice", invoice), 100)
+    assert state(pay) == before
 
 
 @pytest.mark.parametrize("held", ["payment.receive", "payment.make"])

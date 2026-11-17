@@ -118,7 +118,9 @@ def authorize_reset(session, actor, target):
 # --- Access ----------------------------------------------------------------------------------
 
 def grant_access(session, target_user_id, company_id, role_code):
-    """Give a user access to a company with a role (creates or replaces the row as a Grant)."""
+    """Give a user access to a company with a role (creates or replaces the row as a Grant).
+
+    The role replaces any user_company_role rows the user has in that company (MR8)."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -133,11 +135,13 @@ def grant_access(session, target_user_id, company_id, role_code):
             "INSERT INTO user_company_access (user_id, company_id, role_code, access_mode) VALUES (?, ?, ?, 'Grant') "
             "ON CONFLICT (user_id, company_id) DO UPDATE SET role_code = excluded.role_code, access_mode = 'Grant'",
             (target_user_id, company_id, role_code))
+        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
+                     (target_user_id, company_id))
         _check_admins_kept(conn, before)
 
 
 def set_role(session, target_user_id, company_id, role_code):
-    """Change the role on an existing Grant row."""
+    """Change the role on an existing Grant row; it replaces the user's role rows in that company (MR8)."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -156,11 +160,13 @@ def set_role(session, target_user_id, company_id, role_code):
         before = _companies_without_admin(conn)
         conn.execute("UPDATE user_company_access SET role_code = ? WHERE user_id = ? AND company_id = ?",
                      (role_code, target_user_id, company_id))
+        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
+                     (target_user_id, company_id))
         _check_admins_kept(conn, before)
 
 
 def deny_access(session, target_user_id, company_id):
-    """Deny a user this company (also narrows access inherited from a parent)."""
+    """Deny a user this company (also narrows access inherited from a parent); clears its role rows (MR8)."""
     actor = active_user(session)
     context = _company_context(session, company_id)
     authorize(context, USERS_MANAGE, record_type="app_user", record_id=target_user_id)
@@ -174,6 +180,8 @@ def deny_access(session, target_user_id, company_id):
             "INSERT INTO user_company_access (user_id, company_id, role_code, access_mode) VALUES (?, ?, NULL, 'Deny') "
             "ON CONFLICT (user_id, company_id) DO UPDATE SET role_code = NULL, access_mode = 'Deny'",
             (target_user_id, company_id))
+        conn.execute("DELETE FROM user_company_role WHERE user_id = ? AND company_id = ?",   # MR8
+                     (target_user_id, company_id))
         _check_admins_kept(conn, before)
 
 
@@ -236,7 +244,8 @@ def _check_assignable(actor, context, role_code):
         return
     held = set()                     # MR2: the union of the actor's active roles' permissions
     for actor_role in actor_access.role_codes:
-        held |= _role_permissions(context, actor_role)[1]
+        info = _role_permissions(context, actor_role)
+        held |= info[1] if info else set()
     if not codes <= held:
         authz.deny(context, USERS_MANAGE, record_type="role", message=BROADER_ROLE)
 
@@ -258,10 +267,8 @@ def _guard_admin_removal(actor, context, target_user_id, *, new_role):
 def _holds_admin_anywhere(session, user_id):
     conn = read_connection(session.master_db_path)
     try:
-        return conn.execute(
-            "SELECT 1 FROM user_company_access AS a WHERE a.user_id = ? AND a.access_mode = 'Grant' "
-            "AND (a.role_code = 'Admin' OR EXISTS (SELECT 1 FROM user_company_role AS r WHERE r.user_id = a.user_id "
-            "AND r.company_id = a.company_id AND r.role_code = 'Admin'))", (user_id,)).fetchone() is not None
+        companies = [r[0] for r in conn.execute("SELECT company_id FROM company_registry")]
+        return any("Admin" in authz._access_roles(conn, user_id, c) for c in companies)
     finally:
         conn.close()
 

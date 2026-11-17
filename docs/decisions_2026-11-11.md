@@ -329,6 +329,7 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - MR5 One person fills at most one slot of an approval chain, even through two roles
 - MR6 allocate reads the source's side, then authorizes that side; neither right: one sentence (LOW 2)
 - MR7 CLAUDE.md stays at 200 lines or fewer, trimmed at each STOP (amends the 210-line budget)
+- MR8 grant_access and set_role replace a user's role rows in that company; deny_access clears them (review)
 - HA1 Hook events entry.posted and entry.voided fired from ledger; stage.entered and stage.left declared only
 - HA2 Hook handlers write only their add-on's <key>_ tables (SQLite authorizer); an error rolls back the caller
 - HA3 Add-ons load only from RESOURCE_DIR/addons, never from DATA_DIR
@@ -1537,6 +1538,10 @@ The owner's answers to the Phase 2.7 plan.
   nor `payment.make` is refused with one sentence whether the source exists or not and on either side (an inactive
   user or one without access gets that sentence instead). No `has_permission` alias: `authz.is_allowed` is used.
 - MR7 CLAUDE.md is trimmed to 200 lines or fewer at each STOP.
+- MR8 (step-reviewer fix, for the owner to confirm) Until a service manages several roles, `users.grant_access` and
+  `users.set_role` replace the user's `user_company_role` rows in that company with the one role they set, and
+  `users.deny_access` clears them, in the same transaction. Otherwise a Deny would leave an Admin role row that a
+  later grant by a non-Master revives, and a single-role change would silently do nothing.
 - HA1 Hook events: `entry.posted` and `entry.voided`, fired from `ledger`; `stage.entered` and `stage.left` are
   declared only. No `stage_trigger_run` writer until the CRM step.
 - HA2 A hook handler may write only its own add-on's `<key>_` tables, enforced in `modules/database.py` with the

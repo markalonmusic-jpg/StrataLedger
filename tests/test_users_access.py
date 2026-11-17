@@ -336,3 +336,54 @@ def test_the_last_admin_through_a_role_row_cannot_be_denied(world, org):
     users.set_role(org["s"]("master"), org["admin"], org["cid"]("PARENT"), "Viewer")
     with pytest.raises(ValidationError):
         users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"))
+
+
+# --- MR8: the single-role services replace or clear the role rows ------------------------------------------
+
+def _role_rows(world, user_id, company_id):
+    return sorted(r["role_code"] for r in world.master_rows(
+        "SELECT role_code FROM user_company_role WHERE user_id = ? AND company_id = ?", (user_id, company_id)))
+
+
+def test_deny_access_clears_the_role_rows_so_a_later_grant_cannot_revive_an_admin(world, org):
+    """The reviewer's path: Master denies a role-row Admin; a non-Master Admin's later grant gives only its role."""
+    world.grant(org["admin2"], "PARENT", "Viewer")
+    world.add_roles(org["admin2"], "PARENT", "Admin", "Viewer")
+    users.deny_access(org["s"]("master"), org["admin2"], org["cid"]("PARENT"))
+    assert _role_rows(world, org["admin2"], org["cid"]("PARENT")) == []
+    users.grant_access(org["s"]("admin"), org["admin2"], org["cid"]("PARENT"), "Viewer")
+    assert not can(world, org["admin2"], "PARENT", "company.settings")
+    assert authz.current_access(world.ctx(org["admin2"], "PARENT")).role_codes == ("Viewer",)
+
+
+@pytest.mark.parametrize("service", ["grant_access", "set_role"])
+def test_setting_one_role_replaces_the_role_rows(world, org, service):
+    world.add_roles(org["staff"], "PARENT", "Viewer", "Broad")
+    getattr(users, service)(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr")
+    assert _role_rows(world, org["staff"], org["cid"]("PARENT")) == []
+    assert authz.current_access(world.ctx(org["staff"], "PARENT")).role_codes == ("UserMgr",)
+    assert not can(world, org["staff"], "PARENT", "je.post")
+
+
+def test_role_rows_of_another_company_are_kept(world, org):
+    world.grant(org["staff"], "OTHER", "Viewer")
+    world.add_roles(org["staff"], "OTHER", "Viewer")
+    users.set_role(org["s"]("master"), org["staff"], org["cid"]("PARENT"), "UserMgr")
+    users.deny_access(org["s"]("master"), org["staff"], org["cid"]("PARENT"))
+    assert _role_rows(world, org["staff"], org["cid"]("OTHER")) == ["Viewer"]
+
+
+def test_a_refused_change_keeps_the_role_rows(world, org):
+    world.grant(org["admin2"], "PARENT", "Viewer")
+    world.add_roles(org["admin2"], "PARENT", "Admin")
+    with pytest.raises(PermissionDeniedError):
+        users.deny_access(org["s"]("admin"), org["admin2"], org["cid"]("PARENT"))
+    assert _role_rows(world, org["admin2"], org["cid"]("PARENT")) == ["Admin"]
+
+
+def test_admin_anywhere_reads_the_effective_roles(world, org):
+    """A Grant row whose role_code says Admin but whose role rows replace it is not an Admin (MR2); the user
+    manager may reset that user's password."""
+    world.grant(org["staff"], "PARENT", "Admin")
+    world.add_roles(org["staff"], "PARENT", "Viewer")
+    users.reset_password(org["s"]("mgr"), org["staff"], NEW)
