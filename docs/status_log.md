@@ -892,3 +892,6 @@ Rotation and key-lost text as it stood before the trim:
     list of non-admin groups), M3 (the user's own SID when elevated), L2 and L3 (HA11 misses and false positives).
   - Three parallel runs: 504, 499, 525 s (other jobs were running on the machine), all green. Suite 3617 passed,
     1 skipped.
+- 2026-11-18: mutation-tester on 997305c..6afd131: 145 mutants, 102 killed; 33 real gaps now killed by
+  tests/test_mutation_b2_review_extra.py (44 tests, each mutant re-applied and seen to fail); 10 equivalent, with
+  reasons in docs/next_step.md.

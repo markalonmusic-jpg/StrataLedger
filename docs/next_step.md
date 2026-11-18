@@ -27,8 +27,32 @@ Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, buil
    - CLAUDE.md section 8 also says: after each STOP, Codex reviews the pushed commits read-only in its own worktree,
      and its findings come to the owner.
 
+## Review step after b4ea844 (2026-11-18; awaiting the owner's approval)
+
+Commits 997305c (HA11 audit fixes, parallel hook), 7aeb3f4 (HA8 ACL, SQLite redaction), 6afd131 (step-review fixes),
+then the mutation-test commit. Owner questions from the step-review (not built): M1 check add-on subfolders and
+files too; M2 an allow-list of admin SIDs instead of four non-admin groups; M3 count the user's own SID even when
+elevated; L2/L3 HA11 misses (mypwd, acctnum, client_key, nonce) and false positives (file_hash, pass_count,
+account_number, bank_account_id).
+
+Mutation test: 145 mutants, 102 killed by the existing tests, 33 more by tests/test_mutation_b2_review_extra.py
+(each re-checked), 10 equivalent:
+- `_check_existing_columns` with `startswith(prefix)` instead of `_owned`: check_addon_key refuses a key whose
+  prefix matches a core table, so no core table starts with `<key>_`.
+- `_looks_secret` without `not _secret_word(w)` in the singular list: only `pass` ends in s, and a name with the
+  word `pass` is refused by the word check already.
+- `current_token` with elevation fixed to False: same result in a non-elevated session (the suite's); killing it
+  needs an elevated run or a fake advapi32.
+- `read_folder_acl` without `if status != 0`: reached only for a folder that exists but cannot be read; a missing
+  path already raises. Needs a fake advapi32.
+- `read_folder_acl` without the NULL-DACL branch: GetAclInformation then fails, and folder_open_to_non_admins
+  fails closed to True, the same answer.
+- `read_folder_acl` without the object-ACE branch: object ACEs exist only in Active Directory, never on folders.
+- The three frees (`LocalFree` in `_sid_text` and of the descriptor, `CloseHandle` of the token): a leak, not a
+  behaviour change.
+
 **State:**
-- Suite: 3551 passed, 1 skipped (after the review fixes; 3440 after the owner-answers commit, 3369 after B2).
+- Suite: 3661 passed, 1 skipped (after the review step; 3440 after the owner-answers commit, 3369 after B2).
 - B2 commits:
   - 785ca30 (part A);
   - 8e5979c (the build);
