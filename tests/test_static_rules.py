@@ -477,16 +477,20 @@ def test_the_approval_exemption_checker_finds_a_call():
     assert approval_exemption_users("ledger.create_document_entry(conn, ctx, post=True)") == []
 
 
-# Owner answer 2026-11-18: people see the product name "Melara" (config.APP_NAME), never "StrataLedger". No string in
-# modules/services/ or modules/database.py (whose refusals the services pass on) may hold the exact, case-sensitive
-# text "StrataLedger". Docstrings, comments and bytes (the key-derivation labels, which are identifiers) are not
-# checked. Lower- and upper-case identifiers (the logger "strataledger", STRATALEDGER_* variables) pass on purpose
-# and are renamed in the packaging step (U1); another spelling or a run-time join is not caught.
-OLD_NAME = "StrataLedger"
+# Owner answers 2026-11-18: people see the product name "Melara" (config.APP_NAME), never StrataLedger. No string in
+# modules/services/ or modules/database.py (whose refusals the services pass on) may hold "strataledger" in any
+# case. Docstrings, comments and bytes (the key-derivation labels, which are identifiers) are not checked. The
+# identifiers below (logger names, an environment variable, the add-on module prefix) keep the old name until the
+# packaging step (U1) renames them; each is matched as the whole string, so no sentence can hide behind one. The
+# list only shrinks: an entry no longer found fails. A run-time join ("Strata" + "Ledger") is not caught.
+OLD_NAME = "strataledger"
+OLD_NAME_IDENTIFIERS = {"strataledger", "strataledger.clock", "strataledger.keys", "strataledger_addon_",
+                        "STRATALEDGER_ALLOW_TEST_KEYS"}
 
 
-def old_name_strings(source):
-    """Line numbers of str constants (f-string parts included, docstrings not) that name StrataLedger."""
+def old_name_strings(source, allowed=frozenset()):
+    """Line numbers of str constants (f-string parts included, docstrings not) that name StrataLedger in any case,
+    other than a constant that is exactly one of `allowed`."""
     tree = ast.parse(source)
     docstrings = set()
     for node in ast.walk(tree):
@@ -495,14 +499,26 @@ def old_name_strings(source):
             if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
                 docstrings.add(id(body[0].value))
     return [n.lineno for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str) and OLD_NAME in n.value
-            and id(n) not in docstrings]
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and OLD_NAME in n.value.lower()
+            and n.value not in allowed and id(n) not in docstrings]
+
+
+def _old_name_scope():
+    return [*sorted(SERVICES_DIR.glob("*.py")), ROOT / "modules" / "database.py"]
 
 
 def test_no_service_string_names_strataledger():
-    paths = [*sorted(SERVICES_DIR.glob("*.py")), ROOT / "modules" / "database.py"]
-    found = {path.name: lines for path in paths if (lines := old_name_strings(path.read_text(encoding="utf-8")))}
+    found = {path.name: lines for path in _old_name_scope()
+             if (lines := old_name_strings(path.read_text(encoding="utf-8"), OLD_NAME_IDENTIFIERS))}
     assert found == {}, "user-facing text says config.APP_NAME, not StrataLedger"
+
+
+def test_every_old_name_identifier_is_still_used():
+    used = set()
+    for path in _old_name_scope():
+        used |= {n.value for n in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    assert OLD_NAME_IDENTIFIERS <= used, "remove the renamed identifier from OLD_NAME_IDENTIFIERS"
 
 
 def test_the_old_name_checker_finds_strings_and_skips_docstrings_comments_and_bytes():
@@ -513,8 +529,11 @@ def test_the_old_name_checker_finds_strings_and_skips_docstrings_comments_and_by
               'A = "Reinstall StrataLedger."\n'
               'def f(zone):\n'
               '    """StrataLedger function."""\n'
-              '    return f"{zone}: reinstall StrataLedger"\n')
-    assert old_name_strings(source) == [5, 8]
+              '    return f"{zone}: reinstall StrataLedger"\n'
+              'B = "Open STRATALEDGER now"\n'
+              'C = "the strataledger log"\n')
+    assert sorted(old_name_strings(source)) == [4, 5, 8, 9, 10]
+    assert sorted(old_name_strings(source, {"strataledger"})) == [5, 8, 9, 10]   # only the whole string is allowed
 
 
 def test_the_product_name_is_melara():

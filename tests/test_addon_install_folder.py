@@ -27,8 +27,8 @@ def register(hooks):
     pass
 '''
 
-SENTENCE = ("Add-ons are off because accounts other than administrators can change the program folder. Reinstall "
-            "Melara to Program Files.")     # owner answer 2026-11-18 (config.APP_NAME)
+SENTENCE = ("Add-ons are off because the program folder's permissions allow changes by accounts other than the "
+            "system and Administrators group. Reinstall Melara to Program Files.")   # owner, 2026-11-18 (APP_NAME)
 
 
 @pytest.fixture(autouse=True)

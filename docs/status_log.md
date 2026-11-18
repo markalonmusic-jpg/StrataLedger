@@ -932,3 +932,7 @@ Rotation and key-lost text as it stood before the trim:
   three service sentences that named StrataLedger; a static test refuses the old name in service strings. New HA8
   sentence. CREATOR OWNER handling accepted. AX9-AX10 recorded (docs only) and added to docs/CLAUDE_UI.md 10A.
   Folder, variable, installer and repo renames and the installer's HA8 check are on the U1 list (docs/next_step.md).
+- 2026-11-18: fix mode on fc6efe0 (owner answers): new HA8 sentence ("...permissions allow changes by accounts other
+  than the system and Administrators group..."); inherit-only CREATOR ACEs ignored (owner), logic unchanged, tests
+  added for both conditions; the static name test is case-insensitive with a shrink-only identifier list;
+  tests/test_clipboard_lock.py no longer races other xdist workers for the shared lock.

@@ -73,6 +73,32 @@ def test_a_passing_suite_lets_the_commit_through(monkeypatch):
     assert hook.decide({"tool_name": "PowerShell", "tool_input": {"command": "git commit -m x"}}, root=".")[0] == 0
 
 
+def test_every_suite_run_records_its_summary_line(monkeypatch, tmp_path):
+    """Owner 2026-11-18: the hook's pass and skip counts are reported, so each run leaves its last line in LAST_RUN
+    (the system temp folder, outside the repo), whether it passed or failed."""
+    hook = load_hook()
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    commit = {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}
+    monkeypatch.setattr(hook, "run_suite", lambda root: (0, "....\n3894 passed, 2 skipped in 288.00s"))
+    assert hook.decide(commit, root=".")[0] == 0
+    assert (tmp_path / "last.txt").read_text(encoding="utf-8") == "3894 passed, 2 skipped in 288.00s\n"
+    monkeypatch.setattr(hook, "run_suite", lambda root: (1, "F\n1 failed, 10 passed in 2.00s"))
+    assert hook.decide(commit, root=".")[0] == 2
+    assert (tmp_path / "last.txt").read_text(encoding="utf-8") == "1 failed, 10 passed in 2.00s\n"
+
+
+def test_a_non_commit_call_records_nothing(monkeypatch, tmp_path):
+    hook = load_hook()
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    assert hook.decide({"tool_name": "Bash", "tool_input": {"command": "git status"}}, root=".") == (0, "")
+    assert not (tmp_path / "last.txt").exists()
+
+
+def test_the_record_lives_outside_the_repo():
+    hook = load_hook()
+    assert HOOK.parent.parent.parent not in Path(hook.LAST_RUN).resolve().parents
+
+
 def test_unreadable_input_never_blocks_silently():
     result = subprocess.run([sys.executable, str(HOOK)], input="not json", capture_output=True, text=True, timeout=60)
     assert result.returncode == 2

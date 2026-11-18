@@ -6,7 +6,8 @@ the session. Any command that is not a git commit passes straight through withou
 The suite runs in parallel workers (pytest-xdist, `-n auto`; owner 2026-11-18): about 5 minutes instead of 18.
 Tests that use the system clipboard take turns through a lock (tests/conftest.py). Without xdist the commit is
 blocked with what to install, because a one-process run would outlast the hook's timeout. Plain
-`python -m pytest -q` still works.
+`python -m pytest -q` still works. Every run writes the suite's last line (its pass, skip and fail counts) to
+LAST_RUN in the system temp folder, so a passing commit's counts can be reported (owner 2026-11-18).
 """
 import importlib.util
 import json
@@ -14,11 +15,14 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 # git, then any global options (-C <path>, -c <key=value>, --flag[=value]), then the commit subcommand.
 _COMMIT_RE = re.compile(
     r"(?:^|[\s;&|(])git(?:\.exe)?(?:\s+(?:-C\s+\S+|-c\s+\S+|--[\w-]+(?:=\S+)?))*\s+commit(?![-\w])")
 _TAIL_LINES = 40
+LAST_RUN = Path(tempfile.gettempdir()) / "strataledger-commit-hook-last-run.txt"
 
 
 def is_git_commit(command):
@@ -40,6 +44,15 @@ def run_suite(root):
     return result.returncode, "\n".join(output[-_TAIL_LINES:])
 
 
+def record_result(tail):
+    """Write the suite's last line to LAST_RUN. A failure to write never blocks or passes a commit by itself."""
+    lines = tail.strip().splitlines()
+    try:
+        LAST_RUN.write_text((lines[-1] if lines else "") + "\n", encoding="utf-8")
+    except OSError as error:
+        print(f"Commit hook could not record the result in {LAST_RUN} ({type(error).__name__}).", file=sys.stderr)
+
+
 def decide(payload, root):
     command = (payload.get("tool_input") or {}).get("command", "")
     if not is_git_commit(command):
@@ -48,6 +61,7 @@ def decide(payload, root):
         return 2, ("Commit blocked: the commit hook runs the suite with pytest-xdist, which is not installed. Run "
                    "pip install -r requirements-dev.txt, then commit again.")
     code, tail = run_suite(root)
+    record_result(tail)
     if code == 0:
         return 0, ""
     return 2, f"Commit blocked: python -m pytest -q -n auto failed (exit {code}). Fix the failures, then commit again.\n{tail}"

@@ -77,6 +77,34 @@ def test_a_creator_placeholder_counts_only_when_it_applies_to_the_folder_itself(
     assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, ace(sid, FULL, flags=0x03))) == [sid]
 
 
+@pytest.mark.parametrize("sid", [CREATOR_OWNER, CREATOR_GROUP])
+@pytest.mark.parametrize("flags", [0x00, 0x01, 0x02, 0x03, 0x10])          # none, OI, CI, OI|CI, INHERITED
+def test_a_creator_entry_without_inherit_only_counts(sid, flags):
+    """Owner 2026-11-18: a CREATOR entry is ignored only when INHERIT_ONLY is set (it grants nothing on this object)."""
+    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, ace(sid, MODIFY, flags=flags))) == [sid]
+
+
+@pytest.mark.parametrize("sid", [CREATOR_OWNER, CREATOR_GROUP])
+@pytest.mark.parametrize("owner", [USER, USERS, "S-1-5-21-1111111111-2222222222-3333333333-1001"])
+def test_an_ignored_creator_entry_never_hides_an_owner_outside_the_allow_list(sid, owner):
+    """Owner 2026-11-18: with an inherit-only CREATOR entry present, an owner outside SYSTEM, Administrators and
+    TrustedInstaller still turns add-ons off."""
+    only_placeholder = acl(ace(SYSTEM, FULL), ace(ADMINS, FULL), ace(sid, GENERIC_ALL, flags=0x0B), owner=owner)
+    assert ps.non_admin_writers(only_placeholder) == [owner]
+
+
+def test_a_file_a_user_created_under_a_creator_owner_entry_turns_addons_off(tmp_path):
+    """The parent folder is clean (its CREATOR OWNER entry is inherit-only), but a file a user created inside it
+    is owned by that user, and its inherited entry names the user's real SID: add-ons turn off."""
+    folder, made = tmp_path / "addons", tmp_path / "addons" / "demo.py"
+    child = acl(ace(SYSTEM, FULL, flags=0x10), ace(ADMINS, FULL, flags=0x10), ace(USER, FULL, flags=0x10),
+                owner=USER)
+    acls = {str(folder): PROGRAM_FILES, str(made): child}
+    assert ps.folder_open_to_non_admins(str(folder), acl_reader=acls.__getitem__) is False
+    assert ps.folder_open_to_non_admins(str(made), acl_reader=acls.__getitem__) is True
+    assert ps.non_admin_writers(child) == [USER]
+
+
 def test_the_users_own_sid_counts_even_when_elevated(tmp_path):
     """M3: the decision never asks whether the process is elevated."""
     mine = acl(*PROGRAM_FILES.entries, ace(USER, FULL))

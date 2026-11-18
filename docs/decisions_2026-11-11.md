@@ -1680,15 +1680,18 @@ The owner's answers to the Phase 2.7 plan.
   with every subfolder and file in it (owner answer M1, 2026-11-18). Add-ons turn off if anyone outside an allow-list
   of SYSTEM, Administrators and TrustedInstaller can change any of them (M2): an allow entry with write, modify or
   create rights for any other principal, the user's own account included even when the process is elevated (M3), or
-  ownership by one. Inheritable entries count; CREATOR OWNER and CREATOR GROUP on an inherit-only entry are
-  placeholders (a child gets its creator's real SID, and every child is read; accepted by the owner, 2026-11-18). Deny
-  entries are not subtracted, and a NULL DACL, a missing owner, an unreadable ACL, an add-ons tree that cannot be
+  ownership by one. Inheritable entries count. Inherit-only CREATOR ACEs ignored (owner 2026-11-18): a CREATOR OWNER
+  or CREATOR GROUP allow entry is skipped only when INHERIT_ONLY is set (it grants nothing on that object; a child
+  gets its creator's real SID, and every child is read); without that flag it counts, and the owner of every folder
+  and file is checked on its own, so a file or folder owned by anyone outside the allow-list still turns add-ons off.
+  Deny entries are not subtracted, and a NULL DACL, a missing owner, an unreadable ACL, an add-ons tree that cannot be
   listed or holds a link (a symbolic link or junction reaches files the check never reads; step review), or an allow
   entry of a kind the reader does not parse (object ACEs) counts as open. An administrator on a properly installed
   folder keeps add-ons. The ACL read lives in `platform_support.folder_open_to_non_admins` (P3); the app hands it to
   `addons.use_folder_check` at start-up (services never import it, H1), and a frozen build without it keeps add-ons
-  off. When off, it is logged and people see one sentence (owner, 2026-11-18): "Add-ons are off because accounts other
-  than administrators can change the program folder. Reinstall Melara to Program Files." (the name is
+  off. When off, it is logged and people see one sentence (owner, 2026-11-18): "Add-ons are off because the program
+  folder's permissions allow changes by accounts other than the system and Administrators group. Reinstall Melara to
+  Program Files." (the earlier wording was replaced because M3 also counts the admin's own account) (the name is
   `config.APP_NAME`). Posting with an enabled add-on then stops with that sentence. Source runs are exempt (Codex
   finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py, tests/test_platform_folder_acl.py,
   tests/test_storage.py (`storage.resource_tree`).

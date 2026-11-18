@@ -5,21 +5,36 @@ Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md se
 Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, built in the "B2 owner answers" commit).
 **STOP C starts in a fresh session** once the owner approves that commit at the review gate.
 
-## Owner answers: product name, HA8 sentence, AX9-AX10 (2026-11-18; awaiting the owner's approval)
+## Owner answers: product name, HA8 sentence, AX9-AX10 (2026-11-18; fix mode on fc6efe0, awaiting the owner's approval)
 
 1. The product name people see is "Melara": `config.APP_NAME`. The three service sentences that named StrataLedger
    use it (the HA8 sentence, the missing time-zone error in `clock.py`, the ledger-verify Hash reason), and so does
    `database.restore_database`'s refusal (step review). A static test (tests/test_static_rules.py,
-   `test_no_service_string_names_strataledger`) refuses the exact text "StrataLedger" in any string in
-   modules/services/ or modules/database.py; docstrings, comments and bytes are not checked, and other spellings
-   or run-time joins are not caught. The key-derivation
-   labels (`b"StrataLedger ... v1"` in key_store, key_wrap, ledger_chain) are identifiers and must never change:
-   changing one breaks every existing key and seal.
-2. HA8 sentence: "Add-ons are off because accounts other than administrators can change the program folder.
-   Reinstall Melara to Program Files."
-3. CREATOR OWNER and CREATOR GROUP handling accepted; `sess_id` and `password_number_id` stay allowed.
+   `test_no_service_string_names_strataledger`) refuses "strataledger" in any case in any string in
+   modules/services/ or modules/database.py (fix mode); docstrings, comments and bytes are not checked, and a
+   run-time join is not caught. Five identifiers keep the old name until U1 and are allowed only as the whole
+   string (`OLD_NAME_IDENTIFIERS`, shrink-only): the logger names `strataledger`, `strataledger.clock`,
+   `strataledger.keys`, the variable `STRATALEDGER_ALLOW_TEST_KEYS` and the add-on module prefix
+   `strataledger_addon_`. The key-derivation labels (`b"StrataLedger ... v1"` in key_store, key_wrap,
+   ledger_chain) are identifiers and must never change: changing one breaks every existing key and seal.
+2. HA8 sentence (fix mode, replacing the first wording because M3 also counts the admin's own account): "Add-ons
+   are off because the program folder's permissions allow changes by accounts other than the system and
+   Administrators group. Reinstall Melara to Program Files."
+3. CREATOR OWNER and CREATOR GROUP (not an earlier owner decision; ruled in fix mode): `platform_support.
+   non_admin_writers` skips a CREATOR allow entry only when INHERIT_ONLY (0x08) is set; without it the entry counts.
+   The owner is checked first and separately, so an owner outside SYSTEM, Administrators and TrustedInstaller
+   turns add-ons off whatever the entries say. Logic unchanged; tests added for both conditions and for a user's
+   file under an inherit-only CREATOR OWNER entry. HA8 now says "inherit-only CREATOR ACEs ignored (owner
+   2026-11-18)". `sess_id` and `password_number_id` stay allowed.
 4. AX9 and AX10 recorded (docs/decisions_2026-11-11.md, with index rows) and added to docs/CLAUDE_UI.md section 10A
    with AX5-AX8 (which were not in that file before).
+5. tests/test_clipboard_lock.py under pytest-xdist: two tests asserted the shared lock was free, but another
+   worker may hold it for a real clipboard test. The lock's own test now uses a private lock file, and the
+   fixture records `clipboard_lock_held` on the test item, which the marked and unmarked tests check.
+6. Hook counts: the commit hook kept no output on a pass, so fc6efe0's counts were not recorded. It now writes the
+   suite's last line to `strataledger-commit-hook-last-run.txt` in the system temp folder on every run
+   (tests/test_commit_hook.py). It runs `pytest -q -n auto` (without `--dist loadgroup`, which the hook note
+   below wrongly says; loadgroup is not needed now that the clipboard tests use a lock).
 
 **Left for the packaging step (U1):**
 - Rename to Melara: the data folders (`%LOCALAPPDATA%\StrataLedger-dev`, `%PROGRAMDATA%\StrataLedger`), the

@@ -5,6 +5,10 @@ longer reads), so the grouped clipboard tests ran in parallel workers and raced.
 `system_clipboard` (and every live_clipboard test, when they are turned on) holds a file lock in the system temp
 folder while it runs: parallel workers, and a second test run at the same time, wait their turn. The operating
 system releases the lock if a worker dies, so a crash never leaves it held.
+
+Isolation under pytest-xdist (owner 2026-11-18): another worker may hold the shared lock at any moment for a real
+clipboard test, so no test here asserts that the shared lock is free. The lock's own behaviour is tested on a
+private lock file; the fixture's behaviour is tested by whether this process holds the shared lock.
 """
 import subprocess
 import sys
@@ -15,39 +19,42 @@ import pytest
 from tests import conftest
 
 
-def other_process_can_lock():
+def other_process_can_lock(path=None):
     code = textwrap.dedent('''
         import sys
         sys.path.insert(0, ".")
         from tests.conftest import system_clipboard_lock
         try:
-            with system_clipboard_lock(timeout=0):
+            with system_clipboard_lock(timeout=0, path=sys.argv[1] or None):
                 print("locked")
         except TimeoutError:
             print("busy")
     ''')
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
-                            cwd=conftest.ROOT)
+    result = subprocess.run([sys.executable, "-c", code, str(path or "")], capture_output=True, text=True,
+                            timeout=60, cwd=conftest.ROOT)
     return result.stdout.strip()
 
 
-def test_the_lock_keeps_out_another_process_while_held_and_lets_it_in_after():
-    with conftest.system_clipboard_lock():
-        assert other_process_can_lock() == "busy"
-    assert other_process_can_lock() == "locked"
+def test_the_lock_keeps_out_another_process_while_held_and_lets_it_in_after(tmp_path):
+    private = tmp_path / "private.lock"          # no other worker uses this file
+    with conftest.system_clipboard_lock(path=private):
+        assert other_process_can_lock(private) == "busy"
+    assert other_process_can_lock(private) == "locked"
 
 
 @pytest.mark.system_clipboard
-def test_the_autouse_fixture_holds_the_lock_for_a_marked_test():
+def test_the_autouse_fixture_holds_the_lock_for_a_marked_test(request):
+    assert request.node.clipboard_lock_held is True
     assert other_process_can_lock() == "busy"
 
 
-def test_an_unmarked_test_does_not_hold_it():
-    assert other_process_can_lock() == "locked"
+def test_an_unmarked_test_does_not_hold_it(request):
+    assert request.node.clipboard_lock_held is False
 
 
 @pytest.mark.live_clipboard
-def test_a_live_clipboard_test_holds_it_too():
+def test_a_live_clipboard_test_holds_it_too(request):
+    assert request.node.clipboard_lock_held is True
     assert other_process_can_lock() == "busy"
 
 

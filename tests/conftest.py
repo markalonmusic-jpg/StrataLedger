@@ -37,10 +37,12 @@ CLIPBOARD_LOCK = Path(tempfile.gettempdir()) / "strataledger-tests-system-clipbo
 
 
 @contextlib.contextmanager
-def system_clipboard_lock(timeout=600):
-    """Hold the cross-process clipboard lock; TimeoutError if it is not free within `timeout` seconds. The
-    operating system releases it when the process ends, so a crashed worker never leaves it held."""
-    handle = os.open(CLIPBOARD_LOCK, os.O_RDWR | os.O_CREAT)
+def system_clipboard_lock(timeout=600, path=None):
+    """Hold the cross-process clipboard lock (or the lock file at `path`, for the lock's own tests); TimeoutError if
+    it is not free within `timeout` seconds. The operating system releases it when the process ends, so a crashed
+    worker never leaves it held."""
+    path = str(path or CLIPBOARD_LOCK)
+    handle = os.open(path, os.O_RDWR | os.O_CREAT)
     deadline = time.monotonic() + timeout
     try:
         while True:
@@ -73,10 +75,17 @@ def system_clipboard_lock(timeout=600):
 
 @pytest.fixture(autouse=True)
 def _one_test_at_a_time_on_the_system_clipboard(request):
+    """Holds the lock for a marked test, and records on the test item whether it does (`clipboard_lock_held`), so
+    tests/test_clipboard_lock.py can check this test's own state without racing another worker for the lock."""
     if any(request.node.get_closest_marker(name) for name in CLIPBOARD_MARKERS):
         with system_clipboard_lock():
-            yield
+            request.node.clipboard_lock_held = True
+            try:
+                yield
+            finally:
+                request.node.clipboard_lock_held = False
     else:
+        request.node.clipboard_lock_held = False
         yield
 
 
