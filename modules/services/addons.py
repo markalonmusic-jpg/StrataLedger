@@ -58,7 +58,9 @@ def discover():
     """{key: {'key', 'name', 'version', 'entry', 'migrations'}} for every valid add-on folder. A folder with a bad
     manifest is skipped and logged. Nothing is imported here. storage.py keeps every path inside RESOURCE_DIR."""
     root = addons_dir()
-    if _real(config.DATA_DIR) != _real(config.RESOURCE_DIR) and _inside(root, config.DATA_DIR):
+    apart = _real(config.DATA_DIR) == _real(config.RESOURCE_DIR) or not (
+        _inside(root, config.DATA_DIR) or _inside(config.DATA_DIR, root))     # the same root: running from source
+    if not apart:
         _logger.error("add-ons folder %s is inside the data folder; add-ons load only from the installation", root)
         return {}
     found = {}
@@ -103,7 +105,7 @@ def load(addon_key):
         spec.loader.exec_module(module)
         register = getattr(module, "register")
     except Exception as error:
-        _logger.error("add-on %s could not be imported", addon_key, exc_info=error)
+        _logger.error("add-on %s could not be imported: %s", addon_key, hooks.describe_error(error))
         raise AddonError(hooks.START_FAILED.format(name=info["name"])) from None
     hooks.install(addon_key, info["name"], register)
 

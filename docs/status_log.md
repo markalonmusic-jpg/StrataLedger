@@ -787,3 +787,7 @@ Rotation and key-lost text as it stood before the trim:
     tables to core tables, trigger text without comments or strings, per-company broken marks, a caught refusal
     still fails, read-only opens apply nothing, unreadable files refused, the handle keeps no connection, MR9
     for targets).
+  - Review fixes in 1b5f723 (suite 3185 passed). secrets-auditor: nothing Critical or High; fixed MEDIUM-1 (add-on
+    SQL reads bank numbers, tax ids and the audit tables as NULL), LOW-2 (no add-on error message in the log),
+    LOW-3 (the handle is described as a guard against mistakes, not a sandbox), LOW-4 (linked migration files),
+    LOW-5 (data folder inside the add-ons folder); LOW-6 (backups made on open) left for the owner.

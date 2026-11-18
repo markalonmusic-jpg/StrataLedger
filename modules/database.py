@@ -347,6 +347,24 @@ _READ_ACTIONS = {sqlite3.SQLITE_READ, sqlite3.SQLITE_SELECT, getattr(sqlite3, "S
 _WRITE_ACTIONS = {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}
 _SCHEMA_TABLES = {"sqlite_master", "sqlite_schema"}
 _BANNED_FUNCTIONS = {"load_extension"}
+# Columns add-on SQL reads as NULL (secrets audit, STOP B): full bank numbers and tax ids are shown only through
+# the services, which check view.bank_details and view.tax_ids. Every column of the audit tables (`audit_` names)
+# reads as NULL too: their values can hold the same data.
+_ADDON_HIDDEN_COLUMNS = {
+    "bank_account": {"routing_number", "account_number"},
+    "contact": {"tax_id", "exemption_cert_no"},
+    "company_settings": {"tax_id"},
+}
+_ADDON_HIDDEN_TABLE_PREFIX = "audit_"
+
+
+def _hidden_column(table, column):
+    if not isinstance(table, str):
+        return False
+    table = table.lower()
+    if table.startswith(_ADDON_HIDDEN_TABLE_PREFIX):
+        return True
+    return (column or "").lower() in _ADDON_HIDDEN_COLUMNS.get(table, ())
 
 
 class _AddonGuard:
@@ -362,6 +380,8 @@ class _AddonGuard:
         self.refused = []
 
     def __call__(self, action, arg1, arg2, db_name, trigger):
+        if action == sqlite3.SQLITE_READ and _hidden_column(arg1, arg2):
+            return sqlite3.SQLITE_IGNORE        # read as NULL: shown only through the services' permission checks
         if self._allowed(action, arg1, arg2, db_name):
             return sqlite3.SQLITE_OK
         self.refused.append((action, arg1, arg2, db_name, trigger))
@@ -439,7 +459,12 @@ def _addon_files(addon_key, migrations_dir):
         found = pattern.fullmatch(name)
         if found is None:
             raise AddonMigrationError(addon_key, f"{name} is not named {addon_key}_NNN.sql; nothing was changed.")
-        files[int(found.group(1))] = os.path.join(migrations_dir, name)
+        path = os.path.join(migrations_dir, name)
+        real, base = os.path.normcase(os.path.realpath(path)), os.path.normcase(os.path.realpath(migrations_dir))
+        if os.path.dirname(real) != base:          # a link leading out of the folder (secrets audit LOW-4)
+            raise AddonMigrationError(addon_key, f"{name} leads outside the add-on's migrations folder; nothing "
+                                                 "was changed.")
+        files[int(found.group(1))] = path
     if sorted(files) != list(range(1, len(files) + 1)):
         raise AddonMigrationError(addon_key, f"the migration files have a gap ({sorted(files)}); they are numbered "
                                              "from 001 without a gap. Nothing was changed.")

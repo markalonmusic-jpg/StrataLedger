@@ -1577,7 +1577,10 @@ The owner's answers to the Phase 2.7 plan.
   its triggers unguarded); comments and strings cannot hide a trigger's write; a broken mark is per company file;
   a refused write the handler catches is still a failure; a read-only open applies no migrations; an unreadable
   migration file is a refusal. Add-ons are trusted installation code: the guards stop SQL mistakes, not hostile
-  Python (hosted: a database role per add-on, audit design section 16).
+  Python (hosted: a database role per add-on, audit design section 16). Secrets audit fixes: add-on SQL reads full
+  bank numbers, tax ids, exemption certificates and every column of the `audit_` tables as NULL; the log gets an
+  add-on error's type and frames, never its message; a migration file that leads outside its folder is refused;
+  the data folder may not contain, or sit inside, the add-ons folder (one shared root is allowed from source).
 - FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
   following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
   stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built

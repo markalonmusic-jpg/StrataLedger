@@ -20,6 +20,7 @@
   role per add-on (docs/audit_readiness_design.md section 16).
 """
 import logging
+import traceback
 from types import MappingProxyType
 
 import modules.database as database
@@ -41,6 +42,14 @@ _logger = logging.getLogger("strataledger")
 _handlers = {}     # addon_key -> {event: [handler, ...]}
 _names = {}        # addon_key -> name, for every loaded add-on
 _broken = {}       # (company file, addon_key) -> name: its tables could not be brought up to date at company open
+
+
+def describe_error(error):
+    """For the log: an add-on error's type and where it was raised (file, line, function), never its message or
+    source lines, which could quote data the add-on read (secrets audit LOW-2)."""
+    frames = "; ".join(f"{frame.filename}:{frame.lineno} in {frame.name}"
+                       for frame in traceback.extract_tb(error.__traceback__))
+    return f"{type(error).__name__} at {frames or 'an unknown place'}"
 
 
 def _check_event(event):
@@ -69,7 +78,7 @@ def install(addon_key, name, register):
     try:
         register(api)
     except Exception as error:
-        _logger.error("add-on %s could not register its hooks", addon_key, exc_info=error)
+        _logger.error("add-on %s could not register its hooks: %s", addon_key, describe_error(error))
         raise AddonError(START_FAILED.format(name=name)) from None
     _handlers[addon_key] = api._collected
     _names[addon_key] = name
@@ -95,8 +104,9 @@ def _clear():
 
 
 class _HandlerDb:
-    """A handler's view of the caller's connection: `execute` only, rows as dicts. The connection is held in a
-    closure, not an attribute, and the handle stops working when the handler returns."""
+    """A handler's view of the caller's connection: `execute` only, rows as dicts, and it stops working when the
+    handler returns. This narrows what a well-meaning add-on can do by mistake; it is not a sandbox (Python code can
+    still reach the connection), which is why only installation add-ons are trusted (HA3, HA7)."""
 
     __slots__ = ("execute",)
 
@@ -159,5 +169,6 @@ def _run(conn, addon_key, event, handler, data):
     if failure is None and not conn.in_transaction:
         failure = RuntimeError("the handler ended the caller's transaction")
     if failure is not None:
-        _logger.error("add-on %s failed in %s; refused actions: %s", addon_key, event, refused, exc_info=failure)
+        _logger.error("add-on %s failed in %s; refused actions: %s; %s", addon_key, event, refused,
+                      describe_error(failure))
         raise AddonError(FAILED.format(name=_names.get(addon_key, addon_key))) from None

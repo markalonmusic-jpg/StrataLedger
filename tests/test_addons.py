@@ -513,7 +513,8 @@ def test_a_handler_that_swallows_a_refused_write_still_fails(setup, resources):
     assert journal(setup)[-1]["is_posted"] == 0
 
 
-def test_the_handle_holds_no_connection_attribute(setup, resources):
+def test_the_handle_offers_only_execute(setup, resources):
+    """Narrows mistakes only; not a sandbox (HA7: add-ons are trusted installation code)."""
     write_addon(resources, "probe", code="""
         def register(hooks):
             hooks.on("entry.posted", handler)
