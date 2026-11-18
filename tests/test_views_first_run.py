@@ -83,6 +83,28 @@ def tk_root(tk_app):
         child.destroy()
 
 
+@pytest.fixture(autouse=True)
+def _private_clipboard(request, monkeypatch):
+    """The system clipboard is one per computer, so parallel workers would race on it (step-reviewer H1). A test
+    marked system_clipboard uses the real one (and holds the clipboard lock); every other test gets an in-memory
+    clipboard through the same platform_support functions the screen calls."""
+    if request.node.get_closest_marker("system_clipboard"):
+        yield None
+        return
+    held = {"text": ""}
+
+    def copy(widget, text):
+        held["text"] = text
+        return "tk"
+
+    def clear(widget):
+        held["text"] = ""
+    monkeypatch.setattr(platform_support, "copy_secret_text", copy)
+    monkeypatch.setattr(platform_support, "read_clipboard_text", lambda widget: held["text"])
+    monkeypatch.setattr(platform_support, "clear_clipboard", clear)
+    yield held
+
+
 @pytest.fixture
 def dialogs(monkeypatch):
     shown = SimpleNamespace(errors=[], infos=[], confirms=[], answer=True)
@@ -338,25 +360,48 @@ def test_closing_after_the_box_is_ticked_still_asks_until_continue(setup):
 # --- The clipboard ---------------------------------------------------------------------------------------------------
 
 # The system clipboard is one per computer, so parallel workers (pytest-xdist) would race on it: every test that
-# reads or writes it runs in one worker (`--dist loadgroup`, as the commit hook runs the suite).
-SYSTEM_CLIPBOARD = pytest.mark.xdist_group("system_clipboard")
+# reads or writes it holds the clipboard lock (tests/conftest.py, tests/test_clipboard_lock.py).
+SYSTEM_CLIPBOARD = pytest.mark.system_clipboard
 
 
 def clipboard(root):
     return platform_support.read_clipboard_text(root)
 
 
-def test_every_test_that_touches_the_system_clipboard_runs_in_one_worker():
+def another_program_copies(root, text):
+    """Another program puts text on the clipboard: through the Windows clipboard API, as a real program does. Tk's
+    own clipboard write opens the clipboard once and silently does nothing if a clipboard monitor holds it, which
+    made these tests flaky on a busy computer (2026-11-18)."""
+    if platform_support.IS_WINDOWS:
+        platform_support._copy_windows(text)
+    else:
+        root.clipboard_clear()
+        root.clipboard_append(text)
+
+
+def test_every_test_that_touches_the_system_clipboard_holds_the_clipboard_lock():
     import inspect
     import sys
     module = sys.modules[__name__]
     touching = [(name, function) for name, function in inspect.getmembers(module, inspect.isfunction)
-                if name.startswith("test_") and "system_clipboard_runs" not in name
-                and any(call in inspect.getsource(function) for call in ("clipboard(tk_root)", "clipboard_append"))]
+                if name.startswith("test_") and "holds_the_clipboard_lock" not in name
+                and any(call in inspect.getsource(function) for call in ("clipboard(tk_root)", "clipboard_append", "another_program_copies("))]
     assert len(touching) == 5
     for name, function in touching:
         marks = getattr(function, "pytestmark", [])
-        assert any(m.name == "xdist_group" and m.args == ("system_clipboard",) for m in marks), name
+        assert any(m.name == "system_clipboard" for m in marks), name
+
+
+def test_a_test_outside_the_group_never_reaches_the_system_clipboard(setup, _private_clipboard):
+    """Any other test (copy_code, continue_ and the full-run log test included) gets the in-memory clipboard."""
+    assert _private_clipboard is not None
+    make_master(setup)
+    setup.wizard.copy_code()
+    assert _private_clipboard["text"] == setup.wizard.vars["code"].get()
+    setup.wizard.vars["acknowledged"].set(True)
+    setup.wizard.on_ack_changed()
+    setup.wizard.continue_()
+    assert _private_clipboard["text"] == ""
 
 
 def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch):
@@ -404,8 +449,7 @@ def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root
 def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
     make_master(setup)
     setup.wizard.copy_code()
-    tk_root.clipboard_clear()
-    tk_root.clipboard_append("something else the user copied")
+    another_program_copies(tk_root, "something else the user copied")
     setup.wizard.vars["acknowledged"].set(True)
     setup.wizard.on_ack_changed()
     setup.wizard.continue_()
@@ -416,8 +460,7 @@ def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
 def test_continue_clears_a_clipboard_holding_the_code_without_dashes(setup, tk_root):
     make_master(setup)
     code = setup.wizard.vars["code"].get()
-    tk_root.clipboard_clear()
-    tk_root.clipboard_append(code.replace("-", "").lower())
+    another_program_copies(tk_root, code.replace("-", "").lower())
     setup.wizard.vars["acknowledged"].set(True)
     setup.wizard.on_ack_changed()
     setup.wizard.continue_()

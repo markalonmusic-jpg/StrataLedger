@@ -299,3 +299,56 @@ def test_every_test_that_uses_the_real_clipboard_runs_only_on_demand():
     assert len(live) == 7
     for name, function in live:
         assert "live_clipboard" in {m.name for m in getattr(function, "pytestmark", [])}, name
+
+
+def test_live_clipboard_tests_hold_the_clipboard_lock_when_turned_on(monkeypatch):
+    """With STRATALEDGER_LIVE_CLIPBOARD=1 they are kept and hold the cross-process clipboard lock (conftest
+    CLIPBOARD_MARKERS), so parallel workers never race on the one system clipboard (step-reviewer L7); without it
+    they are deselected."""
+    from tests import conftest
+
+    class Item:
+        def __init__(self, live):
+            self.markers = [pytest.mark.live_clipboard.mark] if live else []
+
+        def get_closest_marker(self, name):
+            return next((m for m in self.markers if m.name == name), None)
+
+    class Config:
+        class hook:
+            @staticmethod
+            def pytest_deselected(items):
+                deselected.extend(items)
+
+    assert "live_clipboard" in conftest.CLIPBOARD_MARKERS
+    live, plain, deselected = Item(True), Item(False), []
+    monkeypatch.setenv("STRATALEDGER_LIVE_CLIPBOARD", "1")
+    items = [live, plain]
+    conftest.pytest_collection_modifyitems(Config, items)
+    assert items == [live, plain] and deselected == []
+    monkeypatch.delenv("STRATALEDGER_LIVE_CLIPBOARD")
+    conftest.pytest_collection_modifyitems(Config, items)
+    assert items == [plain] and deselected == [live]
+
+
+def test_a_busy_clipboard_is_waited_for_up_to_a_second(monkeypatch):
+    """Clipboard monitors (clipboard history, editors) open the clipboard after every change; on a busy computer
+    they hold it for longer than a moment. Opening retries for about a second before the quiet Tk fallback, so
+    Continue still clears the recovery code (seen under a parallel test run, 2026-11-18)."""
+    waits = []
+    monkeypatch.setattr(platform_support.time, "sleep", waits.append)
+
+    class Busy:
+        def __init__(self, free_after):
+            self.tries, self.free_after = 0, free_after
+
+        def OpenClipboard(self, owner):
+            self.tries += 1
+            return self.tries > self.free_after
+
+    platform_support._open_clipboard(Busy(free_after=40))
+    assert len(waits) == 40
+    waits.clear()
+    with pytest.raises(OSError, match="busy"):
+        platform_support._open_clipboard(Busy(free_after=10**6))
+    assert 0.9 <= sum(waits) <= 1.1

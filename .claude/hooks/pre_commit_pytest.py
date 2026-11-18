@@ -4,8 +4,9 @@ Claude Code sends the tool call as JSON on stdin. Exit 0 lets the call run; exit
 the session. Any command that is not a git commit passes straight through without running tests.
 
 The suite runs in parallel workers (pytest-xdist, `-n auto`; owner 2026-11-18): about 5 minutes instead of 18.
-`--dist loadgroup` keeps tests marked `xdist_group` in one worker. Without xdist the commit is blocked with what to
-install, because a one-process run would outlast the hook's timeout. Plain `python -m pytest -q` still works.
+Tests that use the system clipboard take turns through a lock (tests/conftest.py). Without xdist the commit is
+blocked with what to install, because a one-process run would outlast the hook's timeout. Plain
+`python -m pytest -q` still works.
 """
 import importlib.util
 import json
@@ -25,7 +26,7 @@ def is_git_commit(command):
 
 
 def suite_command():
-    return [sys.executable, "-m", "pytest", "-q", "-n", "auto", "--dist", "loadgroup"]
+    return [sys.executable, "-m", "pytest", "-q", "-n", "auto"]
 
 
 def xdist_available():

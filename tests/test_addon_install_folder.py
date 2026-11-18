@@ -135,3 +135,17 @@ def test_the_app_hands_the_platform_check_to_the_service():
     source = (config.RESOURCE_DIR and open(os.path.join(os.path.dirname(os.path.abspath(config.__file__)),
                                                         "app_strata.pyw"), encoding="utf-8").read())
     assert "addons.use_folder_check(platform_support.folder_open_to_non_admins)" in source
+
+
+def test_opening_a_company_with_addons_off_logs_why_not_not_installed(setup, monkeypatch, caplog):
+    """Step-reviewer L6: prepare_company logs the HA8 reason once and touches no add-on."""
+    addons.enable(admin(setup), "demo")
+    hooks._clear()
+    monkeypatch.setattr(config, "FROZEN", True)
+    check(monkeypatch, {"program"})
+    with caplog.at_level(logging.ERROR, logger="strataledger"):
+        addons.prepare_company(admin(setup))
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("non-admin" in m for m in messages)
+    assert not any("not installed" in m for m in messages)
+    assert not hooks.is_loaded("demo")

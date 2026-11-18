@@ -40,7 +40,7 @@ FORMAT_CAN_UPLOAD_TO_CLOUD = "CanUploadToCloudClipboard"
 
 _CF_UNICODETEXT = 13
 _GMEM_MOVEABLE = 0x0002
-_OPEN_TRIES = 10
+_OPEN_TRIES = 50              # about a second: clipboard monitors can hold it that long on a busy computer
 _OPEN_WAIT_SECONDS = 0.02
 
 _logger = logging.getLogger("strataledger.platform")
@@ -287,6 +287,7 @@ EVERYONE_SID = "S-1-1-0"
 CHANGE_RIGHTS = (0x0002 | 0x0004 | 0x0010 | 0x0040 | 0x0100 | 0x00010000 | 0x00040000 | 0x00080000 | 0x10000000
                  | 0x40000000)
 _ALLOW_TYPES = (ACCESS_ALLOWED, ACCESS_ALLOWED_CALLBACK)
+_UNPARSED_ALLOW_TYPES = (5, 11)          # ACCESS_ALLOWED_OBJECT, ACCESS_ALLOWED_CALLBACK_OBJECT (step-reviewer L1)
 
 
 def non_admin_writers(acl, user_sid, elevated):
@@ -299,7 +300,9 @@ def non_admin_writers(acl, user_sid, elevated):
     if acl.owner in watched:
         found.append(acl.owner)
     for entry in acl.entries:
-        if entry.type in _ALLOW_TYPES and entry.mask & CHANGE_RIGHTS and entry.sid in watched \
+        if entry.type in _UNPARSED_ALLOW_TYPES:            # read without mask or SID: never treated as harmless
+            found.append(f"an allow entry of type {entry.type}")
+        elif entry.type in _ALLOW_TYPES and entry.mask & CHANGE_RIGHTS and entry.sid in watched \
                 and entry.sid not in found:
             found.append(entry.sid)
     return found

@@ -876,3 +876,19 @@ Rotation and key-lost text as it stood before the trim:
   - Parallel runs found the five first-run tests that use the real system clipboard racing across workers: they
     are now one xdist_group, with a guard test. Three parallel runs: 289, 296, 301 s, all green.
   - Suite 3606 passed, 1 skipped.
+- 2026-11-18: step-reviewer on 997305c..7aeb3f4 (approve with changes). Fixed, tests first:
+  - H1 and a root cause: pytest-xdist 3.8's xdist_group does nothing under pytest 9.2 (it renames item._nodeid,
+    which pytest 9 no longer reads), so the "grouped" clipboard tests ran in parallel and raced. Replaced by a
+    `system_clipboard` marker whose tests (and live_clipboard ones) hold a cross-process file lock
+    (tests/conftest.py, tests/test_clipboard_lock.py); every other first-run test gets an in-memory clipboard. Tests
+    that simulate another program now write through the Windows clipboard API (Tk's write gives up silently when
+    the clipboard is busy). The hook runs `pytest -q -n auto` (no --dist loadgroup).
+  - The product's clipboard open now retries for about a second (was 0.2 s): on a busy computer Continue could leave
+    the recovery code on the clipboard.
+  - L1: allow entries the ACL reader does not parse count as open. L4: the xdist test skips without xdist. L5: H1
+    bans ctypes and platform_support in services. L6: company open with add-ons off logs the HA8 reason, not "not
+    installed". L7: live-clipboard tests hold the lock.
+  - For the owner: M1 (add-on subfolders and files are not checked), M2 (allow-list of admin SIDs instead of a
+    list of non-admin groups), M3 (the user's own SID when elevated), L2 and L3 (HA11 misses and false positives).
+  - Three parallel runs: 504, 499, 525 s (other jobs were running on the machine), all green. Suite 3617 passed,
+    1 skipped.

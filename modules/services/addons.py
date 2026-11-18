@@ -228,8 +228,11 @@ def prepare_company(context):
     opens. A read-only open applies no migrations. System upkeep like periods.ensure_upcoming_years: no permission
     applies (it runs as the opening user)."""
     rows, _ = _company_rows(context)
+    enabled = sorted(k for k, row in rows.items() if row["enabled"])
+    if enabled and addons_off():          # HA8: logged there; posting says the sentence (step-reviewer L6)
+        return
     installed = None
-    for key in sorted(k for k, row in rows.items() if row["enabled"]):
+    for key in enabled:
         installed = discover() if installed is None else installed
         info = installed.get(key)
         if info is None:

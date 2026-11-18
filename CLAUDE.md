@@ -9,7 +9,7 @@ History: docs/status_log.md; plans: docs/roadmap.md; decisions: docs/design_deci
 docs/decisions_2026-11-11.md. Code comments and tests cite the section and rule numbers, so keep the numbering.
 
 Commands (from the repo root):
-- Full test suite: `python -m pytest -q`; parallel, as the commit hook runs it: `pytest -q -n auto --dist loadgroup`
+- Full test suite: `python -m pytest -q`; in parallel, as the commit hook runs it: `python -m pytest -q -n auto`
 - Static rules only: `python -m pytest -q tests/test_static_rules.py tests/test_static_portability.py`
 - Run the app: `pythonw app_strata.pyw` (or `StrataLedger.bat`)
 - Rebuild development databases: `python scripts/create_fresh_databases.py` (dry run; `--apply` writes)

@@ -48,9 +48,10 @@ def _parse(source_or_path):
 
 # --- H1: no UI or OS-specific imports in services -----------------------------------------
 
-H1_BANNED_MODULES = ("tkinter", "_tkinter", "customtkinter", "winreg", "msvcrt", "win32", "pywin", "pythoncom")
-H1_BANNED_NAMES = {"messagebox", "filedialog", "simpledialog"}
-H1_BANNED_PREFIXES = ("modules.views_", "modules.ui_components")
+H1_BANNED_MODULES = ("tkinter", "_tkinter", "customtkinter", "winreg", "msvcrt", "win32", "pywin", "pythoncom",
+                     "ctypes")
+H1_BANNED_NAMES = {"messagebox", "filedialog", "simpledialog", "platform_support"}
+H1_BANNED_PREFIXES = ("modules.views_", "modules.ui_components", "modules.platform_support")
 # Entries are file names in modules/services/. Must stay empty.
 H1_ALLOW_LIST = set()
 
@@ -91,7 +92,10 @@ def test_h1_checker_flags_ui_imports():
     for line in ("import tkinter", "from tkinter import messagebox", "import customtkinter as ctk",
                  "from tkinter.filedialog import askopenfilename", "import winreg",
                  "import modules.views_billing", "from modules.views_billing import Screen",
-                 "from modules.ui_components import Button"):
+                 "from modules.ui_components import Button",
+                 # the platform module and ctypes stay out of services (P3; the app hands functions over)
+                 "import ctypes", "from ctypes import wintypes", "from modules import platform_support",
+                 "import modules.platform_support", "from modules.platform_support import DPAPI"):
         assert h1_violations(line), line
     assert not h1_violations("import os\nfrom pathlib import Path\nimport sqlite3")
 

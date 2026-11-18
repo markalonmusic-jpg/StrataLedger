@@ -91,7 +91,7 @@ def test_settings_wire_the_hook_for_bash_and_powershell():
 
 def test_the_suite_runs_in_parallel_workers():
     hook = load_hook()
-    assert hook.suite_command() == [sys.executable, "-m", "pytest", "-q", "-n", "auto", "--dist", "loadgroup"]
+    assert hook.suite_command() == [sys.executable, "-m", "pytest", "-q", "-n", "auto"]
 
 
 def test_the_suite_command_is_what_run_suite_runs(monkeypatch):
@@ -117,7 +117,14 @@ def test_without_xdist_the_commit_is_blocked_with_what_to_install(monkeypatch):
 
 
 def test_xdist_is_found_when_installed():
+    pytest.importorskip("xdist")          # plain `python -m pytest -q` must pass without xdist (step-reviewer L4)
     assert load_hook().xdist_available()
+
+
+def test_xdist_is_reported_missing_when_it_cannot_be_found(monkeypatch):
+    hook = load_hook()
+    monkeypatch.setattr(hook.importlib.util, "find_spec", lambda name: None)
+    assert hook.xdist_available() is False
 
 
 def test_plain_pytest_still_works_without_xdist():

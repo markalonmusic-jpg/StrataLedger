@@ -80,6 +80,13 @@ def test_read_only_and_deny_entries_do_not_count_and_deny_does_not_cancel_an_all
     assert ps.non_admin_writers(both, USER, True) == [USERS]
 
 
+@pytest.mark.parametrize("ace_type", [5, 11])        # ACCESS_ALLOWED_OBJECT, ACCESS_ALLOWED_CALLBACK_OBJECT
+def test_an_allow_entry_the_reader_cannot_parse_counts_as_open(ace_type):
+    """Step-reviewer L1: such entries are read with mask 0 and no SID, so they must not pass as harmless."""
+    unread = acl(*PROGRAM_FILES.entries, ace("", 0, ace_type=ace_type))
+    assert ps.non_admin_writers(unread, USER, elevated=True) == [f"an allow entry of type {ace_type}"]
+
+
 def test_a_null_dacl_is_open_to_everyone():
     assert ps.non_admin_writers(acl(dacl_present=False), USER, elevated=True) == [EVERYONE]
 

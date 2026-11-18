@@ -1662,8 +1662,8 @@ The owner's answers to the Phase 2.7 plan.
   folder's permissions (not this process's access) are read for RESOURCE_DIR and RESOURCE_DIR/addons. Add-ons
   turn off if a non-admin principal can change either: an allow entry with write, modify or create rights for
   Users, Authenticated Users, Everyone or Interactive, or for the user's own SID when not elevated; inheritable
-  entries count, deny entries are not subtracted, owning the folder counts, and a NULL DACL or an unreadable ACL
-  counts as open. An elevated administrator on a properly installed folder keeps add-ons. The ACL read lives in
+  entries count, deny entries are not subtracted, owning the folder counts, and a NULL DACL, an unreadable ACL or
+  an allow entry of a kind the reader does not parse (object ACEs) counts as open. An elevated administrator on a properly installed folder keeps add-ons. The ACL read lives in
   `platform_support.folder_open_to_non_admins` (P3); the app hands it to `addons.use_folder_check` at start-up
   (services never import it, H1), and a frozen build without it keeps add-ons off. When off, it is logged and
   people see one sentence: "Add-ons are off because the program folder can be changed by this account; reinstall
