@@ -2,6 +2,7 @@
 
 Read CLAUDE.md sections 0, 0b, 2, 3 and the "Known issues" list in section 7, docs/CLAUDE_UI.md, and the design doc your task names. Do not read the other design docs or anything under archive/. If a rule here and CLAUDE.md differ, CLAUDE.md wins, except for git: CLAUDE.md section 8 (commit, push main) is for Claude Code, and the branch rules below are yours.
 
+- Done, review gate and fix mode: follow .claude/rules/workflow-standards.md (report to the owner; never start the next task on your own).
 - Tests first. The full suite and tests/test_static_rules.py must pass before you say a task is done. Report the pass counts.
 - Views: Theme tokens only (no hex colours), shared dialogs only (no messagebox), no SQL, no print. Business rules live in services, never in views.
 - Page keys: every screen declares a stable PAGE_KEY, lowercase snake_case, "<area>.<screen_or_action>" (for example setup.first_run, banking.reconcile, customers.create). Keys must be unique across all views.

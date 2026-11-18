@@ -182,13 +182,13 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
   `git add -A` or `git add .` (the planning chat writes files into this folder). Check `git status` and
   `git diff --cached` before every commit. Never commit `.db` files, credentials or tokens; never
   force-push without asking.
-- Only one tool edits this working folder at a time. Copilot works only in its own worktree
-  (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`); copilot-reviewer reviews its
-  commits before merge. Commit and push between handoffs, and pull before starting.
+- Only one tool edits this working folder at a time. Copilot and Codex work only in their own worktrees
+  (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`, likewise codex/<task>); copilot-reviewer
+  reviews their commits before merge. Commit and push between handoffs, and pull before starting.
 - Before reporting a step: run step-reviewer; for auth, keys, recovery, backups, email or feeds also run
   secrets-auditor; run mutation-tester on the committed step. View-only screens may go to screen-builder;
   the main session reviews and commits its work. Run one agent that edits files at a time.
-- Finish every task with a summary: files changed, tests run, anything uncertain.
+- Done, review gate and fix mode: .claude/rules/workflow-standards.md (overrides this section where they differ).
 - Find decisions by code with a text search (grep); never read docs/decisions_2026-11-11.md,
   docs/design_decisions.md or a design doc in full unless the task says so. A session that adds a decision code
   also adds its one-line row to the index at the top of docs/decisions_2026-11-11.md.
