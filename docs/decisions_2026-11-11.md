@@ -1581,6 +1581,8 @@ The owner's answers to the Phase 2.7 plan.
   bank numbers, tax ids, exemption certificates and every column of the `audit_` tables as NULL; the log gets an
   add-on error's type and frames, never its message; a migration file that leads outside its folder is refused;
   the data folder may not contain, or sit inside, the add-ons folder (one shared root is allowed from source).
+  Mutation check fix: SQLite's own `sqlite_autoindex_<table>_N` (a UNIQUE or non-integer PRIMARY KEY column) is
+  allowed on an add-on's own table in a migration; before, the guard refused it.
 - FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
   following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
   stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built

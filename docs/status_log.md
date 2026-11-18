@@ -791,3 +791,8 @@ Rotation and key-lost text as it stood before the trim:
     SQL reads bank numbers, tax ids and the audit tables as NULL), LOW-2 (no add-on error message in the log),
     LOW-3 (the handle is described as a guard against mistakes, not a sandbox), LOW-4 (linked migration files),
     LOW-5 (data folder inside the add-ons folder); LOW-6 (backups made on open) left for the owner.
+  - Mutation check (on 9b2f1f1): 262 mutants, 155 killed; the non-equivalent survivors are covered by
+    tests/test_mutation_stop_b_extra.py (59 tests, each spot-checked against its mutant). One bug found and fixed:
+    the migration guard refused `sqlite_autoindex_<table>_N`, so an add-on table could not have a UNIQUE or text
+    PRIMARY KEY column (HA7). Suite 3262 passed, 1 skipped, 7 deselected. STOP B done; STOP C planned in
+    docs/next_step.md (not built).

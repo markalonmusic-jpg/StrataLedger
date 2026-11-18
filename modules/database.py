@@ -407,7 +407,10 @@ class _AddonGuard:
             return self._owns(arg1)
         if action in (sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_DROP_INDEX, sqlite3.SQLITE_CREATE_TRIGGER,
                       sqlite3.SQLITE_DROP_TRIGGER):
-            return self._owns(arg1) and self._owns(arg2)
+            # A UNIQUE or non-integer PRIMARY KEY column makes SQLite build `sqlite_autoindex_<table>_N` itself.
+            automatic = action in (sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_DROP_INDEX) and isinstance(arg1, str) \
+                and isinstance(arg2, str) and arg1.startswith(f"sqlite_autoindex_{arg2}_")
+            return (automatic or self._owns(arg1)) and self._owns(arg2)
         if action == sqlite3.SQLITE_ALTER_TABLE:
             return self._owns(arg2)
         if action == sqlite3.SQLITE_REINDEX:   # CREATE INDEX asks for it on the new index
