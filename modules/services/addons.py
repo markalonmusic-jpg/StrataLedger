@@ -30,8 +30,8 @@ RECORD_TYPE = "company_addon"
 MANIFEST, ENTRY, MIGRATIONS = "addon.json", "addon.py", "migrations"
 SETUP_REFUSED = ("The {name} add-on could not set up its tables, so it was not turned on. Nothing was changed; the "
                  "details are in the log.")
-ADDONS_OFF = ("Add-ons are off because the program folder can be changed by this account; reinstall StrataLedger to "
-              "Program Files.")
+ADDONS_OFF = ("Add-ons are off because accounts other than administrators can change the program folder. "
+              f"Reinstall {config.APP_NAME} to Program Files.")
 
 _logger = logging.getLogger("strataledger")
 

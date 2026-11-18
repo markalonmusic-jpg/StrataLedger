@@ -475,3 +475,48 @@ def test_document_void_helpers_have_only_their_listed_callers(name):
 def test_the_approval_exemption_checker_finds_a_call():
     assert approval_exemption_users("ledger.create_document_entry(conn, ctx, exempt_from_approval=True)") == [1]
     assert approval_exemption_users("ledger.create_document_entry(conn, ctx, post=True)") == []
+
+
+# Owner answer 2026-11-18: people see the product name "Melara" (config.APP_NAME), never "StrataLedger". No string in
+# modules/services/ or modules/database.py (whose refusals the services pass on) may hold the exact, case-sensitive
+# text "StrataLedger". Docstrings, comments and bytes (the key-derivation labels, which are identifiers) are not
+# checked. Lower- and upper-case identifiers (the logger "strataledger", STRATALEDGER_* variables) pass on purpose
+# and are renamed in the packaging step (U1); another spelling or a run-time join is not caught.
+OLD_NAME = "StrataLedger"
+
+
+def old_name_strings(source):
+    """Line numbers of str constants (f-string parts included, docstrings not) that name StrataLedger."""
+    tree = ast.parse(source)
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                docstrings.add(id(body[0].value))
+    return [n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and OLD_NAME in n.value
+            and id(n) not in docstrings]
+
+
+def test_no_service_string_names_strataledger():
+    paths = [*sorted(SERVICES_DIR.glob("*.py")), ROOT / "modules" / "database.py"]
+    found = {path.name: lines for path in paths if (lines := old_name_strings(path.read_text(encoding="utf-8")))}
+    assert found == {}, "user-facing text says config.APP_NAME, not StrataLedger"
+
+
+def test_the_old_name_checker_finds_strings_and_skips_docstrings_comments_and_bytes():
+    source = ('"""StrataLedger module."""\n'
+              '# StrataLedger comment\n'
+              'LABEL = b"StrataLedger key v1"\n'
+              'LOGGER = "strataledger"\n'
+              'A = "Reinstall StrataLedger."\n'
+              'def f(zone):\n'
+              '    """StrataLedger function."""\n'
+              '    return f"{zone}: reinstall StrataLedger"\n')
+    assert old_name_strings(source) == [5, 8]
+
+
+def test_the_product_name_is_melara():
+    import config
+    assert config.APP_NAME == "Melara"

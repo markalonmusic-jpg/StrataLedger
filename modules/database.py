@@ -298,7 +298,7 @@ def restore_database(backup_path, db_path, *, expected_sha256):
     except sqlite3.DatabaseError:
         sound = False
     if not sound:
-        raise RestoreRefusedError(db_path, "That file is not a sound StrataLedger database, so it was not restored. "
+        raise RestoreRefusedError(db_path, f"That file is not a sound {config.APP_NAME} database, so it was not restored. "
                                            "Choose another backup.")
     staged = db_path + ".restoring"
     safety = None

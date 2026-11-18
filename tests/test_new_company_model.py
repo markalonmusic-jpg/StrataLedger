@@ -151,7 +151,7 @@ def test_kwargs_for_csv_and_copy():
     (ValidationError("The company code ACME is already used"), "different"),
     (ValidationError("Enter the company's legal name"), "correct"),
     (NotFoundError("No such company: 9"), "choose again"),
-    (InstallationError("Time zone data is missing for Asia/Manila; reinstall StrataLedger."), "reinstall"),
+    (InstallationError("Time zone data is missing for Asia/Manila; reinstall Melara."), "reinstall"),
     (CsvError([RowError(4, "system_role", "The role 'x' is not a known system account role")]), "Row 4"),
     (ServiceError("odd"), "odd"),
 ])

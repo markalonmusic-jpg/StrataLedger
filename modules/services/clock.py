@@ -6,6 +6,7 @@ company's local date); contexts are built by the context builders, which call ut
 import logging
 from datetime import datetime, timezone
 
+import config
 from modules.services.errors import InstallationError
 
 _logger = logging.getLogger("strataledger.clock")
@@ -33,5 +34,5 @@ def local_today(now_iso, tz_name):
     except Exception as error:  # noqa: BLE001  (ZoneInfoNotFoundError, ValueError, missing tzdata)
         _logger.error("time zone %r could not be loaded: %s", tz_name, error)
         raise InstallationError(
-            f"Time zone data is missing for {tz_name}; reinstall StrataLedger.") from None
+            f"Time zone data is missing for {tz_name}; reinstall {config.APP_NAME}.") from None
     return instant.astimezone(zone).date().isoformat()

@@ -13,6 +13,7 @@ patch it.
 import os
 import sys
 
+APP_NAME = "Melara"              # the product name people see (owner, 2026-11-18); folders and installer: U1
 APP_VERSION = "0.2.0-dev"
 DATA_DIR_ENV = "STRATALEDGER_DATA_DIR"
 

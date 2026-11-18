@@ -27,8 +27,8 @@ def register(hooks):
     pass
 '''
 
-SENTENCE = ("Add-ons are off because the program folder can be changed by this account; reinstall StrataLedger to "
-            "Program Files.")
+SENTENCE = ("Add-ons are off because accounts other than administrators can change the program folder. Reinstall "
+            "Melara to Program Files.")     # owner answer 2026-11-18 (config.APP_NAME)
 
 
 @pytest.fixture(autouse=True)
@@ -132,7 +132,7 @@ def test_an_addons_tree_that_cannot_be_listed_turns_addons_off(installed, monkey
 
 def test_a_frozen_build_with_no_check_handed_over_keeps_addons_off(installed):
     assert addons.discover() == {}
-    with pytest.raises(AddonError, match="reinstall StrataLedger to Program Files"):
+    with pytest.raises(AddonError, match="Reinstall Melara to Program Files"):
         addons.load("demo")
     assert not (installed / "imported.txt").exists()
 
@@ -147,7 +147,7 @@ def test_enable_says_the_sentence_and_changes_nothing(setup, monkeypatch):
     monkeypatch.setattr(config, "FROZEN", True)
     check(monkeypatch, {"addons"})
     before = setup.rows("PARENT", "SELECT * FROM company_addon")
-    with pytest.raises(AddonError, match="reinstall StrataLedger to Program Files"):
+    with pytest.raises(AddonError, match="Reinstall Melara to Program Files"):
         addons.enable(admin(setup), "demo")
     assert setup.rows("PARENT", "SELECT * FROM company_addon") == before
     assert setup.rows("PARENT", "SELECT name FROM sqlite_master WHERE name = 'demo_seen'") == []

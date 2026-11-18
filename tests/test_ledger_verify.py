@@ -970,3 +970,8 @@ def test_the_app_action_context_needs_an_open_company():
     module = _app_class()
     with pytest.raises(ValidationError, match="Open a company first"):
         module.App.action_context(_fake_app(module, None))
+
+
+def test_the_hash_reason_names_the_product():
+    # config.APP_NAME (owner answer 2026-11-18)
+    assert ledger_verify.REASON_TEXT[ledger_verify.HASH].endswith("changed outside Melara")

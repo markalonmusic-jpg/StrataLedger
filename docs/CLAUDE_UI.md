@@ -300,6 +300,28 @@ Where this file says "danger", "success" or "warning" it means `error_glow`,
 
 ---
 
+## 10A. AQ2 HTML front end rules (AX5-AX10)
+
+The CustomTkinter screens move to one HTML/CSS/JS front end (AQ2). These rules
+apply to it; the full text is in docs/decisions_2026-11-11.md.
+
+- AX5 one view manager owns navigation and the back stack.
+- AX6 dialogs and panels sit on one layer stack; Esc closes only the top layer.
+- AX7 screens refresh from a post-commit event bus, separate from hooks.py.
+- AX8 one Unsaved Changes dialog (Save, Discard, Keep editing) wherever a draft
+  would be lost.
+- AX9 the front end only displays service results and sends requests. No money
+  math, eligibility, status or permission logic in JavaScript. Which actions to
+  show comes from capabilities the API returns; the services still check
+  everything. Browser storage holds display preferences only, never business
+  data.
+- AX10 front-end security: data enters the page only through `textContent` and
+  DOM calls, never `innerHTML` built from data; no `eval` or inline handlers; a
+  strict Content-Security-Policy in the pywebview window; no iframe message
+  protocol, or a fixed origin with validated messages.
+
+---
+
 ## 11. Do NOT copy from the mockups
 
 1. Mock data: "142 clients", "$142,500", "$685,000", "Acme Corp", "Highway 101

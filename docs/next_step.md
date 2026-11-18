@@ -5,6 +5,31 @@ Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md se
 Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, built in the "B2 owner answers" commit).
 **STOP C starts in a fresh session** once the owner approves that commit at the review gate.
 
+## Owner answers: product name, HA8 sentence, AX9-AX10 (2026-11-18; awaiting the owner's approval)
+
+1. The product name people see is "Melara": `config.APP_NAME`. The three service sentences that named StrataLedger
+   use it (the HA8 sentence, the missing time-zone error in `clock.py`, the ledger-verify Hash reason), and so does
+   `database.restore_database`'s refusal (step review). A static test (tests/test_static_rules.py,
+   `test_no_service_string_names_strataledger`) refuses the exact text "StrataLedger" in any string in
+   modules/services/ or modules/database.py; docstrings, comments and bytes are not checked, and other spellings
+   or run-time joins are not caught. The key-derivation
+   labels (`b"StrataLedger ... v1"` in key_store, key_wrap, ledger_chain) are identifiers and must never change:
+   changing one breaks every existing key and seal.
+2. HA8 sentence: "Add-ons are off because accounts other than administrators can change the program folder.
+   Reinstall Melara to Program Files."
+3. CREATOR OWNER and CREATOR GROUP handling accepted; `sess_id` and `password_number_id` stay allowed.
+4. AX9 and AX10 recorded (docs/decisions_2026-11-11.md, with index rows) and added to docs/CLAUDE_UI.md section 10A
+   with AX5-AX8 (which were not in that file before).
+
+**Left for the packaging step (U1):**
+- Rename to Melara: the data folders (`%LOCALAPPDATA%\StrataLedger-dev`, `%PROGRAMDATA%\StrataLedger`), the
+  environment variables (`STRATALEDGER_DATA_DIR`, `STRATALEDGER_ALLOW_TEST_KEYS`, `STRATALEDGER_LIVE_CLIPBOARD`),
+  the logger name `strataledger`, the installer and the repo. A renamed data folder needs a move plan (rule 9).
+- Screens and other modules outside services still show "StrataLedger" (app_strata.pyw, sidebar.py,
+  views_first_run.py, first_run_model.py, views_wizard.py, database.py docstrings, platform_support.py): Phase 3 or U1.
+- U1 checklist: after install, check that the program folder's ACL and owners pass HA8 (no files owned by the
+  user, no "Object creator" ownership), and test the install with the built-in Administrator account.
+
 ## Owner answers on the review step and the KS12 tie (2026-11-18; awaiting the owner's approval)
 
 Commit 55a0e2b, then the mutation-test commit. KS12 tie decided; HA8 M1-M3 (allow-list of SYSTEM, Administrators,

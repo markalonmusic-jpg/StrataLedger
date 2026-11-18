@@ -33,6 +33,7 @@
 import hmac
 import logging
 
+import config
 from modules.services import auth, keys, ledger_chain
 from modules.services.authz import authorize
 from modules.services.errors import KeyUnavailableError, NotFoundError, ValidationError
@@ -47,7 +48,7 @@ LINK, HASH, GAP, VOID, KEY, TRUNCATED, MARKER = (
 REASON_TEXT = {
     LINK: "it does not link to the entry before it",
     HASH: "it no longer matches the seal recorded when it was posted, so it may have been changed outside "
-          "StrataLedger",
+          f"{config.APP_NAME}",
     GAP: "it is missing from the ledger",
     VOID: "its void mark does not match its Void reversal",
     KEY: "the key that sealed it does not match this company's key record",

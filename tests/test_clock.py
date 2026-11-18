@@ -47,6 +47,7 @@ def test_an_unloadable_zone_is_an_installation_error_not_a_silent_fallback(monke
     with pytest.raises(InstallationError) as caught:
         clock.local_today("2026-11-11T23:30:00+00:00", "America/Los_Angeles")
     assert "reinstall" in str(caught.value).lower() and "America/Los_Angeles" in str(caught.value)
+    assert "reinstall Melara" in str(caught.value)      # config.APP_NAME (owner answer 2026-11-18)
 
 
 def test_unknown_zone_name_is_also_an_error():

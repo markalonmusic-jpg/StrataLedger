@@ -347,6 +347,8 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - AX6 AQ2 front end: a layer stack for dialogs and panels; Esc closes the top layer only
 - AX7 AQ2 front end: a post-commit event bus for screens, separate from hooks.py
 - AX8 AQ2 front end: one Unsaved Changes dialog (Save, Discard, Keep editing)
+- AX9 AQ2 front end only displays service results and sends requests; no business logic in JavaScript
+- AX10 AQ2 front-end security: textContent and DOM calls only, no eval or inline handlers, strict CSP
 - AG1 AI (v1.2): bring your own key, stored in DATA_DIR\Secrets, never proxied
 - AG2 AI: the provider choice includes a local model
 - AG3 AI: OFF per company until an Admin or the Master turns it on; a warning before the first send
@@ -1658,6 +1660,13 @@ The owner's answers to the Phase 2.7 plan.
   and Esc closes only the top layer; AX7 screens refresh from a post-commit event bus, separate from hooks.py (an
   add-on hook runs inside the transaction; a screen event only after commit); AX8 one Unsaved Changes dialog (Save,
   Discard, Keep editing) wherever a draft would be lost.
+- AX9-AX10 (owner, 2026-11-18; Phase 3 rules for the AQ2 front end, docs only, nothing built): AX9 the HTML front
+  end only displays service results and sends requests. No money math, eligibility, status or permission logic in
+  JavaScript. Which actions to show comes from capabilities the API returns; the services still check everything.
+  Browser storage holds display preferences only, never business data. AX10 front-end security: data enters the
+  page only through textContent and DOM calls, never innerHTML built from data; no eval or inline handlers; a strict
+  Content-Security-Policy in the pywebview window; no iframe message protocol, or a fixed origin with validated
+  messages.
 - AG1-AG8 AI (v1.2, docs only, nothing built): AG1 bring your own key, stored under `DATA_DIR\Secrets`, never
   proxied through us; AG2 the provider choice includes a local model; AG3 AI is OFF per company until an Admin or the
   Master turns it on, with a warning before the first send; AG4 extraction sends only the chosen file or pasted text;
@@ -1668,21 +1677,21 @@ The owner's answers to the Phase 2.7 plan.
 - HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1. In the
   installed (frozen) build, before any add-on file is read or imported (`addons.discover`, `load`, `enable`), the
   owner and permissions (not this process's access or token) are read for RESOURCE_DIR and for RESOURCE_DIR/addons
-  with every subfolder and file in it (owner answer M1, 2026-11-18). Add-ons turn off if anyone outside an
-  allow-list of SYSTEM, Administrators and TrustedInstaller can change any of them (M2): an allow entry with write,
-  modify or create rights for any other principal, the user's own account included even when the process is
-  elevated (M3), or ownership by one. Inheritable entries count; CREATOR OWNER and CREATOR GROUP on an inherit-only
-  entry are placeholders (a child gets its creator's real SID, and every child is read). Deny entries are not
-  subtracted, and a NULL DACL, a missing owner, an unreadable ACL, an add-ons tree that cannot be listed or holds
-  a link (a symbolic link or junction reaches files the check never reads; step review), or an allow entry of a
-  kind the reader does not parse (object ACEs) counts as open. An administrator on a properly installed folder
-  keeps add-ons. The ACL read lives in
-  `platform_support.folder_open_to_non_admins` (P3); the app hands it to `addons.use_folder_check` at start-up
-  (services never import it, H1), and a frozen build without it keeps add-ons off. When off, it is logged and
-  people see one sentence: "Add-ons are off because the program folder can be changed by this account; reinstall
-  StrataLedger to Program Files." Posting with an enabled add-on then stops with that sentence. Source runs are
-  exempt (Codex finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py,
-  tests/test_platform_folder_acl.py, tests/test_storage.py (`storage.resource_tree`).
+  with every subfolder and file in it (owner answer M1, 2026-11-18). Add-ons turn off if anyone outside an allow-list
+  of SYSTEM, Administrators and TrustedInstaller can change any of them (M2): an allow entry with write, modify or
+  create rights for any other principal, the user's own account included even when the process is elevated (M3), or
+  ownership by one. Inheritable entries count; CREATOR OWNER and CREATOR GROUP on an inherit-only entry are
+  placeholders (a child gets its creator's real SID, and every child is read; accepted by the owner, 2026-11-18). Deny
+  entries are not subtracted, and a NULL DACL, a missing owner, an unreadable ACL, an add-ons tree that cannot be
+  listed or holds a link (a symbolic link or junction reaches files the check never reads; step review), or an allow
+  entry of a kind the reader does not parse (object ACEs) counts as open. An administrator on a properly installed
+  folder keeps add-ons. The ACL read lives in `platform_support.folder_open_to_non_admins` (P3); the app hands it to
+  `addons.use_folder_check` at start-up (services never import it, H1), and a frozen build without it keeps add-ons
+  off. When off, it is logged and people see one sentence (owner, 2026-11-18): "Add-ons are off because accounts other
+  than administrators can change the program folder. Reinstall Melara to Program Files." (the name is
+  `config.APP_NAME`). Posting with an enabled add-on then stops with that sentence. Source runs are exempt (Codex
+  finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py, tests/test_platform_folder_acl.py,
+  tests/test_storage.py (`storage.resource_tree`).
 - HA9 Add-on tables are always audit-logged. After every statement of an add-on migration the runner gives each
   `<key>_` table the standard insert, update and delete triggers (`audit_<table>_<action>`, every column as JSON),
   from `migrations/addon_audit_triggers.sql`, rebuilt when the table changes or a trigger is missing; so a

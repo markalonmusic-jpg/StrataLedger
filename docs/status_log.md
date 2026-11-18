@@ -928,3 +928,7 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-18: mutation-tester on 55a0e2b: 132 mutants, 99 killed; 23 real gaps now killed by
   tests/test_mutation_owner_answers_extra.py (sorting in resource_tree, the link check's first and last entries,
   islink, a missing program folder, and HA11 words, pairs, runs and value words); 10 equivalent (docs/next_step.md).
+- 2026-11-18: owner answers, tests first: the product name people see is Melara (`config.APP_NAME`), used in the
+  three service sentences that named StrataLedger; a static test refuses the old name in service strings. New HA8
+  sentence. CREATOR OWNER handling accepted. AX9-AX10 recorded (docs only) and added to docs/CLAUDE_UI.md 10A.
+  Folder, variable, installer and repo renames and the installer's HA8 check are on the U1 list (docs/next_step.md).
