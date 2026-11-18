@@ -9,7 +9,7 @@ History: docs/status_log.md; plans: docs/roadmap.md; decisions: docs/design_deci
 docs/decisions_2026-11-11.md. Code comments and tests cite the section and rule numbers, so keep the numbering.
 
 Commands (from the repo root):
-- Full test suite: `python -m pytest -q`
+- Full test suite: `python -m pytest -q`; parallel, as the commit hook runs it: `pytest -q -n auto --dist loadgroup`
 - Static rules only: `python -m pytest -q tests/test_static_rules.py tests/test_static_portability.py`
 - Run the app: `pythonw app_strata.pyw` (or `StrataLedger.bat`)
 - Rebuild development databases: `python scripts/create_fresh_databases.py` (dry run; `--apply` writes)
@@ -180,7 +180,7 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
 - Commit at the end of each step and push `main` to `origin`. Stage by explicit path, never `git add -A` or
   `git add .` (the planning chat writes files here); check `git status` and `git diff --cached` first. Never
   commit `.db` files, credentials or tokens; never force-push without asking.
-- A PreToolUse hook (.claude/settings.json) runs `python -m pytest -q` before any `git commit` and blocks it on failure.
+- A PreToolUse hook (.claude/settings.json) runs the parallel suite before any `git commit`; a failure blocks it.
 - Only one tool edits this working folder at a time. Copilot and Codex work only in their own worktrees
   (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`, likewise codex/<task>); copilot-reviewer
   reviews their commits before merge. Commit and push between handoffs, and pull before starting.

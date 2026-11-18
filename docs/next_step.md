@@ -20,13 +20,15 @@ Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, buil
      `model_reasoning_effort` (opus to high, sonnet to medium; owner's choice).
    - mutation-tester mutates only the functions changed in the step's commits.
    - `.claude/settings.json` has a PreToolUse hook (`.claude/hooks/pre_commit_pytest.py`, tests/test_commit_hook.py).
-     It runs `python -m pytest -q` before any `git commit` and blocks the commit on failure. The suite takes
-     about 18 minutes, so the hook's timeout is 2400 s and every commit waits for one full run.
+     It runs the suite in parallel (`pytest -q -n auto --dist loadgroup`, pytest-xdist) before any `git commit`
+     and blocks the commit on failure, or when xdist is missing. About 5 minutes (18 in one process); timeout 900 s.
+   - Review fixes after b4ea844 (status_log 2026-11-18): secrets-audit fixes to HA11, and HA8's writable-program-
+     folder check (frozen build only). Awaiting the owner's approval.
    - CLAUDE.md section 8 also says: after each STOP, Codex reviews the pushed commits read-only in its own worktree,
      and its findings come to the owner.
 
 **State:**
-- Suite: 3440 passed, 1 skipped, 7 deselected (after the owner-answers commit; 3369 at the end of B2).
+- Suite: 3551 passed, 1 skipped (after the review fixes; 3440 after the owner-answers commit, 3369 after B2).
 - B2 commits:
   - 785ca30 (part A);
   - 8e5979c (the build);

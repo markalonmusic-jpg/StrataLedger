@@ -61,6 +61,7 @@ def build_paths(data_dir, resource_dir):
 
 
 _FROZEN = bool(getattr(sys, "frozen", False))
+FROZEN = _FROZEN                 # the installed build (PyInstaller); read at call time, so tests can set it (HA8)
 RESOURCE_DIR = resolve_resource_dir(_FROZEN, getattr(sys, "_MEIPASS", None), sys.executable)
 DATA_DIR = resolve_data_dir(os.environ, _FROZEN, RESOURCE_DIR)
 BASE_PROJECT_DIR = DATA_DIR      # alias, kept so existing code and tests need no change

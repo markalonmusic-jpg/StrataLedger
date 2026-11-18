@@ -1,5 +1,5 @@
 """The package lists (decision KS1): `cryptography` is a pinned runtime requirement for the key store
-(docs/audit_readiness_design.md 2.7, K2); PyInstaller and pytest are developer tools, listed only in
+(docs/audit_readiness_design.md 2.7, K2); PyInstaller, pytest and pytest-xdist are developer tools, listed only in
 requirements-dev.txt, never in the runtime requirements the installed app needs.
 """
 import re
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / "requirements.txt"
 DEV = ROOT / "requirements-dev.txt"
-DEV_TOOLS = ("pyinstaller", "pytest")
+DEV_TOOLS = ("pyinstaller", "pytest", "pytest-xdist")
 
 
 def _requirements(path):

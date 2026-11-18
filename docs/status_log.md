@@ -848,3 +848,20 @@ Rotation and key-lost text as it stood before the trim:
     the full suite before any git commit and blocks it on failure; timeout 2400 s (the suite takes 18 minutes).
     CLAUDE.md 8: Codex reviews pushed commits read-only after each STOP.
   - Suite 3440 passed, 1 skipped, 7 deselected.
+- 2026-11-18: B2 owner-answers review fixes (not yet approved).
+  - secrets-auditor on b4ea844 (HA11). Fixed, tests first:
+    - HIGH-1: the project's own secret types (recovery, backup and reset codes; chain, HMAC, installation, master,
+      encryption, signing and session keys; DPAPI, salt, hash, OTP, JWT and short forms of password) are refused.
+    - HIGH-2: names are split at digits as well, plurals are matched, and the long forms (secret, token, credential)
+      are found inside run-together or all-capital names.
+    - LOW-1: an add-on table already in the file is checked even with nothing pending.
+    - LOW-2: a refused or failed add-on statement is named by file and number, never by its SQL text or a SQLite
+      message that could quote a literal; only identifier-only messages (no such table, already exists) are kept.
+    - MEDIUM-1 recorded in HA11: the name check is a safety net; "sensitive columns" is PROPOSED, not built.
+      INFO-1 (hook output) and INFO-2 (a public routing number in a test) left as they are.
+  - HA8 (Codex finding): a frozen build whose RESOURCE_DIR or RESOURCE_DIR/addons this account can write loads no
+    add-ons, logs it and says one sentence; source runs are exempt (tests/test_addon_install_folder.py, 13 tests).
+  - Commit hook: pytest-xdist 3.8.0 in requirements-dev.txt; the hook runs `pytest -q -n auto --dist loadgroup` and
+    blocks the commit if xdist is missing; timeout 2400 s to 900 s. Three parallel full runs: 306, 328, 313 s (18
+    minutes in one process), all green; no test needed a single worker. Plain `python -m pytest -q` is unchanged.
+  - Suite 3551 passed, 1 skipped.

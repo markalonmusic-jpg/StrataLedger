@@ -30,6 +30,8 @@ RECORD_TYPE = "company_addon"
 MANIFEST, ENTRY, MIGRATIONS = "addon.json", "addon.py", "migrations"
 SETUP_REFUSED = ("The {name} add-on could not set up its tables, so it was not turned on. Nothing was changed; the "
                  "details are in the log.")
+ADDONS_OFF = ("Add-ons are off because the program folder can be changed by this account; reinstall StrataLedger to "
+              "Program Files.")
 
 _logger = logging.getLogger("strataledger")
 
@@ -54,9 +56,34 @@ def _inside(path, folder):
         return False
 
 
+def addons_off():
+    """HA8: in the installed (frozen) build, add-ons are off when this account can change RESOURCE_DIR or
+    RESOURCE_DIR/addons, since anyone who can write there could plant code that runs in this process. Checked on
+    every call, before any add-on file is read or imported, and logged each time. A run from source is exempt.
+    Returns ADDONS_OFF (the sentence to show) or None."""
+    if not config.FROZEN:
+        return None
+    changeable = [name for name, relative in (("program folder", None), ("add-ons folder", ADDONS))
+                  if storage.resource_dir_writable(relative)]
+    if not changeable:
+        return None
+    _logger.error("add-ons are off: the %s under %s can be changed by this account", " and ".join(changeable),
+                  config.RESOURCE_DIR)
+    return ADDONS_OFF
+
+
+def _refuse_if_off():
+    reason = addons_off()
+    if reason is not None:
+        raise AddonError(reason)
+
+
 def discover():
     """{key: {'key', 'name', 'version', 'entry', 'migrations'}} for every valid add-on folder. A folder with a bad
-    manifest is skipped and logged. Nothing is imported here. storage.py keeps every path inside RESOURCE_DIR."""
+    manifest is skipped and logged. Nothing is imported here. storage.py keeps every path inside RESOURCE_DIR.
+    Empty when add-ons are off (HA8, addons_off)."""
+    if addons_off():
+        return {}
     root = addons_dir()
     apart = _real(config.DATA_DIR) == _real(config.RESOURCE_DIR) or not (
         _inside(root, config.DATA_DIR) or _inside(config.DATA_DIR, root))     # the same root: running from source
@@ -96,6 +123,7 @@ def load(addon_key):
     installed; AddonError if its code fails."""
     if hooks.is_loaded(addon_key):
         return
+    _refuse_if_off()
     info = discover().get(addon_key)
     if info is None:
         raise NotFoundError(f"The {addon_key} add-on is not installed on this computer.")
@@ -154,6 +182,7 @@ def enable(context, addon_key):
     if context.read_only:
         raise PermissionDeniedError("This company is open read-only; open it with a role that can make changes, "
                                     "or ask an Admin.")
+    _refuse_if_off()
     info = discover().get(addon_key)
     if info is None:
         raise NotFoundError("That add-on is not installed on this computer; install it first.")

@@ -757,24 +757,42 @@ _AUDIT_TRIGGER_RE = re.compile(r"audit_(\w+)_(insert|update|delete)")
 _PLAIN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WITHOUT_ROWID_RE = re.compile(r"\bWITHOUT\s+ROWID\b", re.IGNORECASE)
 _JSON_PAIRS = 60          # json_object / json_insert stay under SQLite's 127-argument limit
-# HA11: add-on column names that look like a secret. Whole underscore-separated words, adjacent word pairs, and
-# camel-case or run-together forms (the name with underscores removed); "secretary" or "setting" are not secrets.
-_SECRET_WORDS = frozenset({"password", "passwords", "passwd", "pwd", "passphrase", "secret", "secrets", "token",
-                           "tokens", "apikey", "privatekey", "credential", "credentials", "iban", "tin", "ssn", "cvv",
-                           "pin"})
-_SECRET_PAIRS = frozenset({("api", "key"), ("private", "key"), ("secret", "key"), ("access", "key"),
-                           ("account", "number"), ("account", "no"), ("acct", "number"), ("acct", "no"),
-                           ("routing", "number"), ("routing", "no"), ("card", "number"), ("bank", "account")})
-_SECRET_RUNS = ("password", "passwd", "passphrase", "apikey", "privatekey", "accesskey", "accountnumber",
-                "acctnumber", "routingnumber", "cardnumber", "bankaccount")
+# HA11: add-on column names that look like a secret. The name is split into words at underscores, at camel case and
+# at digits, and a word may end in a plural s. Refused: a secret word, an adjacent secret pair, or a secret run
+# anywhere in the letters joined up (so "apitoken", "MYSECRET" and "p_w_d" are caught). A few ordinary words that
+# contain a run ("secretary", "tokenizer") are taken out first. B2 secrets audit of b4ea844, HIGH-1 and HIGH-2.
+_SECRET_WORDS = frozenset({
+    "password", "passwd", "pwd", "pw", "pword", "pass", "passcode", "passphrase", "pwhash", "passhash", "secret",
+    "token", "apikey", "privatekey", "privkey", "credential", "cred", "iban", "tin", "ssn", "cvv", "cvc", "pin",
+    "salt", "hash", "hashes", "hmac", "dpapi", "otp", "totp", "mfa", "bearer", "jwt", "cookie", "cardno"})
+_SECRET_PAIRS = frozenset({
+    ("api", "key"), ("private", "key"), ("priv", "key"), ("secret", "key"), ("access", "key"), ("chain", "key"),
+    ("hmac", "key"), ("installation", "key"), ("install", "key"), ("master", "key"), ("encryption", "key"),
+    ("enc", "key"), ("signing", "key"), ("session", "key"), ("session", "id"), ("account", "number"),
+    ("account", "no"), ("acct", "number"), ("acct", "no"), ("routing", "number"), ("routing", "no"),
+    ("card", "number"), ("card", "no"), ("bank", "account"), ("recovery", "code"), ("backup", "code"),
+    ("reset", "code"), ("pass", "code"), ("pin", "code")})
+_SECRET_RUNS = ("password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "apikey",
+                "privatekey", "privkey", "accesskey", "accountnumber", "acctnumber", "routingnumber", "cardnumber",
+                "bankaccount", "chainkey", "hmac", "dpapi", "installationkey", "masterkey", "encryptionkey",
+                "signingkey", "sessionkey", "recoverycode", "backupcode", "resetcode")
+_NOT_SECRET_RUNS = ("secretar", "tokeniz")       # secretary, secretaries; tokenizer, tokenize
+
+
+def _secret_word(word):
+    return word in _SECRET_WORDS or (len(word) > 2 and word.endswith("s") and word[:-1] in _SECRET_WORDS)
 
 
 def _looks_secret(column):
-    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", column).lower().split("_")
-    words = [w for w in words if w]
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", column)
+    spaced = re.sub(r"(\d+)", r"_\1_", spaced).lower()
+    words = [w for w in spaced.split("_") if w and not w.isdigit()]
+    singular = [w[:-1] if len(w) > 2 and w.endswith("s") and not _secret_word(w) else w for w in words]
     run = "".join(words)
-    return (any(w in _SECRET_WORDS for w in words) or any(pair in _SECRET_PAIRS for pair in zip(words, words[1:]))
-            or any(r in run for r in _SECRET_RUNS))
+    for ordinary in _NOT_SECRET_RUNS:
+        run = run.replace(ordinary, "_")
+    return (any(_secret_word(w) for w in words) or any(pair in _SECRET_PAIRS for pair in zip(singular, singular[1:]))
+            or _secret_word(run) or any(r in run for r in _SECRET_RUNS))
 
 
 def _audit_template():
@@ -918,6 +936,7 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir, audit):
                                                  "never edited, add a new one instead. Nothing was changed.")
     pending = [v for v in sorted(files) if v not in done]
     if not pending:
+        _check_existing_columns(db_path, addon_key)
         return []
     if done and pending[0] != max(done) + 1:
         raise AddonMigrationError(addon_key, "the applied migrations have a gap; nothing was changed.")
@@ -958,25 +977,57 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir, audit):
             if isinstance(error, AddonMigrationError):
                 raise
             where = current or "the migration"
-            raise AddonMigrationError(addon_key, f"{where} failed and was rolled back; nothing was changed. "
-                                                 f"{error}") from error
+            raise AddonMigrationError(addon_key, f"{where} failed ({type(error).__name__}) and was rolled back; "
+                                                 "nothing was changed.") from None
     finally:
         conn.close()
     return pending
 
 
+def _check_existing_columns(db_path, addon_key):
+    """HA11 with nothing pending (secrets audit LOW-1): an add-on table already in the file, made before the check or
+    by hand, is refused too. Read-only; the file is not touched."""
+    prefix, core = addon_key + "_", core_table_names()
+    conn = _readonly_connection(db_path)
+    try:
+        tables = [r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+                  if _owned(r["name"], prefix, core)]
+        for table in tables:
+            for row in conn.execute("SELECT name FROM pragma_table_info(?)", (table,)):
+                if _looks_secret(row["name"]):
+                    raise AddonMigrationError(addon_key, f"the table {table} has a column named {row['name']!r}, "
+                                                         "which looks like a secret; secrets go only in DATA_DIR\\"
+                                                         "Secrets, never in an add-on table. Nothing was changed.")
+    finally:
+        conn.close()
+
+
+# SQLite messages whose only variable part is a plain name, so they can be shown and logged; any other message (a
+# syntax error quotes the text near it, a literal included) is replaced by the error's type (secrets audit LOW-2).
+_SAFE_SQLITE_RE = re.compile(r"(?:(?:table|index|trigger|view) [A-Za-z_][A-Za-z0-9_]* already exists"
+                             r"|no such (?:table|column|index|trigger|view): [A-Za-z_][A-Za-z0-9_.]*)")
+
+
+def _safe_sqlite_reason(error):
+    text = str(error)
+    return text if _SAFE_SQLITE_RE.fullmatch(text) else type(error).__name__
+
+
 def _run_addon_statements(conn, addon_key, filename, statements, synced):
+    """Refusals name the file and the statement number, never the SQL text or SQLite's message: either can carry a
+    literal from the migration into the log (secrets audit LOW-2)."""
     guard = _AddonGuard(addon_key, schema=True)
-    for sql in statements:
+    for number, sql in enumerate(statements, start=1):
         conn.set_authorizer(guard)
         try:
             conn.execute(sql)
-        except sqlite3.DatabaseError:
+        except sqlite3.DatabaseError as error:
             if guard.refused:
-                raise AddonMigrationError(addon_key, f"{filename} reaches outside the add-on's {addon_key}_ "
-                                                     f"tables ({sql.splitlines()[0]!r}); nothing was "
-                                                     "changed.") from None
-            raise
+                raise AddonMigrationError(addon_key, f"statement {number} of {filename} reaches outside the "
+                                                     f"add-on's {addon_key}_ tables; nothing was changed.") from None
+            raise AddonMigrationError(addon_key, f"statement {number} of {filename} failed "
+                                                 f"({_safe_sqlite_reason(error)}) and was rolled back; nothing was "
+                                                 "changed.") from None
         finally:
             conn.set_authorizer(None)
         _sync_audit_triggers(conn, addon_key, synced)       # the runner's own step: no add-on authorizer

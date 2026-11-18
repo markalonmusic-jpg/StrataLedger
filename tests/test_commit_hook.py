@@ -2,6 +2,8 @@
 
 .claude/hooks/pre_commit_pytest.py runs `python -m pytest -q` before any `git commit` a Bash or PowerShell tool
 call makes, and blocks the commit (exit code 2) when the suite fails. Any other command passes straight through.
+The suite runs in parallel workers (`-n auto`, pytest-xdist, owner 2026-11-18); without xdist the commit is
+blocked with what to install.
 """
 import importlib.util
 import json
@@ -83,4 +85,44 @@ def test_settings_wire_the_hook_for_bash_and_powershell():
     wired = [e for e in entries if any("pre_commit_pytest.py" in h["command"] for h in e["hooks"])]
     assert len(wired) == 1
     assert set(wired[0]["matcher"].split("|")) == {"Bash", "PowerShell"}
-    assert wired[0]["hooks"][0]["timeout"] >= 1800      # the full suite took 18 minutes on 2026-11-18
+    # with -n auto the full suite took about 5 minutes on 2026-11-18 (18 minutes in one process)
+    assert 600 <= wired[0]["hooks"][0]["timeout"] <= 1200
+
+
+def test_the_suite_runs_in_parallel_workers():
+    hook = load_hook()
+    assert hook.suite_command() == [sys.executable, "-m", "pytest", "-q", "-n", "auto", "--dist", "loadgroup"]
+
+
+def test_the_suite_command_is_what_run_suite_runs(monkeypatch):
+    hook = load_hook()
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="1 passed", stderr="")
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    assert hook.run_suite(".") == (0, "1 passed")
+    assert seen["command"] == hook.suite_command()
+
+
+def test_without_xdist_the_commit_is_blocked_with_what_to_install(monkeypatch):
+    """A serial run would outlast the hook's timeout, so the hook never falls back to one."""
+    hook = load_hook()
+    monkeypatch.setattr(hook, "xdist_available", lambda: False)
+    monkeypatch.setattr(hook, "run_suite", lambda root: pytest.fail("the suite must not run without xdist"))
+    code, message = hook.decide({"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}, root=".")
+    assert code == 2
+    assert "pip install -r requirements-dev.txt" in message
+
+
+def test_xdist_is_found_when_installed():
+    assert load_hook().xdist_available()
+
+
+def test_plain_pytest_still_works_without_xdist():
+    """No addopts turn on xdist, so `python -m pytest -q` runs in one process when xdist is absent or disabled."""
+    result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:xdist", "-p", "no:cacheprovider",
+                             "tests/test_requirements.py"], cwd=HOOK.parent.parent.parent, capture_output=True,
+                            text=True, timeout=300)
+    assert result.returncode == 0, result.stdout[-2000:]

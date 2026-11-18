@@ -355,7 +355,7 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - AG6 AI matching is local; results are an Agent draft a person approves, with the source attached
 - AG7 CFO analysis sends locally computed figures, under the warning
 - AG8 Every AI call is logged, never its content or keys; bank feeds held; prevailing wage and IRA tracking dropped
-- HA8 Add-ons ship only inside our installer; no third-party add-ons in v1
+- HA8 Add-ons ship only inside our installer; no third-party add-ons in v1; off if the program folder is writable
 - HA9 Add-on tables are always audit-logged (generated triggers; addon_schema_version too)
 - HA10 No foreign keys from add-on tables to core tables in v1; ids are checked through services
 - HA11 Add-on tables never hold secrets: migrations refuse secret-looking column names (DATA_DIR\Secrets only)
@@ -1657,7 +1657,13 @@ The owner's answers to the Phase 2.7 plan.
   results are saved as an Agent draft a person approves, with the source attached; AG7 CFO analysis sends locally
   computed figures, under the AG3 warning; AG8 every call is logged (who, when, provider, which form), never its
   content or keys. Bank feeds are held; prevailing wage and IRA tracking are dropped.
-- HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1.
+- HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1. In the
+  installed (frozen) build, before any add-on file is read or imported (`addons.discover`, `load`, `enable`), the
+  app checks whether this account can create a file in RESOURCE_DIR or RESOURCE_DIR/addons (a probe file through
+  storage.py; os.access does not read Windows folder permissions). If it can, no add-on loads, it is logged, and
+  people see one sentence: "Add-ons are off because the program folder can be changed by this account; reinstall
+  StrataLedger to Program Files." Posting with an enabled add-on then stops with that sentence. Source runs are
+  exempt (Codex finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py.
 - HA9 Add-on tables are always audit-logged. After every statement of an add-on migration the runner gives each
   `<key>_` table the standard insert, update and delete triggers (`audit_<table>_<action>`, every column as JSON),
   from `migrations/addon_audit_triggers.sql`, rebuilt when the table changes or a trigger is missing; so a
@@ -1671,11 +1677,18 @@ The owner's answers to the Phase 2.7 plan.
   core id without a foreign key and checks it through services. Revisit with the Philippines add-on.
 - HA11 Add-on tables never hold secrets (owner 2026-11-18; B2 secrets audit M2), because HA9 copies every column
   into the append-only audit log. Wherever the runner makes the audit triggers (so CREATE TABLE, CREATE TABLE AS,
-  ADD COLUMN and RENAME COLUMN), it refuses a column whose name looks like a secret: the words password, passwd,
-  pwd, passphrase, secret, token, credential, iban, tin, ssn, cvv, pin; the pairs API, private, secret or access
-  key, account, acct, routing or card number (or no), bank account; and their run-together or camel-case forms.
-  The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
-  "secretary" or "setting" are allowed (whole words only). Tests: tests/test_addon_secret_columns.py.
+  ADD COLUMN and RENAME COLUMN), and on every run with nothing pending, it refuses a column whose name looks like a
+  secret. The name is split at underscores, camel case and digits, and a plural s is ignored. Refused: a secret
+  word (password and its short forms, passphrase, passcode, secret, token, credential, IBAN, TIN, SSN, CVV, PIN,
+  salt, hash, HMAC, DPAPI, OTP, JWT, cookie and others); a pair (API, private, chain, HMAC, installation, master,
+  encryption, signing or session key; account, routing or card number; recovery, backup or reset code; session
+  id); or a long form anywhere in the joined-up letters ("apitoken", "MYSECRET"). "secretary" and "tokenizer" are
+  allowed. The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
+  A refused or failed statement is named by file and number, never by its SQL text or a SQLite message that could
+  quote a literal (secrets audit of b4ea844). The name check is a safety net, not a guarantee: a secret under a
+  neutral name (`value`, `c1`) or in a key/value row is not caught, so add-on review checks that secrets go
+  through `KeyProvider`. PROPOSED (that audit's MEDIUM-1; not built): an add-on declares a column sensitive and
+  HA9 logs only "changed" for it, as the master does for passwords. Tests: tests/test_addon_secret_columns.py.
 - RI1 Replan inputs, decided and not built (for the replan after STOP C):
   - Estimate approval is OFF by default (section 0).
   - A duplicate bill number (same vendor) warns; a control can block it and ask for a reason.
