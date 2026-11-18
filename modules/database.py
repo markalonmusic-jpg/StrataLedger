@@ -189,16 +189,25 @@ def backup_database(db_path, *, reason):
     return {"path": backup_path, "sha256": digest}
 
 
-def _copy_database(source_path, target_path):
-    source = _readonly_connection(source_path)
+def _copy_database(source_path, target_path, *, source=None):
+    """Copy through the backup API. The copy is left in rollback-journal mode, so the file alone is the whole
+    database and its checksum covers everything (step-reviewer finding 1)."""
+    source = source or _readonly_connection(source_path)
     try:
-        target = sqlite3.connect(target_path)
+        target = _configure(sqlite3.connect(target_path))
         try:
             source.backup(target)
+            target.execute("PRAGMA journal_mode = DELETE")
         finally:
             target.close()
     finally:
         source.close()
+
+
+def _immutable_connection(path):
+    """A read-only connection that reads only the main file: no -wal is applied and nothing is created beside it."""
+    uri = f"{Path(path).resolve().as_uri()}?mode=ro&immutable=1"
+    return _configure(sqlite3.connect(uri, uri=True))
 
 
 def _backup_moments(db_path, reason):
@@ -252,7 +261,12 @@ def _check_closed(db_path):
         os.rename(db_path, probe)
     except PermissionError:
         raise RestoreRefusedError(db_path, STILL_OPEN) from None
-    os.rename(probe, db_path)
+    try:
+        os.rename(probe, db_path)
+    except OSError:
+        raise RestoreRefusedError(db_path, f"The company file could not be put back after the open-file check; it "
+                                           f"is at {probe}. Rename it back to {os.path.basename(db_path)} before "
+                                           "opening the company.") from None
 
 
 def restore_database(backup_path, db_path, *, expected_sha256):
@@ -265,11 +279,15 @@ def restore_database(backup_path, db_path, *, expected_sha256):
     target. Returns {'safety_backup': its path, or None when there was no file}. The permission check and the
     Master's override of a checksum mismatch belong to the restore service (Phase 2.8)."""
     backup_path, db_path = os.fspath(backup_path), os.fspath(db_path)
+    for suffix in ("-wal", "-journal"):
+        if os.path.exists(backup_path + suffix):
+            raise RestoreRefusedError(db_path, f"A {suffix[1:]} file sits beside the backup and is not covered by its "
+                                               "checksum, so it was not restored. Choose another backup.")
     if file_sha256(backup_path) != expected_sha256:
         raise RestoreRefusedError(db_path, "The backup's checksum does not match, so it was not restored. Choose "
                                            "another backup.")
     try:
-        check = _readonly_connection(backup_path)
+        check = _immutable_connection(backup_path)
         try:
             sound = check.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         finally:
@@ -281,19 +299,24 @@ def restore_database(backup_path, db_path, *, expected_sha256):
                                            "Choose another backup.")
     staged = db_path + ".restoring"
     safety = None
+    aside = []                   # the live -wal and -shm, kept until the replace has worked (finding 3)
     try:
         if os.path.isfile(db_path):
             _check_closed(db_path)
             safety = backup_database(db_path, reason="pre-restore")["path"]
-        _copy_database(backup_path, staged)
+        _copy_database(backup_path, staged, source=_immutable_connection(backup_path))
         for suffix in ("-wal", "-shm"):
             if os.path.exists(db_path + suffix):
-                os.remove(db_path + suffix)
+                os.replace(db_path + suffix, db_path + suffix + ".restore-aside")
+                aside.append(suffix)
         os.replace(staged, db_path)
     except PermissionError:
+        for suffix in aside:
+            os.replace(db_path + suffix + ".restore-aside", db_path + suffix)
+        aside = []
         raise RestoreRefusedError(db_path, STILL_OPEN) from None
     finally:
-        for leftover in (staged, staged + "-wal", staged + "-shm"):
+        for leftover in [staged, staged + "-wal", staged + "-shm"] + [db_path + x + ".restore-aside" for x in aside]:
             if os.path.exists(leftover):
                 os.remove(leftover)
     return {"safety_backup": safety}
@@ -302,7 +325,7 @@ def restore_database(backup_path, db_path, *, expected_sha256):
 def _ensure_wal(db_path):
     """AX1: master and company files are in WAL mode. An older file is switched once (no data changes) and the
     switch is logged."""
-    conn = sqlite3.connect(db_path)
+    conn = _configure(sqlite3.connect(db_path))
     try:
         if conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
             conn.execute("PRAGMA journal_mode = WAL")
@@ -727,7 +750,7 @@ def _check_schema_change(conn, addon_key, before, after):
 
 _AUDIT_TEMPLATE = "addon_audit_triggers.sql"
 _AUDIT_TRIGGER_RE = re.compile(r"audit_(\w+)_(insert|update|delete)")
-_QUOTE_FREE_RE = re.compile(r"[^\"'`\[\]\x00-\x1f]+")
+_PLAIN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WITHOUT_ROWID_RE = re.compile(r"\bWITHOUT\s+ROWID\b", re.IGNORECASE)
 _JSON_PAIRS = 60          # json_object / json_insert stay under SQLite's 127-argument limit
 
@@ -749,7 +772,7 @@ def _audit_template():
 
 def _audit_json(row, columns):
     """JSON of every column of NEW or OLD; past 60 columns json_insert adds the rest (it keeps NULL values).
-    Column names hold no quote characters (checked first), so quoting them here is safe."""
+    Column names are plain identifiers (checked first), so they are safe to place here."""
     chunks = [columns[i:i + _JSON_PAIRS] for i in range(0, len(columns), _JSON_PAIRS)]
     text = "json_object(" + ", ".join(f"'{c}', {row}.\"{c}\"" for c in chunks[0]) + ")"
     for chunk in chunks[1:]:
@@ -771,17 +794,18 @@ def _sync_audit_triggers(conn, addon_key, synced):
         complete = {f"audit_{table}_{action}" for action in ("insert", "update", "delete")} <= present
         if synced.get(table) == sql and complete:
             continue
-        if not _QUOTE_FREE_RE.fullmatch(table):
-            raise AddonMigrationError(addon_key, f"the table name {table!r} holds a quote or bracket; nothing was "
-                                                 "changed.")
+        if not _PLAIN_NAME_RE.fullmatch(table):
+            raise AddonMigrationError(addon_key, f"the table name {table!r} is not plain letters, digits and "
+                                                 "underscores; nothing was changed.")
         if _WITHOUT_ROWID_RE.search(_sql_without_text(sql)):
             raise AddonMigrationError(addon_key, f"the table {table} is WITHOUT ROWID; add-on tables keep a rowid so "
                                                  "their changes can be audit-logged. Nothing was changed.")
         columns = [r["name"] for r in conn.execute("SELECT name FROM pragma_table_info(?)", (table,))]
         for column in columns:
-            if not _QUOTE_FREE_RE.fullmatch(column):
+            if not _PLAIN_NAME_RE.fullmatch(column):
                 raise AddonMigrationError(addon_key, f"the table {table} has a column named {column!r}; add-on "
-                                                     "column names hold no quotes or brackets. Nothing was changed.")
+                                                     "column names are plain letters, digits and underscores (name a "
+                                                     "copied column with AS). Nothing was changed.")
         for name in sorted(present):
             if _AUDIT_TRIGGER_RE.fullmatch(name):
                 conn.execute(f'DROP TRIGGER "{name}"')
@@ -796,16 +820,31 @@ def _sync_audit_triggers(conn, addon_key, synced):
 
 
 def _core_counters(conn, addon_key):
-    """sqlite_sequence rows of tables outside the add-on's prefix, which its migration must leave as they are. The
-    audit rows the migration writes (HA9) move audit_log's counter, so that one is read as "matches the newest
-    log_id": it may only move forward with real rows."""
+    """What an add-on migration must not change in sqlite_sequence: the rows of tables outside its prefix, except
+    audit_log's, which the migration's own audit rows move (HA9). Returns (those rows, audit_log's seq)."""
     prefix, core = addon_key + "_", core_table_names()
     if not _table_exists(conn, "sqlite_sequence"):
-        return []
+        return [], None
+    rows = [(r["name"], r["seq"]) for r in conn.execute("SELECT name, seq FROM sqlite_sequence")]
+    audit = next((seq for name, seq in rows if name == "audit_log"), None)
+    return sorted((name, seq) for name, seq in rows if name != "audit_log" and not _owned(name, prefix, core)), audit
+
+
+def _check_counters(conn, addon_key, before):
+    """Core counters are unchanged; audit_log's only moves forward, to its newest log_id; and every add-on counter
+    row belongs to an add-on table that exists (a row renamed away from a core table is refused)."""
+    prefix, core = addon_key + "_", core_table_names()
+    rows, audit = _core_counters(conn, addon_key)
     newest = conn.execute("SELECT MAX(log_id) FROM audit_log").fetchone()[0] if _table_exists(conn, "audit_log") \
         else None
-    return sorted((r["name"], r["seq"]) for r in conn.execute("SELECT name, seq FROM sqlite_sequence")
-                  if not _owned(r["name"], prefix, core) and not (r["name"] == "audit_log" and r["seq"] == newest))
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    strays = [r["name"] for r in conn.execute("SELECT name FROM sqlite_sequence")
+              if _owned(r["name"], prefix, core) and r["name"] not in tables] if _table_exists(conn, "sqlite_sequence") \
+        else []
+    moved_back = before[1] is not None and (audit is None or audit < before[1] or audit != newest)
+    if rows != before[0] or moved_back or (audit is not None and audit != newest) or strays:
+        raise AddonMigrationError(addon_key, "the migration changed a core table's AUTOINCREMENT counter; nothing "
+                                             "was changed.")
 
 
 def _applied_addon_versions(db_path, addon_key):
@@ -875,9 +914,7 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir, audit):
                              (addon_key, version, digest))
             current = None
             _check_schema_change(conn, addon_key, before, _schema_objects(conn))
-            if _core_counters(conn, addon_key) != counters:
-                raise AddonMigrationError(addon_key, "the migration changed a core table's AUTOINCREMENT counter; "
-                                                     "nothing was changed.")
+            _check_counters(conn, addon_key, counters)
             problems = _verify_schema(conn)
             if problems:
                 raise AddonMigrationError(addon_key, "the result failed verification; nothing was changed. "

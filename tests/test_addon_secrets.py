@@ -85,8 +85,8 @@ def test_a_handler_still_reads_ordinary_columns(company_with_secrets):
 
 def test_a_migration_cannot_copy_sensitive_columns(company_with_secrets, tmp_path):
     folder = migrations(tmp_path, {"demo_001.sql": (
-        "CREATE TABLE demo_copy AS SELECT b.routing_number, b.account_number, c.tax_id, c.exemption_cert_no "
-        "FROM bank_account AS b, contact AS c;\n"
+        "CREATE TABLE demo_copy AS SELECT b.routing_number AS routing_number, b.account_number AS account_number, "
+        "c.tax_id AS tax_id, c.exemption_cert_no AS exemption_cert_no FROM bank_account AS b, contact AS c;\n"
         "CREATE TABLE demo_log AS SELECT old_value, new_value FROM audit_log;\n")})
     database.apply_addon_migrations(company_with_secrets, "demo", folder)
     conn = database.get_connection(company_with_secrets)

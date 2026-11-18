@@ -21,7 +21,8 @@ B2** (owner, 2026-11-17).
     safety backup, removes leftover `-wal`/`-shm` and replaces the file.
   - The restore *service* (permission, K5 Master override, Audit-ready flag) is Phase 2.8.
 - **AX3:** a source run without `STRATALEDGER_DATA_DIR` uses `%LOCALAPPDATA%\StrataLedger-dev`. The repo-root
-  files were not moved (rule 9); set the variable to the repo folder to keep using them.
+  files were not moved (rule 9). B2 edited the company baseline, so a company file there needs a rebuild;
+  the repo-root master (its baseline is unchanged) still opens if the variable points at the repo.
 - **HA9:** add-on tables get audit triggers generated from `migrations/addon_audit_triggers.sql` after every
   migration statement. `addon_schema_version` has baseline audit triggers. `addons.enable` names the person
   (`tx.AuditStamp`). The guard lets only these triggers read `audit_context` and append to `audit_log`.

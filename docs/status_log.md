@@ -814,3 +814,11 @@ Rotation and key-lost text as it stood before the trim:
     rollback. Theme.create_scrollbar.
   - Decisions: AX1-AX8, AG1-AG8, HA8-HA10, RI1 (replan inputs), FR1 amended (no packs, no cap, no schema change).
   - Suite before the reviews: 3313 passed, 1 skipped, 7 deselected (2 WAL-sidecar test expectations then fixed).
+  - Commit 8e5979c. step-reviewer: changes needed (1 high, 2 medium, 6 low). Fixed in the next commit: a backup
+    is a rollback-journal file and a restore reads it immutable and refuses a -wal or -journal beside it (high:
+    a planted WAL bypassed K5's checksum); add-on table and column names are plain identifiers (medium); the live
+    -wal and -shm are set aside and put back if the replace fails (medium); the open-file check never leaves the
+    file renamed silently; an add-on counter row must belong to an existing add-on table and audit_log's counter
+    only moves forward; a failure while logging the deferred denial never hides the refusal; the helper
+    connections are configured; the AX3 note on the repo-root files. Left for the owner: the committed
+    .codex/agents files. Suite 3327 passed, 1 skipped, 7 deselected.

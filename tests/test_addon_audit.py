@@ -118,12 +118,30 @@ def test_dropping_an_addon_table_drops_its_audit_triggers(company, tmp_path):
     assert triggers(company, "demo_a") == []
 
 
-def test_a_column_copied_with_its_table_name_is_logged(company, tmp_path):
-    folder = migrations(tmp_path, {"demo_001.sql": "CREATE TABLE demo_src (v TEXT);\nINSERT INTO demo_src VALUES ('a');\n"
-                                                   "CREATE TABLE demo_copy AS SELECT s.v FROM demo_src AS s;\n"})
-    database.apply_addon_migrations(company, KEY, folder)
-    (_, action, _, new), = audit_rows(company_rows(company), "demo_src")
-    assert action == "Insert" and new == {"v": "a"}
+@pytest.mark.parametrize("script, match", [
+    ("CREATE TABLE demo_src (v TEXT);\nCREATE TABLE demo_copy AS SELECT s.v || 'x' FROM demo_src AS s;", "column"),
+    ('CREATE TABLE "demo_x_insert BEFORE INSERT ON demo_c BEGIN SELECT 1; END /*" (x);', "table name"),
+    ('CREATE TABLE "demo_a b" (x);', "table name"),
+    ('CREATE TABLE demo_a ("x y" TEXT);', "column"),
+])
+def test_addon_names_are_plain_letters_digits_and_underscores(company, tmp_path, script, match):
+    """step-reviewer finding 2: no name reaches the generated trigger SQL unless it is a plain identifier."""
+    folder = migrations(tmp_path, {"demo_001.sql": script + "\n"})
+    before = objects(company)
+    with pytest.raises(database.AddonMigrationError, match=match):
+        database.apply_addon_migrations(company, KEY, folder)
+    assert objects(company) == before
+
+
+def test_a_counter_row_renamed_away_from_audit_log_is_refused(company, tmp_path):
+    """step-reviewer finding 5: an add-on counter row must belong to an add-on table that exists."""
+    raw = sqlite3.connect(company)
+    raw.execute("INSERT INTO audit_log (table_name, record_id, action) VALUES ('x', 1, 'Insert')")   # seq = max
+    raw.commit()
+    raw.close()
+    folder = migrations(tmp_path, {"demo_001.sql": "UPDATE sqlite_sequence SET name = 'demo_zz' WHERE name = 'audit_log';\n"})
+    with pytest.raises(database.AddonMigrationError, match="counter"):
+        database.apply_addon_migrations(company, KEY, folder)
 
 
 @pytest.mark.parametrize("script", [
@@ -266,3 +284,17 @@ def test_the_agent_refusal_outside_a_transaction_helper_is_still_refused(setup):
             hooks.fire(conn, agent, "entry.posted", {})
     finally:
         conn.close()
+
+
+def test_a_failure_while_logging_the_denial_does_not_hide_the_refusal(setup, monkeypatch, caplog):
+    """step-reviewer finding 6."""
+    from modules.services import authz
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("log store gone")
+    monkeypatch.setattr(authz, "record_denial", broken)
+    agent = ctx_for(setup, "Agent")
+    with pytest.raises(PermissionDeniedError, match="agent"):
+        with write_transaction(agent.company_db_path, ctx_for(setup)) as conn:
+            hooks.fire(conn, agent, "entry.posted", {"entry_id": 1})
+    assert "denial" in caplog.text

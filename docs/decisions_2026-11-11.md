@@ -1639,7 +1639,8 @@ The owner's answers to the Phase 2.7 plan.
   Phase 2.8.
 - AX3 P2a stays, with one change: running from source without `STRATALEDGER_DATA_DIR` uses
   `%LOCALAPPDATA%\StrataLedger-dev` (else the home folder), never the repo folder. The files in the repo root are
-  not moved or deleted (rule 9); set `STRATALEDGER_DATA_DIR` to the repo folder to keep using them.
+  not moved or deleted (rule 9). Step B2 also edited the company baseline, so an existing company file there
+  is blocked until it is rebuilt; set `STRATALEDGER_DATA_DIR` to the repo folder only to use the master there.
 - AX4 `audit_log` gets before/after detail and a reason field: queued for the schema replan (step 2.9), not built.
 - AX5-AX8 Rules for the AQ2 HTML front end, not built in CustomTkinter (where only `Theme.create_scrollbar` was
   added): AX5 one view manager owns navigation and the back stack; AX6 dialogs and panels sit on one layer stack,

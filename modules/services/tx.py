@@ -64,7 +64,10 @@ def write_transaction(db_path, context):
         if conn is not None:
             conn.close()
         if deferred is not None:      # a refusal raised inside the transaction: logged now, in its own transaction
-            deferred.log_denial()
+            try:
+                deferred.log_denial()
+            except Exception as error:              # never hide the refusal itself (step-reviewer finding 6)
+                _logger.error("the denial row could not be written after a rollback", exc_info=error)
 
 
 class AuditStamp:
