@@ -762,22 +762,34 @@ _JSON_PAIRS = 60          # json_object / json_insert stay under SQLite's 127-ar
 # at digits, and a word may end in a plural s. Refused: a secret word, an adjacent secret pair, or a secret run
 # anywhere in the letters joined up (so "apitoken", "MYSECRET" and "p_w_d" are caught). A few ordinary words that
 # contain a run ("secretary", "tokenizer") are taken out first. B2 secrets audit of b4ea844, HIGH-1 and HIGH-2.
+# A name whose last word is id or count is allowed (a reference or a tally, owner 2026-11-18), except a secret pair
+# that itself ends in id (session_id) and an id or count of a value that is the secret itself (tin_id: "TIN ID" is
+# the Philippine name for the TIN; account_number_id, hash_id). Account numbers and hashes stay refused (RP1).
 _SECRET_WORDS = frozenset({
     "password", "passwd", "pwd", "pw", "pword", "pass", "passcode", "passphrase", "pwhash", "passhash", "secret",
     "token", "apikey", "privatekey", "privkey", "credential", "cred", "iban", "tin", "ssn", "cvv", "cvc", "pin",
-    "salt", "hash", "hashes", "hmac", "dpapi", "otp", "totp", "mfa", "bearer", "jwt", "cookie", "cardno"})
+    "salt", "hash", "hashes", "hmac", "dpapi", "otp", "totp", "mfa", "bearer", "jwt", "cookie", "cardno", "nonce",
+    "mypw", "mypwd", "userpwd", "mypass", "mypin", "acctno", "acctnum", "accno", "accnum", "cardnum", "clientkey",
+    "appkey", "authkey", "sessionid"})
 _SECRET_PAIRS = frozenset({
     ("api", "key"), ("private", "key"), ("priv", "key"), ("secret", "key"), ("access", "key"), ("chain", "key"),
     ("hmac", "key"), ("installation", "key"), ("install", "key"), ("master", "key"), ("encryption", "key"),
     ("enc", "key"), ("signing", "key"), ("session", "key"), ("session", "id"), ("account", "number"),
     ("account", "no"), ("acct", "number"), ("acct", "no"), ("routing", "number"), ("routing", "no"),
     ("card", "number"), ("card", "no"), ("bank", "account"), ("recovery", "code"), ("backup", "code"),
-    ("reset", "code"), ("pass", "code"), ("pin", "code")})
+    ("reset", "code"), ("pass", "code"), ("pin", "code"), ("account", "num"), ("acct", "num"), ("acc", "no"),
+    ("acc", "num"), ("card", "num"), ("routing", "num"), ("client", "key"), ("consumer", "key"), ("app", "key"),
+    ("auth", "key")})
 _SECRET_RUNS = ("password", "passwd", "passphrase", "passcode", "secret", "token", "credential", "apikey",
                 "privatekey", "privkey", "accesskey", "accountnumber", "acctnumber", "routingnumber", "cardnumber",
                 "bankaccount", "chainkey", "hmac", "dpapi", "installationkey", "masterkey", "encryptionkey",
-                "signingkey", "sessionkey", "recoverycode", "backupcode", "resetcode")
-_NOT_SECRET_RUNS = ("secretar", "tokeniz")       # secretary, secretaries; tokenizer, tokenize
+                "signingkey", "sessionkey", "recoverycode", "backupcode", "resetcode", "nonce", "acctnum",
+                "accountnum", "routingnum", "cardnum", "clientkey", "consumerkey", "authkey")
+_TAIL_WORDS = ("id", "count")                     # a reference or a tally (owner 2026-11-18)
+_VALUE_WORDS = frozenset({"tin", "ssn", "iban", "pin", "cvv", "cvc", "otp", "totp", "hash", "cardno", "acctno",
+                          "acctnum", "accno", "accnum", "cardnum"})     # the secret is the value: no id exemption
+_NUMBER_WORDS = ("number", "no", "num")
+_NOT_SECRET_RUNS = ("secretar", "tokeniz", "noncert", "keyword")   # secretary; tokenizer; non_certified; keyword
 
 
 def _secret_word(word):
@@ -789,6 +801,12 @@ def _looks_secret(column):
     spaced = re.sub(r"(\d+)", r"_\1_", spaced).lower()
     words = [w for w in spaced.split("_") if w and not w.isdigit()]
     singular = [w[:-1] if len(w) > 2 and w.endswith("s") and not _secret_word(w) else w for w in words]
+    if len(singular) > 1 and singular[-1] in _TAIL_WORDS and tuple(singular[-2:]) not in _SECRET_PAIRS:
+        before = singular[:-1]
+        value = before[-1] in _VALUE_WORDS or (len(before) > 1 and before[-1] in _NUMBER_WORDS
+                                                and tuple(before[-2:]) in _SECRET_PAIRS)
+        if not value:
+            return False
     run = "".join(words)
     for ordinary in _NOT_SECRET_RUNS:
         run = run.replace(ordinary, "_")

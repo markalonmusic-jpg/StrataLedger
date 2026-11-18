@@ -68,6 +68,34 @@ def list_resource_dirs(relative_dir):
     return names
 
 
+def resource_tree(relative_dir):
+    """Every folder and file under a resource folder, the folder itself first, each folder before what it holds
+    (sorted; empty if it does not exist). Raises OSError when any folder in it cannot be listed, or when anything
+    in it is a link (a symbolic link or a Windows junction reaches files outside the tree), so a caller checking the
+    tree never passes over a part it could not see (HA8, fail closed)."""
+    root = resource_path(relative_dir)
+    if not os.path.isdir(root):
+        return []
+
+    def refuse(error):
+        raise error
+    found = [root]
+    for folder, folders, files in os.walk(root, onerror=refuse):
+        folders.sort()
+        found += [os.path.join(folder, name) for name in folders + sorted(files)]
+    for path in found:
+        if _is_link(path):
+            raise OSError(f"a link is in the resource folder: {path}")
+    return found
+
+
+_REPARSE_POINT = 0x400        # FILE_ATTRIBUTE_REPARSE_POINT: symbolic links and junctions (Windows)
+
+
+def _is_link(path):
+    return os.path.islink(path) or bool(getattr(os.lstat(path), "st_file_attributes", 0) & _REPARSE_POINT)
+
+
 def resource_root():
     """RESOURCE_DIR itself, resolved (HA8 checks who can change it)."""
     return os.path.realpath(config.RESOURCE_DIR)

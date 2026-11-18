@@ -148,7 +148,10 @@ def test_addons_off_asks_about_the_resource_folder(resources, monkeypatch):
     asked = []
     addons.use_folder_check(lambda path: asked.append(path) or False)
     addons.addons_off()
-    assert asked == [os.path.realpath(str(resources)), os.path.realpath(str(resources / "addons"))]
+    root = os.path.realpath(str(resources))
+    tree = [os.path.join(root, *p.split("/")) for p in ("addons", "addons/demo", "addons/demo/migrations",
+            "addons/demo/addon.json", "addons/demo/addon.py", "addons/demo/migrations/demo_001.sql")]
+    assert asked == [root] + tree
 
 
 # --- The commit hook and config.FROZEN -------------------------------------------------------------------------------
@@ -183,7 +186,7 @@ def test_a_clipboard_that_stays_busy_is_tried_exactly_fifty_times(monkeypatch):
 
 @pytest.mark.parametrize("bit", [1 << n for n in range(32) if ps.CHANGE_RIGHTS & (1 << n)])
 def test_every_change_right_on_its_own_counts(bit):
-    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, ace(USERS, bit)), USER, elevated=True) == [USERS]
+    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, ace(USERS, bit))) == [USERS]
 
 
 def test_the_change_rights_are_exactly_these():
@@ -193,68 +196,47 @@ def test_the_change_rights_are_exactly_these():
 
 def test_a_callback_allow_entry_counts():
     entry = ace(USERS, MODIFY, ace_type=ps.ACCESS_ALLOWED_CALLBACK)
-    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, entry), USER, elevated=True) == [USERS]
-
-
-def test_no_user_sid_watches_only_the_groups():
-    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, owner=None), None, elevated=False) == []
-    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, owner=""), "", elevated=False) == []
+    assert ps.non_admin_writers(acl(*PROGRAM_FILES.entries, entry)) == [USERS]
 
 
 def test_a_sid_is_listed_once():
     twice = acl(ace(USERS, MODIFY), ace(USERS, FULL), ace(USER, FULL), owner=USER)
-    assert ps.non_admin_writers(twice, USER, elevated=False) == [USER, USERS]
+    assert ps.non_admin_writers(twice) == [USER, USERS]
 
 
 def test_an_open_folder_is_logged_with_its_path_and_writers(tmp_path, caplog):
     with caplog.at_level(logging.ERROR, logger="strataledger.platform"):
-        assert ps.folder_open_to_non_admins(str(tmp_path), acl_reader=lambda p: acl(ace(USERS, MODIFY)),
-                                            token_reader=lambda: (USER, True)) is True
+        assert ps.folder_open_to_non_admins(str(tmp_path), acl_reader=lambda p: acl(ace(USERS, MODIFY))) is True
     assert any(str(tmp_path) in r.getMessage() and USERS in r.getMessage() for r in caplog.records)
 
 
-def test_the_token_reader_decides_whose_sid_is_watched(tmp_path):
-    mine = acl(*PROGRAM_FILES.entries, ace(USER, FULL))
-    assert ps.folder_open_to_non_admins(str(tmp_path), acl_reader=lambda p: mine,
-                                        token_reader=lambda: (USER, False)) is True
-    assert ps.folder_open_to_non_admins(str(tmp_path), acl_reader=lambda p: mine,
-                                        token_reader=lambda: (USER, True)) is False
-
-
-@pytest.mark.parametrize("reader", ["read_folder_acl", "current_token"])
-def test_off_windows_the_readers_refuse(monkeypatch, tmp_path, reader):
+def test_off_windows_the_reader_refuses(monkeypatch, tmp_path):
     monkeypatch.setattr(ps, "IS_WINDOWS", False)
     with pytest.raises(NotImplementedError):
-        getattr(ps, reader)(*([str(tmp_path)] if reader == "read_folder_acl" else []))
+        ps.read_folder_acl(str(tmp_path))
 
 
-windows_only = pytest.mark.skipif(not ps.IS_WINDOWS, reason="reads a real Windows ACL and token")
+windows_only = pytest.mark.skipif(not ps.IS_WINDOWS, reason="reads a real Windows ACL")
 
 
 @windows_only
 def test_the_real_reader_gives_the_owner_and_exact_masks(tmp_path):
     """tmp_path is made by this user under their profile: owned by them (or Administrators when elevated), with
     full control (0x1F01FF) for them, SYSTEM and Administrators."""
-    user_sid, elevated = ps.current_token()
     folder = ps.read_folder_acl(str(tmp_path))
-    assert folder.owner in ({user_sid, ADMINS} if elevated else {user_sid})
     masks = {e.sid: e.mask for e in folder.entries if e.type == ps.ACCESS_ALLOWED}
-    assert masks.get(user_sid) == FULL and masks.get("S-1-5-18") == FULL
+    users = [sid for sid in masks if sid.startswith("S-1-5-21-")]
+    assert folder.owner in set(users) | {ADMINS}
+    assert users and all(masks[sid] == FULL for sid in users) and masks.get("S-1-5-18") == FULL
 
 
 @windows_only
-def test_the_real_reader_refuses_a_file(tmp_path):
+def test_the_real_reader_reads_a_file_and_refuses_a_missing_path(tmp_path):
     path = tmp_path / "a.txt"
     path.write_text("x", encoding="utf-8")
-    with pytest.raises(OSError, match="not a folder"):
-        ps.read_folder_acl(str(path))
-
-
-@windows_only
-def test_the_real_token_elevation_matches_windows():
-    import ctypes
-    _sid, elevated = ps.current_token()
-    assert elevated is bool(ctypes.windll.shell32.IsUserAnAdmin())
+    assert ps.read_folder_acl(str(path)).entries
+    with pytest.raises(OSError, match="not found"):
+        ps.read_folder_acl(str(tmp_path / "missing.txt"))
 
 
 def test_sys_is_untouched():

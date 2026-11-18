@@ -33,13 +33,34 @@ REFUSED_SPELLINGS = [
     "secret9key", "pins", "ibans", "tins", "ssns", "PINs", "p_w_d", "s_e_c_r_e_t", "mycredential", "userpassphrase",
     "feedtokens2", "recoverycodes"]
 
+# Owner answers 2026-11-18 (B2 review L2): names the check missed. Account numbers and hashes stay refused (RP1: bank
+# numbers are never stored), and session_id stays refused although it ends in _id: it is the secret, not a reference.
+REFUSED_OWNER_ANSWERS = [
+    "mypwd", "MyPwd", "userpwd", "pwd_value", "mypw", "mypass", "mypin", "acctnum", "AcctNum", "acct_num",
+    "acctNum", "account_num", "accountnum", "acc_no", "accno", "acc_num", "accnum", "card_num", "cardnum",
+    "routing_num", "routingnum", "client_key", "clientKey", "clientkey", "consumer_key", "app_key", "appkey",
+    "auth_key", "authkey", "nonce", "nonces", "auth_nonce", "authnonce", "Nonce2", "file_hash", "account_number",
+    "payee_account_number", "account_number_hash", "session_id", "session_ids", "SessionId", "sessionid",
+    # step-review 1: an id or count of a value that is itself the secret (a TIN, an account number, a hash) is the
+    # value under another name ("TIN ID" is the Philippine name for the TIN), so the exemption does not cover it.
+    "tin_id", "customer_tin_id", "ssn_id", "iban_id", "pin_id", "otp_id", "totp_id", "cvv_id", "cvc_id", "hash_id",
+    "password_hash_id", "routing_number_id", "account_number_id", "account_number_ids", "acct_no_id", "card_num_id",
+    "acctnum_id", "cardno_id", "hash_counts"]
+
+# B2 review L3: a name ending in _id or _count is a reference or a tally, not the secret itself.
+ALLOWED_ID_AND_COUNT = ["bank_account_id", "bankAccountId", "pass_count", "token_count", "api_key_id", "nonce_id",
+                        "password_reset_count", "secret_id2", "bank_account_count", "routing_code_id"]
+
 ALLOWED = ["secretary_name", "setting", "destination", "account_name", "routing_code", "pinned", "tint",
            "bank_name", "keyword", "tokenizer_note", "label", "secretaries", "hashtag", "passenger_count",
            "status_code", "key_date", "session_count", "description", "address", "compass", "spinner", "tints",
-           "line2", "x9"]
+           "line2", "x9",
+           # step-review 2: the new runs must not catch these.
+           "non_certified", "noncertified", "client_keyword", "client_keywords", "auth_keyword", "markup_wdays",
+           "stop_wd", "session_idle_minutes"]
 
 
-@pytest.mark.parametrize("column", REFUSED + REFUSED_PROJECT_SECRETS + REFUSED_SPELLINGS)
+@pytest.mark.parametrize("column", REFUSED + REFUSED_PROJECT_SECRETS + REFUSED_SPELLINGS + REFUSED_OWNER_ANSWERS)
 def test_a_secret_looking_column_is_refused_with_the_secrets_sentence(company, tmp_path, column):
     folder = migrations(tmp_path, {"demo_001.sql": f"CREATE TABLE demo_a (a_id INTEGER PRIMARY KEY, {column} TEXT);\n"})
     before = objects(company)
@@ -50,11 +71,15 @@ def test_a_secret_looking_column_is_refused_with_the_secrets_sentence(company, t
     assert objects(company) == before
 
 
-@pytest.mark.parametrize("column", ALLOWED)
+@pytest.mark.parametrize("column", ALLOWED + ALLOWED_ID_AND_COUNT)
 def test_ordinary_names_that_contain_those_letters_are_allowed(company, tmp_path, column):
     folder = migrations(tmp_path, {"demo_001.sql": f"CREATE TABLE demo_a (a_id INTEGER PRIMARY KEY, {column} TEXT);\n"})
     database.apply_addon_migrations(company, KEY, folder)
     assert any(r[1] == "demo_a" for r in objects(company))
+
+
+def test_id_and_count_alone_are_ordinary_names():
+    assert not database._looks_secret("id") and not database._looks_secret("count")
 
 
 @pytest.mark.parametrize("script", [

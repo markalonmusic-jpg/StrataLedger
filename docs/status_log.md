@@ -909,3 +909,19 @@ Rotation and key-lost text as it stood before the trim:
   in docs/next_step.md). The commit hook once blocked on tests/test_voucher_sequence.py (6 threads, 5 of them
   'database is locked' past the 5 s busy timeout) while other heavy jobs ran on the machine; not reproduced in
   300 tries; left for the owner.
+- 2026-11-18: owner answers on the B2 review step and the KS12 tie, tests first.
+  - KS12: the tie exception is approved and recorded as decided (PROPOSED removed).
+  - HA8 M1-M3: an allow-list (SYSTEM, Administrators, TrustedInstaller); any other principal with a change right
+    or ownership turns add-ons off, the user's own account included when elevated (the token is no longer read;
+    `current_token` removed). Every folder and file under RESOURCE_DIR\addons is checked (`storage.resource_tree`;
+    a tree that cannot be listed counts as open). CREATOR OWNER/GROUP on inherit-only entries are placeholders.
+  - HA11 L2/L3: mypwd, acctnum, client_key, nonce and similar refused; names ending in id or count allowed except
+    session_id; account numbers and hashes stay refused (RP1).
+  - tests/test_voucher_sequence.py: that test's own connections wait 60 s for the lock; the app keeps 5 s (AX1).
+  - AX9 and AX10 not recorded: their text is not in the repo or this session (asked the owner to resend).
+  - step-reviewer (approve with changes), fixed test first: an id or count of a value that is the secret (tin_id,
+    account_number_id, hash_id) stays refused; non_certified, keyword and "wd" names no longer caught (the pwd run
+    is now the words mypwd and userpwd); sessionid refused; a symbolic link or junction in the add-ons tree turns
+    add-ons off; a control character and a joined line in platform_support.py. Left for the owner: the HA8
+    sentence says "this account" though any principal outside the allow-list now trips it; the tree is read twice
+    when a company opens with an add-on enabled.

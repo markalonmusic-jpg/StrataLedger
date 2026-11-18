@@ -81,3 +81,57 @@ def test_services_never_open_files_outside_storage():
         if re.search(r"(?<![\w.])open\(|os\.makedirs|shutil\.|\.write_text\(|\.read_text\(|os\.remove\(", path.read_text(encoding="utf-8")):
             offenders.append(path.name)
     assert offenders == []
+
+
+# --- resource_tree (HA8 M1, owner 2026-11-18) ---------------------------------------------------------------------
+
+def test_resource_tree_lists_the_folder_then_every_folder_and_file_in_order(folders):
+    root = os.path.join(config.RESOURCE_DIR, "addons")
+    os.makedirs(os.path.join(root, "b", "inner"))
+    os.makedirs(os.path.join(root, "a"))
+    for relative in ("z.txt", "a/one.py", "b/inner/two.sql"):
+        with open(os.path.join(root, *relative.split("/")), "w", encoding="utf-8") as handle:
+            handle.write("x")
+    real = os.path.realpath(root)
+    found = [os.path.relpath(p, real).replace(os.sep, "/") for p in storage.resource_tree("addons")]
+    assert found == [".", "a", "b", "z.txt", "a/one.py", "b/inner", "b/inner/two.sql"]
+
+
+def test_resource_tree_of_a_missing_folder_is_empty_and_a_bad_path_is_refused(folders):
+    assert storage.resource_tree("addons") == []
+    with pytest.raises(ValidationError):
+        storage.resource_tree("../outside")
+
+
+def test_resource_tree_raises_when_a_folder_cannot_be_listed(folders, monkeypatch):
+    os.makedirs(os.path.join(config.RESOURCE_DIR, "addons", "a"))
+
+    def walk(top, onerror=None):
+        onerror(PermissionError(5, "Access is denied"))
+        yield from ()
+    monkeypatch.setattr(storage.os, "walk", walk)
+    with pytest.raises(PermissionError):
+        storage.resource_tree("addons")
+
+
+@pytest.mark.parametrize("kind", ["symlink", "junction"])
+def test_resource_tree_refuses_a_link_anywhere_in_it(folders, tmp_path, kind):
+    """Step-review 3 (fail closed): a link reaches files outside the tree that would never be checked."""
+    import subprocess
+    root = os.path.join(config.RESOURCE_DIR, "addons", "demo")
+    os.makedirs(root)
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "hidden.py").write_text("x", encoding="utf-8")
+    link = os.path.join(root, "link")
+    try:
+        if kind == "symlink":
+            os.symlink(str(target), link, target_is_directory=True)
+        else:
+            if os.name != "nt":
+                pytest.skip("junctions are Windows only")
+            subprocess.run(["cmd", "/c", "mklink", "/J", link, str(target)], check=True, capture_output=True)
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip(f"this account cannot make a {kind}")
+    with pytest.raises(OSError, match="link"):
+        storage.resource_tree("addons")

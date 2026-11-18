@@ -355,7 +355,8 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - AG6 AI matching is local; results are an Agent draft a person approves, with the source attached
 - AG7 CFO analysis sends locally computed figures, under the warning
 - AG8 Every AI call is logged, never its content or keys; bank feeds held; prevailing wage and IRA tracking dropped
-- HA8 Add-ons ship only inside our installer; no third-party add-ons in v1; off if the program folder is writable
+- HA8 Add-ons ship only inside our installer; no third-party add-ons in v1; off if anyone but SYSTEM, Administrators
+  or TrustedInstaller can change the program folder or anything in the add-ons folder
 - HA9 Add-on tables are always audit-logged (generated triggers; addon_schema_version too)
 - HA10 No foreign keys from add-on tables to core tables in v1; ids are checked through services
 - HA11 Add-on tables never hold secrets: migrations refuse secret-looking column names (DATA_DIR\Secrets only)
@@ -1131,8 +1132,8 @@ The step 1d plan was approved with these answers (design: docs/audit_readiness_d
   never Broken, and verifies from the next entry. Only the latest epoch counts. The latest is the file's row, or
   the mirror's when it is further on, or, at the same entry (two losses with no posting between), when it is
   another event (key_id or MAC): a file restored from between the two losses is then an older copy (Broken,
-  Marker). Codex keys/chain finding, owner 2026-11-18. PROPOSED, awaiting the owner: on such a tie the file's
-  row is kept when it retired the mirror's key (its signed ref_id is the mirror's key_id), because the later
+  Marker). Codex keys/chain finding, owner 2026-11-18. Tie exception (approved by the owner 2026-11-18): on such
+  a tie the file's row is kept when it retired the mirror's key (its signed ref_id is the mirror's key_id), because the later
   loss's mirror write failed and the file is further on. Only the file's latest row decides, so a row copied
   into the file from the master cannot sway it. Cost: after two failed mirror writes in a row at one entry the
   result is Unavailable, not OK (fail-safe). Tests: tests/test_key_lost_epoch_tie.py.
@@ -1666,17 +1667,22 @@ The owner's answers to the Phase 2.7 plan.
   content or keys. Bank feeds are held; prevailing wage and IRA tracking are dropped.
 - HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1. In the
   installed (frozen) build, before any add-on file is read or imported (`addons.discover`, `load`, `enable`), the
-  folder's permissions (not this process's access) are read for RESOURCE_DIR and RESOURCE_DIR/addons. Add-ons
-  turn off if a non-admin principal can change either: an allow entry with write, modify or create rights for
-  Users, Authenticated Users, Everyone or Interactive, or for the user's own SID when not elevated; inheritable
-  entries count, deny entries are not subtracted, owning the folder counts, and a NULL DACL, an unreadable ACL or
-  an allow entry of a kind the reader does not parse (object ACEs) counts as open. An elevated administrator on a properly installed folder keeps add-ons. The ACL read lives in
+  owner and permissions (not this process's access or token) are read for RESOURCE_DIR and for RESOURCE_DIR/addons
+  with every subfolder and file in it (owner answer M1, 2026-11-18). Add-ons turn off if anyone outside an
+  allow-list of SYSTEM, Administrators and TrustedInstaller can change any of them (M2): an allow entry with write,
+  modify or create rights for any other principal, the user's own account included even when the process is
+  elevated (M3), or ownership by one. Inheritable entries count; CREATOR OWNER and CREATOR GROUP on an inherit-only
+  entry are placeholders (a child gets its creator's real SID, and every child is read). Deny entries are not
+  subtracted, and a NULL DACL, a missing owner, an unreadable ACL, an add-ons tree that cannot be listed or holds
+  a link (a symbolic link or junction reaches files the check never reads; step review), or an allow entry of a
+  kind the reader does not parse (object ACEs) counts as open. An administrator on a properly installed folder
+  keeps add-ons. The ACL read lives in
   `platform_support.folder_open_to_non_admins` (P3); the app hands it to `addons.use_folder_check` at start-up
   (services never import it, H1), and a frozen build without it keeps add-ons off. When off, it is logged and
   people see one sentence: "Add-ons are off because the program folder can be changed by this account; reinstall
   StrataLedger to Program Files." Posting with an enabled add-on then stops with that sentence. Source runs are
   exempt (Codex finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py,
-  tests/test_platform_folder_acl.py.
+  tests/test_platform_folder_acl.py, tests/test_storage.py (`storage.resource_tree`).
 - HA9 Add-on tables are always audit-logged. After every statement of an add-on migration the runner gives each
   `<key>_` table the standard insert, update and delete triggers (`audit_<table>_<action>`, every column as JSON),
   from `migrations/addon_audit_triggers.sql`, rebuilt when the table changes or a trigger is missing; so a
@@ -1695,8 +1701,14 @@ The owner's answers to the Phase 2.7 plan.
   word (password and its short forms, passphrase, passcode, secret, token, credential, IBAN, TIN, SSN, CVV, PIN,
   salt, hash, HMAC, DPAPI, OTP, JWT, cookie and others); a pair (API, private, chain, HMAC, installation, master,
   encryption, signing or session key; account, routing or card number; recovery, backup or reset code; session
-  id); or a long form anywhere in the joined-up letters ("apitoken", "MYSECRET"). "secretary" and "tokenizer" are
-  allowed. The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
+  id); or a long form anywhere in the joined-up letters ("apitoken", "MYSECRET"). Owner answers 2026-11-18 (B2
+  review L2, L3): also refused are short and run-together forms (mypwd, mypw, mypass, mypin, acctnum, acct_num,
+  acc_no, card_num, routing_num, sessionid), client, consumer, app and auth keys, and nonce; a name whose last word
+  is id or count (bank_account_id, pass_count) is allowed as a reference or a tally, except session_id, which is
+  the secret itself, and an id or count of a value that is the secret (tin_id, since "TIN ID" is the Philippine
+  name for the TIN; ssn_id, pin_id, hash_id, account_number_id; step review). "non_certified" and "keyword" are
+  not caught by the nonce and key runs. Account numbers and hashes stay refused (RP1: bank numbers are never stored). "secretary" and
+  "tokenizer" are allowed. The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
   A refused or failed statement is named by file and number, never by its SQL text; SQLite's message is given in
   full in a run from source and only as the error type in the installed build, since it can quote a literal
   (secrets audit of b4ea844; owner 2026-11-18). The name check is a safety net, not a guarantee: a secret under a

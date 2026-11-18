@@ -12,7 +12,7 @@ import os
 import pytest
 
 import config
-from modules.services import addons, hooks, ledger
+from modules.services import addons, hooks, ledger, storage
 from modules.services.errors import AddonError
 from tests.authz_world import world  # noqa: F401  (fixture)
 from tests.test_addons import admin, journal, resources, setup, write_addon  # noqa: F401  (fixtures and helpers)
@@ -38,13 +38,27 @@ def _no_check_left_behind():
 
 
 def check(monkeypatch, open_folders):
-    """A stand-in folder check: True for the folders named open ('program' = RESOURCE_DIR, 'addons')."""
+    """A stand-in folder check: True for the folders named open ('program' = RESOURCE_DIR, 'addons' = anything in
+    the add-ons tree)."""
     asked = []
 
     def folder_check(path):
-        name = "addons" if os.path.basename(path) == "addons" else "program"
+        name = "program" if os.path.realpath(path) == storage.resource_root() else "addons"
         asked.append(name)
         return name in open_folders
+    addons.use_folder_check(folder_check)
+    return asked
+
+
+def check_items(open_items):
+    """A stand-in check that records each path asked about, relative to RESOURCE_DIR with forward slashes, and
+    says True for those in open_items."""
+    asked = []
+
+    def folder_check(path):
+        relative = os.path.relpath(path, storage.resource_root()).replace(os.sep, "/")
+        asked.append(relative)
+        return relative in open_items
     addons.use_folder_check(folder_check)
     return asked
 
@@ -79,6 +93,41 @@ def test_an_admin_only_acl_keeps_addons_on(installed, monkeypatch):
     addons.load("demo")
     assert (installed / "imported.txt").exists() and hooks.is_loaded("demo")
     assert set(asked) == {"program", "addons"}             # both folders are checked
+
+
+TREE = [".", "addons", "addons/demo", "addons/demo/migrations", "addons/demo/addon.json", "addons/demo/addon.py",
+        "addons/demo/migrations/demo_001.sql"]
+
+
+def test_every_folder_and_file_in_the_addons_tree_is_checked(installed):
+    """M1: a file an account can change inside a safe folder is as dangerous as the folder."""
+    asked = check_items(set())
+    assert set(addons.discover()) == {"demo"}
+    assert asked == TREE
+
+
+@pytest.mark.parametrize("item", TREE[2:])
+def test_one_loose_subfolder_or_file_turns_addons_off(installed, caplog, item):
+    check_items({item})
+    with caplog.at_level(logging.ERROR, logger="strataledger"):
+        assert addons.discover() == {}
+        with pytest.raises(AddonError) as raised:
+            addons.load("demo")
+    assert str(raised.value) == SENTENCE
+    assert not (installed / "imported.txt").exists() and not hooks.is_loaded("demo")
+    assert any("add-ons folder" in r.getMessage() for r in caplog.records)
+
+
+def test_an_addons_tree_that_cannot_be_listed_turns_addons_off(installed, monkeypatch, caplog):
+    check_items(set())
+
+    def unreadable(relative_dir):
+        raise PermissionError(5, "Access is denied")
+    monkeypatch.setattr(storage, "resource_tree", unreadable)
+    with caplog.at_level(logging.ERROR, logger="strataledger"):
+        assert addons.addons_off() == SENTENCE
+    assert any("could not be listed" in r.getMessage() and "PermissionError" in r.getMessage()
+               for r in caplog.records)
 
 
 def test_a_frozen_build_with_no_check_handed_over_keeps_addons_off(installed):

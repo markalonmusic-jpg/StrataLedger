@@ -43,6 +43,9 @@ def test_numbers_committed_by_separate_connections_are_distinct(fresh_company):
             conn = database.get_connection(fresh_company)
             try:
                 conn.isolation_level = None
+                # Six writers queue behind BEGIN IMMEDIATE; under the parallel suite a slow machine can pass the
+                # app's 5 s (AX1). The longer wait is for this test only (owner 2026-11-18).
+                conn.execute("PRAGMA busy_timeout = 60000")
                 gate.wait()
                 conn.execute("BEGIN IMMEDIATE")
                 seen.append(sequences.next_voucher_number(conn))
