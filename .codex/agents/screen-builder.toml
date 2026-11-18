@@ -1,5 +1,7 @@
 name = "screen-builder"
 description = "Builds or updates one Phase 3 screen (a modules/views_*.py file and its test file) that follows an existing screen's pattern. Use for view-only work that calls services already built. Never for services, schema, posting, approvals, keys or passwords."
+# The Claude copy runs on sonnet; Codex cannot run Claude models, so the tier maps to reasoning effort.
+model_reasoning_effort = "medium"
 developer_instructions = """
 You build one StrataLedger screen at a time, in the same working folder as the main session. The main session reviews and commits your work; you never commit.
 

@@ -358,6 +358,7 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - HA8 Add-ons ship only inside our installer; no third-party add-ons in v1
 - HA9 Add-on tables are always audit-logged (generated triggers; addon_schema_version too)
 - HA10 No foreign keys from add-on tables to core tables in v1; ids are checked through services
+- HA11 Add-on tables never hold secrets: migrations refuse secret-looking column names (DATA_DIR\Secrets only)
 - RI1 Replan inputs (decided, not built): estimate approval OFF; duplicate bill numbers; one Reverse menu; posted
   document edits; team features at next login; company SMTP; the pay app document's own layout
 
@@ -1636,7 +1637,9 @@ The owner's answers to the Phase 2.7 plan.
   checks the checksum and that the file is a sound database, refuses while the company is open (Windows will not
   rename an open file), makes the safety backup, removes leftover `-wal` and `-shm`, then replaces the file. The
   restore service (permission, K5's Master override with a typed confirmation and reason, the Audit-ready flag) is
-  Phase 2.8.
+  Phase 2.8. Owner 2026-11-18: the `pre-upgrade` and `pre-restore` safety backups are outside E7 pruning;
+  `addon-<key>` backups are pruned by E7 (7 days, 4 weeks, 12 months), not exempt. The `.sha256` file detects
+  corruption only, not tampering: whoever can replace a backup can replace its checksum.
 - AX3 P2a stays, with one change: running from source without `STRATALEDGER_DATA_DIR` uses
   `%LOCALAPPDATA%\StrataLedger-dev` (else the home folder), never the repo folder. The files in the repo root are
   not moved or deleted (rule 9). Step B2 also edited the company baseline, so an existing company file there
@@ -1666,6 +1669,13 @@ The owner's answers to the Phase 2.7 plan.
   `addon_schema_version` has audit triggers in the baseline.
 - HA10 No foreign keys from add-on tables to core tables in v1 (the STOP B review rule stands); an add-on stores a
   core id without a foreign key and checks it through services. Revisit with the Philippines add-on.
+- HA11 Add-on tables never hold secrets (owner 2026-11-18; B2 secrets audit M2), because HA9 copies every column
+  into the append-only audit log. Wherever the runner makes the audit triggers (so CREATE TABLE, CREATE TABLE AS,
+  ADD COLUMN and RENAME COLUMN), it refuses a column whose name looks like a secret: the words password, passwd,
+  pwd, passphrase, secret, token, credential, iban, tin, ssn, cvv, pin; the pairs API, private, secret or access
+  key, account, acct, routing or card number (or no), bank account; and their run-together or camel-case forms.
+  The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
+  "secretary" or "setting" are allowed (whole words only). Tests: tests/test_addon_secret_columns.py.
 - RI1 Replan inputs, decided and not built (for the replan after STOP C):
   - Estimate approval is OFF by default (section 0).
   - A duplicate bill number (same vendor) warns; a control can block it and ask for a reason.

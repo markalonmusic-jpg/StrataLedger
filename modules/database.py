@@ -757,6 +757,24 @@ _AUDIT_TRIGGER_RE = re.compile(r"audit_(\w+)_(insert|update|delete)")
 _PLAIN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WITHOUT_ROWID_RE = re.compile(r"\bWITHOUT\s+ROWID\b", re.IGNORECASE)
 _JSON_PAIRS = 60          # json_object / json_insert stay under SQLite's 127-argument limit
+# HA11: add-on column names that look like a secret. Whole underscore-separated words, adjacent word pairs, and
+# camel-case or run-together forms (the name with underscores removed); "secretary" or "setting" are not secrets.
+_SECRET_WORDS = frozenset({"password", "passwords", "passwd", "pwd", "passphrase", "secret", "secrets", "token",
+                           "tokens", "apikey", "privatekey", "credential", "credentials", "iban", "tin", "ssn", "cvv",
+                           "pin"})
+_SECRET_PAIRS = frozenset({("api", "key"), ("private", "key"), ("secret", "key"), ("access", "key"),
+                           ("account", "number"), ("account", "no"), ("acct", "number"), ("acct", "no"),
+                           ("routing", "number"), ("routing", "no"), ("card", "number"), ("bank", "account")})
+_SECRET_RUNS = ("password", "passwd", "passphrase", "apikey", "privatekey", "accesskey", "accountnumber",
+                "acctnumber", "routingnumber", "cardnumber", "bankaccount")
+
+
+def _looks_secret(column):
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", column).lower().split("_")
+    words = [w for w in words if w]
+    run = "".join(words)
+    return (any(w in _SECRET_WORDS for w in words) or any(pair in _SECRET_PAIRS for pair in zip(words, words[1:]))
+            or any(r in run for r in _SECRET_RUNS))
 
 
 def _audit_template():
@@ -787,7 +805,8 @@ def _audit_json(row, columns):
 def _sync_audit_triggers(conn, addon_key, synced):
     """HA9: give every `<key>_` table the three standard audit triggers, rebuilt when its definition changed.
     `synced` maps each table to the definition its triggers were made for. Refuses a WITHOUT ROWID table (the
-    audit row names the rowid) and a table or column name that is not letters, digits and underscores."""
+    audit row names the rowid), a table or column name that is not letters, digits and underscores, and a column
+    whose name looks like a secret (HA11: the audit log keeps every column for ever)."""
     prefix, core = addon_key + "_", core_table_names()
     template = None
     tables = {r["name"]: r["sql"] for r in conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'")
@@ -810,6 +829,10 @@ def _sync_audit_triggers(conn, addon_key, synced):
                 raise AddonMigrationError(addon_key, f"the table {table} has a column named {column!r}; add-on "
                                                      "column names are plain letters, digits and underscores (name a "
                                                      "copied column with AS). Nothing was changed.")
+            if _looks_secret(column):
+                raise AddonMigrationError(addon_key, f"the table {table} has a column named {column!r}, which looks "
+                                                     "like a secret; secrets go only in DATA_DIR\\Secrets, never in "
+                                                     "an add-on table. Nothing was changed.")
         for name in sorted(present):
             if _AUDIT_TRIGGER_RE.fullmatch(name):
                 conn.execute(f'DROP TRIGGER "{name}"')

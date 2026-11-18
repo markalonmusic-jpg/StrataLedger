@@ -11,7 +11,9 @@ Safety, before anything else:
 1. Run git status --short. If it is not empty, STOP and report: you only work on a clean, committed tree.
 2. Record git rev-parse HEAD.
 
-For each rule you are given (or, if none, each rule the step's report lists):
+Scope: mutate only the functions and methods the step's commits changed. Take the commit range from your inputs (ask if it is missing), list the changed functions with git diff -U0 <range> and git show, and leave every other function alone, even one that enforces a listed rule.
+
+For each rule you are given (or, if none, each rule the step's report lists), inside that scope:
 1. Make one small break in the code that enforces it (flip a comparison, skip a check, drop a flag, change >= to >).
 2. Run only the relevant test files. Record which tests fail. A mutation no test catches is a finding.
 3. Restore the file with git checkout -- <file> and confirm git status --short is empty again before the next mutation.

@@ -833,3 +833,18 @@ Rotation and key-lost text as it stood before the trim:
     tests/test_mutation_b2_extra.py (38 tests), and 30 are equivalent (reasons in docs/next_step.md). It also
     found a defect: an add-on migration could leave a second audit_log row in sqlite_sequence. It is fixed, test
     first: `_check_counters` refuses a counter name that appears twice.
+
+- 2026-11-18: B2 approved by the owner, with answers built in one commit.
+  - AX2 note: `pre-upgrade` and `pre-restore` safety backups are never pruned; `addon-<key>` backups keep E7 pruning
+    (7 days, 4 weeks, 12 months; the owner kept the LOW-6 fix); the `.sha256` file detects corruption only.
+  - HA11 (secrets audit M2): add-on migrations refuse secret-looking column names; secrets go only in
+    DATA_DIR\Secrets (tests/test_addon_secret_columns.py, 49 tests). test_addon_secrets' copy test now gives its
+    target columns neutral names; its reads of the sensitive source columns are unchanged.
+  - M1 went to Phase 2.8 (list older master backups at a recovery-code reissue, offer to delete, log the choice).
+    `fields.manage` may join the baseline seed in STOP C (Admin and Master, not AGENT_ALLOWED).
+  - Agents: .codex/agents kept and synced with .claude/agents (CLAUDE.md 8); Codex copies map the Claude tier to
+    model_reasoning_effort; mutation-tester mutates only the functions the step's commits changed.
+  - A PreToolUse hook (.claude/settings.json, .claude/hooks/pre_commit_pytest.py, tests/test_commit_hook.py) runs
+    the full suite before any git commit and blocks it on failure; timeout 2400 s (the suite takes 18 minutes).
+    CLAUDE.md 8: Codex reviews pushed commits read-only after each STOP.
+  - Suite 3440 passed, 1 skipped, 7 deselected.

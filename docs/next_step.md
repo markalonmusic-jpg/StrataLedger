@@ -2,11 +2,31 @@
 
 Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh session
 (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
-Status: **step B2 is done** and waits at the review gate. **STOP C is approved to build once the owner approves
-B2** (owner, 2026-11-17).
+Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, built in the "B2 owner answers" commit).
+**STOP C starts in a fresh session** once the owner approves that commit at the review gate.
+
+## Owner answers, 2026-11-18 (built in the B2 owner-answers commit)
+
+1. Safety backups: `pre-upgrade` and `pre-restore` are never pruned. `addon-<key>` backups are pruned by E7 (7
+   days, 4 weeks, 12 months; the LOW-6 fix stands, owner's choice). AX2 now says the `.sha256` file detects
+   corruption only.
+2. M1 goes to Phase 2.8 (below).
+3. M2 became HA11: add-on migrations refuse secret-looking column names (tests/test_addon_secret_columns.py).
+4. `.codex/agents` is kept. CLAUDE.md section 8: a change to a `.claude` agent updates its `.codex` copy in the same commit.
+5. `fields.manage` may be added to the baseline permission seed in STOP C (below).
+6. Agents and workflow:
+   - The models stay in the `.claude/agents` frontmatter: step-reviewer and secrets-auditor on opus, the other
+     three on sonnet. Codex cannot run Claude models, so each `.codex` copy maps its tier to
+     `model_reasoning_effort` (opus to high, sonnet to medium; owner's choice).
+   - mutation-tester mutates only the functions changed in the step's commits.
+   - `.claude/settings.json` has a PreToolUse hook (`.claude/hooks/pre_commit_pytest.py`, tests/test_commit_hook.py).
+     It runs `python -m pytest -q` before any `git commit` and blocks the commit on failure. The suite takes
+     about 18 minutes, so the hook's timeout is 2400 s and every commit waits for one full run.
+   - CLAUDE.md section 8 also says: after each STOP, Codex reviews the pushed commits read-only in its own worktree,
+     and its findings come to the owner.
 
 **State:**
-- Suite: 3369 passed, 1 skipped, 7 deselected.
+- Suite: 3440 passed, 1 skipped, 7 deselected (after the owner-answers commit; 3369 at the end of B2).
 - B2 commits:
   - 785ca30 (part A);
   - 8e5979c (the build);
@@ -133,8 +153,9 @@ Rulings that replace the STOP B plan's open questions 1-5:
   `invoice.create`, `bill.create`, `project.manage` with project scope, `estimate.create`). Reading uses the
   record's view permission.
 - **Seed and templates:**
-  - `fields.manage` would be added to the baseline's permission seed. That is a baseline edit, and STOP C's rule is
-    "no schema change", so **ask the owner first** (see the open question).
+  - `fields.manage` is added to the baseline's permission seed (owner 2026-11-18: allowed in STOP C as a seed row
+    only). It goes in the Admin and Master role templates, **not** `AGENT_ALLOWED`. The baseline edit means the
+    empty development databases are rebuilt (CLAUDE.md section 5).
   - The Admin and Master role templates hold it; docs/role_templates.md is updated with tests.
 - **Tests first:**
   - each type's value check, with the trigger as backstop;
@@ -146,25 +167,13 @@ Rulings that replace the STOP B plan's open questions 1-5:
   - audit rows;
   - the static rules (rule 10, H5).
 
-### Open question for the owner (STOP C)
+### Open questions for the owner (STOP C)
 
-1. `fields.manage` needs one row in the baseline's permission seed (`addon.manage` was added the same way at STOP
-   B). That means a baseline edit and a rebuild of the empty development databases. Is that allowed under the
-   schema hold, or should the permission wait for step 2.9?
+- None. The `fields.manage` seed row was answered on 2026-11-18 (above).
 
 ## Open points carried forward
 
-- **For the owner (B2 secrets audit):**
-  - M1: master backups (`pre-upgrade`, `pre-restore`) are never pruned. One taken before a recovery-code reissue
-    still holds the old `recovery_blob`, so the old code plus that backup could unwrap the installation key. Old
-    password hashes also stay in it. This is rare until migration 002. Suggested for Phase 2.8: warn about, or
-    delete, older master backups when the recovery code is reissued, and state in AX2 that a master backup is as
-    sensitive as the master.
-  - M2: HA9 copies every add-on column into the append-only audit log. Should HA9 add "add-on tables never hold
-    secrets" (secrets go through `KeyProvider` / `DATA_DIR\Secrets`), enforced by refusing secret-looking column
-    names, or by logging only "changed" for them as the master does for passwords?
-  - step-reviewer finding 7: `.codex/agents/*.toml` (5 files, no secrets) were committed with part A. Keep them, or
-    remove them?
+- The B2 owner points (M1, M2, step-reviewer finding 7) were answered on 2026-11-18 (top of this file).
 - The linked-migration-file test (secrets audit LOW-4) is skipped on this Windows account. Run it once with the
   right to create symbolic links (Developer Mode).
 - AX3: the old development files stay in the repo root (`system_master.db`, `Backups/`). The new source-run data
@@ -175,7 +184,12 @@ Rulings that replace the STOP B plan's open questions 1-5:
   add-on rebuilds the table instead (HA9).
 - An add-on is trusted installation code (HA3, HA8). The guards stop SQL mistakes, not hostile Python.
 - Phase 2.8: the restore service on `database.restore_database` (`company.restore`, K5's Master override with a
-  typed confirmation and a reason, the Audit-ready flag) and scheduled backups with E7 retention for every reason.
+  typed confirmation and a reason, the Audit-ready flag) and scheduled backups with E7 retention (the
+  `pre-upgrade` and `pre-restore` safety backups stay outside pruning, AX2).
+- **Phase 2.8, master backups and the recovery-code reissue (owner 2026-11-18, secrets audit M1):** a master
+  backup taken before a reissue still holds the old `recovery_blob` and old password hashes. When the recovery
+  code is reissued, 2.8 lists the master backups older than the reissue and offers to delete them. The person's
+  choice (deleted, or kept, and which files) is audit-logged, and nothing is deleted silently. Tests first.
 - Step 2.9 (schema replan): AX4 (audit_log before/after detail and a reason), RI1, and STOP C's deferred field
   columns.
 - Open question 7 (System context and Import-origin entries in `post_journal_entry`); undeposited funds vs

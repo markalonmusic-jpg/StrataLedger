@@ -154,10 +154,10 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-17):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
+**Where we are (2026-11-18):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
 rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
 STOPs (MR1): STOP A (multi-role, MR2-MR9), STOP B (hooks and add-ons, HA1-HA7) and step B2 (WAL, backups, data
-folder outside the repo, add-on audit; AX1-AX3, HA8-HA10) are done. Next: STOP C (custom fields, FR1 as amended;
+folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) are done. Next: STOP C (custom fields, FR1 as amended;
 docs/next_step.md), 2.8 (PW1-PW11), 2.9 schema replan (AX4, RI1), Phase 3. History: docs/status_log.md.
 
 **Known issues (code as it is today):**
@@ -176,22 +176,22 @@ This section is for the main Claude Code session. A subagent follows its own fil
 where the two differ (subagents never commit or push), and Copilot follows .github/copilot-instructions.md.
 
 - This repo is StrataLedger-clean. C:\Users\marka\StrataLedger is an old archive: never edit, commit or push there.
-- Work only on the phase or task named. Start in plan mode: list the files you will change and why.
-- Show diffs. Tests first for every rule you enforce. Run the full suite and show the results.
-- Commit at the end of each phase or step and push `main` to `origin`. Stage files by explicit path, never
-  `git add -A` or `git add .` (the planning chat writes files into this folder). Check `git status` and
-  `git diff --cached` before every commit. Never commit `.db` files, credentials or tokens; never
-  force-push without asking.
+- Work only on the task named; plan mode first (files and why). Tests first; show diffs and the full-suite result.
+- Commit at the end of each step and push `main` to `origin`. Stage by explicit path, never `git add -A` or
+  `git add .` (the planning chat writes files here); check `git status` and `git diff --cached` first. Never
+  commit `.db` files, credentials or tokens; never force-push without asking.
+- A PreToolUse hook (.claude/settings.json) runs `python -m pytest -q` before any `git commit` and blocks it on failure.
 - Only one tool edits this working folder at a time. Copilot and Codex work only in their own worktrees
   (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`, likewise codex/<task>); copilot-reviewer
   reviews their commits before merge. Commit and push between handoffs, and pull before starting.
-- Before reporting a step: run step-reviewer; for auth, keys, recovery, backups, email or feeds also run
-  secrets-auditor; run mutation-tester on the committed step. View-only screens may go to screen-builder;
-  the main session reviews and commits its work. Run one agent that edits files at a time.
+- After each STOP, Codex reviews the pushed commits read-only in its own worktree; its findings come to the owner.
+- Before reporting a step: run step-reviewer; for auth, keys, recovery, backups, email or feeds also secrets-auditor;
+  mutation-tester on the committed step. Screen-builder may do view-only screens (the main session reviews and
+  commits). Run one agent that edits files at a time.
+- A change to a `.claude/agents` file updates its `.codex/agents` copy in the same commit.
 - Done, review gate and fix mode: .claude/rules/workflow-standards.md (overrides this section where they differ).
-- Find decisions by code with a text search (grep); never read docs/decisions_2026-11-11.md,
-  docs/design_decisions.md or a design doc in full unless the task says so. A session that adds a decision code
-  also adds its one-line row to the index at the top of docs/decisions_2026-11-11.md.
+- Find decisions by code with grep; never read docs/decisions_2026-11-11.md, docs/design_decisions.md or a design
+  doc in full unless the task says so. A new decision code also gets its one-line row in that file's index.
 - At each STOP, overwrite docs/next_step.md with the next step's plan, open questions and counts; a new session
   starts by reading it. Planning and review happen in the Claude chat; this tool performs the prompts' tasks.
 
