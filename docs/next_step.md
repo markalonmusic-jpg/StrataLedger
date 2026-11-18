@@ -5,7 +5,15 @@ Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md se
 Status: **step B2 is done** and waits at the review gate. **STOP C is approved to build once the owner approves
 B2** (owner, 2026-11-17).
 
-**State:** B2_STATE
+**State:**
+- Suite: 3369 passed, 1 skipped, 7 deselected.
+- B2 commits:
+  - 785ca30 (part A);
+  - 8e5979c (the build);
+  - 3340b32 (step-reviewer fixes);
+  - 2698385 (secrets-audit fixes);
+  - the mutation-test commit that follows them.
+- Everything is pushed to `origin/main`.
 
 ## Done in step B2 (2026-11-17)
 
@@ -35,7 +43,37 @@ B2** (owner, 2026-11-17).
   - HA8-HA10;
   - RI1 (replan inputs, decided, not built);
   - FR1 amended.
-- **Reviews:** B2_REVIEWS
+- **Reviews:**
+  - step-reviewer on 8e5979c: findings 1-6, 8 and 9 were fixed in 3340b32. Finding 7 (.codex/agents) is for the
+    owner, below.
+  - secrets-auditor on 3340b32: nothing Critical or High. L1-L5 were fixed in 2698385. M1 and M2 are for the owner,
+    below.
+  - mutation-tester on 2698385: 250 mutants.
+    - 158 are killed by the B2 test files and 7 by tests/test_service_tx.py.
+    - 55 survivors were real gaps, now killed by tests/test_mutation_b2_extra.py.
+    - 30 are equivalent:
+      - B01, B10: sqlite3's default timeout is already 5 s.
+      - B05: SQLite returns `wal` in lower case.
+      - B33: `immutable=1` alone refuses writes.
+      - B54: reasons are `[a-z0-9-]` only.
+      - B60: restore's outer handler gives the same refusal.
+      - B73: refcounting closes the check connection.
+      - B84: the cleanup checks `exists()`.
+      - B88: the staged copy is rollback-journal mode, so it has no sidecars.
+      - B106: ATTACH is refused.
+      - B113: `xWITHOUT ROWID` is not valid SQL.
+      - B123, B124: SQLite accepts leading comments, and an empty statement cannot occur.
+      - B137, B138, B143: speed only; `complete` forces a rebuild.
+      - B140: names are plain identifiers.
+      - B151: the add-on cannot create an audit-named trigger.
+      - B153, B156-B161: seq edits are refused by the authorizer, and the version row recreates audit_log's
+        counter.
+      - B167: the sync never touches counters.
+      - B171: `audit_context` is not in the snapshot.
+      - B195: `close()` rolls back.
+      - B204: `_actor_type` already says Agent.
+      - B222: FileExistsError is an OSError.
+    - New defect, fixed test first: a second audit_log counter row is now refused.
 
 ## STOP C plan: the custom fields service (FR1 as amended, owner 2026-11-17)
 

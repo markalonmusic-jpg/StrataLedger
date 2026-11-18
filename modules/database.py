@@ -845,8 +845,11 @@ def _check_counters(conn, addon_key, before):
     strays = [r["name"] for r in conn.execute("SELECT name FROM sqlite_sequence")
               if _owned(r["name"], prefix, core) and r["name"] not in tables] if _table_exists(conn, "sqlite_sequence") \
         else []
+    names = [r["name"] for r in conn.execute("SELECT name FROM sqlite_sequence")] \
+        if _table_exists(conn, "sqlite_sequence") else []
+    doubled = len(names) != len(set(names))       # e.g. a row renamed to audit_log beside its own (mutation finding)
     moved_back = before[1] is not None and (audit is None or audit < before[1] or audit != newest)
-    if rows != before[0] or moved_back or (audit is not None and audit != newest) or strays:
+    if rows != before[0] or moved_back or (audit is not None and audit != newest) or strays or doubled:
         raise AddonMigrationError(addon_key, "the migration changed a core table's AUTOINCREMENT counter; nothing "
                                              "was changed.")
 

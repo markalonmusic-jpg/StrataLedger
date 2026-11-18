@@ -828,3 +828,8 @@ Rotation and key-lost text as it stood before the trim:
     never unmask a hidden column (L5). Left for the owner: M1 (master backups keep old key blobs, never pruned)
     and M2 (no rule against secrets in add-on tables, which HA9 audit-logs whole).
 
+  - mutation-tester on 2698385: 250 mutants. 158 are killed by the B2 test files and 7 more by
+    tests/test_service_tx.py (B182-B188). 85 survived: 55 were real gaps, now killed by
+    tests/test_mutation_b2_extra.py (38 tests), and 30 are equivalent (reasons in docs/next_step.md). It also
+    found a defect: an add-on migration could leave a second audit_log row in sqlite_sequence. It is fixed, test
+    first: `_check_counters` refuses a counter name that appears twice.
