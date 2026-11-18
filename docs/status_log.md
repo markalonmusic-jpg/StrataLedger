@@ -905,3 +905,7 @@ Rotation and key-lost text as it stood before the trim:
   event" lookup could be met by a decoy row copied from the master into the file (proved by a probe), so the
   tie now reads only the file's latest row: it stays only when its signed ref_id is the mirror's key_id. KS12
   records this carve-out as PROPOSED for the owner, with its fail-safe cost. Suite 3675 passed, 1 skipped.
+- 2026-11-18: mutation-tester on 7a704a2..3a792cc (`_epoch_anchor`): 44 mutants, 41 killed, 3 equivalent (reasons
+  in docs/next_step.md). The commit hook once blocked on tests/test_voucher_sequence.py (6 threads, 5 of them
+  'database is locked' past the 5 s busy timeout) while other heavy jobs ran on the machine; not reproduced in
+  300 tries; left for the owner.

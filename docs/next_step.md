@@ -51,8 +51,16 @@ Mutation test: 145 mutants, 102 killed by the existing tests, 33 more by tests/t
 - The three frees (`LocalFree` in `_sid_text` and of the descriptor, `CloseHandle` of the token): a leak, not a
   behaviour change.
 
+## KS12 epoch-anchor tie (2026-11-18; awaiting the owner's approval)
+
+Commits 7a704a2 (the fix) and 3a792cc (step-review fix: only the file's latest signed row decides). Owner sign-off
+needed on the PROPOSED carve-out in KS12: on a tie the file's row stays when its ref_id is the mirror's key_id.
+Mutation test of `_epoch_anchor`: 44 mutants, 41 killed, 3 equivalent: `ahead == 0` as `ahead >= 0` (the `ahead >
+0` term returns first), and `LIMIT 1` changed to `LIMIT 2` or removed (read with fetchone under ORDER BY
+checkpoint_id DESC).
+
 **State:**
-- Suite: 3661 passed, 1 skipped (after the review step; 3440 after the owner-answers commit, 3369 after B2).
+- Suite: 3675 passed, 1 skipped (after the KS12 tie step; 3440 after the owner-answers commit, 3369 after B2).
 - B2 commits:
   - 785ca30 (part A);
   - 8e5979c (the build);
