@@ -865,3 +865,14 @@ Rotation and key-lost text as it stood before the trim:
     blocks the commit if xdist is missing; timeout 2400 s to 900 s. Three parallel full runs: 306, 328, 313 s (18
     minutes in one process), all green; no test needed a single worker. Plain `python -m pytest -q` is unchanged.
   - Suite 3551 passed, 1 skipped.
+- 2026-11-18: owner answers on 997305c (not yet approved).
+  - HA8 reads the folder's ACL, not this process's access (platform_support.folder_open_to_non_admins, P3; the app
+    hands it to addons.use_folder_check). Off when Users, Authenticated Users, Everyone, Interactive or the user's
+    own SID (not elevated) can write, modify or create in RESOURCE_DIR or RESOURCE_DIR/addons; an elevated admin
+    on a proper install keeps add-ons; an unreadable ACL, a NULL DACL or no check handed over keeps them off. The
+    probe-file check is removed. tests/test_platform_folder_acl.py (51 tests, real C:\Program Files reads as
+    admin-only), tests/test_addon_install_folder.py rewritten.
+  - Add-on SQLite errors: the error type only in the installed build, the full message in source runs.
+  - Parallel runs found the five first-run tests that use the real system clipboard racing across workers: they
+    are now one xdist_group, with a guard test. Three parallel runs: 289, 296, 301 s, all green.
+  - Suite 3606 passed, 1 skipped.

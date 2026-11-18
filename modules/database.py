@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+import config
 from config import BACKUP_DIR, MIGRATIONS_DIR as _CONFIG_MIGRATIONS_DIR
 
 
@@ -977,7 +978,7 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir, audit):
             if isinstance(error, AddonMigrationError):
                 raise
             where = current or "the migration"
-            raise AddonMigrationError(addon_key, f"{where} failed ({type(error).__name__}) and was rolled back; "
+            raise AddonMigrationError(addon_key, f"{where} failed ({_safe_sqlite_reason(error)}) and was rolled back; "
                                                  "nothing was changed.") from None
     finally:
         conn.close()
@@ -1002,15 +1003,11 @@ def _check_existing_columns(db_path, addon_key):
         conn.close()
 
 
-# SQLite messages whose only variable part is a plain name, so they can be shown and logged; any other message (a
-# syntax error quotes the text near it, a literal included) is replaced by the error's type (secrets audit LOW-2).
-_SAFE_SQLITE_RE = re.compile(r"(?:(?:table|index|trigger|view) [A-Za-z_][A-Za-z0-9_]* already exists"
-                             r"|no such (?:table|column|index|trigger|view): [A-Za-z_][A-Za-z0-9_.]*)")
-
-
 def _safe_sqlite_reason(error):
-    text = str(error)
-    return text if _SAFE_SQLITE_RE.fullmatch(text) else type(error).__name__
+    """What an add-on refusal says about a SQLite error (owner 2026-11-18, secrets audit LOW-2): in the installed
+    (frozen) build only the error type, because SQLite's message can quote the migration's text, a literal included,
+    and the refusal is logged; in a run from source the full message, for the add-on's author."""
+    return type(error).__name__ if config.FROZEN else str(error)
 
 
 def _run_addon_statements(conn, addon_key, filename, statements, synced):

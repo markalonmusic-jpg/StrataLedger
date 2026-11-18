@@ -23,7 +23,7 @@ from modules.views_wizard import CustomerIntakeWizard
 from modules.font_loader import ensure_inter_font
 from modules.sidebar import NavItem, Sidebar
 import config
-from modules.services import auth, companies, key_store, keys, ledger_verify, logging_setup
+from modules.services import addons, auth, companies, key_store, keys, ledger_verify, logging_setup
 from modules.services.errors import (
     AuthenticationError, LoginThrottledError, PasswordChangeRequiredError, ServiceError, ValidationError,
 )
@@ -86,6 +86,8 @@ class App(ctk.CTk):
         self.is_copilot_visible = True
         self._breadcrumb_parts = ("PLATFORM", "OVERVIEW")
         self.protocol("WM_DELETE_WINDOW", self.on_app_exit)
+        # HA8: the installed build loads add-ons only from a program folder non-admins cannot change (P3 reads the ACL)
+        addons.use_folder_check(platform_support.folder_open_to_non_admins)
 
         if not os.path.exists(self.upload_dir):
             os.makedirs(self.upload_dir, exist_ok=True)

@@ -1659,11 +1659,17 @@ The owner's answers to the Phase 2.7 plan.
   content or keys. Bank feeds are held; prevailing wage and IRA tracking are dropped.
 - HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1. In the
   installed (frozen) build, before any add-on file is read or imported (`addons.discover`, `load`, `enable`), the
-  app checks whether this account can create a file in RESOURCE_DIR or RESOURCE_DIR/addons (a probe file through
-  storage.py; os.access does not read Windows folder permissions). If it can, no add-on loads, it is logged, and
+  folder's permissions (not this process's access) are read for RESOURCE_DIR and RESOURCE_DIR/addons. Add-ons
+  turn off if a non-admin principal can change either: an allow entry with write, modify or create rights for
+  Users, Authenticated Users, Everyone or Interactive, or for the user's own SID when not elevated; inheritable
+  entries count, deny entries are not subtracted, owning the folder counts, and a NULL DACL or an unreadable ACL
+  counts as open. An elevated administrator on a properly installed folder keeps add-ons. The ACL read lives in
+  `platform_support.folder_open_to_non_admins` (P3); the app hands it to `addons.use_folder_check` at start-up
+  (services never import it, H1), and a frozen build without it keeps add-ons off. When off, it is logged and
   people see one sentence: "Add-ons are off because the program folder can be changed by this account; reinstall
   StrataLedger to Program Files." Posting with an enabled add-on then stops with that sentence. Source runs are
-  exempt (Codex finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py.
+  exempt (Codex finding, owner 2026-11-18). Tests: tests/test_addon_install_folder.py,
+  tests/test_platform_folder_acl.py.
 - HA9 Add-on tables are always audit-logged. After every statement of an add-on migration the runner gives each
   `<key>_` table the standard insert, update and delete triggers (`audit_<table>_<action>`, every column as JSON),
   from `migrations/addon_audit_triggers.sql`, rebuilt when the table changes or a trigger is missing; so a
@@ -1684,8 +1690,9 @@ The owner's answers to the Phase 2.7 plan.
   encryption, signing or session key; account, routing or card number; recovery, backup or reset code; session
   id); or a long form anywhere in the joined-up letters ("apitoken", "MYSECRET"). "secretary" and "tokenizer" are
   allowed. The refusal says, in one sentence, that secrets go only in `DATA_DIR\Secrets`, and nothing is changed.
-  A refused or failed statement is named by file and number, never by its SQL text or a SQLite message that could
-  quote a literal (secrets audit of b4ea844). The name check is a safety net, not a guarantee: a secret under a
+  A refused or failed statement is named by file and number, never by its SQL text; SQLite's message is given in
+  full in a run from source and only as the error type in the installed build, since it can quote a literal
+  (secrets audit of b4ea844; owner 2026-11-18). The name check is a safety net, not a guarantee: a secret under a
   neutral name (`value`, `c1`) or in a key/value row is not caught, so add-on review checks that secrets go
   through `KeyProvider`. PROPOSED (that audit's MEDIUM-1; not built): an add-on declares a column sensitive and
   HA9 logs only "changed" for it, as the master does for passwords. Tests: tests/test_addon_secret_columns.py.

@@ -25,6 +25,8 @@ def _companies_use_the_fixed_test_key():
 def pytest_configure(config):
     config.addinivalue_line("markers", "live_clipboard: uses the real Windows clipboard; runs only when "
                                        "STRATALEDGER_LIVE_CLIPBOARD=1")
+    # pytest-xdist registers this too; registered here so plain `python -m pytest -q` without xdist knows it
+    config.addinivalue_line("markers", "xdist_group(name): run in one xdist worker (with --dist loadgroup)")
 
 
 def pytest_collection_modifyitems(config, items):

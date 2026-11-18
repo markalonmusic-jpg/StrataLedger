@@ -7,7 +7,6 @@ can point it elsewhere. A hosted version replaces this module with an object-sto
 has the same functions. Every path given here is relative and may not leave its folder.
 """
 import os
-import tempfile
 
 import config
 from modules.services.errors import NotFoundError, ValidationError
@@ -69,23 +68,9 @@ def list_resource_dirs(relative_dir):
     return names
 
 
-def resource_dir_writable(relative=None):
-    """True if this account can create a file in RESOURCE_DIR (relative None) or in a folder under it (HA8). It
-    makes and removes a probe file, because os.access does not read Windows folder permissions. A missing folder is
-    False; nothing is created when the probe fails."""
-    path = os.path.realpath(config.RESOURCE_DIR) if relative is None else resource_path(relative)
-    if not os.path.isdir(path):
-        return False
-    try:
-        handle, probe = tempfile.mkstemp(prefix=".strataledger-write-probe-", dir=path)
-    except OSError:
-        return False
-    os.close(handle)
-    try:
-        os.remove(probe)
-    except OSError:
-        pass
-    return True
+def resource_root():
+    """RESOURCE_DIR itself, resolved (HA8 checks who can change it)."""
+    return os.path.realpath(config.RESOURCE_DIR)
 
 
 # --- Writable data -----------------------------------------------------------------------------

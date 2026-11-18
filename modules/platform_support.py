@@ -267,3 +267,161 @@ def _call_dpapi(direction, data, entropy, flags):
 
 # The machine wrap the app hands to the key store at start-up and at first run (services never import this module).
 DPAPI = SimpleNamespace(protect=machine_protect, unprotect=machine_unprotect)
+
+
+# --- HA8: who can change the program folder (owner 2026-11-18) ---------------------------------------------------------
+#
+# Add-ons turn off when a non-admin principal can change RESOURCE_DIR or RESOURCE_DIR\addons. The folder's owner and
+# DACL are read (not this process's own access), so an elevated administrator on a properly installed folder keeps
+# add-ons. An allow entry counts when it carries any right below for Users, Authenticated Users, Everyone or
+# Interactive, or for this user's own SID when the process is not elevated. Inherit-only entries count, because they
+# reach the add-on files inside. Deny entries are not subtracted (a stricter reading). Owning the folder counts
+# (an owner can always rewrite its permissions). An empty (NULL) DACL is open to Everyone. If anything cannot be
+# read, the folder counts as open and only the error type is logged.
+
+ACCESS_ALLOWED, ACCESS_DENIED, ACCESS_ALLOWED_CALLBACK = 0, 1, 9
+NON_ADMIN_GROUP_SIDS = ("S-1-5-32-545", "S-1-5-11", "S-1-1-0", "S-1-5-4")   # Users, Authenticated, Everyone, Interactive
+EVERYONE_SID = "S-1-1-0"
+# write data / add file, append / add subfolder, write EA, delete child, write attributes, DELETE, WRITE_DAC,
+# WRITE_OWNER, GENERIC_ALL, GENERIC_WRITE
+CHANGE_RIGHTS = (0x0002 | 0x0004 | 0x0010 | 0x0040 | 0x0100 | 0x00010000 | 0x00040000 | 0x00080000 | 0x10000000
+                 | 0x40000000)
+_ALLOW_TYPES = (ACCESS_ALLOWED, ACCESS_ALLOWED_CALLBACK)
+
+
+def non_admin_writers(acl, user_sid, elevated):
+    """The non-admin SIDs that can change a folder, given its ACL (owner, entries: type, flags, mask, sid; entries
+    None for a NULL DACL). Empty means only administrators and the system can change it."""
+    watched = set(NON_ADMIN_GROUP_SIDS) | ({user_sid} if not elevated and user_sid else set())
+    if acl.entries is None:
+        return [EVERYONE_SID]
+    found = []
+    if acl.owner in watched:
+        found.append(acl.owner)
+    for entry in acl.entries:
+        if entry.type in _ALLOW_TYPES and entry.mask & CHANGE_RIGHTS and entry.sid in watched \
+                and entry.sid not in found:
+            found.append(entry.sid)
+    return found
+
+
+def folder_open_to_non_admins(path, acl_reader=None, token_reader=None):
+    """True if a non-admin principal can change the folder, or if its permissions cannot be read (fail closed). The
+    add-on service gets this function from the app at start-up (services never import this module, H1)."""
+    try:
+        acl = (acl_reader or read_folder_acl)(path)
+        user_sid, elevated = (token_reader or current_token)()
+        writers = non_admin_writers(acl, user_sid, elevated)
+    except Exception as error:  # noqa: BLE001  (any failure to read counts as open)
+        _logger.error("program folder permissions could not be read: %s", type(error).__name__)
+        return True
+    if writers:
+        _logger.error("program folder %s can be changed by %s", path, ", ".join(writers))
+    return bool(writers)
+
+
+def _advapi():
+    import ctypes
+    from ctypes import wintypes
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    pointer = ctypes.POINTER(ctypes.c_void_p)
+    advapi32.GetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, pointer, pointer,
+                                               pointer, pointer, pointer]
+    advapi32.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi32.GetAclInformation.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.c_int]
+    advapi32.GetAclInformation.restype = wintypes.BOOL
+    advapi32.GetAce.argtypes = [ctypes.c_void_p, wintypes.DWORD, pointer]
+    advapi32.GetAce.restype = wintypes.BOOL
+    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    advapi32.ConvertSidToStringSidW.restype = wintypes.BOOL
+    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+                                             ctypes.POINTER(wintypes.DWORD)]
+    advapi32.GetTokenInformation.restype = wintypes.BOOL
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    return ctypes, wintypes, advapi32, kernel32
+
+
+def _sid_text(ctypes, wintypes, advapi32, kernel32, sid):
+    text = wintypes.LPWSTR()
+    if not advapi32.ConvertSidToStringSidW(sid, ctypes.byref(text)):
+        raise OSError(f"Windows error {ctypes.get_last_error()}")
+    try:
+        return text.value
+    finally:
+        kernel32.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+
+
+def read_folder_acl(path):
+    """The folder's owner SID and DACL entries (type, flags, mask, sid); entries None for a NULL DACL. Raises
+    OSError (a missing folder included) or, off Windows, NotImplementedError."""
+    import os
+    if not IS_WINDOWS:
+        raise NotImplementedError("folder permissions are read on Windows only (P3)")
+    if not os.path.isdir(path):
+        raise OSError(f"not a folder: {path}")
+    ctypes, wintypes, advapi32, kernel32 = _advapi()
+    se_file_object, owner_info, dacl_info, acl_size_information = 1, 0x1, 0x4, 2
+    owner, dacl, descriptor = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+    status = advapi32.GetNamedSecurityInfoW(path, se_file_object, owner_info | dacl_info, ctypes.byref(owner), None,
+                                            ctypes.byref(dacl), None, ctypes.byref(descriptor))
+    if status != 0:
+        raise OSError(f"Windows error {status}")
+    try:
+        owner_sid = _sid_text(ctypes, wintypes, advapi32, kernel32, owner) if owner.value else None
+        if not dacl.value:
+            return SimpleNamespace(owner=owner_sid, entries=None)
+
+        class SizeInfo(ctypes.Structure):
+            _fields_ = [("AceCount", wintypes.DWORD), ("AclBytesInUse", wintypes.DWORD),
+                        ("AclBytesFree", wintypes.DWORD)]
+        info = SizeInfo()
+        if not advapi32.GetAclInformation(dacl, ctypes.byref(info), ctypes.sizeof(info), acl_size_information):
+            raise OSError(f"Windows error {ctypes.get_last_error()}")
+        entries = []
+        for index in range(info.AceCount):
+            ace = ctypes.c_void_p()
+            if not advapi32.GetAce(dacl, index, ctypes.byref(ace)):
+                raise OSError(f"Windows error {ctypes.get_last_error()}")
+            ace_type, flags = struct.unpack("<BB", ctypes.string_at(ace.value, 2))
+            if ace_type not in (ACCESS_ALLOWED, ACCESS_DENIED, ACCESS_ALLOWED_CALLBACK):
+                entries.append(SimpleNamespace(type=ace_type, flags=flags, mask=0, sid=""))   # object ACEs: AD only
+                continue
+            (mask,) = struct.unpack("<I", ctypes.string_at(ace.value + 4, 4))
+            sid = _sid_text(ctypes, wintypes, advapi32, kernel32, ctypes.c_void_p(ace.value + 8))
+            entries.append(SimpleNamespace(type=ace_type, flags=flags, mask=mask, sid=sid))
+        return SimpleNamespace(owner=owner_sid, entries=entries)
+    finally:
+        kernel32.LocalFree(descriptor)
+
+
+def current_token():
+    """(this process's user SID, whether the process is elevated). Raises OSError or, off Windows,
+    NotImplementedError."""
+    if not IS_WINDOWS:
+        raise NotImplementedError("the process token is read on Windows only (P3)")
+    ctypes, wintypes, advapi32, kernel32 = _advapi()
+    token_query, token_user, token_elevation = 0x0008, 1, 20
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), token_query, ctypes.byref(token)):
+        raise OSError(f"Windows error {ctypes.get_last_error()}")
+    try:
+        needed = wintypes.DWORD()
+        advapi32.GetTokenInformation(token, token_user, None, 0, ctypes.byref(needed))
+        buffer = ctypes.create_string_buffer(needed.value)
+        if not advapi32.GetTokenInformation(token, token_user, buffer, needed, ctypes.byref(needed)):
+            raise OSError(f"Windows error {ctypes.get_last_error()}")
+        sid_pointer = ctypes.c_void_p.from_buffer(buffer).value          # TOKEN_USER.User.Sid comes first
+        user_sid = _sid_text(ctypes, wintypes, advapi32, kernel32, ctypes.c_void_p(sid_pointer))
+        elevation = wintypes.DWORD()
+        if not advapi32.GetTokenInformation(token, token_elevation, ctypes.byref(elevation),
+                                            ctypes.sizeof(elevation), ctypes.byref(needed)):
+            raise OSError(f"Windows error {ctypes.get_last_error()}")
+        return user_sid, bool(elevation.value)
+    finally:
+        kernel32.CloseHandle(token)

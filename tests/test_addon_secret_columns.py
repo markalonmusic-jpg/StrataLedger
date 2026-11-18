@@ -111,13 +111,13 @@ LITERAL = "S3cr3tLiteral-hunter2"
     (f"UPDATE company_settings SET company_name = '{LITERAL}';",
      r"statement 2 of demo_001.sql reaches outside"),
     (f"INSERT INTO demo_first VALUES (1) '{LITERAL}';", r"statement 2 of demo_001.sql failed \(OperationalError\)"),
-    # a message whose only variable part is a plain name is kept: it tells the add-on's author what to fix
-    (f"INSERT INTO demo_missing VALUES ('{LITERAL}');",
-     r"statement 2 of demo_001.sql failed \(no such table: demo_missing\)"),
+    (f"INSERT INTO demo_missing VALUES ('{LITERAL}');", r"statement 2 of demo_001.sql failed \(OperationalError\)"),
 ])
-def test_a_refusal_names_the_file_and_statement_but_never_the_sql_text(company, tmp_path, statement, match):
-    """Secrets audit LOW-2: the refusal (which the add-on service logs) never echoes SQL text or SQLite's message,
-    either of which can carry a literal from the migration."""
+def test_the_installed_build_names_the_file_and_statement_but_never_the_sql_or_sqlites_message(
+        company, tmp_path, monkeypatch, statement, match):
+    """Secrets audit LOW-2, owner 2026-11-18: in the installed (frozen) build the refusal, which the add-on service
+    logs, gives only the error type: SQL text and SQLite's message can both carry a literal from the migration."""
+    monkeypatch.setattr(database.config, "FROZEN", True)
     folder = migrations(tmp_path, {"demo_001.sql": f"CREATE TABLE demo_first (x);\n{statement}\n"})
     before = objects(company)
     with pytest.raises(database.AddonMigrationError, match=match) as raised:
@@ -125,3 +125,54 @@ def test_a_refusal_names_the_file_and_statement_but_never_the_sql_text(company, 
     assert LITERAL not in str(raised.value) and "hunter2" not in str(raised.value)
     assert raised.value.__cause__ is None or LITERAL not in str(raised.value.__cause__)
     assert objects(company) == before
+
+
+@pytest.mark.parametrize("statement, message", [
+    ("INSERT INTO demo_first VALUES (1) 'lit';", 'near "\'lit\'": syntax error'),
+    ("INSERT INTO demo_missing VALUES (1);", "no such table: demo_missing"),
+])
+def test_a_source_run_gives_sqlites_full_message_for_the_addons_author(company, tmp_path, monkeypatch, statement,
+                                                                         message):
+    monkeypatch.setattr(database.config, "FROZEN", False)
+    folder = migrations(tmp_path, {"demo_001.sql": f"CREATE TABLE demo_first (x);\n{statement}\n"})
+    with pytest.raises(database.AddonMigrationError) as raised:
+        database.apply_addon_migrations(company, KEY, folder)
+    assert f"statement 2 of demo_001.sql failed ({message})" in str(raised.value)
+
+
+def test_the_runners_own_failure_is_redacted_the_same_way(company, tmp_path, monkeypatch):
+    """A failure outside the add-on's statements (here: recording the version) follows the same rule."""
+    folder = migrations(tmp_path, {"demo_001.sql": "CREATE TABLE demo_first (x);\n"})
+    real_execute = database.sqlite3.Connection.execute
+
+    def failing(conn, sql, *args):
+        if sql.startswith("INSERT INTO addon_schema_version"):
+            raise database.sqlite3.OperationalError("detail that could quote 'lit'")
+        return real_execute(conn, sql, *args)
+    for frozen, shown in ((True, "(OperationalError)"), (False, "(detail that could quote 'lit')")):
+        monkeypatch.setattr(database.config, "FROZEN", frozen)
+        monkeypatch.setattr(database, "get_connection", _wrapping(database.get_connection, failing))
+        with pytest.raises(database.AddonMigrationError) as raised:
+            database.apply_addon_migrations(company, KEY, folder)
+        assert shown in str(raised.value)
+        monkeypatch.undo()
+
+
+def _wrapping(get_connection, execute):
+    class Wrapped:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, *args):
+            return execute(self._conn, sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(self._conn, name)
+
+        def __setattr__(self, name, value):
+            if name == "_conn":
+                object.__setattr__(self, name, value)
+            else:
+                setattr(self._conn, name, value)
+
+    return lambda *args, **kwargs: Wrapped(get_connection(*args, **kwargs))

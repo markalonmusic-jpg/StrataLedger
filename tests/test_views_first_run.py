@@ -337,8 +337,26 @@ def test_closing_after_the_box_is_ticked_still_asks_until_continue(setup):
 
 # --- The clipboard ---------------------------------------------------------------------------------------------------
 
+# The system clipboard is one per computer, so parallel workers (pytest-xdist) would race on it: every test that
+# reads or writes it runs in one worker (`--dist loadgroup`, as the commit hook runs the suite).
+SYSTEM_CLIPBOARD = pytest.mark.xdist_group("system_clipboard")
+
+
 def clipboard(root):
     return platform_support.read_clipboard_text(root)
+
+
+def test_every_test_that_touches_the_system_clipboard_runs_in_one_worker():
+    import inspect
+    import sys
+    module = sys.modules[__name__]
+    touching = [(name, function) for name, function in inspect.getmembers(module, inspect.isfunction)
+                if name.startswith("test_") and "system_clipboard_runs" not in name
+                and any(call in inspect.getsource(function) for call in ("clipboard(tk_root)", "clipboard_append"))]
+    assert len(touching) == 5
+    for name, function in touching:
+        marks = getattr(function, "pytestmark", [])
+        assert any(m.name == "xdist_group" and m.args == ("system_clipboard",) for m in marks), name
 
 
 def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch):
@@ -349,6 +367,7 @@ def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch)
     assert seen == [setup.wizard.vars["code"].get()]
 
 
+@SYSTEM_CLIPBOARD
 def test_a_failed_windows_copy_still_copies_and_does_not_crash(setup, tk_root, monkeypatch):
     make_master(setup)
     monkeypatch.setattr(platform_support, "IS_WINDOWS", True)
@@ -364,12 +383,14 @@ def test_the_code_screen_warns_about_clipboard_history(setup):
     assert "clipboard history" in text.lower() and "some systems" in text.lower()
 
 
+@SYSTEM_CLIPBOARD
 def test_copy_puts_the_code_on_the_clipboard(setup, tk_root):
     make_master(setup)
     setup.wizard.copy_code()
     assert clipboard(tk_root) == setup.wizard.vars["code"].get()
 
 
+@SYSTEM_CLIPBOARD
 def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root):
     make_master(setup)
     setup.wizard.copy_code()
@@ -379,6 +400,7 @@ def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root
     assert clipboard(tk_root) == ""
 
 
+@SYSTEM_CLIPBOARD
 def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
     make_master(setup)
     setup.wizard.copy_code()
@@ -390,6 +412,7 @@ def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
     assert clipboard(tk_root) == "something else the user copied"
 
 
+@SYSTEM_CLIPBOARD
 def test_continue_clears_a_clipboard_holding_the_code_without_dashes(setup, tk_root):
     make_master(setup)
     code = setup.wizard.vars["code"].get()

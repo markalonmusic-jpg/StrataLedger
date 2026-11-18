@@ -56,18 +56,31 @@ def _inside(path, folder):
         return False
 
 
+_folder_check = None      # path -> True if a non-admin can change it; handed over by the app (HA8)
+
+
+def use_folder_check(check):
+    """The app hands over platform_support.folder_open_to_non_admins at start-up (services never import the
+    platform module, H1). None forgets it; a frozen build without one keeps add-ons off."""
+    global _folder_check
+    _folder_check = check
+
+
 def addons_off():
-    """HA8: in the installed (frozen) build, add-ons are off when this account can change RESOURCE_DIR or
-    RESOURCE_DIR/addons, since anyone who can write there could plant code that runs in this process. Checked on
-    every call, before any add-on file is read or imported, and logged each time. A run from source is exempt.
-    Returns ADDONS_OFF (the sentence to show) or None."""
+    """HA8: in the installed (frozen) build, add-ons are off when a non-admin principal can change RESOURCE_DIR or
+    RESOURCE_DIR/addons (the folder's ACL, read by the folder check), since anyone who can write there could plant
+    code that runs in this process. Checked on every call, before any add-on file is read or imported, and logged.
+    A run from source is exempt. Returns ADDONS_OFF (the sentence to show) or None."""
     if not config.FROZEN:
         return None
-    changeable = [name for name, relative in (("program folder", None), ("add-ons folder", ADDONS))
-                  if storage.resource_dir_writable(relative)]
-    if not changeable:
+    if _folder_check is None:
+        _logger.error("add-ons are off: no program-folder check was set up")
+        return ADDONS_OFF
+    folders = [("program folder", storage.resource_root()), ("add-ons folder", addons_dir())]
+    loose = [name for name, path in folders if os.path.isdir(path) and _folder_check(path)]
+    if not loose:
         return None
-    _logger.error("add-ons are off: the %s under %s can be changed by this account", " and ".join(changeable),
+    _logger.error("add-ons are off: a non-admin account can change the %s under %s", " and ".join(loose),
                   config.RESOURCE_DIR)
     return ADDONS_OFF
 
