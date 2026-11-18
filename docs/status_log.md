@@ -925,3 +925,6 @@ Rotation and key-lost text as it stood before the trim:
     add-ons off; a control character and a joined line in platform_support.py. Left for the owner: the HA8
     sentence says "this account" though any principal outside the allow-list now trips it; the tree is read twice
     when a company opens with an add-on enabled.
+- 2026-11-18: mutation-tester on 55a0e2b: 132 mutants, 99 killed; 23 real gaps now killed by
+  tests/test_mutation_owner_answers_extra.py (sorting in resource_tree, the link check's first and last entries,
+  islink, a missing program folder, and HA11 words, pairs, runs and value words); 10 equivalent (docs/next_step.md).

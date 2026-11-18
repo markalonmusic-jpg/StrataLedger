@@ -5,6 +5,20 @@ Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md se
 Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, built in the "B2 owner answers" commit).
 **STOP C starts in a fresh session** once the owner approves that commit at the review gate.
 
+## Owner answers on the review step and the KS12 tie (2026-11-18; awaiting the owner's approval)
+
+Commit 55a0e2b, then the mutation-test commit. KS12 tie decided; HA8 M1-M3 (allow-list of SYSTEM, Administrators,
+TrustedInstaller over RESOURCE_DIR and the whole add-ons tree; links refused); HA11 L2/L3; the voucher test's own wait.
+- Mutation test of 55a0e2b: 132 mutants, 99 killed by existing tests, 23 by tests/test_mutation_owner_answers_extra.py
+  (each re-checked), 10 equivalent: five `_SECRET_WORDS` entries and four `_SECRET_PAIRS` entries also caught by a
+  run or word; `len(before) > 1` as `>= 1` (a one-word tuple is never a pair).
+- For the owner: AX9 and AX10 are not in the repo or this session; please resend their text. The HA8 sentence says
+  "this account" though any principal outside the allow-list now trips it. `password_number_id` is allowed (the id
+  exemption refuses only values that are the secret). A real installer build is not yet tested against HA8: an
+  install that leaves files owned by a user account (the "Object creator" owner policy, or the built-in
+  Administrator) turns add-ons off.
+- Suite: 3868 passed, 2 skipped after 55a0e2b, plus 23 mutation tests.
+
 ## Owner answers, 2026-11-18 (built in the B2 owner-answers commit)
 
 1. Safety backups: `pre-upgrade` and `pre-restore` are never pruned. `addon-<key>` backups are pruned by E7 (7
