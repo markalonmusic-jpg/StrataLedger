@@ -92,7 +92,10 @@ def test_inspecting_never_changes_the_file(master, state):
     mtime = master.stat().st_mtime_ns
     auth.inspect_master(master)
     assert master.read_bytes() == before and master.stat().st_mtime_ns == mtime
-    assert not list(master.parent.glob("*.db-*")) and not (master.parent / "Backups").exists()
+    # AX1: a read-only reader of a WAL file may leave an empty -wal and the -shm index; neither holds data.
+    sidecars = list(master.parent.glob("*.db-*"))
+    assert all(p.name.endswith("-shm") or (p.name.endswith("-wal") and p.stat().st_size == 0) for p in sidecars)
+    assert not (master.parent / "Backups").exists()
 
 
 def test_a_second_user_does_not_matter(master):

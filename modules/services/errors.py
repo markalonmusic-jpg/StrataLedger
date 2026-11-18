@@ -64,6 +64,15 @@ class PermissionDeniedError(ServiceError):
     """The acting user lacks the permission for this action."""
 
 
+class DeferredDenialError(PermissionDeniedError):
+    """A refusal raised inside a write transaction. A denial row written there would be rolled back with the
+    caller's work, so tx.write_transaction calls `log_denial` after the rollback, in its own transaction."""
+
+    def __init__(self, message, log_denial):
+        super().__init__(message)
+        self.log_denial = log_denial
+
+
 class PeriodClosedError(ServiceError):
     """The fiscal period is closed to this kind of entry."""
 

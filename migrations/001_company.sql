@@ -2923,6 +2923,58 @@ BEGIN
     FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
 END;
 
+-- HA9 (2026-11-17): add-on migration history is audit-logged like any table.
+CREATE TRIGGER audit_addon_schema_version_insert
+AFTER INSERT ON addon_schema_version
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'addon_schema_version', NEW.rowid,
+        'Insert',
+        NULL,
+        json_object(
+            'addon_key', NEW.addon_key,
+            'version', NEW.version,
+            'sha256', NEW.sha256),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_addon_schema_version_update
+AFTER UPDATE ON addon_schema_version
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'addon_schema_version', NEW.rowid,
+        'Update',
+        json_object(
+            'addon_key', OLD.addon_key,
+            'version', OLD.version,
+            'sha256', OLD.sha256),
+        json_object(
+            'addon_key', NEW.addon_key,
+            'version', NEW.version,
+            'sha256', NEW.sha256),
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
+CREATE TRIGGER audit_addon_schema_version_delete
+AFTER DELETE ON addon_schema_version
+BEGIN
+    INSERT INTO audit_log (user_id, table_name, record_id, action, old_value, new_value,
+                           software_version_tag, terminal_id)
+    SELECT ctx.user_id, 'addon_schema_version', OLD.rowid,
+        'Delete',
+        json_object(
+            'addon_key', OLD.addon_key,
+            'version', OLD.version,
+            'sha256', OLD.sha256),
+        NULL,
+        ctx.software_version_tag, ctx.terminal_id
+    FROM (SELECT 1) LEFT JOIN audit_context AS ctx ON ctx.id = 1;
+END;
+
 CREATE TRIGGER audit_bank_reconciliation_insert
 AFTER INSERT ON bank_reconciliation
 BEGIN

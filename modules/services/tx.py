@@ -19,7 +19,7 @@ from contextlib import contextmanager
 
 import config
 import modules.database as database
-from modules.services.errors import PermissionDeniedError, SaveFailedError
+from modules.services.errors import DeferredDenialError, PermissionDeniedError, SaveFailedError
 
 _logger = logging.getLogger("strataledger")
 
@@ -37,25 +37,22 @@ def write_transaction(db_path, context):
         raise PermissionDeniedError("This company is open read-only; open it with a role that can make changes, "
                                     "or ask an Admin.")
     conn = None
+    deferred = None
+    stamp = AuditStamp(context)
     try:
         conn = database.get_connection(db_path)
         conn.isolation_level = None  # explicit transaction control
         conn.execute("BEGIN IMMEDIATE")
         try:
-            conn.execute(
-                "UPDATE audit_context SET user_id = ?, terminal_id = ?, "
-                "software_version_tag = ?, set_at = ? WHERE id = 1",
-                (context.user_id, socket.gethostname(), config.APP_VERSION, context.now),
-            )
+            stamp.begin(conn)
             yield conn
-            conn.execute(
-                "UPDATE audit_context SET user_id = NULL, terminal_id = NULL, "
-                "software_version_tag = NULL WHERE id = 1"
-            )
+            stamp.end(conn)
             conn.execute("COMMIT")
-        except BaseException:
+        except BaseException as error:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
+            if isinstance(error, DeferredDenialError):
+                deferred = error
             raise
     except sqlite3.Error as error:     # R35: rolled back above; the details go to the log only
         # Only this error: an earlier one it interrupted (a service sentence that may quote typed text) is not
@@ -66,6 +63,30 @@ def write_transaction(db_path, context):
     finally:
         if conn is not None:
             conn.close()
+        if deferred is not None:      # a refusal raised inside the transaction: logged now, in its own transaction
+            deferred.log_denial()
+
+
+class AuditStamp:
+    """Sets audit_context for one transaction so the audit triggers name who is writing (H4: only here). Used by
+    write_transaction and by the add-on migration runner (HA9)."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def begin(self, conn):
+        conn.execute(
+            "UPDATE audit_context SET user_id = ?, terminal_id = ?, "
+            "software_version_tag = ?, set_at = ? WHERE id = 1",
+            (self.context.user_id, socket.gethostname(), config.APP_VERSION, self.context.now),
+        )
+
+    def end(self, conn):
+        """Cleared before COMMIT, so a user never leaks into a later write."""
+        conn.execute(
+            "UPDATE audit_context SET user_id = NULL, terminal_id = NULL, "
+            "software_version_tag = NULL WHERE id = 1"
+        )
 
 
 def read_connection(db_path):

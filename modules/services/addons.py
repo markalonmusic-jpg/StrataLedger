@@ -23,7 +23,7 @@ import modules.database as database
 from modules.services import hooks, storage
 from modules.services.authz import authorize
 from modules.services.errors import AddonError, NotFoundError, PermissionDeniedError, ValidationError
-from modules.services.tx import read_connection, write_transaction
+from modules.services.tx import AuditStamp, read_connection, write_transaction
 
 MANAGE = "addon.manage"
 RECORD_TYPE = "company_addon"
@@ -140,7 +140,8 @@ def list_addons(context):
 def _migrate(context, info):
     """Apply the add-on's pending migrations; a refusal is logged and raised as ValidationError."""
     try:
-        return database.apply_addon_migrations(context.company_db_path, info["key"], info["migrations"])
+        return database.apply_addon_migrations(context.company_db_path, info["key"], info["migrations"],
+                                               audit=AuditStamp(context))
     except (database.AddonMigrationError, database.AddonKeyError) as error:
         _logger.error("add-on %s migrations refused: %s", info["key"], error)
         raise ValidationError(SETUP_REFUSED.format(name=info["name"])) from None

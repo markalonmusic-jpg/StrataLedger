@@ -9,8 +9,9 @@ in code (`tests/test_config_paths.py` fails on one).
 - `RESOURCE_DIR`: the folder the app runs from (`sys._MEIPASS` when frozen,
   else the folder of `config.py`). Read-only: migrations, fonts, templates, help.
 - `DATA_DIR`: where the app writes (databases, `Companies/`, `Backups/`,
-  `Logs/`, `Uploaded_Files/`). `STRATALEDGER_DATA_DIR` if set; else the repo
-  folder when running from source; else `%PROGRAMDATA%\StrataLedger` when frozen.
+  `Logs/`, `Uploaded_Files/`). `STRATALEDGER_DATA_DIR` if set; else
+  `%LOCALAPPDATA%\StrataLedger-dev` when running from source (AX3, never the
+  repo); else `%PROGRAMDATA%\StrataLedger` when frozen.
   `BASE_PROJECT_DIR` is kept as an alias of `DATA_DIR`.
 
 - `app_strata.pyw` - main entry point, QuickBooks-style
@@ -125,9 +126,11 @@ in code (`tests/test_config_paths.py` fails on one).
   tests/test_static_rules.py: `views_billing.py`, `views_payroll.py`, `views_registry.py`, `views_wizard.py`,
   `views_user_profile.py`, and the launcher in `app_strata.pyw`) still run their own SQL; Phase 3 rewrites
   them. Do not copy their patterns. The pattern to copy is `views_first_run.py` + `first_run_model.py`.
-  - `database.py` - connections (`PRAGMA foreign_keys=ON`), the baseline
-    runner and the pre-release hash guard; the add-on handler write guard (SQLite authorizer, HA2) and the
-    add-on migration runner (`apply_addon_migrations`, HA4, HA6).
+  - `database.py` - connections (foreign keys on, 5-second busy timeout; WAL files, AX1), the baseline
+    runner and the pre-release hash guard; `backup_database`, `prune_backups` (E7) and `restore_database` (AX2,
+    K5 checksum); the add-on handler write guard (SQLite authorizer, HA2) and the add-on migration runner
+    (`apply_addon_migrations`, HA4, HA6), which gives add-on tables audit triggers from
+    `migrations/addon_audit_triggers.sql` (HA9).
   - `views_dashboard.py` - Customers Command Center / Flight Deck.
   - `views_registry.py` - Customer Master List with live SQL search filtering.
   - `views_wizard.py` - Customer Intake & Edit form (Construction and B2B SaaS

@@ -35,7 +35,16 @@ def layout(tmp_path, backup_dir):
 
 
 def snapshot(root):
-    return {str(p.relative_to(root)): p.read_bytes() for p in Path(root).rglob("*") if p.is_file()}
+    """Every file's bytes. A read-only reader of a WAL file (AX1) leaves an empty -wal and the -shm index beside it;
+    neither holds data, so they are left out, and a -wal that does hold data still fails the comparison."""
+    files = {}
+    for p in Path(root).rglob("*"):
+        if not p.is_file():
+            continue
+        if p.name.endswith("-shm") or (p.name.endswith("-wal") and p.stat().st_size == 0):
+            continue
+        files[str(p.relative_to(root))] = p.read_bytes()
+    return files
 
 
 def run(script, layout, *extra):

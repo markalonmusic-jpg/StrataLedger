@@ -125,9 +125,9 @@ def test_a_stale_baseline_is_refused_before_any_addon_migration(company, tmp_pat
 
 
 def test_a_failed_backup_is_a_migration_error(company, tmp_path, monkeypatch):                      # D91
-    def no_backup(db_path):
+    def no_backup(db_path, *, reason):
         raise OSError("disk full")
-    monkeypatch.setattr(database, "_backup_database", no_backup)
+    monkeypatch.setattr(database, "backup_database", no_backup)
     folder = migrations(tmp_path, {"demo_001.sql": "CREATE TABLE demo_a (x);\n"})
     before = objects(company)
     with pytest.raises(database.AddonMigrationError, match="backup"):

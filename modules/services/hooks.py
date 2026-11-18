@@ -24,7 +24,8 @@ import traceback
 from types import MappingProxyType
 
 import modules.database as database
-from modules.services.errors import AddonError, NotFoundError, PermissionDeniedError
+from modules.services import authz
+from modules.services.errors import AddonError, DeferredDenialError, NotFoundError
 
 EVENTS = frozenset({"entry.posted", "entry.voided", "stage.entered", "stage.left"})
 
@@ -131,7 +132,7 @@ def fire(conn, context, event, payload):
     """Run the enabled add-ons' handlers for an event inside the caller's transaction (see the module docstring)."""
     _check_event(event)
     if context.origin == "Agent":
-        raise PermissionDeniedError(AGENT_REFUSED)
+        raise DeferredDenialError(AGENT_REFUSED, lambda: authz.record_denial(context, record_type="addon_hook"))
     enabled = [row["addon_key"] for row in conn.execute(
         "SELECT addon_key FROM company_addon WHERE enabled = 1 ORDER BY addon_key").fetchall()]
     for addon_key in enabled:
@@ -159,7 +160,7 @@ def _run(conn, addon_key, event, handler, data):
         with database.addon_write_guard(conn, addon_key) as guard:
             try:
                 handler(handle, data)
-            except Exception as error:      # anything the handler raised, a refused write included
+            except (Exception, SystemExit) as error:     # anything but KeyboardInterrupt, a refused write too
                 failure = error
             refused = guard.refused
     finally:

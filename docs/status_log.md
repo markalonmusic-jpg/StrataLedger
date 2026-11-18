@@ -796,3 +796,21 @@ Rotation and key-lost text as it stood before the trim:
     the migration guard refused `sqlite_autoindex_<table>_N`, so an add-on table could not have a UNIQUE or text
     PRIMARY KEY column (HA7). Suite 3262 passed, 1 skipped, 7 deselected. STOP B done; STOP C planned in
     docs/next_step.md (not built).
+
+- 2026-11-17: Phase 2.7 step B2 (owner prompt): workflow rules, connections and backups, add-on audit, decisions.
+  - Part A (785ca30): docs/workflow_standards.md is now .claude/rules/workflow-standards.md (always loaded); CLAUDE.md
+    section 8 points to it and puts Codex in its own worktree; AGENTS.md points to CLAUDE.md; .codex/agents checked
+    for secrets and committed.
+  - AX1: foreign keys and a 5-second busy timeout on every connection; master and company files are WAL (set at
+    build, switched and logged at open). AX2: `backup_database` on Connection.backup with a .sha256 (K5),
+    `prune_backups` (E7) for add-on migration backups (closes LOW-6), `restore_database` (checksum, soundness,
+    company closed, safety backup, stale -wal/-shm removed). AX3: source runs use %LOCALAPPDATA%\StrataLedger-dev.
+  - HA9: generated audit triggers on add-on tables (migrations/addon_audit_triggers.sql), baseline audit triggers on
+    addon_schema_version (the empty development databases need no rebuild: the source-run data folder is new).
+    Found while building: an add-on table could not be renamed or dropped (the guard refused the temp schema and
+    sqlite_sequence updates and the audit trigger drops); now allowed, with a check that no core AUTOINCREMENT
+    counter moved.
+  - SystemExit in a handler becomes AddonError; the Agent refusal in hooks.fire writes a denial row after the
+    rollback. Theme.create_scrollbar.
+  - Decisions: AX1-AX8, AG1-AG8, HA8-HA10, RI1 (replan inputs), FR1 amended (no packs, no cap, no schema change).
+  - Suite before the reviews: 3313 passed, 1 skipped, 7 deselected (2 WAL-sidecar test expectations then fixed).

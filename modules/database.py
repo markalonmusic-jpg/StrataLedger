@@ -1,8 +1,8 @@
 import contextlib
 import hashlib
+import logging
 import os
 import re
-import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +14,9 @@ MAX_DIMENSION_DEPTH = 10  # RP3 (2026-11-16; was 3)
 MIGRATIONS_DIR = _CONFIG_MIGRATIONS_DIR
 MIGRATIONS = [(1, "001_company.sql")]
 MASTER_MIGRATIONS = [(1, "001_master.sql")]
+BUSY_TIMEOUT_MS = 5000       # AX1: how long any connection waits for another writer's lock
+
+_logger = logging.getLogger("strataledger")
 
 
 class SchemaUpgradeBlockedError(Exception):
@@ -23,12 +26,17 @@ class SchemaUpgradeBlockedError(Exception):
         super().__init__(f"Schema upgrade blocked for {self.db_path}: {self.reason}")
 
 
-def get_connection(db_path):
-    """Open a SQLite connection with foreign keys and named-column rows enabled."""
-    conn = sqlite3.connect(os.fspath(db_path))
+def _configure(conn):
+    """AX1: every connection has foreign keys on (rule 4), the busy timeout and named-column rows."""
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
     return conn
+
+
+def get_connection(db_path):
+    """Open a SQLite connection with foreign keys, the busy timeout and named-column rows (AX1)."""
+    return _configure(sqlite3.connect(os.fspath(db_path)))
 
 
 def check_master_database(db_path):
@@ -48,9 +56,7 @@ def get_readonly_connection(db_path):
 
 def _readonly_connection(db_path):
     uri = f"{Path(db_path).resolve().as_uri()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _configure(sqlite3.connect(uri, uri=True))
 
 
 def _table_exists(conn, table_name):
@@ -137,14 +143,172 @@ def _record_baseline_hash(conn, migrations):
     )
 
 
-def _backup_database(db_path):
+# --- Backups and restore (AX2) ------------------------------------------------------------------------------------
+# One helper copies a database with sqlite3.Connection.backup: it reads every committed page, including pages still
+# in the WAL, and never copies the -wal or -shm files. Each backup is `<stem>_<YYYYmmdd_HHMMSS_ffffff>_<reason>.db`
+# in BACKUP_DIR, with its SHA-256 (K5, of the backup file itself) in `<backup>.sha256` beside it.
+
+_REASON_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+_STAMP_FORMAT = "%Y%m%d_%H%M%S_%f"
+_KEEP = (("day", 7), ("week", 4), ("month", 12))          # E7 retention
+
+
+class RestoreRefusedError(Exception):
+    """A restore was refused; `reason` says why and what to do next, and nothing was changed."""
+
+    def __init__(self, db_path, reason):
+        self.db_path = os.fspath(db_path)
+        self.reason = str(reason)
+        super().__init__(self.reason)
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _check_reason(reason):
+    if not isinstance(reason, str) or len(reason) > 40 or not _REASON_RE.fullmatch(reason):
+        raise ValueError("A backup reason is 1-40 lower-case letters, digits and single hyphens")
+
+
+def backup_database(db_path, *, reason):
+    """Copy a database into BACKUP_DIR through the backup API (AX2). Returns {'path', 'sha256'}."""
+    _check_reason(reason)
+    db_path = os.fspath(db_path)
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    basename = os.path.basename(db_path)
-    stem, suffix = os.path.splitext(basename)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    backup_path = os.path.join(BACKUP_DIR, f"{stem}_{timestamp}{suffix or '.db'}")
-    shutil.copy2(db_path, backup_path)
-    return backup_path
+    stem = os.path.splitext(os.path.basename(db_path))[0]
+    backup_path = os.path.join(BACKUP_DIR, f"{stem}_{datetime.now().strftime(_STAMP_FORMAT)}_{reason}.db")
+    _copy_database(db_path, backup_path)
+    digest = file_sha256(backup_path)
+    with open(backup_path + ".sha256", "w", encoding="ascii", newline="") as handle:
+        handle.write(digest + chr(10))
+    return {"path": backup_path, "sha256": digest}
+
+
+def _copy_database(source_path, target_path):
+    source = _readonly_connection(source_path)
+    try:
+        target = sqlite3.connect(target_path)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+
+
+def _backup_moments(db_path, reason):
+    """{file name: moment} of the backups of one database for one reason."""
+    stem = os.path.splitext(os.path.basename(os.fspath(db_path)))[0]
+    pattern = re.compile(re.escape(stem) + r"_(\d{8}_\d{6}_\d{6})_" + re.escape(reason) + r"\.db")
+    found = {}
+    for name in (os.listdir(BACKUP_DIR) if os.path.isdir(BACKUP_DIR) else []):
+        match = pattern.fullmatch(name)
+        if match:
+            found[name] = datetime.strptime(match.group(1), _STAMP_FORMAT)
+    return found
+
+
+def _period(moment, kind):
+    if kind == "day":
+        return moment.date()
+    if kind == "week":
+        return tuple(moment.isocalendar())[:2]
+    return (moment.year, moment.month)
+
+
+def prune_backups(db_path, *, reason):
+    """E7 retention for one database's backups of one reason: keep the newest backup of each of the 7 newest days,
+    the 4 newest ISO weeks and the 12 newest months that have one; delete the rest with their .sha256 files.
+    Backups of other reasons and any other file are never touched. Returns the names deleted."""
+    _check_reason(reason)
+    moments = _backup_moments(db_path, reason)
+    keep = set()
+    for kind, count in _KEEP:
+        newest = {}
+        for name, moment in sorted(moments.items(), key=lambda item: item[1]):
+            newest[_period(moment, kind)] = name
+        keep |= {newest[period] for period in sorted(newest)[-count:]}
+    deleted = sorted(set(moments) - keep)
+    for name in deleted:
+        for path in (os.path.join(BACKUP_DIR, name), os.path.join(BACKUP_DIR, name + ".sha256")):
+            if os.path.isfile(path):
+                os.remove(path)
+    return deleted
+
+
+STILL_OPEN = "The company is still open, so it was not restored. Close it everywhere and try again."
+
+
+def _check_closed(db_path):
+    """Refuse while any connection holds the file: Windows will not rename an open file. The file is renamed and
+    renamed back; elsewhere this check passes and the hosted version restores in PostgreSQL instead."""
+    probe = db_path + ".closed-check"
+    try:
+        os.rename(db_path, probe)
+    except PermissionError:
+        raise RestoreRefusedError(db_path, STILL_OPEN) from None
+    os.rename(probe, db_path)
+
+
+def restore_database(backup_path, db_path, *, expected_sha256):
+    """Put a backup back in place of a database that is closed (AX2, K5).
+
+    Refused, with nothing changed: a backup whose SHA-256 is not `expected_sha256`, one that is not a sound
+    database, or a target that is still open (Windows refuses to replace or delete an open file). Otherwise a
+    safety backup of the current file is made first, the backup is copied beside the target, leftover -wal and
+    -shm files are removed (so a stale WAL is never applied to the restored file), and the copy replaces the
+    target. Returns {'safety_backup': its path, or None when there was no file}. The permission check and the
+    Master's override of a checksum mismatch belong to the restore service (Phase 2.8)."""
+    backup_path, db_path = os.fspath(backup_path), os.fspath(db_path)
+    if file_sha256(backup_path) != expected_sha256:
+        raise RestoreRefusedError(db_path, "The backup's checksum does not match, so it was not restored. Choose "
+                                           "another backup.")
+    try:
+        check = _readonly_connection(backup_path)
+        try:
+            sound = check.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        finally:
+            check.close()
+    except sqlite3.DatabaseError:
+        sound = False
+    if not sound:
+        raise RestoreRefusedError(db_path, "That file is not a sound StrataLedger database, so it was not restored. "
+                                           "Choose another backup.")
+    staged = db_path + ".restoring"
+    safety = None
+    try:
+        if os.path.isfile(db_path):
+            _check_closed(db_path)
+            safety = backup_database(db_path, reason="pre-restore")["path"]
+        _copy_database(backup_path, staged)
+        for suffix in ("-wal", "-shm"):
+            if os.path.exists(db_path + suffix):
+                os.remove(db_path + suffix)
+        os.replace(staged, db_path)
+    except PermissionError:
+        raise RestoreRefusedError(db_path, STILL_OPEN) from None
+    finally:
+        for leftover in (staged, staged + "-wal", staged + "-shm"):
+            if os.path.exists(leftover):
+                os.remove(leftover)
+    return {"safety_backup": safety}
+
+
+def _ensure_wal(db_path):
+    """AX1: master and company files are in WAL mode. An older file is switched once (no data changes) and the
+    switch is logged."""
+    conn = sqlite3.connect(db_path)
+    try:
+        if conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+            conn.execute("PRAGMA journal_mode = WAL")
+            _logger.info("switched %s to WAL mode (AX1)", os.path.basename(db_path))
+    finally:
+        conn.close()
 
 
 def _ensure_schema_version_table(conn):
@@ -216,6 +380,8 @@ def _apply_migrations(db_path, migrations, migration_kind):
     conn.row_factory = sqlite3.Row
     version = None
     try:
+        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        conn.execute("PRAGMA journal_mode = WAL")       # AX1: set when the file is built (outside the transaction)
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -267,10 +433,11 @@ def _upgrade_database(db_path, migrations, migration_kind):
     existed_before = os.path.isfile(db_path)
     _check_baseline(db_path, migrations)
     if _current_version(db_path) >= migrations[-1][0]:
+        _ensure_wal(db_path)
         return
 
     if existed_before:
-        _backup_database(db_path)
+        backup_database(db_path, reason="pre-upgrade")
     try:
         _apply_migrations(db_path, migrations, migration_kind)
     except SchemaUpgradeBlockedError:
@@ -380,6 +547,11 @@ class _AddonGuard:
         self.refused = []
 
     def __call__(self, action, arg1, arg2, db_name, trigger):
+        if trigger is not None and self._audit_trigger(trigger):
+            # HA9: one of this add-on's generated audit triggers (made by the runner, never by the add-on's SQL)
+            # reads who is writing and appends to audit_log; it reads and writes nothing else outside the prefix.
+            if action == sqlite3.SQLITE_READ or (action == sqlite3.SQLITE_INSERT and arg1 == "audit_log"):
+                return sqlite3.SQLITE_OK
         if action == sqlite3.SQLITE_READ and _hidden_column(arg1, arg2):
             return sqlite3.SQLITE_IGNORE        # read as NULL: shown only through the services' permission checks
         if self._allowed(action, arg1, arg2, db_name):
@@ -390,11 +562,21 @@ class _AddonGuard:
     def _owns(self, name):
         return _owned(name, self.prefix, self.core)
 
+    def _audit_trigger(self, name):
+        found = _AUDIT_TRIGGER_RE.fullmatch(name)
+        return found is not None and self._owns(found.group(1))
+
     def _allowed(self, action, arg1, arg2, db_name):
         if action in _READ_ACTIONS:
             return True
         if action == sqlite3.SQLITE_FUNCTION:
             return (arg2 or "").lower() not in _BANNED_FUNCTIONS
+        if self.schema and action == sqlite3.SQLITE_UPDATE and (
+                (arg1 == "sqlite_temp_master" and db_name == "temp")
+                or (arg1 == "sqlite_sequence" and arg2 == "name" and db_name in (None, "main"))):
+            # ALTER TABLE ... RENAME rewrites the temp schema (which holds nothing) and renames the table's
+            # AUTOINCREMENT row; _check_schema_change then proves no core table's row changed.
+            return True
         if db_name not in (None, "main"):
             return False
         if action in _WRITE_ACTIONS:
@@ -410,7 +592,10 @@ class _AddonGuard:
             # A UNIQUE or non-integer PRIMARY KEY column makes SQLite build `sqlite_autoindex_<table>_N` itself.
             automatic = action in (sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_DROP_INDEX) and isinstance(arg1, str) \
                 and isinstance(arg2, str) and arg1.startswith(f"sqlite_autoindex_{arg2}_")
-            return (automatic or self._owns(arg1)) and self._owns(arg2)
+            # HA9: dropping a table drops its audit triggers too; the runner rebuilds any that are missing after
+            # every statement, so dropping one directly does not stop the audit either.
+            audit = action == sqlite3.SQLITE_DROP_TRIGGER and isinstance(arg1, str) and self._audit_trigger(arg1)
+            return (automatic or audit or self._owns(arg1)) and self._owns(arg2)
         if action == sqlite3.SQLITE_ALTER_TABLE:
             return self._owns(arg2)
         if action == sqlite3.SQLITE_REINDEX:   # CREATE INDEX asks for it on the new index
@@ -521,11 +706,14 @@ def _check_schema_change(conn, addon_key, before, after):
             continue
         kind, name = key
         tbl_name, sql = after.get(key) or before.get(key)
-        named = _owned(name, prefix, core) or (kind == "index" and name.startswith("sqlite_autoindex_" + prefix))
+        audit = kind == "trigger" and _AUDIT_TRIGGER_RE.fullmatch(name)
+        generated = bool(audit) and audit.group(1) == tbl_name          # made by _sync_audit_triggers (HA9)
+        named = _owned(name, prefix, core) or (kind == "index" and name.startswith("sqlite_autoindex_" + prefix)) \
+            or generated
         if not (named and _owned(tbl_name, prefix, core)):
             raise AddonMigrationError(addon_key, f"the {kind} {name} is outside the add-on's {prefix} tables; "
                                                  "nothing was changed.")
-        if kind == "trigger" and key in after:
+        if kind == "trigger" and key in after and not generated:
             for target in _TRIGGER_WRITE_RE.findall(_sql_without_text(sql)):
                 if not _owned(target, prefix, core):
                     raise AddonMigrationError(addon_key, f"the trigger {name} writes {target}, outside the "
@@ -537,6 +725,89 @@ def _check_schema_change(conn, addon_key, before, after):
                                                          f"the add-on's {prefix} tables; nothing was changed.")
 
 
+_AUDIT_TEMPLATE = "addon_audit_triggers.sql"
+_AUDIT_TRIGGER_RE = re.compile(r"audit_(\w+)_(insert|update|delete)")
+_QUOTE_FREE_RE = re.compile(r"[^\"'`\[\]\x00-\x1f]+")
+_WITHOUT_ROWID_RE = re.compile(r"\bWITHOUT\s+ROWID\b", re.IGNORECASE)
+_JSON_PAIRS = 60          # json_object / json_insert stay under SQLite's 127-argument limit
+
+
+def _audit_template():
+    """The three CREATE TRIGGER statements of migrations/addon_audit_triggers.sql, comments removed."""
+    with open(os.path.join(MIGRATIONS_DIR, _AUDIT_TEMPLATE), "r", encoding="utf-8") as handle:
+        text = handle.read()
+    statements, statement = [], ""
+    for line in text.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            bare = _COMMENT_RE.sub("", statement).strip()
+            if bare:
+                statements.append(bare)
+            statement = ""
+    return statements
+
+
+def _audit_json(row, columns):
+    """JSON of every column of NEW or OLD; past 60 columns json_insert adds the rest (it keeps NULL values).
+    Column names hold no quote characters (checked first), so quoting them here is safe."""
+    chunks = [columns[i:i + _JSON_PAIRS] for i in range(0, len(columns), _JSON_PAIRS)]
+    text = "json_object(" + ", ".join(f"'{c}', {row}.\"{c}\"" for c in chunks[0]) + ")"
+    for chunk in chunks[1:]:
+        text = "json_insert(" + text + ", " + ", ".join(f"'$.\"{c}\"', {row}.\"{c}\"" for c in chunk) + ")"
+    return text
+
+
+def _sync_audit_triggers(conn, addon_key, synced):
+    """HA9: give every `<key>_` table the three standard audit triggers, rebuilt when its definition changed.
+    `synced` maps each table to the definition its triggers were made for. Refuses a WITHOUT ROWID table (the
+    audit row names the rowid) and a table or column name that is not letters, digits and underscores."""
+    prefix, core = addon_key + "_", core_table_names()
+    template = None
+    tables = {r["name"]: r["sql"] for r in conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'")
+              if _owned(r["name"], prefix, core)}
+    for table, sql in sorted(tables.items()):
+        present = {r["name"] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?", (table,))}
+        complete = {f"audit_{table}_{action}" for action in ("insert", "update", "delete")} <= present
+        if synced.get(table) == sql and complete:
+            continue
+        if not _QUOTE_FREE_RE.fullmatch(table):
+            raise AddonMigrationError(addon_key, f"the table name {table!r} holds a quote or bracket; nothing was "
+                                                 "changed.")
+        if _WITHOUT_ROWID_RE.search(_sql_without_text(sql)):
+            raise AddonMigrationError(addon_key, f"the table {table} is WITHOUT ROWID; add-on tables keep a rowid so "
+                                                 "their changes can be audit-logged. Nothing was changed.")
+        columns = [r["name"] for r in conn.execute("SELECT name FROM pragma_table_info(?)", (table,))]
+        for column in columns:
+            if not _QUOTE_FREE_RE.fullmatch(column):
+                raise AddonMigrationError(addon_key, f"the table {table} has a column named {column!r}; add-on "
+                                                     "column names hold no quotes or brackets. Nothing was changed.")
+        for name in sorted(present):
+            if _AUDIT_TRIGGER_RE.fullmatch(name):
+                conn.execute(f'DROP TRIGGER "{name}"')
+        template = template or _audit_template()
+        new, old = _audit_json("NEW", columns), _audit_json("OLD", columns)
+        for statement in template:
+            conn.execute(statement.replace("ON __TABLE__", f'ON "{table}"').replace("__TABLE__", table)
+                         .replace("__NEW__", new).replace("__OLD__", old))
+        synced[table] = sql
+    for table in set(synced) - set(tables):
+        del synced[table]
+
+
+def _core_counters(conn, addon_key):
+    """sqlite_sequence rows of tables outside the add-on's prefix, which its migration must leave as they are. The
+    audit rows the migration writes (HA9) move audit_log's counter, so that one is read as "matches the newest
+    log_id": it may only move forward with real rows."""
+    prefix, core = addon_key + "_", core_table_names()
+    if not _table_exists(conn, "sqlite_sequence"):
+        return []
+    newest = conn.execute("SELECT MAX(log_id) FROM audit_log").fetchone()[0] if _table_exists(conn, "audit_log") \
+        else None
+    return sorted((r["name"], r["seq"]) for r in conn.execute("SELECT name, seq FROM sqlite_sequence")
+                  if not _owned(r["name"], prefix, core) and not (r["name"] == "audit_log" and r["seq"] == newest))
+
+
 def _applied_addon_versions(db_path, addon_key):
     conn = _readonly_connection(db_path)
     try:
@@ -546,25 +817,26 @@ def _applied_addon_versions(db_path, addon_key):
         conn.close()
 
 
-def apply_addon_migrations(db_path, addon_key, migrations_dir):
+def apply_addon_migrations(db_path, addon_key, migrations_dir, *, audit=None):
     """Apply an add-on's pending `<key>_NNN.sql` files to a company file in ONE transaction, after a backup.
 
     Applied files must be unchanged (their SHA-256 is stored in addon_schema_version, HA6). Every statement runs
-    under the add-on's schema authorizer, and the result is compared with sqlite_master before commit (HA4).
-    Returns the versions applied (empty when none is pending). Raises AddonKeyError or AddonMigrationError, and
-    then nothing was changed.
+    under the add-on's schema authorizer, and the result is compared with sqlite_master before commit (HA4). After
+    each statement every `<key>_` table gets the standard audit triggers (HA9), so the migration's own rows are
+    logged; `audit` (tx.AuditStamp) names the person in those rows. Returns the versions applied (empty when none
+    is pending). Raises AddonKeyError or AddonMigrationError, and then nothing was changed.
     """
     check_addon_key(addon_key)
     db_path = os.fspath(db_path)
     _check_baseline(db_path, MIGRATIONS)
     try:
-        return _apply_addon_migrations(db_path, addon_key, os.fspath(migrations_dir))
+        return _apply_addon_migrations(db_path, addon_key, os.fspath(migrations_dir), audit)
     except (UnicodeDecodeError, OSError) as error:      # a file that cannot be read, or the backup failed
         raise AddonMigrationError(addon_key, f"a migration file could not be read, or the backup failed; nothing "
                                              f"was changed. {error}") from error
 
 
-def _apply_addon_migrations(db_path, addon_key, migrations_dir):
+def _apply_addon_migrations(db_path, addon_key, migrations_dir, audit):
     files = _addon_files(addon_key, migrations_dir)
     done = _applied_addon_versions(db_path, addon_key)
     for version, digest in sorted(done.items()):
@@ -581,25 +853,37 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir):
     if done and pending[0] != max(done) + 1:
         raise AddonMigrationError(addon_key, "the applied migrations have a gap; nothing was changed.")
     plan = [(v, files[v], _addon_statements(addon_key, files[v]), addon_file_hash(files[v])) for v in pending]
-    _backup_database(db_path)
+    reason = f"addon-{addon_key}"
+    backup_database(db_path, reason=reason)
+    prune_backups(db_path, reason=reason)                  # E7 retention (secrets audit LOW-6)
     conn = get_connection(db_path)
     conn.isolation_level = None
     current = None
     try:
         conn.execute("BEGIN IMMEDIATE")
         try:
+            if audit is not None:
+                audit.begin(conn)
             before = _schema_objects(conn)
+            counters = _core_counters(conn, addon_key)
+            synced = {}
+            _sync_audit_triggers(conn, addon_key, synced)        # tables from before HA9 get their triggers too
             for version, path, statements, digest in plan:
                 current = os.path.basename(path)
-                _run_addon_statements(conn, addon_key, current, statements)
+                _run_addon_statements(conn, addon_key, current, statements, synced)
                 conn.execute("INSERT INTO addon_schema_version (addon_key, version, sha256) VALUES (?, ?, ?)",
                              (addon_key, version, digest))
             current = None
             _check_schema_change(conn, addon_key, before, _schema_objects(conn))
+            if _core_counters(conn, addon_key) != counters:
+                raise AddonMigrationError(addon_key, "the migration changed a core table's AUTOINCREMENT counter; "
+                                                     "nothing was changed.")
             problems = _verify_schema(conn)
             if problems:
                 raise AddonMigrationError(addon_key, "the result failed verification; nothing was changed. "
                                           + "; ".join(problems))
+            if audit is not None:
+                audit.end(conn)
             conn.execute("COMMIT")
         except Exception as error:
             if conn.in_transaction:
@@ -614,18 +898,18 @@ def _apply_addon_migrations(db_path, addon_key, migrations_dir):
     return pending
 
 
-def _run_addon_statements(conn, addon_key, filename, statements):
+def _run_addon_statements(conn, addon_key, filename, statements, synced):
     guard = _AddonGuard(addon_key, schema=True)
-    conn.set_authorizer(guard)
-    try:
-        for sql in statements:
-            try:
-                conn.execute(sql)
-            except sqlite3.DatabaseError:
-                if guard.refused:
-                    raise AddonMigrationError(addon_key, f"{filename} reaches outside the add-on's {addon_key}_ "
-                                                         f"tables ({sql.splitlines()[0]!r}); nothing was "
-                                                         "changed.") from None
-                raise
-    finally:
-        conn.set_authorizer(None)
+    for sql in statements:
+        conn.set_authorizer(guard)
+        try:
+            conn.execute(sql)
+        except sqlite3.DatabaseError:
+            if guard.refused:
+                raise AddonMigrationError(addon_key, f"{filename} reaches outside the add-on's {addon_key}_ "
+                                                     f"tables ({sql.splitlines()[0]!r}); nothing was "
+                                                     "changed.") from None
+            raise
+        finally:
+            conn.set_authorizer(None)
+        _sync_audit_triggers(conn, addon_key, synced)       # the runner's own step: no add-on authorizer

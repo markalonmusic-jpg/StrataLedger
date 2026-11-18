@@ -22,4 +22,5 @@ applies the gate. Where this file and CLAUDE.md section 8 differ, this file wins
 - A bug pattern seen twice gets a one-line prevention rule below (here rather than in CLAUDE.md, MR7).
 
 ## Prevention rules
-- (none yet)
+- A test that checks a read wrote nothing compares the database file itself; an empty `-wal` and the `-shm`
+  left by a read-only WAL reader (AX1) are not writes (seen twice in step B2).

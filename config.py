@@ -4,8 +4,8 @@ RESOURCE_DIR is the folder the app runs from: sys._MEIPASS when frozen, else the
 file. Code, migrations, fonts, templates and help are read from there and never written.
 
 DATA_DIR holds everything the app writes: the databases, Companies, Backups, Logs and uploads.
-It is STRATALEDGER_DATA_DIR if that is set; otherwise the repo folder when running from source;
-otherwise %PROGRAMDATA%\StrataLedger when frozen (created if missing).
+It is STRATALEDGER_DATA_DIR if that is set; otherwise %LOCALAPPDATA%\StrataLedger-dev when running from
+source (AX3: never the repo folder); otherwise %PROGRAMDATA%\StrataLedger when frozen. Both are created if missing.
 
 BASE_PROJECT_DIR is kept as an alias of DATA_DIR. Services read it at call time, so tests can
 patch it.
@@ -25,14 +25,17 @@ def resolve_resource_dir(frozen, meipass, executable):
 
 
 def resolve_data_dir(environ, frozen, resource_dir):
-    """Where the app keeps its data (see the module docstring). Creates the frozen default."""
+    """Where the app keeps its data (see the module docstring). Creates the default folder."""
     override = (environ.get(DATA_DIR_ENV) or "").strip()
     if override:
         return os.path.abspath(override)
-    if not frozen:
-        return os.path.abspath(resource_dir)
-    base = environ.get("PROGRAMDATA") or environ.get("USERPROFILE") or environ.get("HOME") or resource_dir
-    path = os.path.join(base, "StrataLedger")
+    if frozen:
+        base = environ.get("PROGRAMDATA") or environ.get("USERPROFILE") or environ.get("HOME") or resource_dir
+        path = os.path.join(base, "StrataLedger")
+    else:      # AX3: a source run keeps its data outside the repo, apart from the installed app's
+        base = (environ.get("LOCALAPPDATA") or environ.get("USERPROFILE") or environ.get("HOME")
+                or os.path.expanduser("~"))
+        path = os.path.join(base, "StrataLedger-dev")
     try:
         os.makedirs(path, exist_ok=True)
     except OSError:
@@ -199,6 +202,13 @@ class Theme:
     def glyph_font(self):
         import customtkinter as ctk
         return ctk.CTkFont(family=self.glyph_font_family, size=13, weight="normal")
+
+    def create_scrollbar(self, parent, orientation="vertical", command=None):
+        """The slim themed scrollbar (DataTable and any scrolling panel); every value is a scrollbar token."""
+        import customtkinter as ctk
+        return ctk.CTkScrollbar(parent, orientation=orientation, command=command, width=self.scrollbar_width,
+                                corner_radius=self.scrollbar_radius, fg_color=self.scrollbar_track,
+                                button_color=self.scrollbar_thumb, button_hover_color=self.scrollbar_thumb_hover)
 
 # Turn the class track into a unified configuration reference block instance
 Theme = Theme()

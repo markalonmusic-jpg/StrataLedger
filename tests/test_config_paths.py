@@ -25,13 +25,15 @@ def test_env_var_wins_when_running_from_source(tmp_path):
                                    resource_dir="/res") == str(data)
 
 
-def test_source_run_uses_the_repo_folder(tmp_path):
-    assert config.resolve_data_dir({}, frozen=False, resource_dir=str(tmp_path)) == str(tmp_path)
+def test_source_run_uses_a_folder_outside_the_repo(tmp_path):
+    """AX3 (2026-11-17; was the repo folder under P2a)."""
+    assert config.resolve_data_dir({"LOCALAPPDATA": str(tmp_path)}, frozen=False, resource_dir=str(ROOT)) == str(
+        tmp_path / "StrataLedger-dev")
 
 
 def test_empty_env_var_is_ignored(tmp_path):
-    assert config.resolve_data_dir({"STRATALEDGER_DATA_DIR": "  "}, frozen=False,
-                                   resource_dir=str(tmp_path)) == str(tmp_path)
+    assert config.resolve_data_dir({"STRATALEDGER_DATA_DIR": "  ", "LOCALAPPDATA": str(tmp_path)}, frozen=False,
+                                   resource_dir=str(ROOT)) == str(tmp_path / "StrataLedger-dev")
 
 
 def test_frozen_uses_programdata_and_creates_it(tmp_path):
@@ -105,9 +107,10 @@ def test_import_with_env_var(tmp_path):
     assert out[4] == str(ROOT / "fonts")
 
 
-def test_import_from_source_defaults_to_the_repo(tmp_path):
-    out = _run("import config\nprint(config.DATA_DIR)", {}, tmp_path)
-    assert out == [str(ROOT)]
+def test_import_from_source_defaults_outside_the_repo(tmp_path):
+    """AX3."""
+    out = _run("import config\nprint(config.DATA_DIR)", {"LOCALAPPDATA": str(tmp_path / "local")}, tmp_path)
+    assert out == [str(tmp_path / "local" / "StrataLedger-dev")]
 
 
 def test_import_frozen(tmp_path):

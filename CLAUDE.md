@@ -156,9 +156,9 @@ there at the end of each step, and update the paragraph below).
 
 **Where we are (2026-11-17):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
 rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
-STOPs (MR1): STOP A, multi-role permissions (MR2-MR9), and STOP B, hooks, add-ons and add-on migrations (HA1-HA7;
-add-ons live in RESOURCE_DIR/addons), are done. Next: STOP C (custom fields, FR1; planned in docs/next_step.md, built
-only after the owner approves), 2.8 (PW1-PW11), Phase 3. History: docs/status_log.md.
+STOPs (MR1): STOP A (multi-role, MR2-MR9), STOP B (hooks and add-ons, HA1-HA7) and step B2 (WAL, backups, data
+folder outside the repo, add-on audit; AX1-AX3, HA8-HA10) are done. Next: STOP C (custom fields, FR1 as amended;
+docs/next_step.md), 2.8 (PW1-PW11), 2.9 schema replan (AX4, RI1), Phase 3. History: docs/status_log.md.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
@@ -166,7 +166,7 @@ only after the owner approves), 2.8 (PW1-PW11), Phase 3. History: docs/status_lo
   `views_wizard.py` inserts a customer without a code, which the baseline rejects. Phase 3.
 - The launcher's "Open Existing Ledger File" button cannot work (it passes a path as a company id) and the
   launcher list shows archived companies. Phase 3.
-- `ui_components.DataTable` needs `Theme.create_scrollbar` (missing); modal badge styles hold hex colours. Phase 3.
+- Modal badge styles in `ui_components` hold hex colours. Phase 3.
 - `app_user.role` is legacy free text read only by the sidebar's `NAV_ITEMS`; Phase 3 replaces and removes it.
 - Tests share one hidden Tk window (`tk_app` in conftest.py); live-clipboard tests need `STRATALEDGER_LIVE_CLIPBOARD=1`.
 

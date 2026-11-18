@@ -178,9 +178,10 @@ def test_migrations_apply_in_order_with_a_backup_and_their_hashes(company, tmp_p
     rows = applied(company)
     assert [(k, v) for k, v, _ in rows] == [(KEY, 1), (KEY, 2)]
     assert rows[0][2] == database.addon_file_hash(folder / "demo_001.sql")
-    assert len(os.listdir(backup_dir)) == 1
+    backups = lambda: [n for n in os.listdir(backup_dir) if n.endswith(".db")]       # noqa: E731
+    assert len(backups()) == 1
     assert database.apply_addon_migrations(company, KEY, folder) == []                 # nothing pending
-    assert len(os.listdir(backup_dir)) == 1                                              # no second backup
+    assert len(backups()) == 1                                                           # no second backup
     (folder / "demo_003.sql").write_text("CREATE TABLE demo_more (x);\n", encoding="utf-8")
     assert database.apply_addon_migrations(company, KEY, folder) == [3]
 

@@ -184,6 +184,17 @@ def deny(context, permission=None, *, record_type=None, record_id=None, message=
     _deny(context, permission, _actor_type(context, is_master), record_type, record_id, message)
 
 
+def record_denial(context, permission=None, *, record_type=None, record_id=None):
+    """Log a denial without raising: for a refusal raised inside a write transaction, logged after its rollback
+    (errors.DeferredDenialError). On a lock or database error the event goes to the error log file instead."""
+    is_master = False if context.origin == "Agent" else current_access(context).is_master
+    _write_access_event(
+        context.company_db_path, user_id=context.user_id, actor_type=_actor_type(context, is_master),
+        event_type="Denied", permission_code=permission, record_type=record_type, record_id=record_id,
+        origin=context.origin, now=context.now,
+    )
+
+
 def current_access(context):
     """The user's Master flag and active role codes in the context's company, read fresh (MR2)."""
     master = database.get_readonly_connection(context.master_db_path)

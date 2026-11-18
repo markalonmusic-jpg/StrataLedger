@@ -338,7 +338,28 @@ MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - HA5 Permission addon.manage, Admin and Master only
 - HA6 addon_schema_version.sha256, checked like the baseline hash
 - HA7 Add-on keys, handler handle, broken add-ons at open (STOP B build details)
-- FR1 Field Registry is the custom fields service: planned at STOP B, built only after approval
+- FR1 Field Registry is the custom fields service: no packs, no cap, no schema change (amended at B2; built in STOP C)
+- AX1 Every connection: foreign_keys=ON, busy_timeout=5000; master and company files in WAL (set at build, checked)
+- AX2 One backup helper on Connection.backup (migrations, add-on migrations with E7 retention, pre-restore); K5 checksum
+- AX3 A source run keeps its data in %LOCALAPPDATA%\StrataLedger-dev, never the repo (amends P2a's source default)
+- AX4 audit_log gets before/after detail and a reason: queued for the schema replan (step 2.9), not built
+- AX5 AQ2 front end: one view manager owns navigation (not built in CustomTkinter)
+- AX6 AQ2 front end: a layer stack for dialogs and panels; Esc closes the top layer only
+- AX7 AQ2 front end: a post-commit event bus for screens, separate from hooks.py
+- AX8 AQ2 front end: one Unsaved Changes dialog (Save, Discard, Keep editing)
+- AG1 AI (v1.2): bring your own key, stored in DATA_DIR\Secrets, never proxied
+- AG2 AI: the provider choice includes a local model
+- AG3 AI: OFF per company until an Admin or the Master turns it on; a warning before the first send
+- AG4 AI extraction sends only the chosen file or pasted text
+- AG5 AI returns only that form's fields, in a fixed typed format, with no tools
+- AG6 AI matching is local; results are an Agent draft a person approves, with the source attached
+- AG7 CFO analysis sends locally computed figures, under the warning
+- AG8 Every AI call is logged, never its content or keys; bank feeds held; prevailing wage and IRA tracking dropped
+- HA8 Add-ons ship only inside our installer; no third-party add-ons in v1
+- HA9 Add-on tables are always audit-logged (generated triggers; addon_schema_version too)
+- HA10 No foreign keys from add-on tables to core tables in v1; ids are checked through services
+- RI1 Replan inputs (decided, not built): estimate approval OFF; duplicate bill numbers; one Reverse menu; posted
+  document edits; team features at next login; company SMTP; the pay app document's own layout
 
 ---
 
@@ -655,6 +676,7 @@ here (L5-L8, U1-U6) are still open.
     Uploaded_Files): the STRATALEDGER_DATA_DIR environment variable if
     set; otherwise the repository folder when running from source;
     otherwise %PROGRAMDATA%\StrataLedger for the installed app.
+    (Amended by AX3, 2026-11-17: a source run uses %LOCALAPPDATA%\StrataLedger-dev.)
     ProgramData is shared by every Windows account on the computer, which
     P1 needs; the installer gives it the right permissions.
   - Tests always set their own temporary data folder.
@@ -1584,6 +1606,74 @@ The owner's answers to the Phase 2.7 plan.
   Mutation check fix: SQLite's own `sqlite_autoindex_<table>_N` (a UNIQUE or non-integer PRIMARY KEY column) is
   allowed on an add-on's own table in a migration; before, the guard refused it.
 - FR1 The "Field Registry" is the custom fields service: define, update and deactivate fields and set typed values,
-  following the CRM decisions (typed value columns with money as INTEGER cents, field packs as seeded data with
-  stable keys, the 15-field cap), with the two custom-field items deferred from STOP 1. Planned at STOP B; not built
-  before the owner approves.
+  following the CRM decisions (typed value columns with money as INTEGER cents), with the two custom-field items
+  deferred from STOP 1 (a field's data_type does not change while values of the old type exist; a Contact field
+  that looks like a bank number is refused, pointing to bank_payee_id). Planned at STOP B.
+  Amended by the owner, 2026-11-17 (B2): CODE_CHANGES_NEEDED.md section 27 replaces the field packs and the
+  15-field cap of crm_design_log section 5 and CODE_CHANGES 12.4. No packs, no `pack` or `is_builtin` columns, no
+  seeded fields, no cap; section 27's warnings (more than 2 fields on board cards, more than 20 active per job type)
+  wait for the CRM step. No schema change in STOP C: removing a field makes it inactive (`is_active = 0`) and keeps
+  its values, and the audit log is the history. Field names are unique, case-insensitive, per record type (a service
+  check). `help_text`, the board card, shown-from-stage and job-type visibility go to the schema replan (step 2.9).
+  Permission: a new `fields.manage`, held by the Admin and Master templates, not in AGENT_ALLOWED; the Agent reads
+  values where it may read the record and never defines fields. The baseline names stay (`custom_field_def`,
+  `choices_json`). STOP C is approved to build after step B2 passes the review gate.
+
+## Phase 2.7 step B2 (owner, 2026-11-17): connections, backups, add-on audit, AI and front-end rules
+
+- AX1 Every connection opened by `modules/database.py` sets `foreign_keys=ON` and `busy_timeout=5000`
+  (`database.BUSY_TIMEOUT_MS`); the baseline runner turns foreign keys off only inside its own build. Master and
+  company files use `journal_mode=WAL`: set when the runner builds them, and checked when `ensure_*_database` opens
+  them; an older file is switched (no data change) and the switch is logged. A read-only open never switches it,
+  and a read-only reader may leave an empty `-wal` and the `-shm` index beside the file. PRAGMAs stay in
+  database.py (H5).
+- AX2 One backup helper, `database.backup_database(path, reason=...)`, on `sqlite3.Connection.backup`: it copies
+  every committed page, including those still in the WAL, and never copies `-wal` or `-shm`. A backup is
+  `Backups/<stem>_<YYYYmmdd_HHMMSS_ffffff>_<reason>.db` with its SHA-256 (K5, of the backup file) in `<backup>.sha256`.
+  Used by the baseline runner (`pre-upgrade`), the add-on migration runner (`addon-<key>`, then E7 retention by
+  `prune_backups`: the newest backup of each of the 7 newest days, 4 newest ISO weeks and 12 newest months that have
+  one; other reasons are never pruned; closes secrets audit LOW-6) and `restore_database` (`pre-restore`). A restore
+  checks the checksum and that the file is a sound database, refuses while the company is open (Windows will not
+  rename an open file), makes the safety backup, removes leftover `-wal` and `-shm`, then replaces the file. The
+  restore service (permission, K5's Master override with a typed confirmation and reason, the Audit-ready flag) is
+  Phase 2.8.
+- AX3 P2a stays, with one change: running from source without `STRATALEDGER_DATA_DIR` uses
+  `%LOCALAPPDATA%\StrataLedger-dev` (else the home folder), never the repo folder. The files in the repo root are
+  not moved or deleted (rule 9); set `STRATALEDGER_DATA_DIR` to the repo folder to keep using them.
+- AX4 `audit_log` gets before/after detail and a reason field: queued for the schema replan (step 2.9), not built.
+- AX5-AX8 Rules for the AQ2 HTML front end, not built in CustomTkinter (where only `Theme.create_scrollbar` was
+  added): AX5 one view manager owns navigation and the back stack; AX6 dialogs and panels sit on one layer stack,
+  and Esc closes only the top layer; AX7 screens refresh from a post-commit event bus, separate from hooks.py (an
+  add-on hook runs inside the transaction; a screen event only after commit); AX8 one Unsaved Changes dialog (Save,
+  Discard, Keep editing) wherever a draft would be lost.
+- AG1-AG8 AI (v1.2, docs only, nothing built): AG1 bring your own key, stored under `DATA_DIR\Secrets`, never
+  proxied through us; AG2 the provider choice includes a local model; AG3 AI is OFF per company until an Admin or the
+  Master turns it on, with a warning before the first send; AG4 extraction sends only the chosen file or pasted text;
+  AG5 the model returns only that form's fields, in a fixed typed format, with no tools; AG6 matching is local, and
+  results are saved as an Agent draft a person approves, with the source attached; AG7 CFO analysis sends locally
+  computed figures, under the AG3 warning; AG8 every call is logged (who, when, provider, which form), never its
+  content or keys. Bank feeds are held; prevailing wage and IRA tracking are dropped.
+- HA8 Add-ons ship only inside our installer (RESOURCE_DIR/addons, HA3); no third-party add-ons in v1.
+- HA9 Add-on tables are always audit-logged. After every statement of an add-on migration the runner gives each
+  `<key>_` table the standard insert, update and delete triggers (`audit_<table>_<action>`, every column as JSON),
+  from `migrations/addon_audit_triggers.sql`, rebuilt when the table changes or a trigger is missing; so a
+  migration's own rows are logged, and `addons.enable` names the person (`tx.AuditStamp`). An add-on's SQL cannot
+  create an `audit_*` trigger; a table dropped with its triggers, or a dropped trigger, is rebuilt or gone with its
+  table. While a handler runs, only these generated triggers may read `audit_context` and append to `audit_log`.
+  Add-on tables keep a rowid (no WITHOUT ROWID) and no quote or bracket in a table or column name. A rename may
+  update `sqlite_sequence`'s name column; the runner proves no core table's AUTOINCREMENT counter changed.
+  `addon_schema_version` has audit triggers in the baseline.
+- HA10 No foreign keys from add-on tables to core tables in v1 (the STOP B review rule stands); an add-on stores a
+  core id without a foreign key and checks it through services. Revisit with the Philippines add-on.
+- RI1 Replan inputs, decided and not built (for the replan after STOP C):
+  - Estimate approval is OFF by default (section 0).
+  - A duplicate bill number (same vendor) warns; a control can block it and ask for a reason.
+  - One Reverse menu for journal entries: Void and Correct (R40-R48 unchanged).
+  - Editing a posted invoice or bill is confirmed, with the rule 8 guardrails.
+  - Desktop team features (mentions, routing, notifications) reach people at their next login.
+  - Email goes through the company's own SMTP, set up in Connections.
+  - The pay app document has its own layout, "Application and Certificate for Payment", with no AIA form names.
+- Small STOP B gaps closed in B2: a handler raising `SystemExit` fails like any error (AddonError, the usual
+  sentence; `KeyboardInterrupt` still propagates, and the transaction rolls back either way); `hooks.fire` refused
+  for an Agent writes a denial row after the caller's transaction rolls back (`errors.DeferredDenialError`,
+  `authz.record_denial`).
