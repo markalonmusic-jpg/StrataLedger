@@ -168,3 +168,28 @@ def test_a_data_folder_inside_the_addons_folder_is_refused(setup, monkeypatch, c
 def test_the_same_root_is_allowed_when_running_from_source(setup, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", config.RESOURCE_DIR)
     assert "demo" in addons.discover()
+
+
+def test_the_audit_triggers_never_unmask_a_hidden_column(company_with_secrets, tmp_path):
+    """Secrets audit L5: a hidden column copied into an audited add-on table is NULL in the table and in audit_log,
+    from a migration and from a handler."""
+    import json
+    folder = migrations(tmp_path, {"demo_001.sql": (
+        "CREATE TABLE demo_c (a, b);\n"
+        "INSERT INTO demo_c (a, b) SELECT account_number, routing_number FROM bank_account;\n")})
+    database.apply_addon_migrations(company_with_secrets, "demo", folder)
+    conn = database.get_connection(company_with_secrets)
+    try:
+        conn.isolation_level = None
+        conn.execute("BEGIN IMMEDIATE")
+        with database.addon_write_guard(conn, "demo"):
+            conn.execute("INSERT INTO demo_c (a, b) SELECT tax_id, exemption_cert_no FROM contact")
+        conn.execute("COMMIT")
+        rows = [json.loads(r[0]) for r in conn.execute(
+            "SELECT new_value FROM audit_log WHERE table_name = 'demo_c' ORDER BY log_id")]
+        values = [tuple(r) for r in conn.execute("SELECT a, b FROM demo_c")]
+    finally:
+        conn.close()
+    assert rows == [{"a": None, "b": None}, {"a": None, "b": None}]
+    assert values == [(None, None), (None, None)]
+

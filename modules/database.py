@@ -232,7 +232,8 @@ def _period(moment, kind):
 
 def prune_backups(db_path, *, reason):
     """E7 retention for one database's backups of one reason: keep the newest backup of each of the 7 newest days,
-    the 4 newest ISO weeks and the 12 newest months that have one; delete the rest with their .sha256 files.
+    the 4 newest ISO weeks and the 12 newest months that have one; delete the rest with their .sha256 file and
+    any -wal, -shm or -journal beside them.
     Backups of other reasons and any other file are never touched. Returns the names deleted."""
     _check_reason(reason)
     moments = _backup_moments(db_path, reason)
@@ -244,7 +245,8 @@ def prune_backups(db_path, *, reason):
         keep |= {newest[period] for period in sorted(newest)[-count:]}
     deleted = sorted(set(moments) - keep)
     for name in deleted:
-        for path in (os.path.join(BACKUP_DIR, name), os.path.join(BACKUP_DIR, name + ".sha256")):
+        for path in [os.path.join(BACKUP_DIR, name + suffix)
+                     for suffix in ("", ".sha256", "-wal", "-shm", "-journal")]:
             if os.path.isfile(path):
                 os.remove(path)
     return deleted
@@ -310,11 +312,13 @@ def restore_database(backup_path, db_path, *, expected_sha256):
                 os.replace(db_path + suffix, db_path + suffix + ".restore-aside")
                 aside.append(suffix)
         os.replace(staged, db_path)
-    except PermissionError:
-        for suffix in aside:
+    except BaseException as error:
+        for suffix in aside:                 # any failure: the live file keeps its committed WAL (secrets audit L4)
             os.replace(db_path + suffix + ".restore-aside", db_path + suffix)
         aside = []
-        raise RestoreRefusedError(db_path, STILL_OPEN) from None
+        if isinstance(error, PermissionError):
+            raise RestoreRefusedError(db_path, STILL_OPEN) from None
+        raise
     finally:
         for leftover in [staged, staged + "-wal", staged + "-shm"] + [db_path + x + ".restore-aside" for x in aside]:
             if os.path.exists(leftover):

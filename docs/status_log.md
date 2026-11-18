@@ -822,3 +822,9 @@ Rotation and key-lost text as it stood before the trim:
     only moves forward; a failure while logging the deferred denial never hides the refusal; the helper
     connections are configured; the AX3 note on the repo-root files. Left for the owner: the committed
     .codex/agents files. Suite 3327 passed, 1 skipped, 7 deselected.
+  - secrets-auditor on 3340b32: nothing Critical or High. Fixed: pruning removes a backup's -wal, -shm and
+    -journal (L1); a failed company creation removes WAL sidecars (L2); restore leftovers, .sha256, Exports/ and
+    Secrets/ are git-ignored (L3); any failed replace puts the live WAL back (L4); a test proves the audit triggers
+    never unmask a hidden column (L5). Left for the owner: M1 (master backups keep old key blobs, never pruned)
+    and M2 (no rule against secrets in add-on tables, which HA9 audit-logs whole).
+

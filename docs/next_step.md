@@ -116,6 +116,17 @@ Rulings that replace the STOP B plan's open questions 1-5:
 
 ## Open points carried forward
 
+- **For the owner (B2 secrets audit):**
+  - M1: master backups (`pre-upgrade`, `pre-restore`) are never pruned. One taken before a recovery-code reissue
+    still holds the old `recovery_blob`, so the old code plus that backup could unwrap the installation key. Old
+    password hashes also stay in it. This is rare until migration 002. Suggested for Phase 2.8: warn about, or
+    delete, older master backups when the recovery code is reissued, and state in AX2 that a master backup is as
+    sensitive as the master.
+  - M2: HA9 copies every add-on column into the append-only audit log. Should HA9 add "add-on tables never hold
+    secrets" (secrets go through `KeyProvider` / `DATA_DIR\Secrets`), enforced by refusing secret-looking column
+    names, or by logging only "changed" for them as the master does for passwords?
+  - step-reviewer finding 7: `.codex/agents/*.toml` (5 files, no secrets) were committed with part A. Keep them, or
+    remove them?
 - The linked-migration-file test (secrets audit LOW-4) is skipped on this Windows account. Run it once with the
   right to create symbolic links (Developer Mode).
 - AX3: the old development files stay in the repo root (`system_master.db`, `Backups/`). The new source-run data

@@ -418,3 +418,40 @@ def test_the_helper_connections_have_the_busy_timeout(fresh_company, backup_dir,
     assert count >= 2                                  # the source and the target
     database._ensure_wal(os.fspath(fresh_company))
     assert len(seen) == count + 1
+
+
+# --- secrets audit on 3340b32 ----------------------------------------------------------------------------------
+
+def test_pruning_removes_a_backups_sidecar_files(backup_dir):
+    """L1: a -wal, -shm or -journal left beside a pruned backup could hold its pages."""
+    start = datetime(2026, 11, 17, 12, 0, 0)
+    names = _fake_backups(backup_dir, "company", "addon-demo", [start - timedelta(days=d) for d in range(0, 40)])
+    for name in names:
+        for suffix in ("-wal", "-shm", "-journal"):
+            (backup_dir / (name + suffix)).write_bytes(b"pages")
+    deleted = database.prune_backups(backup_dir / "company.db", reason="addon-demo")
+    assert deleted
+    for name in deleted:
+        assert not [n for n in os.listdir(backup_dir) if n.startswith(name)]
+
+
+def test_any_failed_replace_puts_the_live_wal_back(fresh_company, backup_dir, monkeypatch):
+    """L4: not only a PermissionError; the live file keeps its committed WAL frames."""
+    result = database.backup_database(fresh_company, reason="manual")
+    _crashed_with_wal(fresh_company)
+    real_replace = os.replace
+
+    def refuse(src, dst):
+        if str(dst) == str(fresh_company):
+            raise OSError("disk full")
+        return real_replace(src, dst)
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(OSError):
+        database.restore_database(result["path"], fresh_company, expected_sha256=result["sha256"])
+    monkeypatch.setattr(os, "replace", real_replace)
+    conn = database.get_readonly_connection(fresh_company)
+    try:
+        assert conn.execute("SELECT x FROM late_row").fetchall()[0][0] == 99
+    finally:
+        conn.close()
+

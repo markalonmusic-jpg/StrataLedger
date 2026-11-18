@@ -275,7 +275,7 @@ def create_company(session, *, legal_name, first_fiscal_year, template=_DEFAULT,
 
 
 def _remove_quietly(path):
-    for candidate in (path, path + "-journal"):
+    for candidate in (path, path + "-journal", path + "-wal", path + "-shm"):        # WAL files too (AX1)
         try:
             os.remove(candidate)
         except OSError:

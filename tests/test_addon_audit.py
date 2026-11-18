@@ -298,3 +298,14 @@ def test_a_failure_while_logging_the_denial_does_not_hide_the_refusal(setup, mon
         with write_transaction(agent.company_db_path, ctx_for(setup)) as conn:
             hooks.fire(conn, agent, "entry.posted", {"entry_id": 1})
     assert "denial" in caplog.text
+
+
+def test_a_failed_company_creation_leaves_no_wal_files(tmp_path):
+    """Secrets audit L2: the clean-up after a failed create removes the WAL sidecars too."""
+    from modules.services import companies
+    path = tmp_path / "x.tmp-1.db"
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        (tmp_path / (path.name + suffix)).write_bytes(b"pages")
+    companies._remove_quietly(str(path))
+    assert list(tmp_path.iterdir()) == []
+
