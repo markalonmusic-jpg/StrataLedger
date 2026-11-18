@@ -895,3 +895,9 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-18: mutation-tester on 997305c..6afd131: 145 mutants, 102 killed; 33 real gaps now killed by
   tests/test_mutation_b2_review_extra.py (44 tests, each mutant re-applied and seen to fail); 10 equivalent, with
   reasons in docs/next_step.md.
+- 2026-11-18: KS12 epoch-anchor tie (Codex keys/chain finding), tests first. Two key losses with no posting between
+  them left two 'Key lost' rows at the same entry, and `_epoch_anchor` kept the file's row on a tie, so a copy
+  restored from between the losses verified OK. On a tie the mirror now wins when it is another event the file
+  does not hold (key_id or MAC); the file's row stays when it is the same event or the file also holds the
+  mirror's event (the later loss's mirror write failed). tests/test_key_lost_epoch_tie.py (11 tests). Suite 3672
+  passed, 1 skipped.

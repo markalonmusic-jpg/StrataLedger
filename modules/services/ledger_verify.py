@@ -21,7 +21,7 @@
   'Period close' / 'Year close' checkpoint once the close has committed (`record_close_checkpoint`).
 * Messages are plain language and name the first broken entry; they never contain a hash or a key.
 * **After a key-lost epoch** (Step 1d, KS12, KS14): the latest 'Key lost' checkpoint E (file, or the master mirror
-  when it is further on) anchors the check. E's MAC must check under its key_id, its ref_id must be a key retired
+  when it is further on, or on a tie when it is another event the file does not hold) anchors the check. E's MAC must check under its key_id, its ref_id must be a key retired
   as 'Key lost', and the stored hash of its entry N must be E's chain_hash; a failure is Broken (Marker, Hash or
   Truncated), never Unverified. Entries 1..N are not hashed (they were sealed with the lost key, so a change there
   is not found: a documented limit); checking starts at N+1 from E's hash. Checkpoints at or before N (made before
@@ -96,13 +96,29 @@ def verify_connection(conn, company_code, key_for, *, mode="full", anchors=(), e
 
 def _epoch_anchor(conn, epoch_mirror):
     """The latest 'Key lost' checkpoint to anchor on: the file's, or the mirror's when it is further on (the file
-    is then an older copy). Returns (source, row) or None."""
+    is then an older copy). On a tie (two key losses with no posting between them) the mirror wins when it is a
+    different event (another key_id or MAC) that the file does not hold, so a file restored from between the two
+    losses is caught as an older copy. The file's row is kept when it is the same event, or when the file also
+    holds the mirror's event (the later loss's mirror write failed, so the file is further on). Codex keys/chain
+    finding, owner 2026-11-18. Returns (source, row) or None."""
     row = conn.execute("SELECT * FROM ledger_checkpoint WHERE kind = 'Key lost' "
                        "ORDER BY checkpoint_id DESC LIMIT 1").fetchone()
     held = ("company", dict(row)) if row else None
-    if epoch_mirror is not None and (held is None or
-                                     epoch_mirror["through_entry_number"] > held[1]["through_entry_number"]):
-        held = ("master", dict(epoch_mirror))
+    if epoch_mirror is None:
+        return held
+    if held is None:
+        return "master", dict(epoch_mirror)
+    file_row, ahead = held[1], epoch_mirror["through_entry_number"] - held[1]["through_entry_number"]
+    other_event = (epoch_mirror["key_id"] != file_row["key_id"]
+                   or (epoch_mirror["mac"] or "") != (file_row["mac"] or ""))
+    if ahead > 0:
+        return "master", dict(epoch_mirror)
+    if ahead == 0 and other_event:
+        file_holds_it = conn.execute(
+            "SELECT 1 FROM ledger_checkpoint WHERE kind = 'Key lost' AND key_id = ? AND mac = ?",
+            (epoch_mirror["key_id"], epoch_mirror["mac"] or "")).fetchone()
+        if file_holds_it is None:
+            return "master", dict(epoch_mirror)
     return held
 
 

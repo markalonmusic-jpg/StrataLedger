@@ -1128,7 +1128,10 @@ The step 1d plan was approved with these answers (design: docs/audit_readiness_d
   that retires the lost key and activates the new one: through the last entry sealed before it, with that entry's
   stored hash as is, signed by the new key, naming the lost key. The master mirror is written afterwards; if it
   fails the epoch stands and the result says so. The verifier reports the range up to it as Unverified (key lost),
-  never Broken, and verifies from the next entry. Only the latest epoch counts.
+  never Broken, and verifies from the next entry. Only the latest epoch counts. The latest is the file's row, or
+  the mirror's when it is further on, or, at the same entry (two losses with no posting between), when it is
+  another event the file does not hold: a file restored from between the two losses is then an older copy
+  (Broken, Marker). Codex keys/chain finding, owner 2026-11-18; tests/test_key_lost_epoch_tie.py.
 - KS13 The Master can create a new installation key when the old one is lost (password and a typed confirmation, a
   recorded event); every company then enters a key-lost epoch. `installation_key` is append-only history with one
   active row; `company_key` names the installation key that wrapped it.
