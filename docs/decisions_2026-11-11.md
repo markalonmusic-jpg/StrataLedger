@@ -1130,8 +1130,12 @@ The step 1d plan was approved with these answers (design: docs/audit_readiness_d
   fails the epoch stands and the result says so. The verifier reports the range up to it as Unverified (key lost),
   never Broken, and verifies from the next entry. Only the latest epoch counts. The latest is the file's row, or
   the mirror's when it is further on, or, at the same entry (two losses with no posting between), when it is
-  another event the file does not hold: a file restored from between the two losses is then an older copy
-  (Broken, Marker). Codex keys/chain finding, owner 2026-11-18; tests/test_key_lost_epoch_tie.py.
+  another event (key_id or MAC): a file restored from between the two losses is then an older copy (Broken,
+  Marker). Codex keys/chain finding, owner 2026-11-18. PROPOSED, awaiting the owner: on such a tie the file's
+  row is kept when it retired the mirror's key (its signed ref_id is the mirror's key_id), because the later
+  loss's mirror write failed and the file is further on. Only the file's latest row decides, so a row copied
+  into the file from the master cannot sway it. Cost: after two failed mirror writes in a row at one entry the
+  result is Unavailable, not OK (fail-safe). Tests: tests/test_key_lost_epoch_tie.py.
 - KS13 The Master can create a new installation key when the old one is lost (password and a typed confirmation, a
   recorded event); every company then enters a key-lost epoch. `installation_key` is append-only history with one
   active row; `company_key` names the installation key that wrapped it.

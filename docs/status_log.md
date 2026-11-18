@@ -901,3 +901,7 @@ Rotation and key-lost text as it stood before the trim:
   does not hold (key_id or MAC); the file's row stays when it is the same event or the file also holds the
   mirror's event (the later loss's mirror write failed). tests/test_key_lost_epoch_tie.py (11 tests). Suite 3672
   passed, 1 skipped.
+- 2026-11-18: step-reviewer on 7a704a2 (approve with changes). Fixed, test first: the "file also holds the mirror's
+  event" lookup could be met by a decoy row copied from the master into the file (proved by a probe), so the
+  tie now reads only the file's latest row: it stays only when its signed ref_id is the mirror's key_id. KS12
+  records this carve-out as PROPOSED for the owner, with its fail-safe cost. Suite 3675 passed, 1 skipped.
