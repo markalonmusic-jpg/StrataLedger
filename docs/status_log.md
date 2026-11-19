@@ -974,3 +974,6 @@ Rotation and key-lost text as it stood before the trim:
   text on the clipboard: 4173 passed, 2 skipped each.
 - 2026-11-19: report builder service contracts drafted (docs/contracts/reports.md; Q1-Q18, 2.9 list). 3cf3428 holds the
   area 18 seed-table and roadmap edits from the parallel Sonnet session (owner 2026-11-19); its message is wrong; no rewrite.
+- 2026-11-19: owner approved the report builder service contracts (docs/contracts/reports.md, Owner-approved; draft 3d237d3,
+  fix mode 1 221b996 Q1-Q18, fix mode 2 e869ecf Q19-Q26; hook runs 4173 passed, 2 skipped). Section 12 feeds the 2.9 replan
+  (area 17, KPI freeze in area 13, money.view seeds in area 18). Stopped at the owner's request; no next step started.
