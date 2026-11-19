@@ -231,8 +231,8 @@ Exempt as derived (owner's rule):
 | `voucher_sequence` (company) | A counter. Each number is on an audited `invoice` row (bill) |
 | `login_throttle` (master) | A cache of failed-sign-in counts, derived from the attempts `auth_event` records |
 
-Not business tables, and outside the owner's two categories, so they are flagged in C8 rather than exempted
-silently:
+Not business tables, and outside the owner's two categories, so they form a third exempt category
+(Q24 A; C8 closed), listed by name in the same schema test:
 - The audit trail itself: `audit_log`, `audit_context` (both files), `access_event` (company), `auth_event`
   (master).
 - Secret-holding tables, by KS9: `installation_key`, `company_key`, `master_recovery`, `throttle_secret` (master).
@@ -466,10 +466,11 @@ Accountant · Standard level stay different.
 
 | Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
 |----------|-------------|-------|------------|-----------------------|-----------------|
-| Controller | Accountant (spec 2: also the title of an Admin) | All | built Controller | `company.backup`, `period.close`, `je.create`, `je.post`, `je.reverse`, `account.manage`, `customer.manage`, `invoice.create`, `invoice.send`, `invoice.void`, `payment.receive`, `credit_memo.create`, `vendor.manage`, `bill.create`, `bill.void`, `payment.make`, `po.create`, `receiving.stock`, `payapp.create`, `asset.create`, `asset.dispose`, `depreciation.run`, `loan.manage`, `import.run`, `report.export` | `period.reopen`, `year.reopen`, `je.approve`, `bill.approve`, `bill.override_match`, `payment.approve`, `payment.release_hold`, `po.approve`, `payapp.approve`, `asset.approve`, `import.approve`, `payroll.view`, `view.tax_ids`, `view.bank_details`, `audit.view`, `ledger.verify` |
+| Controller | Accountant (spec 2: also the title of an Admin) | All | built Controller | `company.backup`, `period.close`, `je.create`, `je.post`, `je.reverse`, `account.manage`, `customer.manage`, `invoice.create`, `invoice.send`, `invoice.void`, `payment.receive`, `credit_memo.create`, `vendor.manage`, `bill.create`, `bill.void`, `payment.make`, `po.create`, `receiving.stock`, `payapp.create`, `retainage.release`, `asset.create`, `asset.dispose`, `depreciation.run`, `loan.manage`, `import.run`, `report.export` | `period.reopen`, `year.reopen`, `je.approve`, `bill.approve`, `bill.override_match`, `payment.approve`, `payment.release_hold`, `po.approve`, `payapp.approve`, `asset.approve`, `import.approve`, `payroll.view`, `view.tax_ids`, `view.bank_details`, `audit.view`, `ledger.verify` |
 | Staff accountant | Accountant | All | built Accountant | `period.close`, `je.create`, `je.post`, `je.reverse`, `account.manage`, `customer.manage`, `invoice.create`, `invoice.send`, `payment.receive`, `credit_memo.create`, `vendor.manage`, `bill.create`, `payment.make`, `asset.create`, `depreciation.run`, `import.run`, `report.job_cost` | none |
 | AP clerk | Accountant | All | built AP Clerk | `vendor.manage`, `bill.create`, `ap.view`, `po.create`, `po.view` | none |
 | AR clerk | Accountant | All | built AR Clerk | `customer.manage`, `invoice.create`, `invoice.send`, `payment.receive`, `credit_memo.create`, `ar.view` | none |
+| Payroll | Accountant | All | built Payroll (Q20) | `time.enter`, `import.run`, `period.view`, `ledger.view`, `report.financial` | `time.approve`, `payroll.view`, `payroll.import` |
 | Sales manager | Sales rep | All | C57 Sales manager | `project.create`, `project.manage`, `estimate.create`, `change_order.create`, `customer.manage`, `invoice.create`, `report.job_cost` | `estimate.approve`, `contract.approve` |
 | Sales rep | Sales rep | All | built Sales | `project.create`, `estimate.create`, `customer.manage`, `invoice.create` | none |
 | Project manager | Operations | Assigned | built Project Manager | `ap.view`, `po.view`, `po.create`, `receiving.stock`, `inventory.view`, `project.view`, `estimate.create`, `change_order.create`, `project.manage`, `payapp.create`, `time.enter`, `report.job_cost` | `bill.approve`, `po.approve`, `subcontract.approve`, `change_order.approve`, `time.approve` |
@@ -483,8 +484,8 @@ Accountant · Standard level stay different.
 What changes against the built starter roles:
 - Project manager loses `report.financial`, which is not in the Operations cap.
 - Viewer, as Operations · View only, loses `report.job_cost`; as Accountant · View only it keeps both reports.
-- Nobody but Admin held `retainage.release` before. It is now in two caps but in no template (Q22).
-- `payroll.import` is in the Accountant cap but in no template (Q20).
+- Nobody but Admin held `retainage.release` before. It is now in two caps and in the Controller template (Q22 A).
+- `payroll.import` is in the Accountant cap and in the new Payroll template (Q20 A).
 
 #### 2.4.4 Old roles mapped to the new model
 
@@ -516,7 +517,7 @@ The built starter roles (`role_templates.py`), where they differ:
 | Warehouse | Operations · Standard + Warehouse lead |
 | Sales | Sales rep · Standard + Sales rep |
 | General Manager | no shipped template (Q21) |
-| Payroll | no shipped template (Q20) |
+| Payroll | Accountant · Standard + Payroll template (Q20 A) |
 
 Nothing needs migrating before the first release: `role_templates.py` and the seed are rewritten, and development
 databases are rebuilt.

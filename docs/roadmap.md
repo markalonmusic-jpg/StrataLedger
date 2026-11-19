@@ -5,7 +5,7 @@ paragraph saying where the project stands; update both when a step is finished.
 
 **Release plan (DECIDED 2026-11-11; docs/decisions_2026-11-11.md E1):**
 v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
-- **v1.0:** core accounting (Phases 2 to 5 below), plus fixed assets, loans and
+- **v1.0:** core accounting (Phases 2 to 4 and 6 below), plus fixed assets, loans and
   vendor refunds. Report presets with offline keyword matching (section 6).
   Required before v1.0: an action that issues the Master a new recovery code (after re-entering the password),
   because a code that was lost or never saved cannot be recovered today (backlog item 11).
@@ -15,11 +15,13 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
 - **v1.1:** construction (decisions section D, pay applications, projects,
   POC, T&M billing), plus POs and PO-to-AP matching and all inventory
   (construction-optimized).
-- **v1.2:** AI Copilot (Phase 6), including AI-picked report presets.
+- **v1.2:** AI Copilot (Phase 5), including AI-picked report presets.
 - **Philippines add-on:** a separate add-on after v1.0 (`addons/ph_tax/`),
   pending a Philippine tax professional's review. Not part of any core release.
 
-**Phases (current plan):**
+**Phases (current plan; owner's phase order, 2026-11-19):** 1 database rebuild; 2 service layer (2.1-2.7 and the
+posting fixes after Codex batch 2 done; 2.9 schema replan in progress; then 2.8); 3 HTML front end; 4 double-entry
+posting; 5 AI features; 6 installer package; after the desktop app, the hosted edition on Azure.
 - **Phase 1 - Database rebuild:** rebuild `database.py` from
   `accounting_librebase.db` with versioned `schema_version` migrations and safe
   handling of legacy empty 5-table company files. (Historical: on 2026-11-11
@@ -106,8 +108,16 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     (create / update / deactivate, make_customer, make_vendor, find_duplicates
     with masked tax IDs). `contact.is_customer` now defaults to 0. Job numbers
     come with the CRM work.
-  - **2.7 Hooks and add-ons:** hook registry, add-on registry, add-on
-    migration runner (`addon_schema_version`).
+  - **2.7 Hooks and add-ons (done):** hook registry, add-on registry, add-on
+    migration runner (`addon_schema_version`). Done as STOP A (multi-role, MR2-MR9), STOP B (hooks and add-ons,
+    HA1-HA7), step B2 (WAL, backups, data folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) and STOP C
+    (custom fields service, FR1 as amended).
+  - **Posting fixes after Codex batch 2 (done).**
+  - **2.9 Schema replan (in progress):** 21 areas (docs/replan_2.9/, plan in docs/next_step.md); area 18 (admin,
+    security, audit, attachments) is owner-approved.
+  - **2.8 Password recovery, restore and backups (next after 2.9):** password recovery (PW1-PW11), restore, and
+    scheduled backups that include attachments (the backup step: backlog 16, with the portable company package and
+    key bundle). Gap: docs/roadmap.md "Baseline gaps", Step 2.8.
 
   Scope of the phase (kept from the earlier plan):
   - hook registry, add-on registry and add-on migration runner;
@@ -121,16 +131,20 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     registry, `authorize()`, per-company role tables, approval limits,
     project scope, and the company hierarchy with access inheritance from a
     parent company to its subsidiaries.
-- **Phase 3 - Screen alignment:** align `views_wizard.py`,
-  `views_registry.py`, `views_billing.py` and `views_payroll.py` to the
-  authoritative schema and dynamic dimensions, calling the service layer.
-  The app must ask before upgrading a database on launch.
+- **Phase 3 - HTML front end (AQ2):** the mockups become the screens: one HTML/CSS/JS front end in `pywebview`
+  (WebView2) calling the services through a `js_api` bridge; build rule a-f in shared_decisions 2026-11-19 (that
+  file is not in this repository; the rule text comes from the owner). It replaces the CustomTkinter
+  screen alignment this phase used to hold: `views_wizard.py`, `views_registry.py`, `views_billing.py` and
+  `views_payroll.py` are not aligned, they are rebuilt as HTML screens on the authoritative schema and dynamic
+  dimensions, calling the service layer. The app must ask before upgrading a database on launch.
   Roles: the role checklist editor (by module, with quick settings), the
   role and permission pickers in user provisioning, masked sensitive fields
-  (wages, tax IDs, bank details), and bulk "assign to clients".
+  (wages, tax IDs, bank details), and bulk "assign to clients" (the model is docs/replan_2.9 area 18).
   Rule for every screen built or changed in this phase: it declares a stable
   `page_key` (docs/help_system_design.md section 3), and a screen is not
   finished without one.
+  Cleanup (moved here from the old Phase 5): fix package `__init__.py` imports and remove empty scripts.
+  (Password hashing and removing the hardcoded token were done in Phase 2.3.)
 - **Phase 4 - Double-entry posting:** posting an invoice with status `'Sent'`
   generates balanced `journal_entry` and `journal_line` rows in the same
   transaction (`invoice.entry_id`).
@@ -143,16 +157,13 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
   job); (c) `time_entry` and `staged_line` have `project_id` but no dimension table (only `invoice_line_dimension`
   and `journal_line_dimension` exist); (d) `invoice_line.department_tag` is free text beside the dimension
   tables and should go when dimensions are wired.
-- **Phase 5 - Cleanup and security:** fix package `__init__.py` imports and
-  remove empty scripts. (Password hashing and removing the hardcoded token were
-  done in Phase 2.3.)
-- **Phase 6 - AI coworker (release v1.2):** wire the right-hand Copilot drawer to the
+- **Phase 5 - AI features (AG1-AG8; release v1.2):** wire the right-hand Copilot drawer to the
   provider adapter (Gemini first) (`modules/ai_agent.py`) to ingest PDFs/POs/receipts,
   suggest GL accounts and dimensions from company history, populate UI forms
   via structured JSON, and run pre-posting audit checks with human-in-the-loop
   approval. All AI work is built here, as one stretch, after the core
   services it reads from exist (archive/design_drafts_2026-11/ai_copilot_design.md section 7):
-  - Step 1: the AI support migration at the start of Phase 6; the AI
+  - Step 1: the AI support migration at the start of Phase 5; the AI
     credentials and connection service (OS keyring), the provider interface
     and the Gemini adapter, `ai_usage`, the data-sharing settings and
     `agent_suggestion`.
@@ -163,6 +174,12 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
     each skill pack as its domain's service is built and tested.
   - Until then the Copilot drawer is a visible placeholder and uses no
     network.
+- **Phase 6 - Installer package:** the installer build (backlog 7), restricting the data folder at install or first
+  run (backlog 17) and the start-up check for it (backlog 18), the HA8 checks on a real install (the data folder's
+  permissions, the add-on audit), and the renames to Melara (`config.APP_NAME`, shortcuts, installer and folder
+  names). The Help content (final v1.0 task, above) comes before the installer build.
+- **After the desktop app: the hosted edition on Azure** (AQ1; PostgreSQL, the same services under rule 15, the
+  same front end served over HTTP; P5, docs/design.md; backlog 20's cloud import and key vault).
 
 **Backlog (not yet scheduled; proposed order):**
 1. Deferral subledger: schedule generation, period-end posting, tie-out.
@@ -200,7 +217,7 @@ v1.0 core accounting, then v1.1 construction, then v1.2 AI Copilot.
    writers, used by every report and list as it is built; XLSX upload and fuller row errors for the importer;
    import templates. Needs: XlsxWriter, openpyxl and defusedxml after the licence and PyInstaller check; an
    `export_event` table; a streaming write in `storage.py`; journal entry and budget import types.
-7. Backup/export, installer, licensing.
+7. Backup/export (Phase 2.8), installer (Phase 6), licensing.
 8. (Done in Phase 2.6: customer and vendor codes.) Still open: the wizard
    shows the code (Phase 3).
 9. After Phase 4, unscheduled (each job carries its dimension settings, JD1): (a) pipeline, stages, stage history and the
@@ -226,7 +243,7 @@ See docs/crm_pm_design.md section 11.
     backups) runs it in the background with progress and a responsive window (docs/audit_readiness_design.md 2.6).
 15. Review draft/ui-mockups (design-chat mockups plus unreviewed Theme/ui_components changes) at the start of Phase 3.
     The current mockups live in C:\Users\marka\StrataLedger_mockups (the copy on the draft branch is older).
-16. With the backup step (Phase 5): the passphrase-protected company key bundle (Master only, K8), so an exported
+16. With the backup step (Phase 2.8): the passphrase-protected company key bundle (Master only, K8), so an exported
     or backed-up company can be verified on another computer; then drop the `EXPORT_NOT_VERIFIABLE` warning
     (KS11). Every company backup also backs up `system_master.db` (KS10).
    The key bundle is part of one portable company package that serves backups, exports and the cloud move
@@ -234,12 +251,12 @@ See docs/crm_pm_design.md section 11.
 17. Restrict the data folder (`%PROGRAMDATA%\StrataLedger`) at install or first run so other local accounts
     cannot read `system_master.db`: today it keeps the inherited permissions, and the machine-scope DPAPI copy of
     the installation key opens for any local user who can read it (secrets audit of Step 1c; audit design 1).
-    Decided 2026-11-12: built in the installer (Phase 5), REQUIRED BEFORE v1.0.
+    Decided 2026-11-12: built in the installer (Phase 6), REQUIRED BEFORE v1.0.
 18. A start-up check that warns the Master when the data folder is readable by all users of the computer (with
     backlog 17, so a folder copied or created outside the installer is caught).
 19. Support bundles (when built) redact absolute paths and the Windows profile name from the log files before
     they leave the computer (owner, 2026-11-13; the log itself keeps them; R38).
-20. Move a company to the cloud (CM1, CM2; archive/design_drafts_2026-11/cloud_migration_design.md). Phase 5, with backlog 16: the
+20. Move a company to the cloud (CM1, CM2; archive/design_drafts_2026-11/cloud_migration_design.md). Phase 2.8, with backlog 16: the
     portable company package, the key bundle, attachment hashes at upload, the email rules for users (present,
     valid, unique) and the desktop pre-flight. The rest (cloud import and proof, Key Vault, user sign-in, the
     read-only desktop state) waits for the hosted product (P5), whose own design comes first.
@@ -293,7 +310,7 @@ Planned schema work, in build order (names only):
 - Fixed assets (v1.0).
 - Vendor refunds (v1.0).
 - Loans (v1.0).
-- AI support, built at the start of Phase 6: agent_run,
+- AI support, built at the start of Phase 5: agent_run,
   agent_suggestion, ai_usage, price table, AI settings in company_settings,
   staged_transaction.origin, and `origin` plus `agent_run_id` on `audit_log`
   and `audit_context` (archive/design_drafts_2026-11/ai_copilot_design.md sections 2C and 7).
@@ -365,7 +382,7 @@ archive/design_drafts_2026-11/export_design.md section 13.
   format (csv_import_design.md question 3).
 - **Attachments (when designed):** `file_attachment.sha256` recorded at upload and a storage key instead of a path
   (H3; audit design 10; the cloud package's hashes).
-- **Backups (Phase 5, backlog 16):** the portable company package and the key bundle (no schema change expected);
+- **Backups (Phase 2.8, backlog 16):** the portable company package and the key bundle (no schema change expected);
   the `Secrets/` folder excluded from backups and support bundles (bank feeds 4).
 - **Hosted (P5):** the `Migration` checkpoint kind in `ledger_checkpoint.kind` and the master `chain_checkpoint.kind`;
   the company registry's "moved to cloud" state; a record of each move (`cloud_move` or an `auth_event` type); the
