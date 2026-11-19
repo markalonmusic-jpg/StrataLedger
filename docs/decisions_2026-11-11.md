@@ -192,7 +192,7 @@ R. Phase 2.5 ledger and billing services:
 - R18 Import-origin entries approved one at a time until batch review
 - R19 A fresh context for every post, approval and close
 - R20 Which entries need approval; R11 lifted only through approval
-- R21 Any edit or delete cancels the approval
+- R21 A change to the content (R15 digest) or a delete cancels the approval
 - R22 Rejection needs a reason; resubmit only after a change
 - R23 Only a human approves or rejects
 - R24 Posting records and seals the last approver
@@ -1182,8 +1182,9 @@ Added with Phase 2.5 step 4 (approvals in posting), 2026-11-13 (owner's answers 
   the controls); it is a manual entry with manual-entry approval on and debits strictly over the threshold, or
   no threshold (R5); or its document source's type has "requires approval" on (1.6). R11's refusals are lifted
   only through approval. An entry with a Pending request cannot be posted directly.
-- R21 Any edit or delete of a draft cancels its Pending or Approved request in the same transaction; it must be
-  resubmitted and approved from step 1.
+- R21 A save that changes a draft's R15 digest, or a delete, cancels its Pending or Approved request in the same
+  transaction; it must be resubmitted and approved from step 1. A save that leaves the digest as it was cancels
+  nothing (amended 2026-11-18, owner, Codex posting batch 2).
 - R22 A rejection needs a reason; the rejected request and its action stay for the audit trail. The entry can be
   resubmitted after it has changed (R15).
 - R23 Only a Human-origin context approves or rejects (integrity): Agent is also refused by `authorize`

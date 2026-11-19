@@ -461,6 +461,7 @@ def update_entry(context, entry_id, *, entry_date=_UNSET, description=_UNSET, re
         current = _draft(conn, entry_id)
         if current["reverses_entry_id"] is not None:
             raise PostingError("A reversal draft is made by the reverse or void action and is not edited here")
+        before = _entry_digest(conn, current)
         if source is not _UNSET and current["source"] not in MANUAL_SOURCES and source != current["source"]:
             raise ValidationError(f"An import or document entry keeps its source ({current['source']}); delete the "
                                   "draft and make it again instead.")
@@ -492,7 +493,9 @@ def update_entry(context, entry_id, *, entry_date=_UNSET, description=_UNSET, re
         if cleaned is not None:
             conn.execute("DELETE FROM journal_line WHERE entry_id = ?", (entry_id,))
             _insert_lines(conn, entry_id, cleaned)
-        approvals.cancel_in_transaction(conn, context, RECORD_TYPE, entry_id)        # R21: one change
+        saved = conn.execute("SELECT * FROM journal_entry WHERE entry_id = ?", (entry_id,)).fetchone()
+        if _entry_digest(conn, saved) != before:          # R21: only a save that changes the R15 digest cancels
+            approvals.cancel_in_transaction(conn, context, RECORD_TYPE, entry_id)
 
 
 def delete_entry(context, entry_id):

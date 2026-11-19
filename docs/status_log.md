@@ -950,3 +950,8 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-18: mutation-tester on e61dec2 and 67e9f56: 151 mutants, 124 killed by existing tests, 20 by tests/test_mutation_stop_c_extra.py, 7 equivalent (docs/next_step.md). STOP C awaits the owner's approval.
 - 2026-11-18: owner approved STOP C (e61dec2, 67e9f56, 769bfd3; hook run 4158 passed, 2 skipped). Step 2.9 runs
   in a new session (docs/next_step.md).
+- 2026-11-18: Codex batch 2 posting fixes (before 2.9, owner), tests first. R21: `ledger.update_entry` cancels an
+  approval request only when the R15 digest differs before and after the save (no-change saves keep it; date,
+  line, amount, dimension, description and reference changes cancel). C4/L2 deferral close check not built: the
+  baseline has the deferral tables but no service writes them; listed with B14's payment void service under
+  Deferred (docs/next_step.md).

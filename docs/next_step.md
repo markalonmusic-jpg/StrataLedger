@@ -2,7 +2,20 @@
 
 Written 2026-11-18 at the end of Phase 2.7 STOP C. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh
 session (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
-Status: **STOP C approved by the owner (2026-11-18)**; 2.9 starts in a new session.
+Status: **STOP C approved by the owner (2026-11-18)**; the Codex batch 2 posting fixes ran first (owner
+2026-11-18; section below). 2.9 starts in a new session.
+
+## Done before 2.9 (2026-11-18): Codex batch 2 posting fixes
+
+Source: `Strata_Teams\codex_reports\posting_batch2_2026-11-18.md` (review of d7a8073).
+- **R21 (Low), fixed test first:** `ledger.update_entry` cancels a Pending or Approved request only when the
+  entry's R15 digest (`_entry_digest`, the one `ledger_chain.entry_digest` path) differs before and after the save,
+  both read inside the write transaction. A no-change save (no fields, or every field and line as it is) keeps
+  the request; a change to the date, a line, a line's account, an amount, a dimension, the description or the
+  reference cancels it (tests/test_ledger_approvals.py). `delete_entry` still always cancels.
+- **C4/L2 (Medium), not built:** the baseline has `deferral` and `deferral_schedule_line`, but no service makes,
+  schedules or posts them, so the close check waits for the deferral work (Deferred below; owner rule for this step).
+- **B14:** no change (Deferred below).
 
 ## Step 2.9 plan: the schema replan (owner decision 2026-11-17)
 
@@ -137,5 +150,11 @@ instead), blocks the commit on failure or when xdist is missing, and writes the 
   like any service error; the import review's rounding note; the AQ2 bridge follows RP6, the token rules in
   docs/design.md section 1, and AX5-AX10; MR8's "This removes: ..."; Company Settings > Add-ons; the custom
   fields screen (crm-fields.html) on this service.
+- **C4 as amended by L2, with the deferral work (Codex batch 2, finding 1):** a period-close check for unposted
+  deferral lines (`deferral_schedule_line.status` 'Scheduled', `amort_date` on or before the period's end) and the
+  deferral subledger-to-GL tie-out. Warning by default, block when set through `period_close_check`; needs a new
+  `check_code` in the baseline CHECK list and its seed row in warn mode.
+- **B14 (Codex batch 2):** a received-payment void service (reopening the invoices it paid, NSF handling, using
+  `payments.release_allocations`) is not built.
 - **Backlog 21** (R42). **KS18:** retired installation keys' recovery copies.
 - `auth._now()` remains the one allowed clock read in services (H2).

@@ -294,6 +294,92 @@ def test_an_edit_while_pending_cancels_in_the_same_transaction(team):
     assert requests(team, entry_id)[0]["status"] == "Cancelled"
 
 
+def _add_region(team, entry_id):
+    """A Region dimension (North, South) on the entry's first line; returns (line_id, north_id, south_id)."""
+    with team._company("PARENT") as c:
+        type_id = c.execute("INSERT INTO dimension_type (name) VALUES ('Region') RETURNING dimension_type_id"
+                            ).fetchone()[0]
+        north, south = (c.execute("INSERT INTO dimension_value (dimension_type_id, code, name) VALUES (?, ?, ?) "
+                                  "RETURNING dimension_value_id", (type_id, code, name)).fetchone()[0]
+                        for code, name in (("N", "North"), ("S", "South")))
+        line_id = c.execute("SELECT line_id FROM journal_line WHERE entry_id = ? ORDER BY line_id",
+                            (entry_id,)).fetchone()[0]
+        c.execute("INSERT INTO journal_line_dimension (line_id, dimension_type_id, dimension_value_id) "
+                  "VALUES (?, ?, ?)", (line_id, type_id, north))
+    return line_id, north, south
+
+
+def _approved(team, entry_id):
+    approvals.approve(as_(team, "appr1"), submit(team, entry_id))
+    assert requests(team, entry_id)[-1]["status"] == "Approved"
+
+
+@pytest.mark.parametrize("save", ["nothing", "every field as it is"])
+def test_a_no_change_save_keeps_the_approval(team, save):
+    """R21 (Codex batch 2): a save that leaves the R15 digest as it was cancels nothing, dimensions included."""
+    _require_approval(team)
+    entry_id = make(team, reference="R-1", description="Rent", source="Manual", auto_reverse_date="2026-04-01")
+    _add_region(team, entry_id)
+    _approved(team, entry_id)
+    if save == "nothing":
+        ledger.update_entry(as_(team, "poster"), entry_id)
+    else:
+        ledger.update_entry(as_(team, "poster"), entry_id, entry_date="2026-03-15", description="Rent",
+                            reference="R-1", source="Manual", auto_reverse_date="2026-04-01", lines=lines(team))
+    assert [r["status"] for r in requests(team, entry_id)] == ["Approved"]
+    assert team.rows("PARENT", "SELECT COUNT(*) AS n FROM journal_line_dimension")[0]["n"] == 1
+    post(team, entry_id)
+    assert entry_row(team, entry_id)["is_posted"] == 1
+
+
+def test_a_no_change_save_keeps_a_pending_request_pending(team):
+    _require_approval(team)
+    entry_id = make(team)
+    submit(team, entry_id)
+    ledger.update_entry(as_(team, "poster"), entry_id, lines=lines(team))
+    assert requests(team, entry_id)[0]["status"] == "Pending"
+
+
+CHANGES = {
+    "date": dict(entry_date="2026-03-16"),
+    "line": dict(lines="memo"),
+    "line account": dict(lines="swap"),
+    "amount": dict(lines=1200),
+    "description": dict(description="Rent, March"),
+    "reference": dict(reference="R-2"),
+}
+
+
+@pytest.mark.parametrize("change", sorted(CHANGES) + ["dimension"])
+def test_any_change_to_the_content_cancels_the_approval(team, change):
+    """R21: a save that changes the R15 digest cancels the approval in the same transaction."""
+    _require_approval(team)
+    entry_id = make(team, reference="R-1", description="Rent")
+    line_id, _, south = _add_region(team, entry_id)
+    _approved(team, entry_id)
+    if change == "dimension":
+        # No save path changes a dimension yet; this trigger does it inside the save's transaction, so only the
+        # dimension differs between the digest before and after.
+        with team._company("PARENT") as c:
+            c.execute(f"CREATE TRIGGER test_move_region AFTER UPDATE ON journal_entry BEGIN "
+                      f"UPDATE journal_line_dimension SET dimension_value_id = {south} WHERE line_id = {line_id}; END")
+        ledger.update_entry(as_(team, "poster"), entry_id)
+        assert team.rows("PARENT", "SELECT dimension_value_id FROM journal_line_dimension")[0]["dimension_value_id"] \
+            == south
+    else:
+        kwargs = dict(CHANGES[change])
+        if kwargs.get("lines") == "memo":
+            kwargs["lines"] = lines(team, debit_extra={"memo": "March"})
+        elif kwargs.get("lines") == "swap":
+            kwargs["lines"] = lines(team, debit="sales", credit="cash")
+        elif "lines" in kwargs:
+            kwargs["lines"] = lines(team, kwargs["lines"])
+        ledger.update_entry(as_(team, "poster", now=LATER), entry_id, **kwargs)
+    request = requests(team, entry_id)[0]
+    assert request["status"] == "Cancelled"
+    refused(team, lambda: post(team, entry_id), PostingError, "cancelled because the entry was changed")
+
+
 def test_delete_cancels_the_request(team):
     _require_approval(team)
     entry_id = make(team)
