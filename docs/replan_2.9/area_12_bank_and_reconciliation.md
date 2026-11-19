@@ -346,14 +346,20 @@ Deposits use `payment.receive`; transfers use `payment.make`. Reading bank pages
 Placement in area 18's seed tables (owner, through Q10 A; area 18 carries the dated amendment):
 - **Caps (2.4.1):** all three go in the Accountant cap only (59 → 62 codes). Never in Sales rep or Operations, so
   bank pages stay out of those roles, as area 18 already keeps the ledger and bank details.
-- **Level defaults (2.4.2, cumulative, no sensitive code):** Accountant · Standard adds `bank.feed`; Accountant ·
-  Manager adds `bank.reconcile`. `bank.unreconcile` is in no level: Admin and the Master hold it, and inside the
-  Accountant cap it is given only by an Add override with a reason (area 18 Q7 A). No shipped access template
-  changes in this pass.
+- **Level defaults (2.4.2, cumulative, no sensitive code; owner 2026-11-19):** Accountant · Standard adds both
+  `bank.feed` and `bank.reconcile`, so Manager inherits them. `bank.unreconcile` is in no level (sensitive).
+- **Shipped access template (2.4.3; owner 2026-11-19):** the Controller template adds `bank.unreconcile` in its
+  sensitive codes, as it carries `retainage.release` (which is not sensitive, so that one sits in the other
+  column). Admin and the Master keep it. Anyone else gets it only by that template or an Add override with a
+  reason (area 18 Q7 A). No other template changes.
 - **AGENT_ALLOWED:** none of the three. The assistant may suggest matches through reads only; every write is refused
   and logged.
-- **Seeds:** three permission rows; the seeded code count grows by three. The scratch placement check in area 18
-  section 2.4 runs again with them.
+- **Seeds:** three permission rows; the seeded code count grows by three.
+- **Area 18 section 2.4 placement check, re-run in words (2026-11-19):** every code is still placed (the three new
+  ones are in the Accountant cap, the rest unchanged); Accountant · Standard's cumulative defaults stay inside the
+  Accountant cap and hold no sensitive code (`bank.feed` and `bank.reconcile` are not sensitive); View only still
+  holds read codes only (no bank code added there); the Controller template stays inside its role's cap, since
+  `bank.unreconcile` is in the Accountant cap. No rule fails. It becomes a real test when built (area 18 section 2.6).
 
 ---
 

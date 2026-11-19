@@ -475,10 +475,11 @@ Accountant · Standard level stay different.
 
 Amendment 2026-11-19 (owner, area 12 Q10 A): three new codes, module Banking: `bank.feed` and `bank.reconcile` (not
 sensitive) and `bank.unreconcile` (sensitive). All three go in the Accountant cap (2.4.1, 59 to 62 codes). Level
-defaults (2.4.2): Accountant · Standard adds `bank.feed`; Accountant · Manager adds `bank.reconcile`;
-`bank.unreconcile` is in no level (sensitive): Admin and the Master hold it, others only by an Add override with a
-reason. None in AGENT_ALLOWED. No shipped template changes (docs/replan_2.9/area_12_bank_and_reconciliation.md
-section 3.5).
+defaults (2.4.2), revised 2026-11-19 by the owner: Accountant · Standard adds both `bank.feed` and `bank.reconcile`
+(Manager inherits them); `bank.unreconcile` is in no level (sensitive). Shipped templates (2.4.3), revised 2026-11-19
+by the owner: the Controller template adds `bank.unreconcile` to its sensitive codes; Admin and the Master keep it;
+anyone else only by that template or an Add override with a reason. None in AGENT_ALLOWED
+(docs/replan_2.9/area_12_bank_and_reconciliation.md section 3.5).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
