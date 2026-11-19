@@ -3,9 +3,10 @@
 Written 2026-11-17 at the end of step B2. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh session
 (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 Status: **step B2 is approved** (owner, 2026-11-18, with the answers below, built in the "B2 owner answers" commit).
-**STOP C starts in a fresh session** once the owner approves that commit at the review gate.
+**STOP C starts in a fresh session.** The owner-answers round (fc6efe0, fix mode d7a8073) was approved by the owner
+on 2026-11-18; the owner runs the next step in a separate session.
 
-## Owner answers: product name, HA8 sentence, AX9-AX10 (2026-11-18; fix mode on fc6efe0, awaiting the owner's approval)
+## Owner answers: product name, HA8 sentence, AX9-AX10 (2026-11-18; fc6efe0 and fix mode d7a8073, approved)
 
 1. The product name people see is "Melara": `config.APP_NAME`. The three service sentences that named StrataLedger
    use it (the HA8 sentence, the missing time-zone error in `clock.py`, the ledger-verify Hash reason), and so does

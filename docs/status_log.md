@@ -936,3 +936,5 @@ Rotation and key-lost text as it stood before the trim:
   than the system and Administrators group..."); inherit-only CREATOR ACEs ignored (owner), logic unchanged, tests
   added for both conditions; the static name test is case-insensitive with a shrink-only identifier list;
   tests/test_clipboard_lock.py no longer races other xdist workers for the shared lock.
+- 2026-11-18: owner approved the owner-answers round (fc6efe0) and its fix mode (d7a8073; hook run 3916 passed,
+  2 skipped). The next step runs in a separate session (docs/next_step.md).
