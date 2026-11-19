@@ -111,8 +111,9 @@ def test_settings_wire_the_hook_for_bash_and_powershell():
     wired = [e for e in entries if any("pre_commit_pytest.py" in h["command"] for h in e["hooks"])]
     assert len(wired) == 1
     assert set(wired[0]["matcher"].split("|")) == {"Bash", "PowerShell"}
-    # with -n auto the full suite took about 5 minutes on 2026-11-18 (18 minutes in one process)
-    assert 600 <= wired[0]["hooks"][0]["timeout"] <= 1200
+    # with -n auto the full suite took about 5 minutes on 2026-11-18 (18 minutes in one process); one run took
+    # 862 s, so the owner raised the timeout to 1500 s as a stopgap (2026-11-19)
+    assert 600 <= wired[0]["hooks"][0]["timeout"] <= 1500
 
 
 def test_the_suite_runs_in_parallel_workers():

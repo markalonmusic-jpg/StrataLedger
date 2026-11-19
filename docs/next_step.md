@@ -117,7 +117,7 @@ Source: `Strata_Teams\codex_reports\posting_batch2_2026-11-18.md` (review of d7a
 `.claude/settings.json` runs `.claude/hooks/pre_commit_pytest.py` before any `git commit`. It runs
 `python -m pytest -q -n auto` (pytest-xdist, **without** `--dist loadgroup`: the clipboard tests use a file lock
 instead), blocks the commit on failure or when xdist is missing, and writes the suite's last line to
-`strataledger-commit-hook-last-run.txt` in the system temp folder. Timeout 900 s.
+`strataledger-commit-hook-last-run.txt` in the system temp folder. Timeout 1500 s (raised from 900 s as a stopgap after an 862 s run, owner 2026-11-19).
 
 ## Left for the packaging step (U1)
 

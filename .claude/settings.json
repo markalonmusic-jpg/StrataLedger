@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre_commit_pytest.py\"",
-            "timeout": 900
+            "timeout": 1500
           }
         ]
       }
