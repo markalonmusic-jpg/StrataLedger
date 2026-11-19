@@ -1,8 +1,9 @@
 # Step 2.9 schema replan, area 18: admin, security, audit, attachments
 
-Status: **drafted** (2026-11-18). Docs only: nothing here changes code, a baseline, a migration or a test.
-Nothing here is built until the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
-Every table, column and code below is PROPOSED.
+Status: **drafted, owner answers recorded** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17 2026-11-18,
+folded in below). Docs only: nothing here changes code, a baseline, a migration or a test. Nothing is built until
+the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every table, column and code
+below is PROPOSED until then. New questions from the seed tables: Q18-Q23 (section 7).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 18 and the source keys.
@@ -15,23 +16,21 @@ Sources read (only these, searched by date, title or code):
 - docs/decisions_2026-11-11.md by code: AX1, AX2, AX4, E7, E11, MR1-MR9, R16, R27, R30, R35, RP1, HA11, K13,
   AQ1 (index line only; the file has no longer AQ1 entry), H4.
 - `migrations/001_company.sql`, `migrations/001_master.sql`, and the services that write the tables named.
-
-Not read, though the sources point to them: `ux_research_roles_access_2026-11-17.md` (the access spec, sections 2
-and 6), `ux_research_admin_security_2026-11-14.md`, docs/roles_permissions_design.md. The old-role mapping and the
-shipped templates depend on the access spec (open item O1).
+- Added for O1 (owner 2026-11-18): `Strata_Teams\ux_research_roles_access_2026-11-17.md` sections 2 and 6;
+  docs/roles_permissions_design.md section 3; `modules/services/role_templates.py` (the built starter roles).
 
 ---
 
 ## 0. Summary
 
-| # | Topic | Proposal in one line | Baseline |
-|---|-------|----------------------|----------|
-| 1 | Audit (AX4) | Keep the row-level audit triggers. Add `reason`, `origin`, `event`, `event_id` to the context and the log, filled only through `tx.py`. Take `logged_at` from the context. Mask `company_settings.tax_id` | both |
-| 2 | Access model | Fixed roles with a level, company job titles with access templates, per-user overrides (add or remove), capped by the role. Contacts check by the contact's side | both |
-| 3 | Memos and attachments | One `memo` column (max 4,000) on every form's header. `file_attachment` is replaced by `attachment` (append-only, removal marked with a reason, file kept) | company |
-| 4 | Settings history, backup runs | Settings history is read from `audit_log` (no second table); a reason is needed for controls. New master `backup_run` table | both |
+| # | Topic | Decided (owner 2026-11-18) | Baseline |
+|---|-------|----------------------------|----------|
+| 1 | Audit (AX4) | Keep the audit triggers (Q1 A). Services add `reason`, `origin`, `event`, `event_id` through `tx.py`. Redaction lives in the triggers, from one shared list with RP1 and HA11. Every business table is audited, and only derived tables are exempt (list in 1.2). The audit log keeps the last 4 of `company_settings.tax_id` (Q6 A) | both |
+| 2 | Access model | Several roles per user (Q2 B), each with a level. Fixed system roles (Q3 A). Caps are their own lists, and a user's cap is the union of their roles' caps (Q4 A, C5). One job title (Q5 A). Add and Remove overrides, each with a reason (Q7 A). Seed tables in 2.4 | both |
+| 3 | Memos and attachments | `memo` (max 4,000) on every form header, never printed. `attachment` replaces `file_attachment`: append-only, and a removal is marked with a reason, the file kept (Q12 A). Removing from a posted document follows the posted-document rules (Q13 A plus) | company |
+| 4 | Settings history, backup runs | Settings history read from `audit_log` (Q16 A); a reason is needed for controls (Q15 A). New master `backup_run` table. 2.8 backups must include attachments (Q14 A plus) | both |
 
-Conflicts with decisions, flagged and left open: section 6.
+Conflicts: section 6 (C1 amended, C5 and C7 closed, C8 and C9 new).
 
 ---
 
@@ -52,26 +51,24 @@ Conflicts with decisions, flagged and left open: section 6.
   `:349-355`, master `:88-94`), and no trigger copies one.
 - **No `origin` column** on either `audit_log` or `audit_context`, though E11 places `origin` on audit_log
   (conflict C2). `tx.py:3-4` says audit_context "has no `origin` column yet".
-- `logged_at` comes from the database clock (`CURRENT_TIMESTAMP`, `YYYY-MM-DD HH:MM:SS` with no offset), not
-  from `context.now`. That breaks the CLAUDE.md section 4 rule (`_at` columns are UTC ISO 8601 with an offset)
-  and keeps a clock read in the database, which H2 forbids in services (conflict C3).
-- The `action` CHECK lists Post, Approve and Void, but every trigger writes only Insert, Update or Delete. The
-  business action (post, approve, void, reopen) is visible only from the column diff.
+- `logged_at` comes from the database clock (`CURRENT_TIMESTAMP`, `YYYY-MM-DD HH:MM:SS` with no offset), not from
+  `context.now` (conflict C3).
+- The `action` CHECK lists Post, Approve and Void, but every trigger writes only Insert, Update or Delete.
 
 **Who writes audit rows today.** Only triggers. No module runs `INSERT INTO audit_log` (grep of `modules/`: none).
 `tx.AuditStamp` (`modules/services/tx.py:72-92`) sets `audit_context.user_id`, `terminal_id`,
 `software_version_tag` and `set_at` inside each write transaction and clears them before COMMIT. Add-on tables get
 generated triggers from `migrations/addon_audit_triggers.sql` (`modules/database.py:756-880`, HA9).
 
-**Every audit trigger in the company baseline** (`001_company.sql`, 127 `INSERT INTO audit_log` statements).
-Each writes the row's columns as JSON, `old_value` for the old row and `new_value` for the new one:
+**Every audit trigger in the company baseline** (`001_company.sql`, 127 `INSERT INTO audit_log` statements). Each
+writes the row's columns as JSON, `old_value` for the old row and `new_value` for the new one:
 
 | Table | Triggers (line) | Notes |
 |-------|-----------------|-------|
-| journal_entry | insert 2084, update 2121, delete 2229 | Carries its `journal_line` rows as `$.lines` (`:2180-2199`) |
+| journal_entry | insert 2084, update 2121, delete 2229 | Carries its `journal_line` rows as `$.lines` (`:2180-2199`), as they are when the header row changes |
 | fiscal_period | 2266, 2289, 2322 | |
 | account | 2345, 2371, 2410 | |
-| invoice | 2436, 2486, 2573 | Includes `memo`. **`invoice_line` is not in the JSON and has no trigger of its own** |
+| invoice | 2436, 2486, 2573 | Includes `memo`. `invoice_line` is not in the JSON and has no trigger of its own |
 | payment | 2623, 2646, 2679 | |
 | payment_allocation | 2702, 2728, 2767 | |
 | invoice_series | 2793, 2815, 2846 | |
@@ -86,14 +83,14 @@ Each writes the row's columns as JSON, `old_value` for the old row and `new_valu
 | user_project_scope | 3355, 3370, 3387 | |
 | approval_policy | 3402, 3421, 3446 | |
 | approval_step | 3465, 3483, 3506 | |
-| company_settings | insert 3524, update 3587 | **Writes `tax_id` in full** (`:3537`, `:3599`, `:3650`) |
+| company_settings | insert 3524, update 3587 | Writes `tax_id` in full (`:3537`, `:3599`, `:3650`); masked under Q6 |
 | document_approval_setting | update 3718 | |
 | bank_account | 3732, 3745, 3758 | Only `account_last4` (`:3730` comment) |
 | fiscal_year | 3780, 3792, 3806 | |
 | period_close_check | update 3817 | |
 | ledger_chain_key | insert 3830, update 3841 | Fingerprint only, no key material |
 | ledger_checkpoint | insert 3853 | Includes `mac` and `chain_hash` (integrity values, not secrets) |
-| contact | 4200, 4242, 4313 | `tax_id_last4` only (`:4219`, `:4260`); includes `bank_payee_id` and `memo` |
+| contact | 4200, 4242, 4313 | `tax_id_last4` only (`:4219`, `:4260`); `exemption_cert_no` left out; includes `bank_payee_id` and `memo` |
 | contact_site | 4355, 4380, 4417 | |
 | company_entity | 4442, 4462, 4489 | |
 | fiscal_period_lock | 4509, 4529, 4556 | |
@@ -118,142 +115,177 @@ Each writes the row's columns as JSON, `old_value` for the old row and `new_valu
 
 **Every audit trigger in the master baseline** (`001_master.sql`): `app_user` 207, 231, 267 (`password_hash` is
 never written; the update writes `password_changed` as true or false, `:264`); `user_company_access` 291, 308, 329;
-`company_registry` 354, 375, 404; `chain_checkpoint` insert 472; `user_company_role` 586, 604, 627. Not audited,
-on purpose: `master_recovery`, `installation_key`, `company_key`, `throttle_secret`, `login_throttle` (KS9;
-`auth_event` records their changes instead).
+`company_registry` 354, 375, 404; `chain_checkpoint` insert 472; `user_company_role` 586, 604, 627.
 
-**Company tables with no audit trigger** (no AFTER trigger at all): `estimate`, `estimate_line`, `contract`,
-`contract_line`, `change_order`, `change_order_line`, `invoice_line`, `invoice_line_dimension`,
-`journal_line_dimension`, `deferral`, `deferral_schedule_line`, `project_budget`, `time_entry`, `tax_rate`,
-`dimension_type`, `dimension_value`, `file_attachment`, `import_batch`, `import_mapping`, `import_source`,
-`staged_transaction`, `staged_line`, `progress_billing_application`, `poc_snapshot`, `subscription`,
-`saas_subscription`, `saas_usage_telemetry`, `customer_number`, `vendor_number`, `voucher_sequence`,
-`entry_number_sequence`. Some are counters or append-only logs of their own (`access_event` `:3039`/`:3045`,
-`period_status_history` `:3773`/`:3777`). The rest are tables no service writes yet; each area that builds one
-adds its triggers (rule below).
+### 1.2 Decided (Q1 A) and proposed detail
 
-### 1.2 Proposal
-
-**Recommended (option A in question Q1): keep the triggers as the capture, add the context to them.** H4 lets the
-audit trail keep a database-level backstop, and the triggers are the only thing that also records writes from
-the LEGACY screens (`CONNECT_ALLOW_LIST`, `tests/test_static_rules.py:23-30`) and from add-ons (HA9). Services
-supply what a trigger cannot know (the reason, the origin, the business action), through `tx.py` only (H4).
-Option B (services write every audit row and the core triggers are dropped) is what the task text calls AX4;
-see conflict C1.
+**The triggers stay as the capture (H4 and HA9 stand; C1 amended).** They are the only thing that also records
+writes from the LEGACY screens (`CONNECT_ALLOW_LIST`, `tests/test_static_rules.py:23-30`) and from add-ons (HA9).
+Services supply what a trigger cannot know (the reason, the origin, the business action) through `tx.py` only (H4).
 
 `audit_context` (both baselines), new columns:
 
 | Column | Type | Rule |
 |--------|------|------|
 | `origin` | TEXT | CHECK IN ('Human', 'Agent', 'Import', 'System'), the same list as `journal_entry.origin` (`001_company.sql:463`); set from `context.origin` |
-| `event` | TEXT | The service's action code, e.g. `settings.change`, `attachment.remove`, `period.reopen` (vocabulary in a service registry, not a CHECK, so a new action needs no baseline edit) |
+| `event` | TEXT | The service's action code, e.g. `settings.change`, `attachment.remove`, `period.reopen`. The vocabulary is a service registry, not a CHECK, so a new action needs no baseline edit |
 | `event_id` | TEXT | One random id per write transaction (UUID text), so the rows of one action group together |
 | `reason` | TEXT | CHECK (reason IS NULL OR length(reason) BETWEEN 1 AND 1000) |
 
 `audit_log` (both baselines):
 - Add `origin`, `event`, `event_id` (same types). Keep `reason` (already there).
-- `logged_at` stays, without `DEFAULT CURRENT_TIMESTAMP`. Every trigger writes `ctx.set_at` (which `AuditStamp`
-  already fills from `context.now`, `tx.py:84`), so the time is UTC ISO 8601 with an offset (CLAUDE.md section 4)
-  and is the same for every row of one action. CHECK `logged_at IS NOT NULL` is not added, because the baseline
-  runner's build and the add-on runner write rows before any context exists. Those rows keep a NULL time, which
-  the audit screen shows as "Setup".
-- `action` keeps its CHECK. Insert, Update and Delete stay the row operation; Post, Approve and Void stay
-  allowed, but services use `event` for the business action.
-- Indexes (company; the master gets the same): `(table_name, record_id, log_id)` for the record history,
-  `(event_id)`, `(logged_at)`. Plain B-tree, portable.
+- `logged_at` stays, without `DEFAULT CURRENT_TIMESTAMP`. Every trigger writes `ctx.set_at`, which `AuditStamp`
+  already fills from `context.now` (`tx.py:84`). The time is then UTC ISO 8601 with an offset (CLAUDE.md section
+  4) and is the same for every row of one action. Rows written with no context set, such as the baseline runner's
+  build and seed rows, keep a NULL time; the audit screen shows them as "Setup".
+- `action` keeps its CHECK. Insert, Update and Delete remain the row operation; services use `event` for the
+  business action.
+- Indexes (company; the master gets the same): `(table_name, record_id, log_id)`, `(event_id)`, `(logged_at)`.
 - Every core trigger gains `logged_at, origin, event, event_id, reason` in its column list, read from `ctx`.
-  `addon_audit_triggers.sql` gets the same, so add-on rows carry the reason too.
+  `addon_audit_triggers.sql` gets the same.
 
-**Which actions require a reason.** The service refuses with one sentence when it is missing ("Enter a reason for
-this change.", R27 style); the trigger copies it. A CHECK cannot do this, since it cannot see the action (H4).
+**Redaction lives in the triggers, from one shared list (owner, Q1).** One reviewed list names every column whose
+value never reaches `audit_log` in full. It is one Python constant (proposed: `database.REDACTED_COLUMNS`, which
+replaces and extends `_ADDON_HIDDEN_COLUMNS`, `modules/database.py:547-551`). Three things read it:
+1. The core triggers, which write what the list says. A schema test parses each trigger and checks it against the
+   list.
+2. The add-on authorizer, which reads these columns as NULL (as today).
+3. The HA11 name rule, which now also runs over every column of every audited core table. A column whose name
+   looks secret must be on the list (`omit` or `last 4`) or on a short reviewed allow-list (`mac`, `chain_hash`,
+   `fingerprint`, `bank_payee_id` under RP1: integrity values or a payee id, not secrets).
 
-| Action | Source | Where the reason is also kept |
-|--------|--------|-------------------------------|
-| Change a company control (Controls page: approval toggles, `require_separate_approver`, `manual_entry_approval` and its threshold, `allow_manual_control_je`, `lock_documents_after_posting`, approval policies and steps, area and account locks, the policy records of area 21) | 11-14 admin rules | audit_log only |
-| Change a role's level defaults, a job title, an access template, a user's role, level, job title or override | 11-17 access model item 3; C57 | audit_log only |
+| Column | In the audit log | Today |
+|--------|------------------|-------|
+| `app_user.password_hash` (master) | omitted; `password_changed` true or false | as listed |
+| `bank_account.routing_number`, `account_number` | omitted; `account_last4` kept | as listed |
+| `contact.tax_id` | `tax_id_last4` | as listed |
+| `contact.exemption_cert_no` | omitted | as listed |
+| `company_settings.tax_id` | `tax_id_last4` (Q6 A). The record keeps the full value: the 1099 payer TIN and vendor 1099s read it there | full value: changes |
+| `installation_key`, `company_key`, `master_recovery`, `throttle_secret` (master) | not audited (KS9); `auth_event` records changes | as listed |
+
+`reason` is free text, so a person could type a secret into it. It is never written to the log file (the R30
+filter applies), and only holders of `audit.view` (sensitive) see it.
+
+**Which actions require a reason.** The service refuses a missing reason with one sentence ("Enter a reason for
+this change.", R27 style), and the trigger copies the reason. A CHECK cannot do this, since it cannot see the action
+(H4).
+
+| Action | Source | Also kept on the record |
+|--------|--------|-------------------------|
+| Change a company control (Controls page: approval toggles, `require_separate_approver`, `manual_entry_approval` and its threshold, `allow_manual_control_je`, `lock_documents_after_posting`, approval policies and steps, area and account locks, area 21's policy records) | 11-14; Q15 A | audit_log only |
+| Change a user's roles or levels, a job title, an access template, a user's job title, **each per-user override (Q7 A)**, an approval limit | 11-17 item 3; C57 | `user_permission_override.reason`, `user_approval_limit.reason`; audit_log for the rest |
 | Remove an attachment | 11-15; C72 | `attachment.removed_reason` |
-| Reopen a period or a year | `period.reopen`, `year.reopen` seeds (`001_company.sql`, "reason required") | `period_status_history.reason` (`:432`) |
+| Reopen a period or a year | `period.reopen`, `year.reopen` | `period_status_history.reason` (`:432`) |
 | Reverse a posted entry | rule 8 | `journal_entry.reversal_reason` (`:457`) |
 | Void an invoice, bill, credit memo or payment | persona audit 7 | `invoice.void_reason` (`:626`); payment: area 1 |
 | Reject an approval | R16 | `approval_action.reason` (`:1154`) |
 | Release an allocation | step 7 | `payment_allocation.release_reason` (`:330`) |
 | Set or remove a period lock | area 13 | `fiscal_period_lock.reason` (`:3918`) |
-| Restore a company (K5 Master override) | AX2, 2.8 | `backup_run` (section 4) |
+| Restore a company (K5 Master override) | AX2, 2.8 | `backup_run.reason` (section 4) |
 | Edit a posted document by reverse-and-repost (rule 8) | rule 8 | the document's version history (area 5) |
 
-Where a record already has its own reason column, the service writes the same text to both in the same
-transaction. The record shows it, and the log keeps it after a later change. Optional for every other write: a
-service may pass a reason, and the trigger stores it.
+Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
-**Rollback guarantee (either option).** An audit row is written in the same transaction as the change it records:
-a rolled-back change leaves no audit row, and a committed change always has one. With option A the database
-guarantees it, even for a writer that forgets (a legacy screen, an add-on). With option B only the services and a
-test that every write path writes its row can guarantee it. A refusal is not a change. Its record is
-`access_event` (written after the rollback, `tx.py:66-70`) or `auth_event`, both append-only.
+**Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
+rolled-back change leaves no audit row, and a committed change always has one, even from a writer that forgets (a
+legacy screen, an add-on, a raw connection with no context: user NULL, still logged). A refusal is not a change.
+Its record is `access_event` (written after the rollback, `tx.py:66-70`) or `auth_event`, both append-only.
 
-**Secrets never enter before/after (RP1, HA11).**
-- Already safe: `password_hash` (master `:264`), bank numbers (`account_last4`), contact `tax_id` (last 4), key
-  tables (not audited), `bank_payee_id` (a payee id, not a bank number, RP1).
-- **To fix: `company_settings.tax_id` is written in full** (`:3537`, `:3599`, `:3650`), though `view.tax_ids` is
-  sensitive and `_ADDON_HIDDEN_COLUMNS` hides the same column from add-ons (`modules/database.py:547-551`).
-  Proposal: `tax_id_last4` like contact (question Q6).
-- New rule: a static schema test applies HA11's secret-name rule (the same splitter and word list as the add-on
-  runner) to every JSON key of every core audit trigger, in both baselines. A key that looks secret fails unless
-  it is on a short reviewed allow-list (`mac`, `chain_hash`, `fingerprint`: integrity values, not secrets).
-- `reason` is free text, so a person could type a secret into it. It is never written to the log file (R30
-  already covers rejection reasons; the same filter applies). It is shown only to holders of `audit.view`
-  (sensitive, `001_company.sql`, Audit module).
-- Custom field values: STOP C refuses bank-number names on Contact fields only. Area 16 decides whether the same
-  name check covers every record type, since every value reaches the log.
+**Every business table is audited (owner, Q1).** Each table below without an audit trigger gets insert, update and
+delete triggers in the 2.9 pass ("to audit"). Only derived tables are exempt, each with its reason. A schema test
+holds both lists: it fails on a table with no audit trigger that is not on the exempt list, and on an exempt-list
+table that has disappeared. A new table in any area is audited in the same edit that adds it.
+
+To audit, company file (30 tables):
+
+| Table | Note |
+|-------|------|
+| `account_type` | seeded reference rows |
+| `change_order`, `change_order_line` | |
+| `contract`, `contract_line` | |
+| `deferral`, `deferral_schedule_line` | |
+| `dimension_type`, `dimension_value` | |
+| `estimate`, `estimate_line` | |
+| `import_batch`, `import_mapping`, `import_source`, `staged_transaction`, `staged_line` | import staging and review |
+| `invoice_line`, `invoice_line_dimension` | today an invoice's lines are unaudited |
+| `journal_line`, `journal_line_dimension` | Own triggers. The header's `$.lines` only shows the lines at the moment the header changes, so a draft line added later and a reconciliation update are not captured today |
+| `period_status_history` | append-only already; its insert is audited for the actor and context |
+| `permission` | seeded; changes only with the baseline, still logged |
+| `poc_snapshot` | holds a person's estimate to complete, so it is not purely derived |
+| `progress_billing_application` | area 4 may replace it |
+| `project_budget` | |
+| `subscription`, `saas_subscription`, `saas_usage_telemetry` | unless the area that owns them drops them |
+| `tax_rate` | |
+| `time_entry` | |
+
+`file_attachment` is dropped and replaced by the audited `attachment` (section 3). Master file: every business
+table is already audited; `backup_run` (section 4) is audited when added.
+
+Exempt as derived (owner's rule):
+
+| Table | Why |
+|-------|-----|
+| `customer_number`, `vendor_number` (company) | Counters. Each issued number is the code on an audited `contact` row |
+| `entry_number_sequence` (company) | A counter. Each number is on an audited `journal_entry` row |
+| `voucher_sequence` (company) | A counter. Each number is on an audited `invoice` row (bill) |
+| `login_throttle` (master) | A cache of failed-sign-in counts, derived from the attempts `auth_event` records |
+
+Not business tables, and outside the owner's two categories, so they are flagged in C8 rather than exempted
+silently:
+- The audit trail itself: `audit_log`, `audit_context` (both files), `access_event` (company), `auth_event`
+  (master).
+- Secret-holding tables, by KS9: `installation_key`, `company_key`, `master_recovery`, `throttle_secret` (master).
+- The runner's metadata: `schema_version`, `schema_baseline` (made by `modules/database.py:140`, `:343`, not by the
+  baselines).
 
 **PostgreSQL (AQ1, H4).** `audit_context` becomes per-transaction settings (`SET LOCAL app.user_id`, `app.reason`
-and so on), as H4 already plans. The triggers become one PL/pgSQL trigger function per table (or one generic
-function using `to_jsonb(OLD)` with a column allow-list). `json_object` becomes `jsonb_build_object`, and the
-partial `substr(tax_id, -4)` becomes `right(tax_id, 4)`. The diffing of before/after for screens is done in
-Python, never with `json_extract` in service SQL (H5). Proposal for the hosted port, not for now: generate the
-core triggers from a column list, as HA9 does for add-ons, so the SQLite and PostgreSQL triggers come from one
-source.
-
-**Rule for new tables (all areas).** Every table a service writes gets insert, update and delete audit triggers in
-the same baseline edit that adds it, or a one-line comment saying why not (a counter, an append-only log of its
-own, a secret). A schema test lists the unaudited tables and fails on one that is not on the reviewed list.
+and so on), as H4 plans. The triggers become PL/pgSQL trigger functions. `json_object` becomes
+`jsonb_build_object` and `substr(x, -4)` becomes `right(x, 4)`. `REDACTED_COLUMNS` is the one source for both
+engines' triggers. Diffing before and after for screens is done in Python, never with `json_extract` in service SQL
+(H5). For the hosted port, not now: generate the core triggers from column lists plus `REDACTED_COLUMNS`, as HA9
+does for add-ons.
 
 ### 1.3 How it lands in the baselines
 
-One pass with the rest of 2.9. In both files: four columns on `audit_context`, three on `audit_log`, the
-`logged_at` default removed, three indexes, every audit trigger rewritten (about 140 company and 13 master
-statements; mechanical, so it is generated and then checked). `addon_audit_triggers.sql` changes too. That
-changes `addon_schema_version.sha256` for nothing built yet (HA6), but the template's hash is part of the runner's
-check, so the runner's tests need it. Every development database is blocked (CLAUDE.md section 5.2) and rebuilt
+One pass with the rest of 2.9. In both files:
+- four columns on `audit_context` and three on `audit_log`;
+- the `logged_at` default removed, and three indexes;
+- every existing audit trigger rewritten (about 140 company and 13 master statements, generated, then checked);
+- the `company_settings` triggers changed to `tax_id_last4`;
+- new triggers for the 30 "to audit" tables.
+
+`addon_audit_triggers.sql` changes too. Every development database is blocked (CLAUDE.md section 5.2) and rebuilt
 after asking (rule 9).
 
 ### 1.4 Effect on existing services and tests
 
 - `tx.write_transaction(db_path, context, *, reason=None, event=None)`: `AuditStamp.begin` sets the four new
-  columns and `end` clears them. No other module touches `audit_context` (H4; `test_static_portability.py`
-  already checks this).
-- `ServiceContext` already carries `origin` and `now`; nothing new.
-- Services that already take a reason (`ledger` reversals, approvals rejection, `payments` release, period
-  reopen) pass it to `write_transaction` too.
+  columns and `end` clears them. No other module touches `audit_context` (H4; `tests/test_static_portability.py:219`).
+- Services that already take a reason (ledger reversals, approval rejection, allocation release, period reopen)
+  also pass it to `write_transaction`.
 - `company_settings.update_setting` (`modules/services/company_settings.py:121`) and `set_document_approval`
-  (`:130`) take `reason` and refuse without it for a control (section 4).
-- Tests that read `audit_log` (35 test files, for example `test_company_settings.py`, `test_custom_fields.py`,
-  `test_users_access.py`, `test_addon_audit.py`) keep working: the old columns keep their meaning. Tests that
-  assert `logged_at` is set by the database, or count columns, need updating. The HA9 template tests change with
-  the template.
+  (`:130`) take `reason` and refuse a control change without it.
+- `database._ADDON_HIDDEN_COLUMNS` becomes `REDACTED_COLUMNS`. `tests/test_addon_secrets.py` and
+  `tests/test_addon_database.py` follow the rename.
+- 35 test files read `audit_log`; the old columns keep their meaning. Tests that rely on the database's `logged_at`
+  or on the exact JSON of `company_settings` (`test_company_settings.py`, `test_controls_003.py`,
+  `test_controls_004.py`) need updating. Tests that count audit rows per action may see more rows once
+  `journal_line` and `invoice_line` are audited (`test_ledger_*`).
 
 ### 1.5 Tests to write later
 
 - Every audit row written inside `write_transaction` has `logged_at == context.now`, its `origin`, and one
   `event_id` shared by every row of that transaction.
-- A control change without a reason is refused and nothing is saved; with one, the audit row carries it.
-- A rolled-back write leaves no audit row (triggers fire, then the rollback removes them); a committed one always
-  has one, including a write from a raw connection that has no context set (user NULL, still logged).
+- A control change without a reason is refused and nothing is saved; with a reason, the audit row carries it.
+- A rolled-back write leaves no audit row; a committed one always has one, including from a raw connection with no
+  context.
 - `audit_context` is cleared after commit and after rollback (reason and event included).
 - `audit_log` still refuses UPDATE and DELETE, in both files.
-- Schema test: every core audit trigger's JSON keys pass the HA11 secret-name rule (reviewed allow-list).
-- `company_settings` audit rows contain no full `tax_id`.
-- Schema test: the list of company tables without audit triggers equals the reviewed list.
+- Each trigger matches `REDACTED_COLUMNS`. No `company_settings` audit row holds the full `tax_id`, while the record
+  still does. The HA11 name rule passes over every audited core column (allow-list reviewed).
+- The to-audit and exempt lists: every company and master table is either audited or on the exempt list.
+- A draft journal line added after the header, and a reconciliation update of a posted line, each write an audit
+  row.
 - Add-on triggers carry the reason and origin like core triggers (HA9).
 
 ---
@@ -265,281 +297,370 @@ after asking (rule 9).
 - Master: `app_user.role` (legacy free text, `001_master.sql:77`, read only by the sidebar), `app_user.job_title`
   (`:78`, free text, NOT NULL DEFAULT ''). `user_company_access(user_id, company_id, role_code, access_mode Grant
   or Deny)` (`:47-56`) is the gate (MR2). `user_company_role(user_id, company_id, role_code, granted_by,
-  granted_at)` (`:577-584`), audited (`:586`, `:604`, `:627`), with no reason.
-- Company: `permission(permission_code, module, description, is_sensitive)` (`001_company.sql:1056`);
-  `role(role_code, name, is_system, is_active, project_scope All or Assigned, created_at)` (`:1063`);
+  granted_at)` (`:577-584`) is audited (`:586`, `:604`, `:627`) and has no reason.
+- Company: `permission(permission_code, module, description, is_sensitive)` (`001_company.sql:1056`), 77 codes
+  seeded; `role(role_code, name, is_system, is_active, project_scope All or Assigned, created_at)` (`:1063`);
   `role_permission` (`:1072`); `approval_limit(role_code, document_type, max_amount_cents)` (`:1078`);
   `user_project_scope(user_id, project_id)` (`:1085`). Only `Admin` is seeded, with every permission
-  (`:1256-1260`). Its `created_at` uses `strftime('now')` in the baseline, which the PostgreSQL port must replace.
-  Starter roles come from `modules/services/role_templates.py`.
+  (`:1256-1260`). Its `created_at` uses `strftime('now')`, which the PostgreSQL port must replace.
+- Built starter roles (`modules/services/role_templates.py`, from docs/role_templates.md, S6): Controller,
+  Accountant, AP Clerk, AR Clerk, General Manager, Project Manager, Warehouse, Foreman, Payroll, Sales, Viewer.
+  The first four and Payroll, Sales and Viewer are in every company; the other four are construction-only. These
+  differ from C57's list of 11 (C9).
 - Rules in force: MR2 (the union of active roles; Admin allows all), MR3 (project scope), MR4 (approval limit: the
-  highest), MR5 (one chain slot per person), MR8 (role changes name the rows they remove; `confirm_removal`).
-  The last-Admin check is in `users.py:311-330`. The Admin guards are in `users.py:278`.
-- Agent: `permissions.AGENT_ALLOWED` (`modules/services/permissions.py:113`) holds non-sensitive view and report
-  codes only; `authz.authorize` denies anything else for `origin == 'Agent'` before any read
+  highest), MR5 (one chain slot per person), MR8 (role changes name the rows they remove; `confirm_removal`). The
+  last-Admin check is `users.py:311-330`; the Admin guards are `users.py:278`.
+- Agent: `permissions.AGENT_ALLOWED` (`modules/services/permissions.py:113`) holds only non-sensitive view and
+  report codes. `authz.authorize` denies anything else for `origin == 'Agent'` before any read
   (`modules/services/authz.py:132`).
-- Sensitive codes (`is_sensitive = 1`): every approve code, `company.restore`, `addon.manage`, `fields.manage`,
-  `period.reopen`, `year.reopen`, `payroll.view`, `payroll.import`, `import.approve`, `time.approve`,
-  `view.tax_ids`, `view.bank_details`, `audit.view`, `ledger.verify`, `bill.override_match`,
-  `payment.release_hold`. K13: `ledger.verify` is held only where granted by name (Admin, the Controller starter
-  template, a later Auditor role, the Master); not the Accountant.
 - Contacts (next_step.md input 3): `contacts._either_permission` (`modules/services/contacts.py:69-80`) authorizes
-  `customer.manage` if held, else `vendor.manage`, for `update_contact` (`:199`), `deactivate_contact` (`:216`)
-  and `find_duplicates` (`:148`), whatever kind the contact is. A vendor manager can edit a customer-only contact,
-  and the reverse. Custom field values on contacts use the same check (STOP C).
+  `customer.manage` if held, else `vendor.manage`, for `update_contact` (`:199`), `deactivate_contact` (`:216`) and
+  `find_duplicates` (`:148`), whatever kind the contact is.
 
-### 2.2 What the sources ask for, and how they differ
+### 2.2 Decided model (owner 2026-11-18)
 
-- 11-14 (archive) and C57: one role list of 11 roles (Admin, Controller, Accounts payable, Accounts receivable,
-  Sales manager, Sales rep, Estimator, Project manager, Superintendent, Warehouse lead, Viewer), a user's roles
-  united, a role × permission matrix on the Users page, a reason for each change.
-- 11-17 (open): **replaces the 11-14 matrix.** 5 roles (Master, Admin, Accountant, Sales rep, Operations); levels
-  View only, Standard and Manager on the last three; job titles per company, each with an access template (a
-  permission set that may span areas); per-user overrides on top. Effective access = role/level defaults ∪
-  template ∪ overrides, **capped by the role**; Master and Admin get everything. Every change needs a reason.
-  Person pickers query by permission. Lead assignment rules per service type (area 15). The 11 old roles are
-  mapped by spec section 2. 11-17 (8:31 PM): only Admins and the Master manage templates and job titles; shipped
-  templates can be hidden, not deleted; a template in use cannot be deleted until its users move.
-- CODE_CHANGES 57 still describes the 11-role list (conflict C4).
+- **Roles (Q3 A):** the system roles are Admin, Accountant, Sales rep and Operations, all `is_system = 1`. The
+  Master is `app_user.is_master`, not a role row. Companies do not create roles; access templates cover the
+  variety. `company.roles.manage` becomes "Edit role levels, access templates, job titles and approval limits",
+  held by Admin only (11-17, 8:31 PM).
+- **Several roles per user (Q2 B):** MR2 and MR8 as built. Each of a user's `user_company_role` rows carries its
+  own level. The **effective cap is the union of the caps of the user's active roles** (C5 closed).
+- **Levels:** View only, Standard and Manager on Accountant, Sales rep and Operations. Admin has no level. Each
+  level includes the ones below it.
+- **Cap (Q4 A):** each role has its own cap list, wider than its Manager defaults, so a template can add codes the
+  level does not give.
+- **Job title (Q5 A):** one per user per company, each pointing to one access template.
+- **Overrides (Q7 A):** Add and Remove; Remove wins over every source. **Each override needs a reason**, stored on
+  the row and in the audit log.
+- **Approval limits (Q8 A):** level defaults, template limits and user limits. The highest of those that come with
+  the approve permission applies, with no cap on the amount (MR4 generalised).
+- **Sensitive codes (Q9 A):** no level default holds a sensitive code, approve codes included. They come only from
+  templates or named Add overrides, with a reason. K13 holds: `ledger.verify` comes from the Controller template,
+  not the Accountant level.
+- **Separation of duties (Q10 A):** a warning only, when a template or override leaves one person able to create
+  and approve the same document type. `require_separate_approver` (R17), MR5 and the triggers at
+  `001_company.sql:3702-3714` are unchanged; they remain controls, OFF by default.
+- **Contacts (Q11 A):** authorize by the contact's side. Customer-only needs `customer.manage`, vendor-only needs
+  `vendor.manage`, both sides or neither takes either. The service reads the flags first, in its own read
+  connection (MR6), then authorizes. A holder of one right gets the same sentence, error and denial row for a
+  missing contact and for one on the other side (MR9). `find_duplicates` returns only contacts on a side the caller
+  can manage, and custom field values on contacts follow the same rule. No schema change.
+- **Sessions (Q17 A):** `app_user.session_epoch`.
 
-### 2.3 Proposal
+**Effective access (the authz rule that replaces MR2's union; for the decision log, not built):**
+1. Gate as MR2: the access row decides, and Deny wins. The Master allows all, and Admin in any role allows all.
+2. For each active role row: that role's level defaults (cumulative).
+3. Add the job title's template and the Add overrides; subtract the Remove overrides.
+4. Intersect with the union of the user's role caps. Under Q19 A, a role held at View only contributes only read
+   codes to that union.
+5. Apply `AGENT_ALLOWED` for Agent origin.
 
-Where things live: the gate and the role assignment stay in the master (MR2; a user's access is installation
-data). Job titles, templates and overrides are company configuration and go in the company file, beside `role`
-and `role_permission`, so they travel with the company file and its backups (rule 3 allows this: they are not
-accounting tables, but they are per company). User ids are plain integers there (CLAUDE.md section 4).
+Inactive roles, titles and templates are skipped, with the inactive-role denial as today. Denials keep R27 and
+`authz.DENIAL_REASONS`; a capped code is simply not held (`ROLE`). MR3 per code: a code is limited to assigned
+projects only when every source that grants it (level row or template) has `project_scope = 'Assigned'`.
+
+**The Agent.** It has no role, level, title or override. `AGENT_ALLOWED` is its only source, applied last. No
+sensitive code is agent-allowed (`permissions.py:114-115`). Person pickers never list it. Agent-origin entries keep
+their human approval (integrity, section 0).
+
+**Person pickers (11-17 item 4).** These are service reads by permission code, not stored. Existing codes cover
+`can_manage_jobs` (`project.manage`), `can_build_estimates` (`estimate.create`), `can_approve:<doc>:<limit>` (the
+approve codes with the effective limit) and `can_receive_deliveries` (`receiving.jobsite`, `receiving.stock`).
+Proposed new codes, to be confirmed in areas 8 and 15 and not seeded here: `lead.own`, `field.schedule`,
+`case.work`.
+
+### 2.3 Proposed schema
 
 **Master**
-- `user_company_role` gains `level TEXT` CHECK (level IS NULL OR level IN ('View only', 'Standard',
-  'Manager')). The rule "Admin has no level, Accountant / Sales rep / Operations have one" is a service rule,
-  because role codes are company data the master cannot check. If question Q2 picks one role per user per company,
-  the primary key becomes `(user_id, company_id)`, MR8's "replace the rows" becomes "replace the row", and the
-  union of roles (MR2) shrinks to one role plus a template. Otherwise the key stays.
-- `user_company_access.role_code` stays only as MR2's fallback until Phase 3 removes it with `app_user.role`
-  (Known issues). Not touched now.
-- Offboarding and sign-in (C57, 11-14): `app_user.deactivated_at TEXT`, `deactivated_by INTEGER` (the screen's
-  "Deactivated 11/14/2026 by mark"; CHECK both set or both NULL, and set only while `is_active = 0`);
-  `app_user.temp_password_expires_at TEXT` (72 hours, C57; NULL when not a temporary password);
-  `app_user.session_epoch INTEGER NOT NULL DEFAULT 0` (Reset password and Sign out everywhere add 1, and a session
-  that started under an older epoch is signed out at its next request; the hosted edition needs this, and on the
-  desktop it ends a second open window). The idle-lock minutes are a company setting (area 21's policy records).
+- `user_company_role` gains `level TEXT CHECK (level IS NULL OR level IN ('View only', 'Standard', 'Manager'))`.
+  The key stays `(user_id, company_id, role_code)` (Q2 B). "Admin has no level; the other roles have one" is a
+  service rule, because role codes are company data the master cannot check.
+- `user_company_access.role_code` stays only as MR2's fallback until Phase 3 removes it with `app_user.role`.
+- `app_user.deactivated_at TEXT` and `deactivated_by INTEGER`: CHECK both set or both NULL, and set only while
+  `is_active = 0` (C57 "Deactivated 11/14/2026 by mark").
+- `app_user.temp_password_expires_at TEXT` (72 hours, C57).
+- `app_user.session_epoch INTEGER NOT NULL DEFAULT 0` (Q17 A). Reset password and Sign out everywhere add 1, and a
+  session started under an older epoch is signed out at its next request.
+- The idle-lock minutes are a company setting in area 21's policy records.
 
 **Company**
-- `role`: the system roles are seeded as rows: `Admin`, `Accountant`, `Sales rep`, `Operations` (`is_system = 1`).
-  The Master is not a role (`app_user.is_master`). Whether companies may still create custom roles: question Q3
-  (recommended: no; templates take that job).
+- `role`: seeded rows `Admin`, `Accountant`, `Sales rep`, `Operations`, all `is_system = 1`. A trigger refuses
+  INSERT and DELETE of any other role (Q3 A; integrity of the fixed list). `role.project_scope` is dropped and
+  moves to `role_level`. `role_permission` is kept only for Admin's "every code" rows, or dropped in favour of the
+  Admin rule in authz (Q23).
 - `role_level(role_code, level, project_scope)`: PK `(role_code, level)`, FK role, level CHECK as above,
-  `project_scope` CHECK ('All', 'Assigned'). MR3's scope moves from `role` to the level. `role.project_scope` is
-  dropped.
-- `role_level_permission(role_code, level, permission_code)`: PK all three, FK `role_level` and `permission`.
-  These are the defaults.
-- `role_cap_permission(role_code, permission_code)`: PK both. This is the cap: no template or override can give a
-  user of this role a code outside it. Admin has no rows, because Admin holds everything (MR2). Question Q4: is
-  the cap its own list, or the Manager level's defaults?
-- `job_title(job_title_id PK, name TEXT NOT NULL UNIQUE, template_id INTEGER REFERENCES access_template, is_active
-  0/1, created_at, created_by)`. `app_user.job_title` (master) stays a display label. The access link is the
-  company's `user_job_title`.
-- `access_template(template_id PK, name TEXT NOT NULL UNIQUE, description, is_shipped 0/1 NOT NULL, is_hidden 0/1
-  NOT NULL DEFAULT 0, created_at, created_by)`. Triggers (integrity: shipped rows never deleted) refuse DELETE of a
-  shipped template, and DELETE of a template that a `user_job_title` or `job_title` row still uses (the FK does it
-  too: no ON DELETE CASCADE).
-- `access_template_permission(template_id, permission_code)`: PK both, FKs.
-- `user_job_title(user_id, job_title_id)`: PK `user_id` (one title per user per company; question Q5),
-  FK job_title, `assigned_by`, `assigned_at`.
-- `user_permission_override(user_id, permission_code, effect TEXT CHECK (effect IN ('Add', 'Remove')), granted_by
-  INTEGER NOT NULL, granted_at TEXT NOT NULL)`: PK `(user_id, permission_code)`. Remove beats Add from any source,
-  which is useful for separation of duties (question Q7).
-- `approval_limit`: keyed by `(role_code, level, document_type)` instead of `(role_code, document_type)`, plus
-  `access_template_approval_limit(template_id, document_type, max_amount_cents)` and
-  `user_approval_limit(user_id, document_type, max_amount_cents, granted_by, granted_at)`. MR4 becomes: the
-  highest limit among the sources that also grant the approve permission. The cap on limits: question Q8.
-- Every new table gets audit triggers (section 1). Every write to them passes a reason (11-17 item 3).
-- Indexes: `user_permission_override(permission_code)`, `access_template_permission(permission_code)`,
-  `role_level_permission(permission_code)`, `user_job_title(job_title_id)`. These serve the person pickers ("who
-  can do X").
+  `project_scope` CHECK ('All', 'Assigned') DEFAULT 'All'. Nine seeded rows.
+- `role_level_permission(role_code, level, permission_code)`: PK all three, FKs. These are the level defaults
+  (table 2.4.2). A trigger refuses a sensitive code (Q9 A; backstop for the service rule).
+- `role_cap_permission(role_code, permission_code)`: PK both, FKs (table 2.4.1). A trigger refuses a
+  `role_level_permission` row whose code is not in the role's cap.
+- `access_template(template_id PK, name TEXT NOT NULL UNIQUE, description, project_scope CHECK ('All', 'Assigned')
+  NOT NULL DEFAULT 'All', is_shipped 0/1 NOT NULL, is_hidden 0/1 NOT NULL DEFAULT 0, created_at, created_by)`.
+  Triggers refuse DELETE of a shipped template, and of a template a `job_title` still uses (FK, no cascade).
+- `access_template_role(template_id, role_code)`: PK both. The roles a template is meant for, used by the screen to
+  offer it and to warn when the user lacks one. It is not enforced beyond the cap.
+- `access_template_permission(template_id, permission_code)`: PK both, FKs (table 2.4.3).
+- `job_title(job_title_id PK, name TEXT NOT NULL UNIQUE, template_id NOT NULL REFERENCES access_template, is_active
+  0/1, created_at, created_by)`. Master `app_user.job_title` stays a display label.
+- `user_job_title(user_id PK, job_title_id NOT NULL REFERENCES job_title, assigned_by, assigned_at)`: one title per
+  user per company (Q5 A).
+- `user_permission_override(user_id, permission_code, effect CHECK IN ('Add', 'Remove'), reason TEXT NOT NULL CHECK
+  (length(trim(reason)) > 0), granted_by INTEGER NOT NULL, granted_at TEXT NOT NULL)`: PK `(user_id,
+  permission_code)` (Q7 A).
+- `approval_limit` re-keyed `(role_code, level, document_type)`, plus `access_template_approval_limit(template_id,
+  document_type, max_amount_cents)` and `user_approval_limit(user_id, document_type, max_amount_cents, reason NOT
+  NULL, granted_by, granted_at)`. Q8 A. No limits are seeded: the Controls page asks for them when approvals are
+  turned on, as today.
+- `permission` gains `is_read INTEGER NOT NULL CHECK (is_read IN (0, 1))`, used for View only (Q19). Read codes:
+  every `*.view`, plus `report.financial` and `report.job_cost`.
+- Every new table gets audit triggers (section 1), and every write to them carries a reason.
+- Indexes, for the person pickers: `user_permission_override(permission_code)`,
+  `access_template_permission(permission_code)`, `role_level_permission(permission_code)`,
+  `user_job_title(job_title_id)`.
 
-**Effective access (the authz rule that replaces MR2's union, written here for the decision log, not built):**
-gate as MR2 (access row, Deny wins; the Master allows all; Admin allows all) → role and level rows → defaults ∪
-template ∪ Add overrides, minus Remove overrides, intersected with the role's cap → `AGENT_ALLOWED` for Agent
-origin. Inactive role, title or template: skipped (the inactive-role denial as today). Denials keep R27 (no code
-in a sentence) and the reasons `authz.DENIAL_REASONS`; a new reason `capped` is not needed, because a capped code
-is simply not held (`ROLE`).
+### 2.4 Seed tables (O1)
 
-**Sensitive codes (K13, fields.manage, ledger.verify).** No level default ever holds a sensitive code (schema test
-on the seed rows). A sensitive code comes only from a template or a named Add override, and adding one requires a
-reason. Shipped templates may hold them, for example a Controller template with `ledger.verify` (K13).
-`fields.manage` stays Admin-only by default, as STOP C seeded it. The cap must include a sensitive code for a
-template to grant it, so the Accountant's cap decides whether an Accountant can ever verify the ledger (K13 says
-not by default; question Q9). Note: every approve code is sensitive today, so under this rule a Manager level
-cannot approve unless a template grants it. That is part of Q9.
+Checked by a scratch script, not project code:
+- all 77 seeded codes are placed: either Admin-only or in at least one cap;
+- each level's cumulative defaults sit inside its role's cap and hold no sensitive code;
+- View only holds read codes only;
+- each template sits inside the union of the caps of its roles.
 
-**Separation of duties.** Unchanged and still a control (OFF by default, section 0): `require_separate_approver`
-(R17), MR5 (one chain slot per person), the triggers at `001_company.sql:3702-3714`. New, as a warning only: saving
-a template or an override that leaves one user holding both a document's create and approve codes shows "This
-person could enter and approve the same bill." That is informational, not a block; it becomes a block only if the
-owner adds a control for it (question Q10).
+The scratch check becomes a real test when this is built (2.6).
 
-**The Agent.** The Agent is not a user and has no role, level, title or override. `AGENT_ALLOWED` stays the only
-source of its codes, applied after everything else. No sensitive code is ever agent-allowed (existing comment,
-`permissions.py:114-115`). Person pickers never list the Agent. Agent-origin entries keep their human approval
-(integrity rule, section 0).
+**Admin only (in no cap; Admin and the Master hold them):** `company.settings`, `company.users.manage`,
+`company.roles.manage`, `company.create`, `company.restore` (sensitive), `addon.manage` (sensitive),
+`fields.manage` (sensitive; STOP C), `ai.settings`.
 
-**Contacts: the "either manager" check (next_step.md input 3).** Proposal: authorize by the contact's side,
-following MR6 and MR9:
-- customer only: `customer.manage`; vendor only: `vendor.manage`; both flags, or neither (a plain contact or a
-  lead's contact): either one.
-- The service reads the contact's flags before `authorize` (in its own read connection, as MR6 does for
-  allocations), then authorizes. A holder of only one right gets the same sentence, error type and denial row for
-  a missing contact and for one on the other side (MR9), so ids cannot be probed.
-- `find_duplicates` returns only contacts on a side the caller can manage. Custom field values on contacts use
-  the same rule.
-- No schema change (the flags `is_customer` and `is_vendor` exist). Alternative: question Q11.
+#### 2.4.1 Caps (`role_cap_permission`)
 
-**Person pickers (11-17 item 4).** The listed capabilities (`can_own_leads`, `can_manage_jobs`,
-`can_build_estimates`, `can_run_field_schedule`, `can_approve:<doc>:<limit>`, `can_receive_deliveries`,
-`can_work_cases`) are permission codes, not a second mechanism. Existing codes cover some (`project.manage`,
-`estimate.create`, the approve codes with `approval_limit`, `receiving.jobsite` and `receiving.stock`). New codes
-proposed, to be confirmed in areas 8 and 15: `lead.own`, `field.schedule`, `case.work`. A picker is a service
-read: users with company access, active, holding the code by the effective-access rule. It is not stored.
+| Role | Codes | Cap |
+|------|-------|-----|
+| Accountant | 59 | `company.backup`, `period.view`, `period.close`, `period.reopen`, `year.reopen`, `ledger.view`, `je.create`, `je.post`, `je.approve`, `je.reverse`, `account.manage`, `ar.view`, `customer.manage`, `invoice.create`, `invoice.send`, `invoice.void`, `payment.receive`, `credit_memo.create`, `ap.view`, `vendor.manage`, `bill.create`, `bill.approve`, `bill.override_match`, `bill.void`, `payment.make`, `payment.approve`, `payment.release_hold`, `po.view`, `po.create`, `po.approve`, `receiving.stock`, `inventory.view`, `inventory.count`, `inventory.adjust`, `project.view`, `payapp.create`, `payapp.approve`, `retainage.release`, `asset.view`, `asset.create`, `asset.dispose`, `asset.approve`, `depreciation.run`, `loan.view`, `loan.manage`, `time.enter`, `time.approve`, `payroll.view`, `payroll.import`, `import.run`, `import.approve`, `view.tax_ids`, `view.bank_details`, `report.financial`, `report.job_cost`, `report.export`, `ai.use`, `audit.view`, `ledger.verify` |
+| Sales rep | 14 | `project.view`, `project.create`, `project.manage`, `estimate.create`, `estimate.approve`, `change_order.create`, `change_order.approve`, `contract.approve`, `ar.view`, `customer.manage`, `invoice.create`, `report.job_cost`, `report.export`, `ai.use` |
+| Operations | 30 | `project.view`, `project.create`, `project.manage`, `estimate.create`, `estimate.approve`, `change_order.create`, `change_order.approve`, `contract.approve`, `po.view`, `po.create`, `po.approve`, `subcontract.approve`, `receiving.stock`, `receiving.jobsite`, `inventory.view`, `inventory.pull`, `inventory.count`, `inventory.adjust`, `payapp.create`, `payapp.approve`, `retainage.release`, `ap.view`, `bill.create`, `bill.approve`, `asset.view`, `time.enter`, `time.approve`, `report.job_cost`, `report.export`, `ai.use` |
 
-**Migration of the 11 old roles (11-17 item 6).** Needs spec section 2 (open item O1). Until the first release
-nothing needs migrating: the role templates in `role_templates.py` and the seed are rewritten, and development
+In short: Accountant covers the books, money, payroll, sensitive data and audit. Sales rep covers leads, estimates,
+contracts and customers. Operations covers jobs, purchasing, inventory, pay apps and time. Bank and tax details, the
+ledger, payroll and audit are never reachable from Sales rep or Operations.
+
+#### 2.4.2 Level defaults (`role_level_permission`, cumulative; no sensitive code)
+
+| Role | Level | Adds | Scope |
+|------|-------|------|-------|
+| Accountant | View only | `period.view`, `ledger.view`, `ar.view`, `ap.view`, `po.view`, `inventory.view`, `project.view`, `asset.view`, `loan.view`, `report.financial`, `report.job_cost` | All |
+| Accountant | Standard | `je.create`, `ai.use` | All |
+| Accountant | Manager | `je.post`, `je.reverse`, `period.close`, `invoice.void`, `bill.void`, `account.manage`, `company.backup`, `report.export` | All |
+| Sales rep | View only | `project.view`, `ar.view` | All |
+| Sales rep | Standard | `project.create`, `estimate.create`, `customer.manage`, `ai.use` | All |
+| Sales rep | Manager | `project.manage`, `change_order.create`, `invoice.create`, `report.job_cost`, `report.export` | All |
+| Operations | View only | `project.view`, `po.view`, `inventory.view`, `asset.view` | All |
+| Operations | Standard | `time.enter`, `report.job_cost`, `ai.use` | All |
+| Operations | Manager | `project.manage`, `po.create`, `change_order.create`, `inventory.adjust`, `ap.view`, `report.export` | All |
+
+The level defaults are kept small on purpose. A template adds the area work, so AP clerk and AR clerk on the same
+Accountant · Standard level stay different.
+
+#### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
+
+| Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
+|----------|-------------|-------|------------|-----------------------|-----------------|
+| Controller | Accountant (spec 2: also the title of an Admin) | All | built Controller | `company.backup`, `period.close`, `je.create`, `je.post`, `je.reverse`, `account.manage`, `customer.manage`, `invoice.create`, `invoice.send`, `invoice.void`, `payment.receive`, `credit_memo.create`, `vendor.manage`, `bill.create`, `bill.void`, `payment.make`, `po.create`, `receiving.stock`, `payapp.create`, `asset.create`, `asset.dispose`, `depreciation.run`, `loan.manage`, `import.run`, `report.export` | `period.reopen`, `year.reopen`, `je.approve`, `bill.approve`, `bill.override_match`, `payment.approve`, `payment.release_hold`, `po.approve`, `payapp.approve`, `asset.approve`, `import.approve`, `payroll.view`, `view.tax_ids`, `view.bank_details`, `audit.view`, `ledger.verify` |
+| Staff accountant | Accountant | All | built Accountant | `period.close`, `je.create`, `je.post`, `je.reverse`, `account.manage`, `customer.manage`, `invoice.create`, `invoice.send`, `payment.receive`, `credit_memo.create`, `vendor.manage`, `bill.create`, `payment.make`, `asset.create`, `depreciation.run`, `import.run`, `report.job_cost` | none |
+| AP clerk | Accountant | All | built AP Clerk | `vendor.manage`, `bill.create`, `ap.view`, `po.create`, `po.view` | none |
+| AR clerk | Accountant | All | built AR Clerk | `customer.manage`, `invoice.create`, `invoice.send`, `payment.receive`, `credit_memo.create`, `ar.view` | none |
+| Sales manager | Sales rep | All | C57 Sales manager | `project.create`, `project.manage`, `estimate.create`, `change_order.create`, `customer.manage`, `invoice.create`, `report.job_cost` | `estimate.approve`, `contract.approve` |
+| Sales rep | Sales rep | All | built Sales | `project.create`, `estimate.create`, `customer.manage`, `invoice.create` | none |
+| Project manager | Operations | Assigned | built Project Manager | `ap.view`, `po.view`, `po.create`, `receiving.stock`, `inventory.view`, `project.view`, `estimate.create`, `change_order.create`, `project.manage`, `payapp.create`, `time.enter`, `report.job_cost` | `bill.approve`, `po.approve`, `subcontract.approve`, `change_order.approve`, `time.approve` |
+| Estimator | Operations | All | new (C57 Estimator) | `project.view`, `estimate.create`, `change_order.create`, `po.view`, `inventory.view`, `report.job_cost` | none |
+| Project manager + Estimator | Operations | Assigned | union of the two | the union of Project manager and Estimator | as Project manager |
+| Sales rep + Project manager | Sales rep + Operations (Q18) | Assigned | union of the two | the union of Sales rep and Project manager | as Project manager |
+| Superintendent | Operations | Assigned | built Foreman | `project.view`, `time.enter`, `receiving.jobsite`, `inventory.pull` | none |
+| Warehouse lead | Operations | All | built Warehouse | `po.view`, `inventory.view`, `inventory.pull`, `inventory.count`, `inventory.adjust`, `receiving.stock` | none |
+| View only (Accountant), View only (Sales rep), View only (Operations) | that role | All | Viewer | none: a label for a View only user (the level gives the read codes) | none |
+
+What changes against the built starter roles:
+- Project manager loses `report.financial`, which is not in the Operations cap.
+- Viewer, as Operations · View only, loses `report.job_cost`; as Accountant · View only it keeps both reports.
+- Nobody but Admin held `retainage.release` before. It is now in two caps but in no template (Q22).
+- `payroll.import` is in the Accountant cap but in no template (Q20).
+
+#### 2.4.4 Old roles mapped to the new model
+
+C57's list of 11 (the owner's UI list; spec section 2):
+
+| Old role | Role · level | Job title (template) |
+|----------|--------------|----------------------|
+| Admin | Admin | (any; the spec gives Dana "Controller") |
+| Controller | Admin, or Accountant · Manager | Controller |
+| Accounts payable | Accountant · Standard | AP clerk |
+| Accounts receivable | Accountant · Standard | AR clerk |
+| Sales manager | Sales rep · Manager | Sales manager |
+| Sales rep | Sales rep · Standard | Sales rep |
+| Estimator | Operations · Standard | Estimator |
+| Project manager | Operations · Standard | Project manager |
+| Superintendent | Operations · Standard | Superintendent |
+| Warehouse lead | Operations · Standard | Warehouse lead |
+| Viewer | each role held · View only | View only (role) or a company name |
+| (Sales rep + Project manager, spec 2) | Sales rep · Standard **and** Operations · Standard (Q18) | Sales rep + Project manager |
+| (Project manager + Estimator, spec 2) | Operations · Standard | Project manager + Estimator |
+
+The built starter roles (`role_templates.py`), where they differ:
+
+| Built role | Becomes |
+|------------|---------|
+| Accountant | Accountant · Standard + Staff accountant |
+| AP Clerk, AR Clerk | as C57's Accounts payable and Accounts receivable |
+| Foreman | Operations · Standard + Superintendent |
+| Warehouse | Operations · Standard + Warehouse lead |
+| Sales | Sales rep · Standard + Sales rep |
+| General Manager | no shipped template (Q21) |
+| Payroll | no shipped template (Q20) |
+
+Nothing needs migrating before the first release: `role_templates.py` and the seed are rewritten, and development
 databases are rebuilt.
 
-### 2.4 How it lands in the baselines
+### 2.5 How it lands in the baselines
 
-Master: `user_company_role.level`; the `app_user` columns. Company: the seeded system roles, `role_level`,
-`role_level_permission`, `role_cap_permission`, `job_title`, `access_template` (+ shipped seed rows, spec section
-6), `access_template_permission`, `user_job_title`, `user_permission_override`, the approval-limit tables; drop
-`role.project_scope`; new permission codes only once areas 8 and 15 confirm them. All in the one 2.9 pass.
+- Master: `user_company_role.level`, and the four `app_user` columns.
+- Company: the role seed and its trigger, `role_level`, `role_level_permission`, `role_cap_permission`,
+  `access_template` (with `project_scope`), `access_template_role`, `access_template_permission`, `job_title`,
+  `user_job_title`, `user_permission_override`, the three approval-limit tables, `permission.is_read`, and drop
+  `role.project_scope`.
+- The seed rows of 2.4.
+- New picker codes only after areas 8 and 15 confirm them.
 
-### 2.5 Effect on existing services and tests
+### 2.6 Effect on existing services and tests
 
-- `authz.authorize`, `authz.is_allowed`, the MR3 and MR4 helpers: the new effective-access rule. This is the
-  largest change in the area, and every permission test path runs through it.
-- `users.grant_access`, `set_role`, `deny_access` (`users.py:120`, `:145`, `:172`): take a level and a reason;
-  MR8's removal confirmation stays. The last-Admin check (`users.py:311-330`) is unchanged.
-- `role_templates.py` is rewritten as level defaults plus shipped access templates.
-- `contacts.update_contact`, `deactivate_contact`, `find_duplicates`, and `custom_fields` on contacts: the
-  side check.
-- Tests: `test_users_access.py`, `test_roles_schema.py`, `test_ledger_approvals.py` (MR4, MR5),
-  `test_custom_fields.py` (contacts and the `fields.manage` holders) and every test that builds a role with
-  `role_permission` rows directly need new fixtures. The static rules are unchanged.
+- `authz.authorize`, `authz.is_allowed`, and the MR3 and MR4 helpers follow the effective-access rule above. This
+  is the largest change in the area.
+- `users.grant_access`, `set_role` and `deny_access` (`users.py:120`, `:145`, `:172`) take a level and a reason.
+  MR8 and the last-Admin check (`users.py:311-330`) are unchanged.
+- `role_templates.py` is rewritten as the 2.4 seed. `seed_starter_roles` seeds templates, not roles.
+- `contacts.update_contact`, `deactivate_contact`, `find_duplicates`, and `custom_fields` on contacts get the side
+  check (Q11 A).
+- Tests: `test_role_templates.py`, `test_users_access.py`, `test_roles_schema.py`, `test_ledger_approvals.py` (MR4,
+  MR5), `test_custom_fields.py`, `test_create_company.py`, and every test that builds a role with `role_permission`
+  rows directly need new fixtures.
 
-### 2.6 Tests to write later
+### 2.7 Tests to write later
 
-- Effective access: defaults ∪ template ∪ Add, minus Remove, within the cap; one test per source and per
-  combination; Admin and the Master allow all; Deny wins.
-- A template or override cannot give a code outside the role's cap (saving refuses, and authz ignores a stored
-  one).
-- No level default holds a sensitive code (seed test). A sensitive Add override without a reason is refused.
-- Shipped template: hide works, delete is refused. A template in use cannot be deleted (trigger and service).
-- Only Admin or the Master manage templates and job titles.
-- MR3 and MR4 rewritten over levels, templates and user limits; MR5 unchanged across sources.
-- The Agent ignores templates and overrides; an override cannot add a code to the Agent.
+- Seed: every one of the 77 codes is Admin-only or in a cap. Levels are cumulative, inside their cap, and free of
+  sensitive codes. View only holds only read codes. Every template sits inside the union of its roles' caps, and
+  K13 holds (`ledger.verify` only via Controller).
+- Effective access: defaults ∪ template ∪ Add, minus Remove, within the union of the user's caps; one test per
+  source and per combination; Admin and the Master allow all; Deny wins.
+- Two roles: a code in either cap is reachable; a code in neither is not, even through a template.
+- An override without a reason is refused. A sensitive Add override writes its reason to the row and the audit
+  log.
+- No role can be inserted or deleted beyond the four. A shipped template can be hidden but not deleted, and a
+  template in use cannot be deleted. Only Admin or the Master manage templates and job titles.
+- MR3 and MR4 over levels, templates and user limits; MR5 unchanged across sources.
+- The Agent ignores templates and overrides.
 - Contacts: a vendor manager cannot edit a customer-only contact and gets the same sentence as for a missing id
   (MR9); a both-sides contact is editable with either right; `find_duplicates` hides the other side.
 - Pickers: an inactive user, a user without access, and a capped code are not listed.
-- Every role, level, title, template or override change writes an audit row with a reason.
 
 ---
 
-## 3. Memos and attachments on every form (R16 of the UI rules, C72; owner 2026-11-15)
+## 3. Memos and attachments on every form (C72; owner 2026-11-15)
 
 ### 3.1 Current state
 
-Memo-like columns that exist (to reuse, not duplicate, as the 11-15 message asks):
-- `invoice.memo` (`001_company.sql:627`), which covers bills, credit memos and vendor credits, since a bill is an
+Memo-like columns that exist (reused, not duplicated):
+- `invoice.memo` (`001_company.sql:627`). It covers bills, credit memos and vendor credits, since a bill is an
   invoice with `ledger_side = 'Purchase'`. It is locked on a sent or posted invoice (`:1827`, `:1986`) and audited
   (`:2479`).
 - `contact.memo` (`:835`), `contact_site.memo` (`:3905`), `pay_run.memo` (`:3998`), `deferral.memo` (`:921`),
   `journal_line.memo` (`:493`), `staged_line.memo` (`:312`), `contract.notes` (`:892`). The journal entry's memo is
-  `journal_entry.description` (C72: it stays the entry description).
+  `journal_entry.description`.
 - Missing on existing tables: `payment`, `estimate`, `change_order`, `project`.
-- There is no customer-facing "Message on document (prints)" column on `invoice` or `estimate` (C72). That belongs
-  to areas 5 and 6.
-- The other forms in C72 (purchase order, receipt, pull ticket, item, asset, loan, sub pay app, lead, deposit,
-  transfer, refund, write-off) have no tables yet. Their areas (1, 4, 9, 11, 12, 15) add them.
+- There is no customer-facing "Message on document (prints)" column (C72); that belongs to areas 5 and 6.
+- The other C72 forms (purchase order, receipt, pull ticket, item, asset, loan, sub pay app, lead, deposit,
+  transfer, refund, write-off) have no tables yet; their areas add them.
 
-Attachments: `file_attachment` (`:74-89`): `file_id`, `file_name`, `file_path` ("localized directory reference"),
-`file_size_kb`, `target_type` CHECK ('Project_Evidence', 'Change_Evidence', 'Invoice_Source'),
-`target_record_id`, `uploaded_at DEFAULT CURRENT_TIMESTAMP`. No uploader, content type, checksum or removal fields;
-no audit trigger; no index. **Nothing uses it**: no reference in `modules/`, `tests/` or `scripts/`.
-`modules/services/storage.py` has resource reads and `data_path` (`:106`), but no write API for uploaded files.
+Attachments: `file_attachment` (`:74-89`) has `file_id`, `file_name`, `file_path`, `file_size_kb`, `target_type`
+CHECK ('Project_Evidence', 'Change_Evidence', 'Invoice_Source'), `target_record_id`, and `uploaded_at DEFAULT
+CURRENT_TIMESTAMP`. It has no uploader, content type, checksum or removal fields, no audit trigger and no index.
+Nothing uses it (no reference in `modules/`, `tests/` or `scripts/`). `modules/services/storage.py` has no write API
+for uploaded files.
 
-### 3.2 Proposal
+### 3.2 Decided and proposed detail
 
-**Memo.** One column named `memo` (the existing name) on every form's header table: `memo TEXT CHECK (memo IS NULL
-OR length(memo) <= 4000)`.
-- Add it to `payment`, `estimate`, `change_order` and `project`, and add the CHECK to the existing `memo` columns
-  (`invoice`, `contact`, `pay_run`, `deferral`).
-- `contract.notes` stays (area 6 decides whether it is the contract's memo).
-- Each new header table in other areas gets `memo` with the same CHECK. That is a rule for areas 1, 4, 9, 11, 12
-  and 15, listed here so they do not invent `internal_memo` or `notes`.
-- The customer-facing text is a separate column, `document_message`, on customer documents (areas 5 and 6). The
-  name is proposed here so both areas use one.
+**Memo.**
+- One column named `memo`: `memo TEXT CHECK (memo IS NULL OR length(memo) <= 4000)`. Add it to `payment`,
+  `estimate`, `change_order` and `project`, and add the CHECK to the existing `memo` columns (`invoice`, `contact`,
+  `pay_run`, `deferral`). `contract.notes` stays; area 6 decides.
+- Each new header table in areas 1, 4, 9, 11, 12 and 15 gets `memo` with the same CHECK. Customer-facing text is a
+  separate column, `document_message` (areas 5 and 6).
 - **Never printed (owner 2026-11-18).** The print and email renderer builds from an allow-list of fields per
-  document, and `memo` is on none. A test renders every document type with a memo set and asserts the text is
-  absent. No schema can enforce this; it is a service and template rule.
-- The memo follows the record's edit rules: the invoice memo is fixed once sent or posted (existing trigger) and
-  changes only through rule 8's reverse-and-repost. The JE description is fixed once posted.
-- Audit: the memo is a column, so the row's audit trigger records its old and new text. Tables still without
-  triggers (`estimate`, `change_order`) get them under section 1's rule.
+  document, and `memo` is on none. A test renders every document type with a memo set and checks the text is
+  absent.
+- The memo follows the record's edit rules: the invoice memo is fixed once sent or posted and changes only through
+  rule 8's reverse-and-repost; the JE description is fixed once posted.
+- The row's audit trigger records old and new text; the tables still without triggers get them (section 1).
 
-**Attachments.** `file_attachment` is replaced by `attachment`. Nothing uses the old table, so it is dropped rather
-than altered.
+**Attachments: `attachment` replaces `file_attachment`** (dropped; nothing uses it).
 
 | Column | Type and constraint |
 |--------|---------------------|
 | `attachment_id` | INTEGER PRIMARY KEY |
-| `record_type` | TEXT NOT NULL CHECK IN (the form list of C72 that exists in this baseline: 'Invoice', 'Bill', 'Credit memo', 'Estimate', 'Change order', 'Payment', 'Pay run', 'Journal entry', 'Project', 'Contact', 'Deferral'; each area adds its own) |
+| `record_type` | TEXT NOT NULL CHECK IN ('Invoice', 'Bill', 'Credit memo', 'Estimate', 'Change order', 'Payment', 'Pay run', 'Journal entry', 'Project', 'Contact', 'Deferral'); each area adds its own forms |
 | `record_id` | INTEGER NOT NULL (polymorphic, no FK; the service checks the record exists) |
 | `file_name` | TEXT NOT NULL CHECK (length BETWEEN 1 AND 255) |
-| `storage_key` | TEXT NOT NULL UNIQUE. A relative key from `storage.py` (H3), never a path. On the desktop it maps under `DATA_DIR/Uploaded_Files/<company_code>/`, and in hosted to blob storage |
-| `size_bytes` | INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 20971520) (20 MB, C72). The company's allowed types and any lower size limit are a company setting (area 21) |
+| `storage_key` | TEXT NOT NULL UNIQUE. A relative key from `storage.py` (H3), never a path: on the desktop under `DATA_DIR/Uploaded_Files/<company_code>/`, in hosted in blob storage |
+| `size_bytes` | INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 20971520) (20 MB, C72). The allowed types are a company setting (area 21) |
 | `content_type` | TEXT NOT NULL |
-| `sha256` | TEXT NOT NULL CHECK (64 lowercase hex), so a later read detects a changed file |
-| `document_kind` | TEXT, NULL except for loans: CHECK IN ('Loan agreement', 'Promissory note', 'Security agreement', 'Amendment or rate change', 'Payoff letter', 'Statement', 'Other') (C72) |
+| `sha256` | TEXT NOT NULL CHECK (64 lowercase hex) |
+| `document_kind` | TEXT, NULL except for loans: CHECK IN ('Loan agreement', 'Promissory note', 'Security agreement', 'Amendment or rate change', 'Payoff letter', 'Statement', 'Other') |
 | `added_by` | INTEGER NOT NULL |
 | `added_at` | TEXT NOT NULL (from `context.now`) |
 | `origin` | TEXT NOT NULL DEFAULT 'Human' CHECK (as section 1) |
-| `removed_at`, `removed_by`, `removed_reason` | NULL until removed; CHECK all three set or all NULL; CHECK `removed_reason` length ≥ 1 |
+| `removed_at`, `removed_by`, `removed_reason` | NULL until removed. CHECK all three set or all NULL, and `length(trim(removed_reason)) > 0` |
 
-- Integrity triggers (H4: append-only backstop): DELETE refused; UPDATE refused unless it only sets the three
-  removal columns, once, from NULL. A posted or locked record still takes new attachments; that changes no
-  accounting (11-15).
-- Audit triggers on insert and update: metadata only, never the file's contents.
-- Index: `(record_type, record_id)`. It serves the list and the paperclip count. The count query filters
-  `removed_at IS NULL`; a partial index works in both SQLite and PostgreSQL if needed.
-- Removal keeps the file in storage, marked removed (the 11-15 recommendation; question Q12). The record shows
-  "Removed by ... : reason" to `audit.view` holders.
-- Permission: adding needs the record's own create or manage code; removing needs the same and a reason
-  (question Q13).
-- The Agent: no attachment reads or writes in v1 (outside `AGENT_ALLOWED`; Phase 6 decides).
+- Integrity triggers (H4, append-only backstop): DELETE is refused. UPDATE is refused unless it only sets the three
+  removal columns, once, from NULL.
+- Audit triggers on insert and update record metadata only, never the file's contents.
+- Index `(record_type, record_id)`, for the list and the paperclip count.
+- **Removed files are kept (Q12 A):** the file stays in storage and the row is marked removed. Holders of
+  `audit.view` see "Removed by ... : reason".
+- **Adding** is always allowed, also on a posted or locked record (11-15). It changes no accounting and needs the
+  record's own create or manage code.
+- **Removing (Q13 A plus the owner's rule):** whoever may edit the record, always with a reason. On a posted
+  document, removal follows the posted-document rules. It is refused when the document's date is in a closed
+  period, and when `lock_documents_after_posting` is ON. The refusal is one sentence that says what to do next,
+  for example "This bill's period is closed, so its attachments can't be removed. Reopen the period first."
+  Whether area 13's area locks (Sales or Purchases) also block removal is open item O6.
+- The Agent has no attachment reads or writes in v1; Phase 6 decides.
 
 ### 3.3 How it lands in the baselines
 
-Company only: `memo` on four tables, the length CHECK on four existing `memo` columns, `file_attachment` dropped,
-`attachment` with its triggers and index. The record-type list grows with each area's new tables in the same pass.
+Company only:
+- `memo` on four tables;
+- the length CHECK on four existing `memo` columns;
+- `file_attachment` dropped;
+- `attachment` with its triggers and index.
+
+The record-type list grows with each area's new tables in the same pass.
 
 ### 3.4 Effect on existing services and tests
 
 None today: no service writes `file_attachment` or those `memo` columns. `test_schema_replan.py:370-372` already
-expects `invoice.memo`. A later step adds `storage.put_file`, `storage.open_file` and `storage.exists` (H3), and an
-`attachments` service. Backups: AX2 copies the database only, so the attachments folder is outside every backup
-today (question Q14).
+expects `invoice.memo`. A later step adds `storage.put_file`, `open_file` and `exists` (H3), and an `attachments`
+service that reads the period and `lock_documents_after_posting` the way `ledger` does (`ledger.py:313-315`).
 
 ### 3.5 Tests to write later
 
-- `memo` longer than 4,000 characters is refused (schema) with one sentence (service).
-- No printed or emailed document contains its memo (every document type).
-- The invoice memo cannot change once sent or posted (existing trigger, re-asserted for bills).
-- `attachment`: DELETE refused; changing any column but the removal ones refused; removal is set once; removal
-  without a reason refused; size over 20 MB refused; a bad `sha256` refused.
-- A posted or locked record accepts a new attachment, and its journal and chain are unchanged.
-- An attachment on a missing record is refused; a user without the record's right is refused (R27 sentence).
-- Audit rows carry metadata only. `storage_key` is relative (no drive letter, no `..`; storage.py `_safe_join`).
-- Static: no `memo` field in any print template's allow-list.
+- A `memo` over 4,000 characters is refused (schema) with one sentence (service).
+- No printed or emailed document contains its memo (every document type). Static: no `memo` in any print
+  template's allow-list.
+- `attachment`: DELETE is refused; a change to any column but the removal ones is refused; removal is set once;
+  removal without a reason is refused; over 20 MB is refused; a bad `sha256` is refused.
+- A posted record accepts a new attachment, and its journal and chain are unchanged.
+- Removing from a posted document is refused in a closed period and when `lock_documents_after_posting` is ON, and
+  allowed otherwise with a reason. A removed file is still in storage.
+- An attachment on a missing record is refused; a user without the record's right is refused (R27).
+- Audit rows carry metadata only. `storage_key` is relative (no drive letter, no `..`; `storage._safe_join`).
 
 ---
 
@@ -547,218 +668,238 @@ today (question Q14).
 
 ### 4.1 Current state
 
-- Settings: `company_settings` is one row (`001_company.sql:734-787`), with controls and preferences side by side.
-  Its update trigger (`:3587`) writes the whole old and new row as JSON on every change. So before and after
-  exist now; the reason and an easy per-setting view do not. `document_approval_setting` (`:3718`),
-  `approval_policy` and `approval_step` (`:3402-3506`) and `fiscal_period_lock` (`:4509-4556`) are audited the
-  same way. `company_settings.update_setting` (`modules/services/company_settings.py:121`) takes no reason.
-- X6 (area 21) asks not to keep growing the singleton row; the policy records come from area 21.
+- `company_settings` is one row (`001_company.sql:734-787`) holding controls and preferences. Its update trigger
+  (`:3587`) writes the whole old and new row as JSON on every change, so before and after exist; a reason does not.
+  `document_approval_setting` (`:3718`), `approval_policy` and `approval_step` (`:3402-3506`) and
+  `fiscal_period_lock` (`:4509-4556`) are audited the same way. `company_settings.update_setting`
+  (`modules/services/company_settings.py:121`) takes no reason.
 - Backups: `database.backup_database(db_path, reason=...)` (`modules/database.py:179`) writes
-  `Backups/<stem>_<timestamp>_<reason>.db` and `<backup>.sha256`, and returns `{path, sha256}`.
-  `prune_backups` (`:234`) applies E7 retention to `addon-<key>` backups. `pre-upgrade` and `pre-restore` are never
-  pruned (AX2, owner 2026-11-18). `restore_database` (`:275`) checks the checksum. **No table records a backup
-  run**: the backup screen's history would have to read the folder. The `.sha256` file detects corruption, not
-  tampering (AX2). 11-14 asks for scheduled (daily at sign-out, keep 30), manual, test-restore and year-end archive
-  backups, encrypted with a backup password, with failure as a "need attention" item. E7 says keep 7 daily, 4
-  weekly, 12 monthly.
+  `Backups/<stem>_<timestamp>_<reason>.db` and `<backup>.sha256`, and returns `{path, sha256}`. `prune_backups`
+  (`:234`) applies E7 retention to `addon-<key>` backups; `pre-upgrade` and `pre-restore` are never pruned (AX2).
+  `restore_database` (`:275`) checks the checksum. No table records a backup run, and no backup copies the
+  attachments folder.
 
-### 4.2 Proposal
+### 4.2 Decided and proposed detail
 
-**Settings history: no second table.** The history screen is a service read over `audit_log` for the settings
-tables (`company_settings`, `document_approval_setting`, `approval_policy`, `approval_step`, `fiscal_period_lock`,
-the area 21 policy tables, the access tables of section 2). It diffs `old_value` and `new_value` in Python (H5)
-and returns one line per changed setting: setting, before, after, who, when, reason. The labels come from a service
-registry of setting names (the same one the Controls page uses). Section 1 supplies the reason, the origin and the
-`event_id`. A reason is required for a control (section 1's list) and optional for a preference such as the date
-format or time zone (question Q15). Alternative: a `setting_change` table written by the service (question Q16;
-not recommended: two records of one change).
+**Settings history: read from `audit_log`, no second table (Q16 A).** A service read over the settings tables
+(`company_settings`, `document_approval_setting`, `approval_policy`, `approval_step`, `fiscal_period_lock`, area
+21's policy tables, and the access tables of section 2) diffs `old_value` and `new_value` in Python (H5). It returns
+one line per changed setting: setting, before, after, who, when, reason. Labels come from the service registry the
+Controls page uses. **A reason is required for controls and optional for preferences (Q15 A).**
 
-**Master `backup_run`** (in the master, so restoring an older company file cannot erase the record of its own
-backups, the same reasoning as K14's checkpoint mirror):
+**Master `backup_run`.** It lives in the master, so restoring an older company file cannot erase the record of its
+own backups (the reasoning of K14).
 
 | Column | Type and constraint |
 |--------|---------------------|
 | `run_id` | INTEGER PRIMARY KEY |
 | `company_id` | INTEGER REFERENCES company_registry, NULL for the master file itself |
 | `kind` | TEXT NOT NULL CHECK IN ('Scheduled', 'Manual', 'Pre-upgrade', 'Pre-restore', 'Add-on', 'Year-end', 'Test restore', 'Restore') |
-| `reason_code` | TEXT NOT NULL. The AX2 file-name reason (`pre-upgrade`, `addon-<key>`, ...), so a row and a file match |
+| `reason_code` | TEXT NOT NULL. The AX2 file-name reason (`pre-upgrade`, `addon-<key>`, ...) |
 | `started_at` | TEXT NOT NULL |
 | `finished_at` | TEXT |
 | `result` | TEXT NOT NULL CHECK IN ('Running', 'OK', 'Failed') |
-| `file_name` | TEXT. The backup's file name only, relative to the company's `Backups/` folder (no absolute path: H3, hosted) |
+| `file_name` | TEXT. The file name only, relative to the company's `Backups/` folder |
 | `sha256` | TEXT CHECK (NULL or 64 hex) |
 | `size_bytes` | INTEGER CHECK (NULL or ≥ 0) |
-| `is_encrypted` | INTEGER NOT NULL CHECK (0, 1). The backup password itself is never stored, and nor is a hash of it |
-| `error_message` | TEXT. A plain sentence only (R35: the details go to the log file, not here) |
+| `includes_attachments` | INTEGER NOT NULL CHECK (0, 1) (Q14, below) |
+| `attachment_count` | INTEGER CHECK (NULL or ≥ 0) |
+| `is_encrypted` | INTEGER NOT NULL CHECK (0, 1). The backup password is never stored, nor anything derived from it |
+| `error_message` | TEXT. A plain sentence only (R35) |
 | `requested_by` | INTEGER, NULL for a scheduled run |
 | `origin` | TEXT NOT NULL CHECK (as section 1) |
-| `source_run_id` | INTEGER REFERENCES backup_run. For a test restore or a restore: the backup it used |
-| `reason` | TEXT. Required by the service for a restore (K5's Master override) and for a deletion offer (next_step 2.8) |
-| `pruned_at`, `pruned_by` | NULL until E7 pruning removes the file; then set once (the row stays) |
+| `source_run_id` | INTEGER REFERENCES backup_run. For a test restore or a restore: the backup used |
+| `reason` | TEXT. Required by the service for a restore (K5) |
+| `pruned_at`, `pruned_by` | NULL until E7 pruning removes the file; then set once, and the row stays |
 
-- CHECKs: `result = 'OK'` needs `finished_at`, `file_name` and `sha256` (except for a test restore, which needs
-  `source_run_id`); `result = 'Failed'` needs `error_message`; `kind IN ('Pre-upgrade', 'Pre-restore')` needs
-  `pruned_at IS NULL` (never pruned, AX2).
+- CHECKs:
+  - `result = 'OK'` needs `finished_at`, `file_name` and `sha256`; a test restore needs `source_run_id` instead.
+  - `result = 'Failed'` needs `error_message`.
+  - `kind IN ('Pre-upgrade', 'Pre-restore')` needs `pruned_at IS NULL` (AX2).
+  - `kind IN ('Scheduled', 'Manual', 'Year-end')` with `company_id` set and `result = 'OK'` needs
+    `includes_attachments = 1` (Q14).
+- **Attachments (Q14 A plus the owner's rule):** 2.8 builds the copy, and a company backup without the
+  attachments is not complete. The safety copies that only guard a schema or add-on change or a restore
+  (`Pre-upgrade`, `Add-on`, `Pre-restore`) copy the database only (AX2), because those changes never touch
+  attachment files. Recorded in docs/next_step.md under the 2.8 items.
 - Triggers: no DELETE. UPDATE may only move a `Running` row to `OK` or `Failed` once, and set the prune columns
-  once. Every other column is immutable (the `installation_key_retire_only` pattern, `001_master.sql:525`). Audit
-  triggers on insert and update.
-- Index: `(company_id, started_at)`, and `(result)` for the "need attention" item.
-- A failed run is a row, so the home screen's "need attention" item is a query, not a file scan.
-- Writer: the 2.8 backup service, around `database.backup_database`. The helper stays free of master access, a
-  database-layer function that knows no context. The baseline runner's `pre-upgrade` backup (after the first
-  release) is recorded by the `ensure_*` caller once the master is open. Recorded in the master only, never in the
-  company file.
-- Hosted: the same table in the hosted master database; `file_name` becomes a storage key.
+  once (the `installation_key_retire_only` pattern, `001_master.sql:525`). Audit triggers on insert and update.
+- Indexes: `(company_id, started_at)`, and `(result)` for the "need attention" item.
+- Writer: the 2.8 backup service, around `database.backup_database`. The helper stays a database-layer function
+  without master access. Recorded in the master only.
 
 ### 4.3 How it lands in the baselines
 
-Master: `backup_run` with triggers and indexes (section 1's audit columns apply). Company: nothing more than
-section 1. The 2.8 services write it; 2.9 only adds the table.
+Master: `backup_run` with its triggers and indexes. Company: section 1 only. The 2.8 services write the table.
 
 ### 4.4 Effect on existing services and tests
 
 - `company_settings.update_setting` and `set_document_approval` take `reason` (required for controls). Callers:
-  the settings screens (Phase 3) and `test_company_settings.py`, `test_controls_003.py`, `test_controls_004.py`.
-- `database.backup_database`, `prune_backups`, `restore_database`: unchanged. `test_master_schema.py` gains the
-  table.
+  Phase 3 screens; tests `test_company_settings.py`, `test_controls_003.py`, `test_controls_004.py`.
+- `database.backup_database`, `prune_backups` and `restore_database` are unchanged in 2.9.
+  `test_master_schema.py` gains the table.
 
 ### 4.5 Tests to write later
 
-- Settings history: one line per changed setting with before, after, who, when and reason; no line for an update
-  that changed nothing; the labels come from the registry; no SQLite JSON functions in the service SQL (static
-  rule H5).
-- A control change without a reason is refused; a preference change without one is accepted (if Q15 = A).
-- `backup_run`: DELETE refused; a finished row cannot change; `Running` → `OK` or `Failed` only once; an OK row
-  needs file, sha256 and finish time; a failed row needs a sentence; `Pre-upgrade` and `Pre-restore` rows cannot
-  be marked pruned; prune is set once.
-- `error_message` never holds a path or exception text (R35).
-- No column holds a backup password or a value derived from it (HA11 name rule over the master's columns).
+- Settings history: one line per changed setting with before, after, who, when and reason; nothing for a no-change
+  update; no SQLite JSON functions in service SQL (H5).
+- A control change without a reason is refused; a preference change without one is accepted.
+- `backup_run`:
+  - DELETE is refused, and a finished row cannot change.
+  - `Running` moves to `OK` or `Failed` only once, and prune is set once.
+  - An OK row needs its file, sha256 and finish time; a failed row needs a sentence.
+  - `Pre-upgrade` and `Pre-restore` rows cannot be pruned.
+  - An OK scheduled, manual or year-end company backup must include attachments.
+- `error_message` never holds a path or exception text (R35). No column holds a backup password or a value derived
+  from it (the HA11 name rule over master columns).
 - Restoring an older company file leaves the master's backup history whole.
 
 ---
 
 ## 5. Open items (not decisions)
 
-- **O1** The access spec (`ux_research_roles_access_2026-11-17.md`, section 2 role mapping, section 6 shipped
-  templates) is needed before section 2's seed rows can be written. It is not read in this draft, by the task's
-  source list.
-- **O2** C57's permission matrix rows (Money, Accounting, People, Data, Settings, Field) map to codes in
-  docs/roles_permissions_design.md section 3 (not read). Under the 11-17 model they become template and level
-  rows instead of a role × permission grid.
-- **O3** The persona audit's who-and-when columns (item 2: `created_by`, `created_at`, `updated_by`, `updated_at`
-  on invoice, payment, contact, change_order, contract) overlap with section 1: "Entered by" can be read from the
-  first audit row. Area 21 decides whether the record carries them too.
-- **O4** "Export all data" (persona audit 14) needs an export permission. `company.backup` ("Back up and export the
-  company") and `report.export` exist; area 21 decides whether a new code is needed.
+- **O1 closed:** the seed tables are in 2.4; the codes that could not be placed are questions Q20-Q22.
+- **O2** C57's matrix rows (Money, Accounting, People, Data, Settings, Field) become level and template rows; the
+  Users page groups the codes by module (docs/roles_permissions_design.md section 3). This is for the design chat's
+  C57 revision (C4).
+- **O3** The persona audit's who-and-when columns (item 2) overlap with section 1; area 21 decides.
+- **O4** "Export all data" (persona audit 14): `company.backup` and `report.export` exist; area 21 decides whether
+  a new code is needed.
 - **O5** Lead assignment rules (11-17 item 5) belong to area 15.
+- **O6** Whether area 13's area locks (Sales, Purchases) also block attachment removal on posted documents, as the
+  owner's rule does for closed periods and `lock_documents_after_posting`. For area 13. next_step.md input 4 makes
+  the same point for custom-field edits.
 
 ---
 
-## 6. Conflicts with decisions (flagged, not resolved)
+## 6. Conflicts with decisions
 
-- **C1 AX4 wording vs H4 and HA9.** The task says audit rows are "written by services, not triggers (AX4)".
-  AX4's text (docs/decisions_2026-11-11.md:1658) says only "before/after detail and a reason field". H4 (`:846`)
-  keeps triggers for "the audit trail" as a database backstop, and HA9 makes add-on audit triggers. This draft
-  recommends keeping the triggers (Q1). If the owner picks services-only, H4 and HA9 need amending.
-- **C2 E11 vs the baseline.** E11 (`:605`) says `origin` lives on `audit_log`; neither baseline has it. Section 1
-  adds it.
-- **C3 Timestamp rule vs `audit_log.logged_at`.** CLAUDE.md section 4 says `_at` columns written by services are
-  UTC ISO with an offset, and H2 says no clock reads in services. `logged_at` uses `CURRENT_TIMESTAMP`. The same
-  applies to `file_attachment.uploaded_at`, `company_registry.created_at` and `app_user.created_at`. Section 1
-  fixes audit_log only; the rest belong to area 21.
-- **C4 CODE_CHANGES 57 vs the 11-17 access model.** C57 lists 11 roles and a role × permission matrix; 11-17 says
-  it replaces that matrix. C57 is not yet updated, so the design chat should revise it.
-- **C5 MR2 union vs the 11-17 cap.** MR2 unites roles. 11-17 adds a cap per role. If a user may hold two roles
-  (Q2 B), the cap of a union needs a rule (the union of caps is recommended under that option).
-- **C6 K13 vs level defaults.** K13 names "Controller (starter template)" as a holder of `ledger.verify`. Under
-  11-17 Controller is a job title with a template, not a role. That is consistent, but K13's wording needs a later
-  amendment.
-- **C7 HA11 vs `company_settings.tax_id`.** HA11 treats TIN as a secret word for add-ons, and the add-on
-  authorizer hides the column, yet the core trigger logs it in full (Q6).
+- **C1 (amended by Q1 A):** AX4 is built with the audit triggers; H4 and HA9 stand. The task text "written by
+  services, not triggers" is superseded. Services supply the reason, origin and action through `tx.py`.
+- **C2 E11 vs the baseline (kept):** E11 (`docs/decisions_2026-11-11.md:605`) puts `origin` on `audit_log`; neither
+  baseline has it. Section 1 adds it.
+- **C3 Timestamp rule vs `logged_at` (kept):** CLAUDE.md section 4 and H2 vs `CURRENT_TIMESTAMP`. Section 1 fixes
+  `audit_log`. The other tables (`file_attachment.uploaded_at`, dropped here; `company_registry.created_at`;
+  `app_user.created_at`; the Admin role seed's `strftime('now')`) go to area 21.
+- **C4 CODE_CHANGES 57 vs the 11-17 access model:** the owner has asked the design chat to revise C57. Until then,
+  section 2 follows 11-17.
+- **C5 closed by Q2 B:** a user's cap is the union of their roles' caps.
+- **C6 K13 wording (kept):** K13 names "Controller (starter template)". Under 11-17 Controller is a job-title
+  template (2.4.3, which holds `ledger.verify`), so K13's wording needs a later amendment; the rule itself holds.
+- **C7 closed by Q6 A:** the audit log keeps the last 4; the record keeps the full TIN.
+- **C8 (new) the owner's exemption rule vs KS9 and the audit tables.** The owner said to exempt only derived or
+  cache tables. These tables are neither, and are not business tables:
+  - the audit trail itself: `audit_log`, `audit_context`, `access_event`, `auth_event`;
+  - the secret-holding tables KS9 keeps unaudited on purpose, so wrapped keys never reach the log:
+    `installation_key`, `company_key`, `master_recovery`, `throttle_secret`;
+  - the runner's `schema_version` and `schema_baseline`.
+
+  Listed separately in 1.2, not resolved; question Q24.
+- **C9 (new) spec section 2 vs Q2 B, and the two old-role lists.**
+  - Spec section 2 gives Priya one role (Sales rep · Standard) with a template that holds Project manager codes.
+    Under the caps, those codes are outside the Sales rep cap, so they work only if she also holds Operations
+    (Q18).
+  - The "11 old roles" are two different lists: C57's and the built starter roles (`role_templates.py`, S6). 2.4.4
+    maps both.
 
 ---
 
 ## 7. Questions for the owner
 
-Recommended option first in each.
+Answers recorded 2026-11-18 (Q1-Q17). New questions Q18-Q24 have the recommended option first.
 
-**Q1. Who writes audit rows (AX4)?**
-- A. **Recommended:** keep the row triggers. Services add the reason, origin and action through `tx.py`. Every
-  write is logged, even one a service forgets.
-- B. Services write every audit row and the core triggers are dropped. One Python place for redaction, nothing to
-  port, but a missed write path is unlogged. H4 and HA9 need amending.
-- C. Both: services write an action row with the reason, and the triggers keep the column detail.
+**Q1. Who writes audit rows (AX4)?** A. Keep the triggers; services add reason, origin and action through `tx.py`.
+B. Services write every row. C. Both.
+- **Answer: A.** Redaction rules live in the triggers too, from one shared list with RP1 and HA11. Every business
+  table is audited; the tables without a trigger are listed "to audit", and only derived or cache tables are
+  exempt, each with a reason, checked by a schema test. C1 amended: H4 and HA9 stand.
 
-**Q2. How many roles may a user hold in one company?**
-- A. **Recommended:** one role with one level, plus one job title and overrides. This is simpler, and the cap is
-  clear. MR2's union and MR8 shrink accordingly.
-- B. Several roles, as MR2 and the persona audit's "gets all of them" allow. The cap is the union of their caps.
+**Q2. How many roles may a user hold in one company?** A. One role. B. Several roles.
+- **Answer: B.** MR2 and MR8 as built; the effective cap is the union of the user's role caps (C5).
 
-**Q3. Can a company create its own roles under the new model?**
-- A. **Recommended:** no. The four system roles are fixed; custom templates cover the variety.
-- B. Yes, a custom role with its own levels and cap.
+**Q3. Can a company create its own roles?** A. No; templates cover the variety. B. Yes.
+- **Answer: A.**
 
-**Q4. What is a role's cap?**
-- A. **Recommended:** its own list (`role_cap_permission`), wider than the Manager defaults, so a template can add
-  codes the level does not give.
-- B. The Manager level's defaults: nothing beyond them can be added.
+**Q4. What is a role's cap?** A. Its own list, wider than the Manager defaults. B. The Manager defaults.
+- **Answer: A.**
 
-**Q5. How many job titles per user per company?**
-- A. **Recommended:** one.
-- B. Several, with their templates united.
+**Q5. Job titles per user per company?** A. One. B. Several.
+- **Answer: A.**
 
-**Q6. `company_settings.tax_id` in the audit log**
-- A. **Recommended:** last 4 only, like contacts.
-- B. In full (the company's own ID prints on its invoices), readable by `audit.view` holders.
+**Q6. `company_settings.tax_id` in the audit log?** A. Last 4 only. B. In full.
+- **Answer: A.** The audit log keeps the last 4. The record keeps the full value (the 1099 payer TIN and vendor
+  1099s read it there).
 
-**Q7. Per-user overrides**
-- A. **Recommended:** Add and Remove; Remove wins over every source.
-- B. Add only.
+**Q7. Per-user overrides?** A. Add and Remove; Remove wins. B. Add only.
+- **Answer: A**, and a reason is required for each override.
 
-**Q8. Approval limits under the new model**
-- A. **Recommended:** level defaults, template limits and user limits. The highest of those that come with the
-  approve permission applies, with no cap on the amount.
-- B. As A, plus a cap per role and document type.
-- C. Limits on the user only.
+**Q8. Approval limits?** A. Level, template and user limits; the highest applies; no cap on the amount. B. A plus a
+cap. C. User only.
+- **Answer: A.**
 
-**Q9. Sensitive codes and levels**
-- A. **Recommended:** no level default holds a sensitive code (approve codes included). They come only from
-  templates or named overrides, with a reason.
-- B. Manager levels may hold the approve codes by default; the other sensitive codes as in A.
+**Q9. Sensitive codes and levels?** A. No level default holds a sensitive code; templates or named overrides only,
+with a reason. B. Manager levels hold the approve codes.
+- **Answer: A.**
 
-**Q10. Separation-of-duties check on templates and overrides**
-- A. **Recommended:** a warning only.
-- B. A new control (OFF by default) that blocks one person from holding create and approve for the same document
-  type.
+**Q10. Separation-of-duties check on templates and overrides?** A. A warning only. B. A new blocking control.
+- **Answer: A.**
 
-**Q11. Contacts "either manager" check**
-- A. **Recommended:** by the contact's side: customer-only needs `customer.manage`, vendor-only needs
-  `vendor.manage`, both sides or neither takes either. MR9's same sentence for one-right holders.
-- B. Both-sides contacts need both rights.
-- C. Keep either right for every contact (today's behaviour).
+**Q11. Contacts "either manager" check?** A. By the contact's side, with MR9's same sentence. B. Both-sides contacts
+need both rights. C. Keep today's check.
+- **Answer: A.**
 
-**Q12. A removed attachment's file**
-- A. **Recommended:** kept in storage and marked removed.
-- B. Deleted from storage; the row stays.
+**Q12. A removed attachment's file?** A. Kept in storage, marked removed. B. Deleted from storage.
+- **Answer: A.**
 
-**Q13. Who may remove an attachment?**
-- A. **Recommended:** whoever may edit the record, with a reason.
-- B. Only Admins or the Master.
-- C. A new sensitive code `attachment.remove`.
+**Q13. Who may remove an attachment?** A. Whoever may edit the record, with a reason. B. Admin or the Master only.
+C. A new code.
+- **Answer: A**, plus: removing an attachment from a posted document follows the posted-document rules. It is
+  refused in a closed period, and when `lock_documents_after_posting` is ON.
 
-**Q14. Attachments and backups**
-- A. **Recommended:** decide in 2.8. A backup copies the database only today (AX2), so files need their own copy
-  plan.
-- B. Each backup also zips the company's attachments folder.
+**Q14. Attachments and backups?** A. Decide in 2.8. B. Each backup zips the attachments.
+- **Answer: A**, plus: 2.8 must include attachments; a backup without them is not complete. Added to
+  docs/next_step.md under the 2.8 items.
 
-**Q15. Which settings changes need a reason?**
-- A. **Recommended:** controls only (the 11-14 rule); preferences optional.
-- B. Every settings change.
+**Q15. Which settings changes need a reason?** A. Controls only. B. Every change.
+- **Answer: A.**
 
-**Q16. Where settings history is stored**
-- A. **Recommended:** read from `audit_log`, with no second table.
-- B. A `setting_change` table written by the service.
+**Q16. Where is settings history stored?** A. Read from `audit_log`. B. A `setting_change` table.
+- **Answer: A.**
 
-**Q17. Session invalidation (Sign out everywhere, Reset password)**
-- A. **Recommended:** `app_user.session_epoch`, added now.
-- B. Defer to the hosted edition; the desktop has one session per window.
+**Q17. Session invalidation?** A. `app_user.session_epoch`, added now. B. Defer to hosted.
+- **Answer: A.**
+
+**Q18. A multi-access template that spans two roles' caps (Sales rep + Project manager)**
+- A. **Recommended:** the user holds both roles (Sales rep · Standard and Operations · Standard). With Q2 B this
+  keeps each cap narrow, and the template stays inside the union.
+- B. Widen the Sales rep cap to hold the Project manager codes, matching spec section 2's single role.
+
+**Q19. Does View only limit what a template or override can add?**
+- A. **Recommended:** yes. A role held at View only contributes only read codes (`permission.is_read`) to the cap
+  union, so a View only user never edits ("Viewer sees no editing actions", persona audit 1).
+- B. No. The level sets only the defaults, and a template can add edit rights.
+
+**Q20. Payroll (built starter role; `payroll.import` is in no template)**
+- A. **Recommended:** add a shipped "Payroll" template for Accountant: `time.enter`, `time.approve`, `import.run`,
+  `payroll.view`, `payroll.import`, `period.view`, `ledger.view`, `report.financial`.
+- B. No template; Admin grants `payroll.import` by override.
+
+**Q21. General Manager (built construction role, not in spec section 6)**
+- A. **Recommended:** no template. A general manager is Sales rep · Manager plus Operations · Manager, with the
+  Project manager template (scope set to All by the company) or Admin.
+- B. Add a shipped "General manager" template spanning Sales rep and Operations: the built role's codes inside
+  those caps (its ledger, period and AP views need Accountant · View only as well).
+
+**Q22. `retainage.release` (in the Accountant and Operations caps, in no template)**
+- A. **Recommended:** add it to the Controller template.
+- B. Leave it to Admin or a named override.
+
+**Q23. Admin's permissions**
+- A. **Recommended:** keep `role_permission` only for Admin's rows ("every code", as seeded today) so authz and the
+  seed stay as built.
+- B. Drop `role_permission`; authz treats Admin as allow-all (MR2 already does).
+
+**Q24. The tables that are neither business nor derived (C8)**
+- A. **Recommended:** a third exempt category, "the audit trail itself, KS9 secret tables and runner metadata",
+  listed by name in the same schema test.
+- B. Audit them too, except the KS9 secret tables (they would log wrapped keys).
