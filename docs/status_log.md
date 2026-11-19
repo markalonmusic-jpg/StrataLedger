@@ -958,3 +958,8 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-18: step-reviewer on the Codex batch 2 diff (approve with changes; R21 decision text amended in f629f2f);
   mutation-tester on f629f2f: 20 mutants on update_entry, 19 killed, 1 gap (a changed source kept unsaved) now
   killed by tests/test_mutation_codex_batch2_extra.py. Awaits the owner's approval.
+- 2026-11-18: owner approved the Codex batch 2 posting fixes (f629f2f, 0137b34; hook run 4169 passed, 2 skipped).
+  Step 2.9 runs in a new session (docs/next_step.md).
+- 2026-11-19: owner approved the step 2.9 area 18 doc (docs/replan_2.9/area_18_admin_security_audit.md; draft
+  6e9cdf8, owner answers Q1-Q17 and the access seed tables 2a3b497; hook run 4169 passed, 2 skipped). Owner answers
+  Q18-Q24 (2026-11-19): all A; C8 closed by Q24 A, C9 by Q18 A. The next session starts in a new chat.

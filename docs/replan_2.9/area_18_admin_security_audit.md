@@ -1,9 +1,10 @@
 # Step 2.9 schema replan, area 18: admin, security, audit, attachments
 
-Status: **doc approved by the owner (2026-11-19)** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17
-2026-11-18, folded in below, 2a3b497). Docs only: nothing here changes code, a baseline, a migration or a test.
+Status: **Owner-approved 2026-11-19** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17 2026-11-18, folded
+in below, 2a3b497; owner answers Q18-Q24 2026-11-19, all A, section 7). Docs only: nothing here changes
+code, a baseline, a migration or a test.
 Nothing is built until the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every
-table, column and code below is PROPOSED until then. Still open: questions Q18-Q24 (section 7).
+table, column and code below is PROPOSED until then. No questions are open.
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 18 and the source keys.
@@ -794,8 +795,10 @@ Master: `backup_run` with its triggers and indexes. Company: section 1 only. The
     `installation_key`, `company_key`, `master_recovery`, `throttle_secret`;
   - the runner's `schema_version` and `schema_baseline`.
 
-  Listed separately in 1.2, not resolved; question Q24.
-- **C9 (new) spec section 2 vs Q2 B, and the two old-role lists.**
+  Listed separately in 1.2. **Closed by Q24 A (2026-11-19):** a third exempt category, listed by name in the
+  same schema test.
+- **C9 (new) spec section 2 vs Q2 B, and the two old-role lists. Closed by Q18 A (2026-11-19):** the user holds
+  both roles.
   - Spec section 2 gives Priya one role (Sales rep · Standard) with a template that holds Project manager codes.
     Under the caps, those codes are outside the Sales rep cap, so they work only if she also holds Operations
     (Q18).
@@ -806,7 +809,7 @@ Master: `backup_run` with its triggers and indexes. Company: section 1 only. The
 
 ## 7. Questions for the owner
 
-Answers recorded 2026-11-18 (Q1-Q17). New questions Q18-Q24 have the recommended option first.
+Answers recorded 2026-11-18 (Q1-Q17) and 2026-11-19 (Q18-Q24, all A).
 
 **Q1. Who writes audit rows (AX4)?** A. Keep the triggers; services add reason, origin and action through `tx.py`.
 B. Services write every row. C. Both.
@@ -873,33 +876,40 @@ C. A new code.
 - A. **Recommended:** the user holds both roles (Sales rep · Standard and Operations · Standard). With Q2 B this
   keeps each cap narrow, and the template stays inside the union.
 - B. Widen the Sales rep cap to hold the Project manager codes, matching spec section 2's single role.
+- **Answer: A** (owner 2026-11-19). C9 closed.
 
 **Q19. Does View only limit what a template or override can add?**
 - A. **Recommended:** yes. A role held at View only contributes only read codes (`permission.is_read`) to the cap
   union, so a View only user never edits ("Viewer sees no editing actions", persona audit 1).
 - B. No. The level sets only the defaults, and a template can add edit rights.
+- **Answer: A** (owner 2026-11-19).
 
 **Q20. Payroll (built starter role; `payroll.import` is in no template)**
 - A. **Recommended:** add a shipped "Payroll" template for Accountant: `time.enter`, `time.approve`, `import.run`,
   `payroll.view`, `payroll.import`, `period.view`, `ledger.view`, `report.financial`.
 - B. No template; Admin grants `payroll.import` by override.
+- **Answer: A** (owner 2026-11-19).
 
 **Q21. General Manager (built construction role, not in spec section 6)**
 - A. **Recommended:** no template. A general manager is Sales rep · Manager plus Operations · Manager, with the
   Project manager template (scope set to All by the company) or Admin.
 - B. Add a shipped "General manager" template spanning Sales rep and Operations: the built role's codes inside
   those caps (its ledger, period and AP views need Accountant · View only as well).
+- **Answer: A** (owner 2026-11-19).
 
 **Q22. `retainage.release` (in the Accountant and Operations caps, in no template)**
 - A. **Recommended:** add it to the Controller template.
 - B. Leave it to Admin or a named override.
+- **Answer: A** (owner 2026-11-19).
 
 **Q23. Admin's permissions**
 - A. **Recommended:** keep `role_permission` only for Admin's rows ("every code", as seeded today) so authz and the
   seed stay as built.
 - B. Drop `role_permission`; authz treats Admin as allow-all (MR2 already does).
+- **Answer: A** (owner 2026-11-19).
 
 **Q24. The tables that are neither business nor derived (C8)**
 - A. **Recommended:** a third exempt category, "the audit trail itself, KS9 secret tables and runner metadata",
   listed by name in the same schema test.
 - B. Audit them too, except the KS9 secret tables (they would log wrapped keys).
+- **Answer: A** (owner 2026-11-19). C8 closed.

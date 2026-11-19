@@ -2,8 +2,8 @@
 
 Written 2026-11-18 at the end of Phase 2.7 STOP C. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh
 session (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
-Status: **STOP C approved by the owner (2026-11-18)**; the Codex batch 2 posting fixes ran first (owner
-2026-11-18; section below). 2.9 starts in a new session.
+Status: **STOP C approved by the owner (2026-11-18)**; the Codex batch 2 posting fixes ran first and were
+approved by the owner (2026-11-18; f629f2f, 0137b34; section below). 2.9 starts in a new session.
 
 ## Done before 2.9 (2026-11-18): Codex batch 2 posting fixes
 
@@ -142,6 +142,10 @@ instead), blocks the commit on failure or when xdist is missing, and writes the 
   Audit-ready flag); scheduled backups with E7 retention (`pre-upgrade` and `pre-restore` never pruned, AX2); after
   a recovery-code reissue, list the older master backups and offer to remove them, the choice audit-logged
   (secrets audit M1, owner 2026-11-18). PW1-PW11.
+  Backups must include the company's attachments (owner 2026-11-18, area 18 Q14): a company backup without them
+  is not complete; only the database-only safety copies (`pre-upgrade`, `addon-<key>`, `pre-restore`, AX2) are
+  exempt. Each run is recorded in the master `backup_run` (docs/replan_2.9/area_18_admin_security_audit.md
+  section 4).
 - Open question 7 (System context and Import-origin entries in `post_journal_entry`); undeposited funds vs
   matching (Phase 4).
 
