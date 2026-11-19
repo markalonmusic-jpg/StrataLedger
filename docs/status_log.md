@@ -948,3 +948,5 @@ Rotation and key-lost text as it stood before the trim:
   the contacts "either manager" check, area locks (docs/next_step.md).
 - 2026-11-18: step-reviewer on e61dec2 (approve with changes, nothing must-fix); findings 1-5 and 8 fixed test first: 64-bit bounds, no-write checks on refusals, H5 filter, missing-contact denial, Agent view codes only, no-op updates write nothing (docs/next_step.md).
 - 2026-11-18: mutation-tester on e61dec2 and 67e9f56: 151 mutants, 124 killed by existing tests, 20 by tests/test_mutation_stop_c_extra.py, 7 equivalent (docs/next_step.md). STOP C awaits the owner's approval.
+- 2026-11-18: owner approved STOP C (e61dec2, 67e9f56, 769bfd3; hook run 4158 passed, 2 skipped). Step 2.9 runs
+  in a new session (docs/next_step.md).

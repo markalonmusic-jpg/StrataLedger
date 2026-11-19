@@ -2,7 +2,7 @@
 
 Written 2026-11-18 at the end of Phase 2.7 STOP C. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh
 session (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
-Status: **STOP C is awaiting the owner's approval** (review gate). Do not start 2.9 until it is approved.
+Status: **STOP C approved by the owner (2026-11-18)**; 2.9 starts in a new session.
 
 ## Step 2.9 plan: the schema replan (owner decision 2026-11-17)
 
