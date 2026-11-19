@@ -16,6 +16,12 @@ Source: `Strata_Teams\codex_reports\posting_batch2_2026-11-18.md` (review of d7a
 - **C4/L2 (Medium), not built:** the baseline has `deferral` and `deferral_schedule_line`, but no service makes,
   schedules or posts them, so the close check waits for the deferral work (Deferred below; owner rule for this step).
 - **B14:** no change (Deferred below).
+- **Step review** (approve with changes): the R21 decision text now matches the code (digest change or delete
+  cancels). Its "flaky" test was one parallel run that started before the test's source fix; 65/65 in parallel
+  since. Not changed (note 8): the digest now runs on every save, so a draft whose stored values cannot be
+  sealed (only a write outside ledger.py could make one) fails the save, as submit and post already do.
+- **Mutation test of f629f2f** (update_entry only): 20 mutants, 19 killed, 0 equivalent; the survivor (the
+  header UPDATE keeping the old source) is killed by tests/test_mutation_codex_batch2_extra.py.
 
 ## Step 2.9 plan: the schema replan (owner decision 2026-11-17)
 

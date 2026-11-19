@@ -955,3 +955,6 @@ Rotation and key-lost text as it stood before the trim:
   line, amount, dimension, description and reference changes cancel). C4/L2 deferral close check not built: the
   baseline has the deferral tables but no service writes them; listed with B14's payment void service under
   Deferred (docs/next_step.md).
+- 2026-11-18: step-reviewer on the Codex batch 2 diff (approve with changes; R21 decision text amended in f629f2f);
+  mutation-tester on f629f2f: 20 mutants on update_entry, 19 killed, 1 gap (a changed source kept unsaved) now
+  killed by tests/test_mutation_codex_batch2_extra.py. Awaits the owner's approval.
