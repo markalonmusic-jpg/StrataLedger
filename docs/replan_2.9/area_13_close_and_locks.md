@@ -43,6 +43,9 @@ Sources read (only these, searched by date, title or code):
 
 Master file: no change (snapshots are per company; no "All companies" view in v1, 11-18 item 4).
 
+Amendment 2026-11-19 (owner, area 12 Q12 A), row 4: ending cash is the `bank_account` rows of every kind except
+Credit card, plus `company_settings.undeposited_funds_acct_id`; this replaces "Bank and Cash account types" (section 4.4).
+
 ---
 
 ## 1. Locks
@@ -518,6 +521,10 @@ cash as debit-positive balances; liabilities and equity as credit-positive; net 
 - **Ending cash (Q16 B):** the balance as of the period end of the accounts whose account type is Bank or Cash,
   plus the undeposited funds account (`company_settings.undeposited_funds_acct_id`). Card accounts are excluded.
   The cash flow report uses the same set.
+  Amendment 2026-11-19 (owner, area 12 Q12 A): ending cash is the GL accounts of the `bank_account` rows of every
+  kind except Credit card, plus `company_settings.undeposited_funds_acct_id`. This replaces the "Bank and Cash account
+  types" wording above (the baseline has no such account types; docs/replan_2.9/area_12_bank_and_reconciliation.md
+  section 5.3).
 - **Net income:** income minus expenses of entries in that period only (not year to date).
 - **Total assets / liabilities:** balances as of the period end, all periods to date under the basis.
 - **Total equity:** equity accounts plus all net income not yet in retained earnings (prior years and current

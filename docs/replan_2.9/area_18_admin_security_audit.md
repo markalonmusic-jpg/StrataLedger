@@ -185,6 +185,11 @@ this change.", R27 style), and the trigger copies the reason. A CHECK cannot do 
 | Restore a company (K5 Master override) | AX2, 2.8 | `backup_run.reason` (section 4) |
 | Edit a posted document by reverse-and-repost (rule 8) | rule 8 | the document's version history (area 5) |
 
+Amendment 2026-11-19 (owner, area 12 Q10 A): bank reasons added to this table: exclude a bank feed line, unmatch,
+undo a posted feed line, undo a reconciliation (`bank_reconciliation_event.reason`), void a deposit or a transfer
+(`void_reason`); a reconciliation set to Reopened by a period reopen carries the reopen's reason
+(docs/replan_2.9/area_12_bank_and_reconciliation.md section 7).
+
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
 **Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
@@ -233,6 +238,9 @@ Exempt as derived (owner's rule):
 
 Amendment 2026-11-19 (owner, area 13 F13): `ledger_period_balance` (company) is added to this derived list; it is a
 sum of posted `journal_line` rows written only by `ledger.py` (docs/replan_2.9/area_13_close_and_locks.md section 6).
+
+Amendment 2026-11-19 (owner, area 12 Q10 A): `deposit_sequence` (company) is added to this derived list; a counter,
+each number is on an audited `deposit` row (docs/replan_2.9/area_12_bank_and_reconciliation.md section 4.3).
 
 Not business tables, and outside the owner's two categories, so they form a third exempt category
 (Q24 A; C8 closed), listed by name in the same schema test:
@@ -464,6 +472,13 @@ ledger, payroll and audit are never reachable from Sales rep or Operations.
 
 The level defaults are kept small on purpose. A template adds the area work, so AP clerk and AR clerk on the same
 Accountant · Standard level stay different.
+
+Amendment 2026-11-19 (owner, area 12 Q10 A): three new codes, module Banking: `bank.feed` and `bank.reconcile` (not
+sensitive) and `bank.unreconcile` (sensitive). All three go in the Accountant cap (2.4.1, 59 to 62 codes). Level
+defaults (2.4.2): Accountant · Standard adds `bank.feed`; Accountant · Manager adds `bank.reconcile`;
+`bank.unreconcile` is in no level (sensitive): Admin and the Master hold it, others only by an Add override with a
+reason. None in AGENT_ALLOWED. No shipped template changes (docs/replan_2.9/area_12_bank_and_reconciliation.md
+section 3.5).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 

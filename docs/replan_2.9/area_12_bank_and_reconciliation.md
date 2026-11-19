@@ -1,8 +1,10 @@
 # Step 2.9 schema replan, area 12: bank and reconciliation
 
-Status: **Drafted 2026-11-19** for the owner. Docs only: nothing here changes code, a baseline, a migration or a
-test. Nothing is built until the owner marks area 12 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
-Every table, column, code and check below is PROPOSED until then. Choices for the owner are in section 9.
+Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, d9032ea; owner answers Q1-Q20, all A,
+2026-11-19, folded in below; section 9). Docs only: nothing here changes code, a baseline, a migration or a test.
+Nothing is built until the owner marks area 12 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every
+table, column, code and check below is PROPOSED until then. No questions are open. The amendments this area's
+answers make to areas 13 and 18 are dated lines in those docs (section 10).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 12 and the source keys.
@@ -31,11 +33,12 @@ Sources read (only these, searched by date, title or code):
 | # | Topic | Proposal in one line | Baseline |
 |---|-------|----------------------|----------|
 | 1 | Bank feed and matching | `bank_statement_line` keeps staging (states For review / Posted / Excluded); a match always points at the bank or card **journal line** of the record (payment, pay-run payment, deposit, transfer, refund, loan or card payment, bank JE) and names the record for R38; one feed line can match several records | company |
-| 2 | Unmatch | One `bank_feed.unmatch` for every record type: reason required, refused in a closed period or a period locked for Bank and card or for that GL account (no override); a finished reconciliation that covered the line is flagged "Changed after finish" with the difference | company |
-| 3 | Reconciliation | Cleared state moves off `journal_line` into `bank_line_clearing` (Q1 A). `bank_reconciliation` gains a state (In progress, Finished, Changed after finish, Reopened, Undone), beginning balance and an append-only event table. Finish only at $0.00; a difference is fixed by a normal "Reconciliation adjustment" JE | company |
-| 4 | Deposits and transfers | `deposit` + `deposit_line` (Dr bank, Cr the undeposited funds role) and `bank_transfer` (bank or card to bank or card); new journal sources `Deposit`, `Transfer`, `Reconciliation adjustment` | company |
-| 5 | Bank and card accounts | `bank_account.kind` (Checking, Savings, Money market, Cash, Credit card); cards reconcile on the same screen (B12) and are not cash (area 13 Q16 B) | company |
-| 6 | Lock checks | Every posting action here calls `period_locks.check_open` with area Bank and card and the bank or card account; unmatch and undo use the record's own posting period | company |
+| 2 | Unmatch | One `bank_feed.unmatch` for every record type: reason always required (Q4 A), refused in a closed period or a period locked for Bank and card or for that GL account (no override); a finished reconciliation that covered the line is flagged "Changed after finish" with the difference (Q5 A) | company |
+| 3 | Reconciliation | Cleared state moves off `journal_line` into `bank_line_clearing` (Q1 A). `bank_reconciliation` gains a state (In progress, Finished, Changed after finish, Reopened, Undone), beginning balance and an append-only event table. Finish only at $0.00; a difference is fixed by a normal "Reconciliation adjustment" JE (Q9 A). Period reopen sets Reopened (Q6 A); undo is latest only and lock-checked (Q7 A) | company |
+| 4 | Deposits and transfers | In area 12 (Q20 A). `deposit` + `deposit_line` (Dr bank, Cr the undeposited funds role) and `bank_transfer` (bank or card to bank or card); new journal sources `Deposit`, `Transfer`, `Reconciliation adjustment`; undeposited funds tracks clearing groups (Q11 A); a card payment is a transfer (Q15 A) | company |
+| 5 | Bank and card accounts | `bank_account.kind` (Checking, Savings, Money market, Cash, Credit card); cards reconcile on the same screen (B12) and are not cash: ending cash is every kind except Credit card plus undeposited funds (Q12 A; area 13 amended) | company |
+| 6 | Lock checks | Every posting action here calls `period_locks.check_open` with area Bank and card and the bank or card account; unmatch and undo use the record's own posting period; matching and ticking are allowed in a closed period (Q3 A) | company |
+| 7 | Permissions | `bank.feed`, `bank.reconcile` (not sensitive), `bank.unreconcile` (sensitive), in the Accountant cap and levels; none in AGENT_ALLOWED (Q10 A; area 18 amended) | company |
 
 Master file: no change. Live feeds stay held (B11a, AG8): v1.0 ships the file provider only.
 
@@ -96,7 +99,7 @@ Master file: no change. Live feeds stay held (B11a, AG8): v1.0 ships the file pr
 | `status` | CHECK IN ('For review', 'Posted', 'Excluded') (replaces Unmatched / Matched / Excluded; C90 wording) |
 | `check_number` | TEXT (from the file; used in suggestions and the duplicate check) |
 | `payee_text` | TEXT (the bank's payee, if the file has one) |
-| `fingerprint` | TEXT NOT NULL: a service-computed hash of account, date, amount and normalized description or check number (Q14). Index (`bank_account_id`, `fingerprint`), not unique: a real repeat can exist |
+| `fingerprint` | TEXT NOT NULL: a service-computed hash of account, date, amount and normalized description or check number (Q14 A: a repeat warns and is unticked in the preview, never refused). Index (`bank_account_id`, `fingerprint`), not unique: a real repeat can exist |
 | `excluded_by`, `excluded_at`, `exclude_reason` | set together when Excluded; cleared together on Restore (audited); CHECK all three set or all NULL, reason 1-1000 characters |
 | `posted_by`, `posted_at` | set when the line becomes Posted (match or categorize); cleared by Undo |
 | `origin` | TEXT NOT NULL DEFAULT 'Import' CHECK IN ('Import', 'Feed', 'Manual') (area 18's origin vocabulary; `source` stays for the provider) |
@@ -130,14 +133,13 @@ reuses `import_mapping` (`:92`).
 
 **Matching rules** ("Playbook rules", C90 Rules): `bank_rule` (name, `bank_account_id` or all, conditions as typed
 columns: description contains, amount range, direction; actions: payee, account, job, cost code; `is_active`,
-`sort_order`, `row_version`). A rule only fills a suggestion; a person posts. Q18 decides whether rules land in
-v1.0 or with the feed providers.
+`sort_order`, `row_version`). A rule only fills a suggestion; a person posts. Rules land in this 2.9 pass (Q18 A); they work on file imports.
 
 ### 1.4 Services (new module `bank_feed.py`)
 
-`import_statement`, `undo_import`, `suggest_matches` (read; amount, ±2 days, check or reference; constants, Q19),
+`import_statement`, `undo_import`, `suggest_matches` (read; amount, ±2 days, check or reference; service constants, Q19 A),
 `match` (one line to one or more records, optional Feed adjustment line), `categorize` (calls the record's own
-service with origin Import, then matches), `exclude` / `restore` (reason), `undo_posted` (Q17), `unmatch`
+service with origin Import, then matches), `exclude` / `restore` (reason), `undo_posted` (Q17 A: unmatch a match; void what a categorize created), `unmatch`
 (section 2). Every write: authorize first, one write transaction, audited with the reason through `tx.py`.
 
 ### 1.5 Lands, effects, tests
@@ -176,7 +178,7 @@ reconciliation flag. Nothing checks locks.
 ### 2.3 Proposed rule (service only)
 
 `bank_feed.unmatch(context, match_ids, *, reason, confirm_reconciled=False, row_versions)`:
-1. authorize `bank.feed` (Q10) before the transaction;
+1. authorize `bank.feed` (Q10 A) before the transaction; the reason is always required (Q4 A);
 2. for each match: `period_locks.check_open(conn, period_id=<the matched journal line's entry period>,
    area_code='bank_card', account_ids=[<the bank or card account>], action='unmatch')`: a closed period raises
    `PeriodClosedError`, a lock raises `PeriodLockedError` (area 13 section 1.4);
@@ -293,12 +295,12 @@ integrity backstop, as `period_status_history`).
 | Finished | Unmatch or a void of a reconciled line (confirmed) | Changed after finish | section 2; `changed_difference_cents` set |
 | Finished or Changed after finish | Period reopen (area 13) | Reopened | Q6 A; lines stay Reconciled |
 | Changed after finish or Reopened | Finish again at $0.00 | Finished | `bank.reconcile`; a new Finished event; the earlier report stays in History |
-| Finished, Changed after finish or Reopened (latest only, B10) | Undo | Undone | `bank.unreconcile`, reason; its lines go back to Cleared; Q7 |
+| Finished, Changed after finish or Reopened (latest only, B10) | Undo | Undone | `bank.unreconcile`, reason; its lines go back to Cleared; refused when the statement date's period is closed or locked (Q7 A) |
 
 **Reconciliation adjustment:** a journal entry with `journal_entry.source` 'Reconciliation adjustment' (new
 value), posted through `ledger.py` like any manual entry, so manual-entry approval applies if the company turned
 it on (Q9 A). The offsetting account is the user's choice; the screen suggests a "reconciliation discrepancies"
-role if the company has mapped one (new optional role `reconciliation_discrepancies_acct_id`, Q9). The posted
+role if the company has mapped one (new optional role `reconciliation_discrepancies_acct_id`, Q9 A). No Approvers type for adjustments (Q9 A). The posted
 adjustment's bank line is Cleared in the open reconciliation.
 
 **What the close checks read** (area 13 section 2.3):
@@ -313,7 +315,7 @@ adjustment's bank line is Cleared in the open reconciliation.
 - Company baseline: `bank_line_clearing`, the `bank_reconciliation` changes, `bank_reconciliation_event`, the
   journal source values, the optional role; drop `journal_line.recon_id`, its index and its trigger exception;
   move `journal_line_recon_lock` to `bank_line_clearing`; narrow `bank_reconciliation_lock`. Permission rows for
-  `bank.reconcile` and `bank.unreconcile` (Q10). Rebuild every development database.
+  `bank.feed`, `bank.reconcile` and `bank.unreconcile` (Q10 A; placement in 3.5). Rebuild every development database.
 - `ledger_chain.EXCLUDED_LINE` becomes `()`; `tests/test_ledger_chain.py` checks the hash is unchanged for a line
   that had a `recon_id`. `tests/test_controls_004.py:435-463` and the `bank_reconciliation` rows at `:28`, `:50`,
   `:71` are rewritten for the new tables. `tests/test_schema_replan.py:257` (a reconciled line cannot move its
@@ -328,6 +330,30 @@ adjustment's bank line is Cleared in the open reconciliation.
   `bank.unreconcile`; period reopen sets Reopened with the history link and the `bank_reconciled` check fails
   until re-finished; the clearing trigger refuses editing a Reconciled row outside unmatch and undo; a
   Reconciliation adjustment goes through manual-entry approval when that control is on and never otherwise.
+
+
+### 3.5 Permissions (Q10 A)
+
+| Code | Module | Sensitive | Used by |
+|------|--------|-----------|---------|
+| `bank.feed` | Banking | no | import, suggest, match, categorize, exclude and restore, undo import, undo a posted line, unmatch |
+| `bank.reconcile` | Banking | no | start, tick and untick, save, finish, prefill an adjustment (posting it needs `je.post`) |
+| `bank.unreconcile` | Banking | yes (B10) | undo the latest reconciliation |
+
+Deposits use `payment.receive`; transfers use `payment.make`. Reading bank pages uses `ledger.view` (as
+`bank_accounts.py` does today).
+
+Placement in area 18's seed tables (owner, through Q10 A; area 18 carries the dated amendment):
+- **Caps (2.4.1):** all three go in the Accountant cap only (59 → 62 codes). Never in Sales rep or Operations, so
+  bank pages stay out of those roles, as area 18 already keeps the ledger and bank details.
+- **Level defaults (2.4.2, cumulative, no sensitive code):** Accountant · Standard adds `bank.feed`; Accountant ·
+  Manager adds `bank.reconcile`. `bank.unreconcile` is in no level: Admin and the Master hold it, and inside the
+  Accountant cap it is given only by an Add override with a reason (area 18 Q7 A). No shipped access template
+  changes in this pass.
+- **AGENT_ALLOWED:** none of the three. The assistant may suggest matches through reads only; every write is refused
+  and logged.
+- **Seeds:** three permission rows; the seeded code count grows by three. The scratch placement check in area 18
+  section 2.4 runs again with them.
 
 ---
 
@@ -360,8 +386,7 @@ adjustment's bank line is Cleared in the open reconciliation.
 `voided_by`/`at`/`void_reason` (all or none), `row_version`.
 
 **`deposit_line`**: `deposit_id`, `payment_id` REFERENCES payment, `amount_cents` > 0; a payment is in at most one
-live deposit (service check plus a partial unique index through a `is_live` column copied from the deposit, or a
-service check only: Q11). Lines in cash or checks only (other lines go straight to the bank).
+live deposit, refused by the service (Q11 A; no extra index). Lines in cash or checks only (other lines go straight to the bank).
 
 **Posting:** one entry, source 'Deposit': Dr the bank account, Cr the undeposited funds role, one credit line per
 payment carrying that payment's `clearing_id` when the undeposited funds account tracks clearing groups (Q11 A),
@@ -406,8 +431,8 @@ account (Q15 A). Approval: the existing "Payments need approval" control covers 
 
 - C46: kind checking, savings, money market, credit card; the chart account; bank; last four; statement file
   format; reconciled-through date (shown); book balance = GL; opening balance only through Opening balances.
-- B12: credit cards reconcile on the same screen. Area 13 Q16 B: ending cash is Bank and Cash plus undeposited
-  funds; **card accounts are not cash**.
+- B12: credit cards reconcile on the same screen. Area 13 Q16 B: ending cash includes undeposited funds and
+  **card accounts are not cash**; Q12 A here defines the set by `bank_account.kind` (area 13 section 4.4 amended).
 - C46: Ramp card charges arrive as vendor bills through the Ramp import; the Ramp program is not a card account.
   BF1: Ramp card lines go to both the holding area and the statement lines; never booked twice.
 - C98: a Bank details page per bank or card account (register, statements, reconciliations, details, attachments).
@@ -420,7 +445,7 @@ account (Q15 A). Approval: the existing "Payments need approval" control covers 
 |--------|---------------------|
 | `kind` | TEXT NOT NULL CHECK IN ('Checking', 'Savings', 'Money market', 'Cash', 'Credit card') (Q12 A; 'Cash' for petty cash or a cash box with no bank) |
 | `is_active` | INTEGER NOT NULL DEFAULT 1 |
-| `feed_provider` | TEXT NOT NULL DEFAULT 'File' CHECK IN ('File') (B11a; 'Ramp' and others added with their providers, Q18) |
+| `feed_provider` | TEXT NOT NULL DEFAULT 'File' CHECK IN ('File') (B11a; 'Ramp' and others added with their providers in v1.1, Q18 A) |
 | `statement_format` | TEXT CHECK IN ('CSV', 'OFX', 'QFX', 'QBO') |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 |
 
@@ -430,7 +455,8 @@ account (Q15 A). Approval: the existing "Payments need approval" control covers 
   `bank_account` row.
 - **Ending cash (area 13 section 4.4, Q16 B):** the accounts with a `bank_account` row whose `kind` is not
   'Credit card', plus `company_settings.undeposited_funds_acct_id`. This replaces "account types Bank and Cash",
-  which do not exist (F6). The cash flow report (CF1) uses the same set.
+  which do not exist (F6). The cash flow report (CF1) uses the same set. Area 13 sections 0 and 4.4 carry a dated
+  amendment line saying so (Q12 A).
 
 **Card reconciliation:** the same screen and tables (B12). The statement balance is the amount owed, entered as a
 positive number; the service compares it with the account's credit balance. Charges are payments out of the card,
@@ -459,7 +485,7 @@ never by number.
 | Post a categorized feed line (record created through its own service) | the new record's date | the record's own area (a bill: Bills and vendor credits; an expense JE: Journal entries); the creating service makes the call | every line |
 | Match a feed line, tick or untick in a reconciliation | none (Q3 A: Date cleared may be set in a closed period, 11-14) | — | — |
 | Unmatch (every record type) | the matched journal line's entry period | Bank and card | the bank or card account |
-| Undo a posted feed line (Q17 A: void what it created) | the void's date (void rules, R48) and the original's period for the unmatch | the record's area and Bank and card | every line of the reversal, and the bank account |
+| Undo a posted feed line (Q17 A: unmatch, or void what a categorize created) | the void's date (void rules, R48) and the original's period for the unmatch | the record's area and Bank and card | every line of the reversal, and the bank account |
 | Finish a reconciliation | none (no GL change) | — | — |
 | Undo a reconciliation (Q7 A) | the statement date's period | Bank and card | the bank or card account |
 | Reconciliation adjustment, service charge, interest | the entry date (statement end; period must be open) | Bank and card | every line |
@@ -495,8 +521,8 @@ nothing; the "none" rows succeed in a closed period and write their audit rows.
   completeness (deletes are refused anyway). `bank_line_clearing` is audited: Date cleared changes in a closed
   period are logged (11-14).
 - Reasons required (area 18's reasons table, extended here): exclude a feed line, unmatch, undo a posted line,
-  undo a reconciliation, reopen (from the period reopen's reason), void a deposit or transfer. Area 18's table does
-  not list the bank ones yet (F9).
+  undo a reconciliation, reopen (from the period reopen's reason), void a deposit or transfer. Area 18's reasons
+  table lists them through its dated amendment (Q10 A, F9).
 - Integrity backstops in this area guard only append-only or finished data (`bank_statement_match`,
   `bank_reconciliation_event`, the finished-reconciliation locks, `bank_line_clearing` of a Finished
   reconciliation). Workflow rules (states, one-live-match, the posted-means-matched rule, suggestions) are
@@ -504,50 +530,74 @@ nothing; the "none" rows succeed in a closed period and write their audit rows.
 
 ---
 
-## 8. Conflicts with decisions (flagged, not resolved)
+## 8. Conflicts with decisions (all resolved by the owner's answers, 2026-11-19)
 
 - **F1 Finish with a difference.** 11-15 2:19 PM and C99 let a reconciliation finish with a difference that posts
-  to a "reconciliation discrepancies" role, with a reason, through a new Approvers type "Reconciliation
-  adjustments". S 11-18 2:05 PM says there is no finish with a difference: only $0.00, and a real difference is a
-  prefilled journal entry with an offset the user picks. This draft follows 11-18 (the later, owner-confirmed
-  entry). Q9 decides the Approvers type and the role.
-- **F2 Unmatch in a finished reconciliation.** 11-14 integrity rule: "unmatching an item in a finished
-  reconciliation reopens it with a reason". 11-18 9:18 PM: the reconciliation is flagged changed after completion
-  with the difference until it is redone. Q5.
-- **F3 Clearing in a closed period.** 11-14: "date_cleared can be set in a closed period and is audit-logged".
-  9:18 PM: unmatch is refused in a locked period. Matching would then be allowed where unmatching is not. Q3.
-- **F4 Period reopen vs B10.** Area 13 F12 and close.html: a period reopen sends the period's reconciliations
-  back to In progress. B10: only the latest reconciliation per account can be undone. Q6 and Q7.
-- **F5 Bank numbers.** C46: `bank_account` keeps the last four digits only. C4 (built, `bank_accounts.py`): full
-  routing and account numbers are stored and masked. Q13.
-- **F6 "Bank and Cash account types".** Area 13 Q16 B (and section 4.4) defines ending cash by account types Bank and
-  Cash; the baseline has only five account types. Section 5.3 defines the set by `bank_account.kind`. Area 13's 4.4
-  wording needs a one-line amendment once Q12 is answered.
-- **F7 Area 1 boundary.** Row 1 of the working doc ("Payments, deposits, undeposited funds") also covers deposits.
-  This draft puts deposits and transfers here (C46 groups them with banking) and leaves the payment record and
-  where a receipt goes to area 1. Q20.
-- **F8 Date cleared on the payment.** S 11-14: "every payment has Date paid and Date cleared". The baseline payment
-  has no `date_cleared`; this draft derives it from the payment's bank line (Q1 A), so it is never stored twice.
-- **F9 Area 18 amendments.** B10 and BF1 name `bank.reconcile` and `bank.unreconcile`; area 18's owner-approved seed
-  tables, reasons table and derived exempt list do not include the bank codes, the bank reasons or
-  `deposit_sequence`. Adding them amends an approved area. Q10.
-- **F10 Pay Bills.** S 11-14 "payments model" has a single-vendor Pay Bills; S 11-18 10:03 PM replaces it with pay
-  runs only. This draft follows 10:03 PM (no direct bill payment record type).
-- **F11 Ramp lines.** C46: Ramp card charges arrive as vendor bills (Ramp is not a card account). BF1: Ramp card
-  lines go to the holding area and the statement lines. Where Ramp lines land is for the imports area (19 or the
-  feed provider step); this area only needs the "never booked twice" test.
-- **F12 Role names and numbers.** C46 names new pointers `bank_fee_account_id` and `interest_income_account_id` and
-  accounts 6950 and 4900; the baseline already has `bank_charges_acct_id` and `interest_income_acct_id`
-  (`:783-784`) and the construction chart uses 6900 for bank charges. This draft uses the baseline names; numbers
-  are examples only.
-- **F13 Statement line states.** The baseline's Unmatched / Matched / Excluded vs the decided For review / Posted /
-  Excluded (11-15 11:48 AM, C90). This draft follows the decision.
+  to a "reconciliation discrepancies" role through a new Approvers type; S 11-18 2:05 PM says only $0.00, and a real
+  difference is a prefilled journal entry with an offset the user picks. **Resolved by Q9 A:** finish only at
+  $0.00; a normal Reconciliation adjustment JE; the discrepancies role is only a suggested offset; no Approvers type.
+- **F2 Unmatch in a finished reconciliation.** 11-14: "reopens it with a reason"; 11-18 9:18 PM: flagged changed
+  after completion until redone. **Resolved by Q5 A:** Changed after finish with the difference, finished again
+  after the fix.
+- **F3 Clearing in a closed period.** 11-14: Date cleared may be set in a closed period; 9:18 PM: unmatch is refused
+  in a locked period. **Resolved by Q3 A:** matching and ticking are allowed and audited in a closed period; only
+  unmatch and undo are refused.
+- **F4 Period reopen vs B10.** Area 13 F12: a period reopen sends reconciliations back to In progress; B10: undo only
+  the latest. **Resolved by Q6 A and Q7 A:** a period reopen sets Reopened (nothing is undone, so B10 holds); undo
+  stays latest only, with a reason, refused in a closed or locked period.
+- **F5 Bank numbers.** C46: last four digits only; C4 (built): full numbers stored and masked. **Resolved by Q13 A:**
+  C4 stands as built; C46's "last four only" is not followed.
+- **F6 "Bank and Cash account types".** Area 13 Q16 B named account types that the baseline does not have.
+  **Resolved by Q12 A:** ending cash is every `bank_account` kind except Credit card, plus undeposited funds; area 13
+  sections 0 and 4.4 carry a dated amendment line.
+- **F7 Area 1 boundary.** Working-doc row 1 also names deposits. **Resolved by Q20 A:** deposits and transfers are in
+  area 12; area 1 keeps the payment record and the receipt destination.
+- **F8 Date cleared on the payment.** S 11-14: every payment has Date cleared; the baseline payment has no column.
+  **Resolved by Q1 A:** Date cleared is read from `bank_line_clearing` through the payment's bank line; `payment`
+  gets no column.
+- **F9 Area 18 amendments.** Area 18's owner-approved seed tables, reasons table and exempt list lacked the bank
+  codes, the bank reasons and `deposit_sequence`. **Resolved by Q10 A and the owner's amendment (2026-11-19):** area
+  18 carries a dated amendment line (placement in section 3.5).
+- **F10 Pay Bills.** S 11-14's single-vendor Pay Bills vs S 11-18 10:03 PM pay runs only. **Resolved as drafted (no
+  question):** pay runs only.
+- **F11 Ramp lines.** C46 (Ramp charges as bills) vs BF1 (holding area and statement lines). **Resolved as drafted
+  (no question):** where Ramp lines land is for the imports area; this area keeps the never-booked-twice test.
+- **F12 Role names and numbers.** C46's `bank_fee_account_id`, `interest_income_account_id`, 6950 and 4900 vs the
+  baseline's `bank_charges_acct_id` and `interest_income_acct_id` (`:783-784`). **Resolved as drafted (no
+  question):** baseline names; numbers are examples only.
+- **F13 Statement line states.** Baseline Unmatched / Matched / Excluded vs the decided For review / Posted /
+  Excluded. **Resolved as drafted (no question):** the decided states.
 
 ---
 
-## 9. Questions for the owner
+## 9. Questions for the owner: answers recorded (2026-11-19)
 
-Recommended option first.
+All twenty answered A, one by one. The options as asked are kept in 9.1.
+
+| Q | Answer (A) | Where it lands |
+|---|------------|----------------|
+| Q1 Cleared state | `bank_line_clearing`; `journal_line.recon_id` dropped | 3.3, 3.4 |
+| Q2 Match target | the bank or card journal line plus record type and id | 1.3 |
+| Q3 Clearing in a closed period | allowed and audited; only unmatch and undo refused | 2, 6 |
+| Q4 Unmatch reason | always required | 0, 2.3 |
+| Q5 Unmatch in a finished reconciliation | Changed after finish with the difference | 2.3, 3.3 |
+| Q6 Period reopen | Reopened; lines stay reconciled | 3.3 |
+| Q7 Undo | latest only, `bank.unreconcile`, reason, lock-checked | 3.3, 6 |
+| Q8 Backstop | narrowed finished-reconciliation triggers kept | 3.3 |
+| Q9 Adjustments | normal JE; optional discrepancies role as a suggestion; no Approvers type | 3.3 |
+| Q10 Permissions | `bank.feed`, `bank.reconcile`, `bank.unreconcile`; placement in 3.5; area 18 amended | 3.5, 7 |
+| Q11 Undeposited funds | clearing groups plus `deposit_line`; double deposit refused by the service | 4.3 |
+| Q12 Kinds and cash set | `bank_account.kind`; cash = every kind except Credit card plus undeposited funds; area 13 amended | 5.3 |
+| Q13 Bank numbers | C4 as built | 5.1 |
+| Q14 Duplicates | fingerprint warns and unticks; the same file is refused | 1.3 |
+| Q15 Paying the card | a transfer | 4.3 |
+| Q16 Open payments limits | area 21 policy records | 10 |
+| Q17 Undo a posted line | unmatch, or void what a categorize created | 1.4, 6 |
+| Q18 Rules and providers | `bank_rule` now; providers beyond File in v1.1 | 1.3, 5.3 |
+| Q19 Tolerances | service constants | 1.4 |
+| Q20 Deposits and transfers | area 12 | 4 |
+
+### 9.1 The questions as asked
 
 **Q1. Where the cleared state lives.** (F8)
 - A. A new `bank_line_clearing` row per bank or card journal line (Not cleared, Cleared, Reconciled, Date cleared,
@@ -659,10 +709,10 @@ Recommended option first.
   wire, card); `payment.bank_account_id` target.
 - Area 2: pay run posting (one entry per vendor payment or one per run) decides how a pay run's bank lines look to
   the matcher; this doc assumes one bank line per payment.
-- Area 13: amend section 4.4's ending cash wording (F6); `reconciliation.reopen_for_period` is called from
-  `periods.reopen_period`.
-- Area 18: the permission rows, caps and level defaults (Q10), the reasons table rows and `deposit_sequence` on the
-  exempt list (F9).
-- Area 21: `row_version` mechanics and the open payments limits (Q16).
+- Area 13: the ending cash amendment is recorded there as a dated line (Q12 A); `reconciliation.reopen_for_period`
+  is called from `periods.reopen_period`.
+- Area 18: the permission rows, caps, level defaults, reasons rows and `deposit_sequence` are recorded there as a
+  dated amendment (Q10 A, F9).
+- Area 21: `row_version` mechanics and the open payments limits (30 and 180 days) as policy records (Q16 A).
 - Imports (area 19 or the provider step): Ramp lines and the BF1 never-booked-twice rule (F11).
 - Contracts: CF1's cash flow category on accounts (reports.md section 12 item 18) uses this area's cash set.
