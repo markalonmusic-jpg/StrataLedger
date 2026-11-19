@@ -40,6 +40,7 @@ RECORD_TYPES = ("Contact", "Invoice", "Bill", "Project")          # the baseline
 DATA_TYPES = ("Text", "Number", "Money", "Date", "Yes/No", "Choice")
 LABEL_MAX = 80
 TEXT_MAX = 2000
+INT_MIN, INT_MAX = -(2 ** 63), 2 ** 63 - 1      # a 64-bit INTEGER column (SQLite and PostgreSQL BIGINT)
 VALUE_COLUMNS = ("value_text", "value_number", "value_cents", "value_date", "value_bool")
 _COLUMN = {"Text": "value_text", "Choice": "value_text", "Number": "value_number", "Money": "value_cents",
            "Date": "value_date", "Yes/No": "value_bool"}
@@ -57,6 +58,9 @@ _CONTACT_READ = {(True, False): ("ar.view", "customer.manage", "vendor.manage"),
 _CONTACT_READ_ANY = ("ar.view", "ap.view", "customer.manage", "vendor.manage")
 _WRITE = {"Contact": ("customer.manage", "vendor.manage"), "Invoice": ("invoice.create",),
           "Bill": ("bill.create",), "Project": ("project.manage",)}
+# The only codes the Agent reads through (owner answer 2), whatever else AGENT_ALLOWED holds.
+_AGENT_READ = ("ar.view", "ap.view", "project.view")
+_EVERY_CONTACT_KIND = (("ar.view", "ap.view"), ("customer.manage",), ("vendor.manage",))
 
 # Deferred check 2: names that look like a bank number, on Contact fields only.
 _BANK_WORDS = frozenset({"routing", "iban", "swift", "bic", "aba", "bsb", "ifsc", "clabe", "accountnumber",
@@ -78,8 +82,13 @@ def _record_type(record_type):
     return record_type
 
 
+def _whole(value):
+    """An exact int that fits a 64-bit INTEGER column (bool is not one)."""
+    return type(value) is int and INT_MIN <= value <= INT_MAX
+
+
 def _record_id(record_id):
-    if type(record_id) is not int:
+    if not _whole(record_id):
         raise ValidationError("The record id must be a whole number")
     return record_id
 
@@ -149,10 +158,14 @@ def _clean_value(field, value):
     if kind == "Number":
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             raise ValidationError(f"{label} takes a number")
+        if isinstance(value, int) and not _whole(value):
+            raise ValidationError(f"{label} is too large; enter a smaller number")
         return value
     if kind == "Money":
         if type(value) is not int:     # integer cents only (rule 1): floats, text and yes/no are refused
             raise ValidationError(f"{label} takes an amount in whole cents")
+        if not _whole(value):
+            raise ValidationError(f"{label} is too large; enter a smaller amount")
         return value
     if kind == "Date":
         if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d\d-\d\d", value):
@@ -189,10 +202,10 @@ def _pick(context, codes, project_id=None):
     """The code to authorize: the first one the user holds, else the first (whose denial is then logged).
 
     A non-raising choice only; the caller then calls authorize() itself (rule 10). The Agent is offered only the
-    codes it may use, so it reads through view codes alone.
+    view codes (_AGENT_READ), so it never reads through a manager code even if one became agent-allowed.
     """
     if context.origin == "Agent":
-        codes = tuple(c for c in codes if c in permissions.AGENT_ALLOWED) or codes
+        codes = tuple(c for c in codes if c in _AGENT_READ and c in permissions.AGENT_ALLOWED) or codes
     for code in codes:
         if is_allowed(context, code, project_id):
             return code
@@ -200,9 +213,22 @@ def _pick(context, codes, project_id=None):
 
 
 def _contact_read_codes(row):
-    if row is None:
-        return _CONTACT_READ_ANY
     return _CONTACT_READ.get((bool(row["is_customer"]), bool(row["is_vendor"])), _CONTACT_READ_ANY)
+
+
+def _missing_contact_code(context):
+    """The code to authorize for a contact id that does not exist (step review finding 4).
+
+    Only someone who may read every kind of contact (both view codes, or a manager code) is told it is missing;
+    anyone else gets the denial they would get for a contact of a kind they cannot read, so one view code cannot
+    tell the two apart. Non-raising; the caller authorizes.
+    """
+    for group in _EVERY_CONTACT_KIND:
+        if context.origin == "Agent" and not set(group) <= set(_AGENT_READ):
+            continue
+        if all(is_allowed(context, code) for code in group):
+            return group[0]
+    return "customer.manage"
 
 
 def _load_record(conn, record_type, record_id):
@@ -263,10 +289,10 @@ def list_fields(context, record_type, *, include_inactive=False, project_id=None
     authorize(context, code, scope, record_type="custom_field_def")
     conn = read_connection(context.company_db_path)
     try:
+        active_only = "" if include_inactive else "AND d.is_active = 1 "      # H5: no integer-as-boolean OR
         rows = conn.execute(
             f"SELECT {_DEF_COLUMNS} FROM custom_field_def AS d WHERE d.record_type = ? "
-            "AND (d.is_active = 1 OR ?) ORDER BY d.sort_order, d.field_id",
-            (record_type, int(bool(include_inactive)))).fetchall()
+            f"{active_only}ORDER BY d.sort_order, d.field_id", (record_type,)).fetchall()
     finally:
         conn.close()
     return [_field_dict(r) for r in rows]
@@ -280,9 +306,14 @@ def get_values(context, record_type, record_id):
     record_type = _record_type(record_type)
     record_id = _record_id(record_id)
     record = _read_record(context, record_type, record_id)
-    readers = _contact_read_codes(record) if record_type == "Contact" else _READ[record_type]
     scope = record_id if record_type == "Project" else None
-    authorize(context, _pick(context, readers, scope), scope, record_type=record_type.lower(), record_id=record_id)
+    if record_type != "Contact":
+        code = _pick(context, _READ[record_type], scope)
+    elif record is None:
+        code = _missing_contact_code(context)
+    else:
+        code = _pick(context, _contact_read_codes(record))
+    authorize(context, code, scope, record_type=record_type.lower(), record_id=record_id)
     if record is None:
         raise _not_found(record_type)
     conn = read_connection(context.company_db_path)
@@ -385,7 +416,7 @@ def update_field(context, field_id, *, label=None, sort_order=None, is_required=
     """
     if label is not None:
         label = _label(label)
-    if sort_order is not None and type(sort_order) is not int:
+    if sort_order is not None and not _whole(sort_order):
         raise ValidationError("The order must be a whole number")
     if is_required is not None:
         _flag(is_required, "Required")
@@ -414,20 +445,22 @@ def update_field(context, field_id, *, label=None, sort_order=None, is_required=
             if field["record_type"] == "Contact" and _looks_like_bank_number(label):
                 raise ValidationError(BANK_REFUSED)
             _label_taken(conn, field["record_type"], label, except_id=field_id)
-        conn.execute(
-            "UPDATE custom_field_def SET label = ?, data_type = ?, choices_json = ?, is_required = ?, sort_order = ? "
-            "WHERE field_id = ?",
-            (label if label is not None else field["label"], new_type, _dump_choices(new_choices),
-             int(is_required) if is_required is not None else field["is_required"],
-             sort_order if sort_order is not None else field["sort_order"], field_id))
+        new = (label if label is not None else field["label"], new_type, _dump_choices(new_choices),
+               int(is_required) if is_required is not None else field["is_required"],
+               sort_order if sort_order is not None else field["sort_order"])
+        old = (field["label"], field["data_type"], field["choices_json"], field["is_required"], field["sort_order"])
+        if new != old:          # step review finding 8: no audit row for a change that changes nothing
+            conn.execute(
+                "UPDATE custom_field_def SET label = ?, data_type = ?, choices_json = ?, is_required = ?, "
+                "sort_order = ? WHERE field_id = ?", (*new, field_id))
         return _field_dict(_field(conn, field_id))
 
 
 def _set_active(context, field_id, active):
     authorize(context, MANAGE, record_type="custom_field_def", record_id=field_id)
     with write_transaction(context.company_db_path, context) as conn:
-        _field(conn, field_id)
-        conn.execute("UPDATE custom_field_def SET is_active = ? WHERE field_id = ?", (active, field_id))
+        if _field(conn, field_id)["is_active"] != active:
+            conn.execute("UPDATE custom_field_def SET is_active = ? WHERE field_id = ?", (active, field_id))
         return _field_dict(_field(conn, field_id))
 
 
@@ -481,10 +514,9 @@ def set_value(context, record_type, record_id, field_key, value):
     writers = _WRITE[record_type]
     if context.origin == "Agent":
         deny(context, writers[0], record_type=record_type.lower(), record_id=record_id, message=AGENT_CANNOT_SET)
-    record = _read_record(context, record_type, record_id)
     scope = record_id if record_type == "Project" else None
     authorize(context, _pick(context, writers, scope), scope, record_type=record_type.lower(), record_id=record_id)
-    if record is None:
+    if _read_record(context, record_type, record_id) is None:
         raise _not_found(record_type)
     with write_transaction(context.company_db_path, context) as conn:
         field = conn.execute(f"SELECT {_DEF_COLUMNS} FROM custom_field_def AS d WHERE d.record_type = ? "

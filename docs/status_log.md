@@ -946,3 +946,4 @@ Rotation and key-lost text as it stood before the trim:
   bills editable, refused in a closed period or with Lock documents after posting on; audit by the baseline
   triggers (old and new). Contact bank-number names refused. Listed for 2.9: field columns, Estimate read code,
   the contacts "either manager" check, area locks (docs/next_step.md).
+- 2026-11-18: step-reviewer on e61dec2 (approve with changes, nothing must-fix); findings 1-5 and 8 fixed test first: 64-bit bounds, no-write checks on refusals, H5 filter, missing-contact denial, Agent view codes only, no-op updates write nothing (docs/next_step.md).

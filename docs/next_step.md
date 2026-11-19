@@ -35,7 +35,7 @@ Status: **STOP C is awaiting the owner's approval** (review gate). Do not start 
 
 ## Done in STOP C (2026-11-18): the custom fields service
 
-- `modules/services/custom_fields.py` (tests/test_custom_fields.py, 202 tests): `list_fields`, `define_field`,
+- `modules/services/custom_fields.py` (tests/test_custom_fields.py, 220 tests): `list_fields`, `define_field`,
   `update_field`, `deactivate_field`, `reactivate_field`, `set_value`, `get_values`. FR1 as amended by
   CODE_CHANGES 27: no field packs, no `pack` or `is_builtin` columns, no seeded fields, no cap.
 - **Schema:** one seed row, `('fields.manage', 'Company', 'Define custom fields', 1)` in 001_company.sql (owner
@@ -73,6 +73,15 @@ Status: **STOP C is awaiting the owner's approval** (review gate). Do not start 
   posting entry's period is closed. A draft is not posted, so its date's period does not matter.
 - **Audit:** the baseline triggers write old_value and new_value for both tables, with the user; a rolled-back
   write leaves no value and no audit row (tested). No second row from the service (owner).
+
+- **Step review of e61dec2 (approve with changes, nothing must-fix), fixed test first:** integers beyond 64 bits
+  (record id, Money, Number, order) are refused with a sentence instead of an OverflowError; the closed-period and
+  lock refusals are checked to write nothing; the inactive filter no longer passes an integer as a boolean (H5);
+  one view code cannot tell a missing contact from one it may not read (only a reader of every kind is told it
+  is missing), and `set_value` authorizes before it looks the record up; the Agent reads only through
+  `ar.view`, `ap.view` and `project.view`, whatever AGENT_ALLOWED holds; an update or (de)activation that changes
+  nothing writes no audit row. Not built (finding 7): a test proving the label check sits inside the write
+  transaction (only the two-writer test covers it). Bank-number names are checked on Contact fields only, as planned.
 
 ## Commit hook
 

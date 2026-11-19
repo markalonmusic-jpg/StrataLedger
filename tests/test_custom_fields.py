@@ -719,3 +719,100 @@ def test_a_refused_write_leaves_no_audit_row(world, admin, typed):
     with pytest.raises(ValidationError):
         cf.set_value(admin, "Project", typed, "fee", 1.5)
     assert len(rows(world, "SELECT * FROM audit_log")) == before
+
+
+# --- Step-review fixes (e61dec2) ------------------------------------------------------------
+
+def snapshot(world):
+    return (rows(world, "SELECT * FROM audit_log ORDER BY 1"), rows(world, "SELECT * FROM custom_field_value"),
+            rows(world, "SELECT * FROM custom_field_def"))
+
+
+@pytest.mark.parametrize("call", [
+    lambda c, p: cf.set_value(c, "Project", 2 ** 63, "fee", 1),
+    lambda c, p: cf.get_values(c, "Project", 2 ** 63),
+    lambda c, p: cf.set_value(c, "Project", -(2 ** 63) - 1, "fee", 1),
+    lambda c, p: cf.set_value(c, "Project", p, "fee", 2 ** 63),
+    lambda c, p: cf.set_value(c, "Project", p, "fee", -(2 ** 63) - 1),
+    lambda c, p: cf.set_value(c, "Project", p, "kw", 2 ** 63),
+    lambda c, p: cf.update_field(c, 1, sort_order=2 ** 63),
+])
+def test_integers_beyond_64_bits_are_refused_with_a_sentence(world, admin, typed, call):
+    before = snapshot(world)
+    with pytest.raises(ValidationError):
+        call(admin, typed)
+    assert snapshot(world) == before
+
+
+def test_64_bit_limits_themselves_are_accepted(world, admin, typed):
+    cf.set_value(admin, "Project", typed, "fee", 2 ** 63 - 1)
+    cf.set_value(admin, "Project", typed, "fee", -(2 ** 63))
+    assert value_of(cf.get_values(admin, "Project", typed), "fee") == -(2 ** 63)
+
+
+def test_a_refused_closed_period_change_writes_nothing(world, admin):
+    record = invoice(world, "Invoice", posted=True)
+    cf.define_field(admin, "Invoice", label="Po ref", data_type="Text")
+    cf.set_value(admin, "Invoice", record, "po_ref", "PO-1")
+    with _Raw(world) as c:
+        period_id = c.execute("SELECT e.period_id FROM journal_entry AS e JOIN invoice AS i "
+                              "ON i.entry_id = e.entry_id WHERE i.invoice_id = ?", (record,)).fetchone()[0]
+        lh.set_period_closed(c, period_id, True)
+    before = snapshot(world)
+    with pytest.raises(PeriodClosedError):
+        cf.set_value(admin, "Invoice", record, "po_ref", "PO-2")
+    assert snapshot(world) == before
+
+
+def test_a_refused_locked_document_change_writes_nothing(world, admin):
+    record = invoice(world, "Bill", posted=True)
+    cf.define_field(admin, "Bill", label="Po ref", data_type="Text")
+    cf.set_value(admin, "Bill", record, "po_ref", "PO-1")
+    world.settings("PARENT")
+    with _Raw(world) as c:
+        c.execute("UPDATE company_settings SET lock_documents_after_posting = 1")
+    before = snapshot(world)
+    with pytest.raises(ValidationError):
+        cf.set_value(admin, "Bill", record, "po_ref", "PO-2")
+    assert snapshot(world) == before
+
+
+@pytest.mark.parametrize("codes", [["ar.view"], ["ap.view"]])
+def test_one_view_code_cannot_tell_a_missing_contact_from_one_it_may_not_read(world, admin, codes):
+    hidden = contact(world, vendor=codes == ["ar.view"], customer=codes == ["ap.view"])
+    ctx = ctx_with(world, "peek", codes)
+    for record in (hidden, 9999):
+        with pytest.raises(PermissionDeniedError):
+            cf.get_values(ctx, "Contact", record)
+
+
+@pytest.mark.parametrize("codes", [["ar.view", "ap.view"], ["customer.manage"], ["vendor.manage"]])
+def test_who_reads_every_kind_is_told_a_contact_is_missing(world, codes):
+    with pytest.raises(NotFoundError):
+        cf.get_values(ctx_with(world, "all", codes), "Contact", 9999)
+
+
+def test_set_value_on_a_missing_record_without_the_code_is_denied(world):
+    with pytest.raises(PermissionDeniedError):
+        cf.set_value(ctx_with(world, "viewer", ["ar.view"]), "Contact", 9999, "x", "y")
+
+
+def test_the_agent_reads_through_view_codes_even_if_a_manager_code_became_agent_allowed(world, admin, monkeypatch):
+    record = contact(world, customer=True)
+    cf.define_field(admin, "Contact", label="Gate code", data_type="Text")
+    monkeypatch.setattr(permissions, "AGENT_ALLOWED", permissions.AGENT_ALLOWED | {"customer.manage"})
+    agent = world.ctx(user_with(world, "bot", ["customer.manage"]), "PARENT", origin="Agent")
+    with pytest.raises(PermissionDeniedError):
+        cf.get_values(agent, "Contact", record)
+    with pytest.raises(PermissionDeniedError):
+        cf.list_fields(agent, "Contact")
+
+
+def test_an_update_that_changes_nothing_writes_no_audit_row(world, admin):
+    field = cf.define_field(admin, "Project", label="Utility", data_type="Text")
+    before = snapshot(world)
+    assert cf.update_field(admin, field["field_id"], label="Utility", is_required=False) == field
+    cf.deactivate_field(admin, field["field_id"])
+    after_one = snapshot(world)
+    cf.deactivate_field(admin, field["field_id"])
+    assert snapshot(world) == after_one and after_one != before
