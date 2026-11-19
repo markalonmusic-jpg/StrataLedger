@@ -20,6 +20,7 @@ SENSITIVE = {
     "company.restore", "audit.view", "ledger.verify",
     "je.approve", "payment.approve", "asset.approve", "contract.approve",
     "addon.manage",                                                        # HA5
+    "fields.manage",                                                       # STOP C: Admin and the Master only
 }
 
 NEW_TABLES = {

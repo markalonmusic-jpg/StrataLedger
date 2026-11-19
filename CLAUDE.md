@@ -157,8 +157,8 @@ there at the end of each step, and update the paragraph below).
 **Where we are (2026-11-18):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
 rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
 STOPs (MR1): STOP A (multi-role, MR2-MR9), STOP B (hooks and add-ons, HA1-HA7) and step B2 (WAL, backups, data
-folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) are done. Next: STOP C (custom fields, FR1 as amended;
-docs/next_step.md), 2.8 (PW1-PW11), 2.9 schema replan (AX4, RI1), Phase 3. History: docs/status_log.md.
+folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) and STOP C (custom fields service, FR1 as amended;
+`fields.manage`) are done. Next: 2.9 schema replan (docs/next_step.md), 2.8 (PW1-PW11), Phase 3.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.

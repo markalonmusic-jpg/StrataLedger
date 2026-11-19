@@ -18,6 +18,7 @@ PERMISSIONS = {
     "company.restore": Permission("Company", "Restore the company from a backup", True),
     "company.create": Permission("Company", "Create a subsidiary company", False),
     "addon.manage": Permission("Company", "Turn add-ons on and off", True),     # HA5: Admin and Master only
+    "fields.manage": Permission("Company", "Define custom fields", True),       # STOP C: Admin and Master only
     # Periods
     "period.close": Permission("Periods", "Close a fiscal period", False),
     "period.reopen": Permission("Periods", "Reopen a closed fiscal period (reason required)", True),

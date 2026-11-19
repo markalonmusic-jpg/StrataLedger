@@ -938,3 +938,11 @@ Rotation and key-lost text as it stood before the trim:
   tests/test_clipboard_lock.py no longer races other xdist workers for the shared lock.
 - 2026-11-18: owner approved the owner-answers round (fc6efe0) and its fix mode (d7a8073; hook run 3916 passed,
   2 skipped). The next step runs in a separate session (docs/next_step.md).
+- 2026-11-18: Phase 2.7 STOP C, the custom fields service (FR1 as amended by CODE_CHANGES 27), tests first:
+  `modules/services/custom_fields.py` (tests/test_custom_fields.py). One seed row: `fields.manage` (Company,
+  sensitive; Admin and the Master only; not agent-allowed). Owner answers: values read exactly when the record
+  reads (Contact by kind, Invoice ar.view, Bill ap.view, Project project.view with scope); set with the record's
+  own edit check; the Agent never sets; Estimate refused until an estimate service exists; posted invoices and
+  bills editable, refused in a closed period or with Lock documents after posting on; audit by the baseline
+  triggers (old and new). Contact bank-number names refused. Listed for 2.9: field columns, Estimate read code,
+  the contacts "either manager" check, area locks (docs/next_step.md).

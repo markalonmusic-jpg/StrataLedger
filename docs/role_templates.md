@@ -7,7 +7,7 @@ gets the parent's roles instead (S7). The code is `modules/services/role_templat
 
 Sensitive codes (marked `*` in the registry) are never part of None / View / Standard / Full. They are listed
 separately in section 3. Approval limits (`approval_limit`) are not set by any template: the Controls page asks
-for them when a company turns approvals on. Admin is fixed and holds all 76 codes; `addon.manage` (HA5) is held by Admin and the Master only.
+for them when a company turns approvals on. Admin is fixed and holds all 77 codes; `addon.manage` (HA5) and `fields.manage` (custom fields, STOP C, owner 2026-11-18) are held by Admin and the Master only.
 
 ## 1. What each level means, by module
 
@@ -67,6 +67,7 @@ The General chart template omits Project Manager, General Manager, Warehouse and
 | `year.reopen` | Yes | | | | | | | | | | |
 | `company.restore` | | | | | | | | | | | |
 | `addon.manage` | | | | | | | | | | | |
+| `fields.manage` | | | | | | | | | | | |
 | `je.approve` | Yes | | | | | | | | | | |
 | `bill.approve` | Yes | | | | Yes | Yes | | | | | |
 | `bill.override_match` | Yes | | | | | | | | | | |

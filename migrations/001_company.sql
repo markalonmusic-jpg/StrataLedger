@@ -1182,6 +1182,7 @@ INSERT INTO permission (permission_code, module, description, is_sensitive) VALU
     ('company.restore', 'Company', 'Restore the company from a backup', 1),
     ('company.create', 'Company', 'Create a subsidiary company', 0),
     ('addon.manage', 'Company', 'Turn add-ons on and off', 1),
+    ('fields.manage', 'Company', 'Define custom fields', 1),
     ('period.close', 'Periods', 'Close a fiscal period', 0),
     ('period.reopen', 'Periods', 'Reopen a closed fiscal period (reason required)', 1),
     ('year.reopen', 'Periods', 'Reopen a period in a closed fiscal year (reason required)', 1),
