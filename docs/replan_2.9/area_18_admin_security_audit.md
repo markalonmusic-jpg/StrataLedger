@@ -231,6 +231,9 @@ Exempt as derived (owner's rule):
 | `voucher_sequence` (company) | A counter. Each number is on an audited `invoice` row (bill) |
 | `login_throttle` (master) | A cache of failed-sign-in counts, derived from the attempts `auth_event` records |
 
+Amendment 2026-11-19 (owner, area 13 F13): `ledger_period_balance` (company) is added to this derived list; it is a
+sum of posted `journal_line` rows written only by `ledger.py` (docs/replan_2.9/area_13_close_and_locks.md section 6).
+
 Not business tables, and outside the owner's two categories, so they form a third exempt category
 (Q24 A; C8 closed), listed by name in the same schema test:
 - The audit trail itself: `audit_log`, `audit_context` (both files), `access_event` (company), `auth_event`

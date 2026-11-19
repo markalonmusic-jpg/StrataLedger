@@ -1,8 +1,10 @@
 # Step 2.9 schema replan, area 13: close and locks
 
-Status: **Drafted 2026-11-19** for the owner. Docs only: nothing here changes code, a baseline, a migration or a
-test. Nothing is built until the owner marks area 13 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
-Every table, column, code and check below is PROPOSED until then. Choices for the owner are in section 9.
+Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, dfb26b6; owner answers Q1-Q24, the
+F13 approval and the KS15 fix 2026-11-19, folded in below; section 9). Docs only: nothing here changes code, a
+baseline, a migration or a test. Nothing is built until the owner marks area 13 owner-approved in
+`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
+questions are open.
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 13 and the source keys.
@@ -32,12 +34,12 @@ Sources read (only these, searched by date, title or code):
 
 | # | Item | Proposal in one line | Baseline |
 |---|------|----------------------|----------|
-| 1 | Locks | Full period and year stay as they are (integrity once set). `fiscal_period_lock` is replaced by `period_lock`: one row per locked area or account, unlocked once with a reason, relocked as a new row. One check in a new `period_locks.py`, called by every action that posts or changes a posted record | company |
-| 2 | Close checklist | Template and period tasks, system and custom, steps, dependencies with built-in edges, done/skip records. `period_close_check` stays as the system-check registry with warn/block (L2); its code list grows | company |
-| 3 | Calendar items | `due_type`/`due_n` on tasks, `close_target_bd`, a work week and a holiday list; reviewed-by is the period's closer | company |
-| 4 | Close snapshot and freezes | `period_close_snapshot`: five figures per close event, insert-only, audited. KPI freeze (area 17's `kpi_value`) in the same transaction. Typed measures refused and derived ones skipped in a closed period | company |
+| 1 | Locks | Full period and year stay as they are (integrity once set). `fiscal_period_lock` is replaced by `period_lock`: one row per locked area (11, Q1 A) or account, with a reason to lock and to unlock (Q4 B), relocked as a new row. One check in a new `period_locks.py`, called by every action that posts or changes a posted record | company |
+| 2 | Close checklist | Template and period tasks, system and custom, steps, dependencies with built-in edges guarded by the service only (Q12 B), done/skip records. `period_close_check` stays as the system-check registry with per-check warn/block (L2, Q2 A); `ledger_integrity`'s unverified range never blocks in any mode (KS15); its code list grows | company |
+| 3 | Calendar items | `due_type`/`due_n` on tasks, `close_target_bd`, a work week and a holiday list; reviewed-by is the period's closer (`closed_by`/`closed_at`). Reopen clears it and every task's done record, logged (Q15 B) | company |
+| 4 | Close snapshot and freezes | `period_close_snapshot`: five figures per close event, insert-only, audited; ending cash is Bank and Cash plus undeposited funds, cards excluded (Q16 B). KPI freeze (area 17's `kpi_value`) in the same transaction. Typed measures refused and derived ones skipped in a closed period | company |
 | 5 | Checkpoints | R26/K18 are the company-file close (sign-out), not the period close. The period close already signs a `Period close` checkpoint; the snapshot records the entry number it was verified through | company |
-| 6 | Period balance summary | Written only by `ledger.py` at posting; correct across reopen and re-close by construction (append-only lines); a tie-out check and a rebuild tool | company (area 10 with 17) |
+| 6 | Period balance summary | Written only by `ledger.py` at posting; correct across reopen and re-close by construction (append-only lines); a tie-out check and a rebuild tool; on area 18's derived exempt list (F13, owner) | company (area 10 with 17) |
 
 Master file: no change (snapshots are per company; no "All companies" view in v1, 11-18 item 4).
 
@@ -104,7 +106,8 @@ Master file: no change (snapshots are per company; no "All companies" view in v1
 
 Seed (Q1 A): close.html's ten areas plus Bank: Billing (owner pay apps); Invoices and credit memos; Payments
 received; Bills and vendor credits; Bill payments; Payroll; Inventory and receipts; Fixed assets and depreciation;
-Loans; Journal entries; Bank and card. Which document or action belongs to which area is a service registry in
+Loans; Journal entries; Bank and card (11). Design adds Bank and card to close.html. Locks live on the Close screen
+only, not on the Controls page (Q1 A). Which document or action belongs to which area is a service registry in
 `period_locks.py` (section 1.4), not a column, so each area's own service registers its record types.
 
 **`period_lock`** (replaces `fiscal_period_lock`; one row per lock, append-only apart from one unlock):
@@ -118,8 +121,8 @@ Loans; Journal entries; Bank and card. Which document or action belongs to which
 | `account_id` | INTEGER REFERENCES account; CHECK (kind = 'Account') = (account_id IS NOT NULL) |
 | `locked_by` | INTEGER NOT NULL |
 | `locked_at` | TEXT NOT NULL (from `context.now`, UTC with offset) |
-| `lock_reason` | TEXT, NULL allowed or required per Q4; CHECK (lock_reason IS NULL OR length(trim(lock_reason)) BETWEEN 1 AND 1000) |
-| `unlocked_by`, `unlocked_at`, `unlock_reason` | NULL until unlocked; CHECK all three set or all NULL, and `length(trim(unlock_reason)) > 0` |
+| `lock_reason` | TEXT NOT NULL CHECK (length(trim(lock_reason)) BETWEEN 1 AND 1000) (Q4 B: a reason is required to lock, as area 18 says; close.html gains a reason field on the lock dialog) |
+| `unlocked_by`, `unlocked_at`, `unlock_reason` | NULL until unlocked; CHECK all three set or all NULL, and `length(trim(unlock_reason)) BETWEEN 1 AND 1000` (Q4 B: required to unlock) |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 (rule g4; the unlock dialog sends it back) |
 
 - Partial unique indexes: `(period_id, area_code) WHERE kind = 'Area' AND unlocked_at IS NULL` and
@@ -138,7 +141,7 @@ Loans; Journal entries; Bank and card. Which document or action belongs to which
 **`fiscal_period`, `fiscal_year`:** add `row_version` (the close and reopen buttons send it, g4). No other column
 (reviewed-by is section 3).
 
-**Permissions** (Q3): locking uses `period.close`; unlocking uses `period.reopen` (sensitive; Admin, the Master and
+**Permissions** (Q3 A): locking uses `period.close`; unlocking uses `period.reopen` (sensitive; Admin, the Master and
 the Controller template per area 18). Code checks permissions, never role names (L7).
 
 ### 1.4 One check for every action
@@ -168,7 +171,8 @@ Which period the check runs on (one rule for every action):
 - **Actions that change a posted record in place without new lines** (allocate and release a payment, unmatch,
   clearing ID, custom-field edits, attachment removal, a posted document's memo where allowed): the record's own
   posting period, its area, and the accounts of its posted lines that the action touches (unmatch: the bank line;
-  allocate: the AR or AP line; custom fields and attachments: none, only the area, Q6).
+  allocate: the AR or AP line; custom fields and attachments: none, only the area, Q6 A). For custom fields and
+  attachment removal the closed period and `lock_documents_after_posting` also apply, as today.
 
 Callers and their area (registry in `period_locks.py`; each area's own service adds its types later):
 
@@ -180,12 +184,12 @@ Callers and their area (registry in `period_locks.py`; each area's own service a
 | `payments.allocate` / release (Sales / Purchase) | Payments received / Bill payments | the AR or AP line |
 | pay run (area 2) | Bill payments | every line |
 | unmatch, reconciliation adjustment, deposits, transfers (area 12) | Bank and card | the bank or card line |
-| reclass (area 10) | Journal entries (Q5) | both lines of each pair |
-| prepaid recognition and catch-up (area 10) | Q5 | every line |
+| reclass (area 10) | Journal entries (Q5 A) | both lines of each pair |
+| prepaid recognition and catch-up (area 10) | Journal entries (Q5 A) | every line |
 | depreciation, disposals (area 11) / loans (area 11) | Fixed assets and depreciation / Loans | every line |
 | payroll import (area 19) / receipts, inventory (area 9) / owner pay apps (area 4) | Payroll / Inventory and receipts / Billing | every line |
-| `custom_fields.set_value` on a posted invoice or bill | Invoices and credit memos / Bills and vendor credits | none (Q6) |
-| attachment removal on a posted document (area 18 O6) | the document's area | none (Q6) |
+| `custom_fields.set_value` on a posted invoice or bill | Invoices and credit memos / Bills and vendor credits | none (Q6 A) |
+| attachment removal on a posted document (area 18 O6) | the document's area | none (Q6 A) |
 
 No trigger backstop for partial locks (H4: workflow rules in services). The closed-period trigger stays as the
 integrity backstop. A static test lists every service function that writes `journal_line` or changes a posted
@@ -193,13 +197,15 @@ record and fails if it does not call `period_locks.check_open` (Q7 A).
 
 ### 1.5 Reopen (L7) and locks
 
-- `reopen_period` stays as it is (permission, confirm, reason, history row, `books_closed_through` moved back).
-  The dialog lists what reopens (close.html): entries; the period's reconciliations back to In progress (area 12
+- `reopen_period` keeps what it does today (permission, confirm, reason, history row, `books_closed_through`
+  moved back) and, in the same transaction, clears every close task's done record (section 3, Q15 B). The dialog
+  lists what reopens (close.html): entries; the period's reconciliations back to In progress (area 12
   owns that state; conflict F12); close checks run again; reports back to Preliminary (derived from `is_closed`).
 - Partial locks set before the full close (Q8 A): stay as they were; the reopened period shows Partly closed, and
   the reopen dialog lists them with an "Unlock these too" option (an unlock with the same reason).
-- Reopen clears the period's reviewed-by (section 3) and leaves snapshots and frozen KPI values in place
-  (section 4).
+- Reopen clears the period's reviewed-by, which is `fiscal_period.closed_by`/`closed_at` (Q9 A; it already does,
+  `periods.py:345-352`), logged; `period_status_history` keeps each closer. It leaves snapshots and frozen KPI
+  values in place (section 4).
 
 ### 1.6 How it lands in the baselines
 
@@ -226,6 +232,8 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 - The bank account lock refuses unmatch for that account only; Bank and card area refuses every type in the
   9:20 PM list.
 - R48: a Void dated in a locked period 13 is refused with the R48 sentence, never moved to period 12 or 14.
+- Lock without a reason (or a blank one), or without `period.close`, is refused and writes nothing; the CHECK
+  refuses a row with no `lock_reason`.
 - Unlock without a reason, without `period.reopen`, or with a stale `row_version` is refused; the row is unlocked
   once only (trigger); DELETE refused; relock inserts a new row; the partial unique index refuses two live locks.
 - Locking a closed period is refused; `PeriodLockedError` is caught by `except PeriodClosedError`.
@@ -264,12 +272,19 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
   go in the template, this period only, or both. Completion records who, when, a note and an attachment.
   Everything audited. The automatic checks become system tasks.
 - Blocking (rule 0): ERP setting **Tasks wait for their dependencies**, off by default (warn and confirm), audited.
-  L2: every check warns by default and can block (amends C4).
+  L2: every check warns by default and can block (amends C4). Q2 A: the per-check warn/block modes on the Controls
+  page are the only blocking switch for checks; no global "Block closing a period when checks fail" switch;
+  close.html's wording becomes "Some checks are set to block in Controls".
+- **KS15 (always, whatever the mode):** a per-check block mode never turns `ledger_integrity`'s unverified-range
+  finding into a block. With `ledger_integrity` set to block, only a Broken chain blocks; the unverified range
+  (entries JE-000001 to JE-N cannot be verified) and Unavailable stay warnings in every mode. This is how
+  `ledger_verify.integrity_check` behaves today (`ledger_verify.py:641-658`) and the replan keeps it.
 - C4 as amended by L2 and S 11-19 12:45 AM: the deferral close check ships with the prepaid schedule service.
   Prepaid entries due in the period show on the checklist; an entry dated in a closed period is Blocked and shows
   there; caught-up entries are marked "caught up" (S 11-18 11:55 PM, 11-19 12:45 AM).
 - close.html close dialog: lists warnings, then open tasks, then what is still dated in the period; closing with
-  warnings asks for a reason.
+  warnings asks for a reason. Q23 A: the reason is required when any warning is acknowledged and is stored on the
+  Close row of `period_status_history` (its CHECK allows a reason on Close; required only on Reopen as today).
 
 ### 2.3 Every check: exists today and asked for
 
@@ -279,7 +294,7 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 | `earlier_period_open` | Close | built | exists | now |
 | `pending_approvals` | Review | built | exists (JE approvals only) | widen with area 14 |
 | `control_overrides` | Review | built (R-rules) | exists | now |
-| `ledger_integrity` | Close | KS15 | exists | now |
+| `ledger_integrity`: Broken follows the mode; the unverified range and Unavailable are warnings in every mode, never a block (KS15) | Close | KS15 | exists | now |
 | `deferral_entries_posted`: scheduled prepaid/deferral entries for the period posted; Blocked entries listed; caught-up entries listed (info) | Costs | C4, L2, S 11-18 11:55 PM, 11-19 12:45 AM | asked | prepaid service (area 10) |
 | `deferral_tie_out`: prepaid and deferral subledger ties to the GL (1400 Prepaid and the unearned revenue account) | Reconciliations | C4 | asked | prepaid service |
 | `wip_current`: WIP entry later than every cost and estimate-to-complete change | WIP | 11-14, C56 | asked | WIP service (area 8 or 10) |
@@ -300,7 +315,8 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 
 Codes not yet buildable are seeded only when their service ships (each adds its seed row and its CHECK value in
 the same baseline edit as long as the baseline is unreleased; a numbered migration after release). The C56 "role
-tasks" are shipped template rows of kind System when a check backs them, otherwise shipped Custom rows (Q11).
+tasks" are shipped template rows of kind System when a check backs them, otherwise shipped Custom rows, owners by
+role (Q11 A).
 
 ### 2.4 Proposed schema
 
@@ -329,8 +345,8 @@ REFERENCES `close_step`, `name` TEXT NOT NULL, `row_version`. The CHECK list gro
 | `row_version` | INTEGER NOT NULL DEFAULT 1 |
 
 **`close_task_template_dependency`**: `task_id`, `depends_on_task_id` (both → template), `is_builtin` INTEGER NOT NULL
-DEFAULT 0; PK both ids; CHECK no self-edge. Built-in rows cannot be deleted (trigger backstop: integrity of the
-shipped graph; or service only, Q12). Cycles are refused by the service (a graph walk inside the write
+DEFAULT 0; PK both ids; CHECK no self-edge. Built-in rows cannot be removed: the service refuses it, with a test
+(Q12 B; H4: no new trigger for a workflow rule). Cycles are refused by the service (a graph walk inside the write
 transaction); a CHECK cannot see a path.
 
 **`close_task`** (the period checklist; replaces the current columns):
@@ -343,7 +359,7 @@ transaction); a CHECK cannot see a path.
 | `kind`, `check_code`, `name`, `step_code`, `owner_user_id`, `owner_role_code`, `due_type`, `due_n`, `how_to`, `needs_attachment`, `sort_order` | copied from the template at period start, editable for this period as C97 allows |
 | `area_code` | TEXT REFERENCES lock_area (the area the "offer to lock" uses, C56) |
 | `status` | TEXT NOT NULL DEFAULT 'Open' CHECK IN ('Open', 'Done', 'Skipped') |
-| `done_by`, `done_at` | set together when Done (for System, the user whose action made the check pass, 11-17 6:08 PM) |
+| `done_by`, `done_at` | set together when Done (for System, the user whose action made the check pass, 11-17 6:08 PM); cleared by a reopen (Q15 B) |
 | `done_note` | TEXT (max 1,000) |
 | `skip_reason`, `skipped_by`, `skipped_at` | set together when Skipped; Custom only (CHECK kind = 'Custom' OR status <> 'Skipped') |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 |
@@ -352,14 +368,14 @@ transaction); a CHECK cannot see a path.
   where not NULL. Index (`period_id`, `step_code`, `sort_order`).
 - `is_blocking`, `assignee_user_id`, `due_date`, `title`, `completed_*` are dropped (renamed or replaced). The
   required attachment uses area 18's `attachment` with `record_type` 'Close task' added to its CHECK.
-- **`close_task_dependency`**: add `is_builtin`; dependencies only within one period (CHECK by trigger, or service).
+- **`close_task_dependency`**: add `is_builtin`; dependencies only within one period and built-in edges not
+  removable, both by the service only (Q12 B, H4), each with a test.
 
 **`company_settings`**: `tasks_wait_for_dependencies` INTEGER NOT NULL DEFAULT 0 (control, OFF; listed on the
-Controls page, audited with a reason as area 18 requires for controls). Q2 decides whether a second switch
-"Block closing a period when checks fail" exists or the per-check modes stay alone.
+Controls page, audited with a reason as area 18 requires for controls). No global block switch for checks (Q2 A).
 
 When the period checklist is made: at the period's start, by the same upkeep that creates years (S3,
-`ensure_upcoming_years`), or on first open of the period's checklist, whichever is first (Q10).
+`ensure_upcoming_years`), or on first open of the period's checklist, whichever is first (Q10 A).
 
 ### 2.5 How it lands in the baselines
 
@@ -382,8 +398,11 @@ development database (section 5.2).
 
 - Template copy at period start is exact and idempotent; "this period only" does not reach the template; "also
   apply to 2026-10" does both.
-- Cycles refused across kinds (custom → system → custom); a built-in edge cannot be removed; a System task's name,
-  step and check cannot change; Owner and Due can.
+- Cycles refused across kinds (custom → system → custom); the service refuses removing a built-in edge, in the
+  template and in a period, and writes nothing (Q12 B: the only guard, so this test is required); a dependency
+  across two periods is refused; a System task's name, step and check cannot change; Owner and Due can.
+- **KS15:** with `ledger_integrity` set to block, a ledger with an unverified range (and no break) closes after
+  the warning is acknowledged; Unavailable likewise; a Broken chain blocks. With the mode warn, all three warn.
 - Skip refused for System tasks and without a reason; Done refused for a custom task needing an attachment until
   one is added.
 - `tasks_wait_for_dependencies` off: done out of order warns; on: refused with one sentence; Close blocked while a
@@ -416,19 +435,22 @@ development database (section 5.2).
 
 - `close_task_template` and `close_task`: `due_type` TEXT CHECK IN ('business_day', 'fixed_day') or NULL (no due),
   `due_n` INTEGER CHECK (business_day: 1-23; fixed_day: 1-31; NULL with `due_type` NULL). Business day N counts
-  after the period end (Q13). The due date is computed by the service per period and returned as an ISO date
+  after the period end (BD1 = the first working day after); fixed day N is that day of the month after the
+  period, and a day past that month's end becomes its last day (Q13 A). The due date is computed by the service per period and returned as an ISO date
   (g2); never stored.
 - `company_settings.close_target_bd` INTEGER CHECK (NULL or 1-23): the business day the close should finish;
   shown as the Close task's due.
-- Work week and holidays (Q14 A: here, unless the calendar area claims them): `company_settings.work_week` TEXT
+- Work week and holidays (Q14 A: in area 13; area 8's calendar and schedules reuse them): `company_settings.work_week` TEXT
   (seven 0/1 characters, Monday first, default `1111100`, CHECK length 7 and only 0/1) and `company_holiday`
   (`holiday_date` TEXT PRIMARY KEY, `name` TEXT NOT NULL, `row_version`), audited.
 - Reviewed-by (Q9 A): the period's existing `closed_by`/`closed_at` are the reviewer and the time; the service and
-  screens label them "Reviewed by". No new columns. Reopen already clears them and writes the history row.
-- Reopen and done records (Q15 A): reopen keeps each task's `done_*` (who did the work stays true) but resets
-  System tasks to Open so their checks run again; Custom tasks stay Done unless the reopener unticks them. Each
-  change is an audited update. (The 6:08 PM text "Reopening clears each record" read literally would clear all of
-  them: option B.)
+  screens label them "Reviewed by". No new columns. Reopen clears `closed_by`/`closed_at` on `fiscal_period`
+  (logged by its audit trigger, as today); `period_status_history` keeps each closer, so every past review stays
+  readable.
+- Reopen and done records (Q15 B, owner 11-17 6:08 PM): reopen clears every task's `done_by` and `done_at`, and
+  each Done task goes back to Open (System and Custom), in the reopen's transaction. Each cleared task is an
+  audited update carrying the reopen's reason; the old values stay in the audit log. Skipped tasks keep their skip
+  record (the answer names done records only).
 
 ### 3.4 Lands, effects, tests
 
@@ -436,8 +458,10 @@ development database (section 5.2).
 - `periods.py`: a `due_date_for(period, due_type, due_n)` helper (pure, takes the work week and holidays) used by
   `close_tasks.py` and the calendar read. No clock read (H2): "overdue" compares with `context.today`.
 - Tests: business-day counting across weekends and a holiday; a fixed day on a Saturday moves to Friday; a fixed
-  day 31 in a 30-day month (Q13); `close_target_bd` shown; reopen clears reviewed-by and resets System tasks;
-  calendar read refuses tasks a user may not see (`period.view`).
+  day 31 in a 30-day month becomes the 30th (Q13 A); `close_target_bd` shown; reopen clears `closed_by`/`closed_at`
+  and every task's `done_by`/`done_at` (System and Custom back to Open), with one audit row each carrying the
+  reason, while `period_status_history` still shows the earlier closer; a reopen that fails leaves every task as
+  it was; calendar read refuses tasks a user may not see (`period.view`).
 
 ---
 
@@ -461,7 +485,7 @@ snapshot.
 - Contracts 2.7 and section 12 item 8: every active KPI's value frozen in the close transaction, insert-only,
   audited; each close keeps its own rows; reports read the latest close's row; a failed value is stored as null
   with a note and never blocks.
-- Contracts section 12 item 10 (Q16 B): typed non-financial values refused in a closed period; derived
+- Contracts section 12 item 10 (the contracts' own Q16 B, not this doc's Q16): typed non-financial values refused in a closed period; derived
   recomputation skipped there.
 - S 11-19 12:45 AM: "As reclassed" applies from the reclass date, so closed figures and the snapshot never change.
 
@@ -485,14 +509,15 @@ snapshot.
 - Written by `periods._close` in the close's own transaction for **every** path that closes a period: Period
   close, Books closed through (one per month it closes), Year close (periods 13 and 14 it closes).
 
-### 4.4 The five definitions (proposed; Q16, Q17)
+### 4.4 The five definitions (owner answers Q16 B, Q17 A, Q18 A)
 
 All accrual (B1 reports compute retained earnings; cash basis is a report view, not stored). Signs: assets and
 cash as debit-positive balances; liabilities and equity as credit-positive; net income income-positive.
 - **Basis by period:** months 1-12 use pre-adjustment (entries in periods 13 and 14 are excluded, though dated the
   same last day); period 13 uses GAAP (1-13); period 14 uses tax (1-14) (A1).
-- **Ending cash:** the balance as of the period end of the accounts whose account type is Bank or Cash (card
-  accounts excluded; undeposited funds included or not per Q16), the set the cash flow report will use.
+- **Ending cash (Q16 B):** the balance as of the period end of the accounts whose account type is Bank or Cash,
+  plus the undeposited funds account (`company_settings.undeposited_funds_acct_id`). Card accounts are excluded.
+  The cash flow report uses the same set.
 - **Net income:** income minus expenses of entries in that period only (not year to date).
 - **Total assets / liabilities:** balances as of the period end, all periods to date under the basis.
 - **Total equity:** equity accounts plus all net income not yet in retained earnings (prior years and current
@@ -522,7 +547,8 @@ g2). Today's values can differ only after a reopen and a repost, or after an acc
 - Tests: one snapshot per close path; reopen + repost + re-close keeps the first and adds the second, and History
   shows the difference; UPDATE/DELETE refused; the balance CHECK refuses a bad row; a rolled-back close leaves
   no snapshot; periods 13/14 use their bases; a reclass dated later never changes a closed snapshot; an
-  account type change shows a difference.
+  account type change shows a difference; ending cash includes Bank, Cash and undeposited funds and excludes a
+  card account's balance (Q16 B).
 
 ---
 
@@ -548,9 +574,8 @@ g2). Today's values can differ only after a reopen and a repost, or after an acc
   is closed), the checkpoint after the commit (it may fail and the close stands). So the snapshot cannot hold the
   checkpoint's id. The link is `through_entry_number`: History shows "Ledger verified through JE-N at this close"
   when a Period close checkpoint for that period has the same `through_entry_number`.
-- Q20: whether the checkpoint's `ref_type`/`ref_id` should name the close event (`period_status_history`)
-  instead of the period, so each close's checkpoint ties to its snapshot exactly. B changes `ledger_verify`'s
-  `CLOSE_KINDS` and its tests.
+- Q20 A: the checkpoint keeps `ref_type` fiscal_period or fiscal_year and its `ref_id`; no change to
+  `ledger_verify`. The snapshot's `through_entry_number` is the link.
 - K18's sign-out checkpoint is unrelated to the snapshot and stays as it is. Naming (F10): the screens should say
   "sign-out checkpoint" for R26/K18 so "close" means the period close.
 
@@ -560,7 +585,7 @@ g2). Today's values can differ only after a reopen and a repost, or after an acc
   `checkpoint_error` is reported.
 - `through_entry_number` equals the close's verification `through_entry_number`.
 - Books closed through over three months: three snapshots, one checkpoint (today's behaviour), History shows the
-  verified line only for the month the checkpoint names (or for all three under Q20 B with one checkpoint each).
+  verified line only for the month the checkpoint names (Q20 A).
 
 ---
 
@@ -581,7 +606,7 @@ None in the baseline. Proposed by docs/contracts/reports.md section 12 item 12 (
   key (`INSERT ... ON CONFLICT ... DO UPDATE`, portable to PostgreSQL; not `INSERT OR REPLACE`, H5). A static test
   (like rule 7's writer test) allows no other writer.
 - **Keys with no value:** NULL is distinct in a UNIQUE index, so the unique key is an expression index on
-  `COALESCE(x, 0)` for each nullable key (portable), or the keys are NOT NULL with a "none" row; Q21.
+  `COALESCE(x, 0)` for each nullable key (portable; Q21 A). The keys stay nullable.
 - **Why reopen and re-close need nothing:** posted `journal_line` rows are append-only and posted entries change
   only by new reversing entries (rule 8). The summary is a sum of posted lines by the period the line's entry is
   in, so: a close or reopen changes no line and no row of the summary; posting into a reopened period adds to that
@@ -594,10 +619,12 @@ None in the baseline. Proposed by docs/contracts/reports.md section 12 item 12 (
 - **Tie-out check:** a new close check `period_balance_tie_out` (step Close; warn by default, L2) compares the
   period's summary rows with the `journal_line` sums for that period; also run by `ledger_verify` full
   verification. The rebuild tool lives in `tools/` (rule 11 lets tools connect) and is run on request; a service
-  wrapper needs `ledger.verify` (Q22).
+  wrapper needs `ledger.verify` and is audited (Q22 A).
 - **Snapshot vs summary:** the snapshot reads `journal_line` (Q18 A) so a damaged summary cannot enter a stored
   figure; reports read the summary.
-- **Audit (area 18):** the summary is derived and goes on the exempt list beside the counters (F13).
+- **Audit (area 18):** the summary is derived and is on area 18's derived-table exempt list beside the counters
+  (owner 2026-11-19, F13; recorded as a dated amendment in docs/replan_2.9/area_18_admin_security_audit.md
+  section 1.2). The schema test that holds the exempt list names it.
 
 ### 6.3 Tests to write later
 
@@ -623,54 +650,91 @@ None in the baseline. Proposed by docs/contracts/reports.md section 12 item 12 (
 | `ledger_period_balance` | derived, written by `ledger.py` only | no |
 
 Every new table gets audit triggers (area 18), except `ledger_period_balance` (derived, exempt). Reasons required
-(area 18 table "Which actions require a reason"): unlock, reopen, skip, closing with warnings (Q23), and lock per
-Q4.
+(area 18 table "Which actions require a reason"): lock and unlock (Q4 B), reopen (which also clears the tasks'
+done records, Q15 B), skip, and closing with warnings (Q23 A). Integrity triggers in this area guard append-only
+and insert-only rows only (`period_lock`, `period_close_snapshot`); no trigger enforces a workflow rule (Q12 B, H4).
 
 ---
 
-## 8. Conflicts with decisions (flagged, not resolved)
+## 8. Conflicts with decisions (all resolved by the owner's answers, 2026-11-19)
 
 - **F1 Area names.** The baseline has six areas (Sales, Purchases, Banking, Payroll, Inventory, Journal;
   `001_company.sql:3914`, also on `close_task.area`); close.html and C56 show ten (Billing, Invoices and credit
   memos, ... Journal entries); the planning log 16:27 says "area locks (Sales/Purchases)"; S 11-18 9:18 PM adds
-  Bank, which close.html does not show yet. Q1.
+  Bank, which close.html does not show yet. **Resolved by Q1 A:** close.html's ten areas plus Bank and card (11)
+  in `lock_area`; design adds Bank and card to close.html.
 - **F2 Control or tool.** Planning log 16:27: "All are controls (nothing locked unless set)". 11-14 1:00 PM:
   partial close "is a tool on the Close screen, always available, not a Company control". Both mean nothing is
-  locked by default; they differ on whether locks appear on the Controls page (section 0's rule for controls).
-  This draft follows 11-14 (Close screen, audited) and lists nothing on the Controls page. Q1 notes.
-- **F3 One switch or per-check modes.** L2 and the baseline give each check its own warn/block mode
-  (`period_close_check.mode`); 11-15 says "The existing 'Block closing a period when checks fail' stays" and
-  close.html says "Blocking on failed checks is off in ERP settings" (one switch). Q2.
+  locked by default; they differ on whether locks appear on the Controls page. **Resolved by Q1 A:** locks live on
+  the Close screen only, audited; nothing on the Controls page.
+- **F3 One switch or per-check modes.** L2 and the baseline give each check its own warn/block mode; 11-15 and
+  close.html speak of one switch. **Resolved by Q2 A:** per-check modes on the Controls page, no global switch;
+  close.html's wording changes. KS15 holds in every mode (section 2.2).
 - **F4 Unlock by role.** C56 and close.html: "Only an Admin or the Master can unlock"; L7: code checks
-  permissions, never role names. Q3.
+  permissions, never role names. **Resolved by Q3 A:** lock `period.close`, unlock `period.reopen`.
 - **F5 Reason on lock.** Area 18's table lists "Set or remove a period lock" as needing a reason; close.html's
-  lock dialog has no reason field (unlock has one). Q4.
+  lock dialog had no reason field. **Resolved by Q4 B:** a reason is required to lock and to unlock
+  (`lock_reason` NOT NULL); close.html gains a reason field on the lock dialog. Area 18's table stands as written.
 - **F6 Reviewed-by.** 11-17 asks for `reviewed_by`/`reviewed_at` on the period "(the closer)"; the period already
-  stores `closed_by`/`closed_at`, which are the same person and time. Q9.
-- **F7 Reopen clears done records.** 11-17 6:08 PM "Reopening clears each record" vs keeping who did the work. Q15.
+  stores `closed_by`/`closed_at`. **Resolved by Q9 A:** no new columns; reopen clears `closed_by`/`closed_at`
+  (logged) and `period_status_history` keeps each closer.
+- **F7 Reopen clears done records.** 11-17 6:08 PM "Reopening clears each record". **Resolved by Q15 B:** reopen
+  clears every task's `done_by`/`done_at` and the period's reviewed-by, each logged.
 - **F8 "Mark step done".** C56 offers to lock a step's areas when the step is marked done; C97 removes "Mark step
-  done". This draft offers the lock when the step's last task is done. Q24.
-- **F9 Contracts numbering.** The task names "section 12 item 11 (period balance summary)"; in
-  docs/contracts/reports.md section 12 item 11 is the operating plan and item 12 is the period balance summary.
-  This draft used item 12.
-- **F10 "Close checkpoint".** R26 and K18 call the sign-out checkpoint a "close checkpoint"; area 13 uses "close"
-  for the period. Section 5 keeps the code as it is and suggests the screen wording.
-- **F11 Account numbers.** 11-14's reconciliation list (1210, 2450, 1250, 2400, 2410, 2300, 2050, 2350) and the
-  added 2050/2350 do not match the construction chart (planning log 11-14 16:23; S 11-19 "account numbers follow
-  the repo construction chart"). Checks find accounts by role (`company_settings.*_acct_id`), never by number.
-- **F12 Reopen and reconciliations.** close.html's reopen sends the period's reconciliations back to In progress;
-  area 12 owns reconciliation states (finishes only at $0.00). Area 12 must add the reopened state; area 13 only
-  calls it.
-- **F13 Area 18 exempt list.** Area 18's derived-table exempt list (owner-approved) does not name
-  `ledger_period_balance`, which did not exist then; adding it is an amendment to an approved area.
-- **F14 Prepaid area.** Prepaid recognition and catch-up are system journal entries from a bill line; whether they
-  fall under Journal entries or Bills and vendor credits is not decided. Q5.
+  done". **Resolved by Q24 A:** the offer comes when a step's last task is done, never automatic.
+- **F9 Contracts numbering.** The task named "section 12 item 11 (period balance summary)"; in
+  docs/contracts/reports.md it is item 12 (item 11 is the operating plan). **Resolved as drafted (no question):**
+  this doc cites item 12; the contracts doc is unchanged.
+- **F10 "Close checkpoint".** R26 and K18 call the sign-out checkpoint a "close checkpoint". **Resolved by Q20 A:**
+  the code and `ledger_checkpoint` stay as they are; screens say "sign-out checkpoint" for R26/K18 (section 5).
+- **F11 Account numbers.** 11-14's reconciliation list numbers do not match the construction chart (S 11-19:
+  account numbers follow the repo construction chart). **Resolved as drafted (no question):** checks find accounts
+  by role (`company_settings.*_acct_id`), never by number.
+- **F12 Reopen and reconciliations.** close.html's reopen sends reconciliations back to In progress; area 12 owns
+  reconciliation states. **Resolved as drafted (no question):** area 12 adds the state; area 13 only calls it
+  (section 10).
+- **F13 Area 18 exempt list.** Area 18's derived-table exempt list did not name `ledger_period_balance`.
+  **Resolved (owner 2026-11-19):** the owner approved adding it; a dated amendment line is in
+  docs/replan_2.9/area_18_admin_security_audit.md section 1.2. Nothing else in area 18 changes.
+- **F14 Prepaid area.** Prepaid recognition and catch-up are system journal entries from a bill line. **Resolved
+  by Q5 A:** prepaid entries and reclasses are Journal entries; account locks still apply.
 
 ---
 
-## 9. Questions for the owner
+## 9. Questions for the owner: answers recorded (2026-11-19)
 
-Recommended option first.
+The options as asked are kept below each answer for the record.
+
+| Q | Answer | Where it lands |
+|---|--------|----------------|
+| Q1 Lock areas | A: close.html's ten plus Bank and card (11), in `lock_area`; Close screen only | 1.3 |
+| Q2 Blocking failed checks | A: per-check warn/block modes, no global switch; KS15 unchanged in every mode | 2.2, 2.3, 2.4 |
+| Q3 Who locks and unlocks | A: lock `period.close`, unlock `period.reopen` | 1.3 |
+| Q4 Reason when locking | **B:** required to lock and to unlock; close.html gains a reason field on the lock dialog | 1.3, 1.8, 7 |
+| Q5 Area of prepaid and reclass | A: both Journal entries; account locks apply | 1.4 |
+| Q6 Locks on non-GL edits | A: closed period, `lock_documents_after_posting` and the document's area lock; no account locks | 1.4 |
+| Q7 Enforcement | A: service only plus a static test | 1.4 |
+| Q8 Partial locks after reopen | A: kept; reopen dialog offers "Unlock these too" | 1.5 |
+| Q9 Reviewed-by | A: `closed_by`/`closed_at`, labelled Reviewed by; reopen clears them (logged); `period_status_history` keeps each closer | 1.5, 3.3 |
+| Q10 Checklist creation | A: at period start or first open, whichever is first | 2.4 |
+| Q11 C56 role tasks | A: shipped template rows, System where a check backs them, Custom otherwise | 2.3 |
+| Q12 Built-in edges | **B:** service only, plus a test; the proposed trigger is removed (H4) | 2.4, 2.7, 7 |
+| Q13 Due dates | A: BD1 = first working day after the period end; fixed day in the next month, clamped to its last day | 3.3 |
+| Q14 Work week and holidays | A: in area 13; area 8 reuses them | 3.3 |
+| Q15 Reopen and tasks | **B:** reopen clears every task's `done_by`/`done_at` and the period's reviewed-by, each logged | 1.5, 2.4, 3.3, 3.4 |
+| Q16 Ending cash | **B:** Bank and Cash account types plus undeposited funds; card accounts excluded | 4.4, 4.6 |
+| Q17 Snapshot basis | A: accrual; 1-12 pre-adjustment, 13 GAAP, 14 tax | 4.4 |
+| Q18 Snapshot source | A: `journal_line` in the close transaction | 4.4, 6.2 |
+| Q19 Measures and partial locks | A: only a full close freezes measures | 4.5 |
+| Q20 Checkpoint reference | A: unchanged; linked by `through_entry_number` | 5.2, 5.3 |
+| Q21 Summary keys | A: nullable keys, unique expression index on `COALESCE(key, 0)` | 6.2 |
+| Q22 Summary rebuild | A: tool in `tools/` plus an audited service wrapper needing `ledger.verify` | 6.2 |
+| Q23 Reason when closing with warnings | A: required; stored on the Close history row | 2.2, 7 |
+| Q24 Offer to lock after a step | A: when a step's last task is done, never automatic | 8 (F8) |
+
+Also from the owner (2026-11-19): F13 approved (section 8); required fix KS15 (sections 2.2, 2.3, 2.7).
+
+### 9.1 The questions as asked
 
 **Q1. Lock areas.** (F1, F2)
 - A. close.html's ten areas plus "Bank and card" (11), stored in a `lock_area` table; design adds Bank and card to
