@@ -972,3 +972,5 @@ Rotation and key-lost text as it stood before the trim:
   clipboard in a normal run: autouse `fake_clipboard` in conftest; real-clipboard tests are `live_clipboard` (deselected
   unless STRATALEDGER_LIVE_CLIPBOARD=1, file lock kept); `system_clipboard` marker removed. 3 parallel full runs with
   text on the clipboard: 4173 passed, 2 skipped each.
+- 2026-11-19: report builder service contracts drafted (docs/contracts/reports.md; Q1-Q18, 2.9 list). 3cf3428 holds the
+  area 18 seed-table and roadmap edits from the parallel Sonnet session (owner 2026-11-19); its message is wrong; no rewrite.
