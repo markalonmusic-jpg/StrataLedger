@@ -1,9 +1,8 @@
-# Report builder service contracts (draft for planning review)
+# Report builder service contracts (owner-approved 2026-11-19)
 
 Written 2026-11-19 by Claude Code (Opus) for the planning chat, before design builds batch E. Docs only: no code,
-schema or tests. Status: **draft, fix mode 1** (owner answers Q1-Q18 recorded 2026-11-19, section 11).
-Q19-Q26 are open; where the text depends on one, it says so and shows the recommended option. Schema needs are
-in section 12.
+schema or tests. Status: **Owner-approved 2026-11-19** (fix mode 1: owner answers Q1-Q18; fix mode 2: Q19-Q26,
+section 11). Schema needs are in section 12, for the 2.9 replan.
 
 Purpose: batch E pages are built against `mock-data/*.json` files in exactly these shapes and then switched to the
 real services through the one data layer, with no page change (build rules b, c, e and g, shared_decisions
@@ -207,8 +206,9 @@ Rules the service enforces on save (all refusals use the section 9 shape with `f
   report). `kind` and `report_type` cannot change after the first save.
 - `scope`: `single` (default) or `combined` (a layout for runs across company files, 4.7; only a combined layout
   may use the `company_group` and `company_account` operands). Matching across files is by account number
-  (Q19, open; shown with option A): an account in another company whose number is not in this company's chart
-  is "unmatched".
+  (Q19 B): an account in another company whose number is not in this company's chart is "unmatched" and shows
+  as its own row, labelled with its company, under the group its number or type fits, or under "Not in any
+  group"; it counts in the totals (4.7).
 - `items` is a tree by `parent_id` and `sort`. Groups nest under groups only; formulas and charts sit at any
   level; charts always render in the top band (`band: "top"`, `column` 1 or 2).
 - An account sits in at most one group per layout. Explicit `accounts` win over `auto_include`. Two
@@ -863,34 +863,51 @@ groups name accounts by the current company's chart.
 ```
 
 Not in a combined run (refused with a sentence): dimension, job, cost code and contact filters, and `entities`
-(those ids belong to one file), and plan comparisons (Q23, open; shown with option A).
+(those ids belong to one file), and plan comparisons (Q23 A). Prior period and prior year comparisons are allowed.
 
 **How it is computed.**
-1. For each company, map the layout's accounts to that company's chart by account number (Q19, open; shown with
-   option A). That company's accounts with activity and no match are listed in an "Unmatched accounts" section
-   for the company, outside the groups and the totals, with a Check notice naming the amount left out.
+1. For each company, map the layout's accounts to that company's chart by account number (Q19 B). An account of
+   that company with activity whose number is not in the current company's chart is **unmatched**: it shows as
+   its own account row, labelled with its company, under the group whose `auto_include` rule its number or type
+   fits, or under a "Not in any group" group at the end when none fits. It counts in that group's total and in
+   the report totals. The run returns a warning listing every unmatched account (company, number, name,
+   amount).
 2. Each company runs the layout through its own `run_financial` (its own period summary, basis, periods and
    reclass rules), so a company column equals that company's own report.
-3. The service adds the company columns into the **Combined** column. Currencies must all match (Q20, open;
-   shown with option A). Dates resolve on the current company's calendar (Q22, open).
+3. The service adds the company columns into the **Combined** column, so the combined total always equals the
+   sum of the companies. Currencies must all match, or the run is refused: "These companies use different
+   currencies (USD and PHP). Pick companies with the same currency." (Q20 A). Dates resolve on the current
+   company's calendar and apply to each company by calendar date; when fiscal year starts differ only
+   calendar-month columns are allowed, and the basis must be pre-adjustment unless every company has adjustment
+   periods on (Q22 A).
 4. Formulas are evaluated per column on that column's values. A formula that uses `company_group` or
    `company_account` is evaluated only in the Combined column (and its compare), and shows "—" in the
    company columns.
 
-**Result**: the section 4.2 shape, with company columns and a Combined column, and an elimination row:
+**Result**: the section 4.2 shape, with company columns and a Combined column. The sample shows one unmatched
+account under Revenue (its 3,200.00 is inside Ridgeline Solar Leasing's 18,400.00 revenue total) and an
+elimination row:
 
 ```json
 {
   "report": {"title": "Group P&L", "subtitle": "Oct 2026 · Accrual · Pre-adjustment · 2 companies, not consolidated",
              "currency": "USD", "generated_at": "2026-11-19T14:22:10Z",
              "companies": [{"company_id": "co_ridge", "name": "Ridgeline Roofing & Solar LLC"}, {"company_id": "co_rsolar", "name": "Ridgeline Solar Leasing LLC"}],
-             "notices": [{"severity": "medium", "message": "Ridgeline Solar Leasing LLC has 1 account not matched to this layout (4950 Lease income, 3,200.00). It is shown under Unmatched accounts and left out of the totals."}]},
+             "notices": [{"severity": "medium", "message": "1 account isn't in this company's chart: Ridgeline Solar Leasing LLC 4950 Lease income (3,200.00). It is shown under Revenue and counted in the totals."}]},
+  "unmatched_accounts": [{"company_id": "co_rsolar", "display_code": "4950", "name": "Lease income", "group_item_id": "itm_rev",
+                          "amount": {"amount": "3200.00", "currency": "USD"}, "amount_display": "3,200.00"}],
   "columns": [
     {"column_id": "c_co_ridge", "kind": "company", "company_id": "co_ridge", "label": "Ridgeline Roofing & Solar"},
     {"column_id": "c_co_rsolar", "kind": "company", "company_id": "co_rsolar", "label": "Ridgeline Solar Leasing"},
     {"column_id": "c_combined", "kind": "combined", "label": "Combined"}
   ],
   "rows": [
+    {"row_id": "r_unm_co_rsolar_4950", "item_id": "itm_rev", "type": "account", "depth": 1, "unmatched": true,
+     "company_id": "co_rsolar", "label": "4950 Lease income (Ridgeline Solar Leasing LLC, not in this chart)",
+     "cells": {
+       "c_co_ridge":  {"value": null, "display": "—", "drill": null},
+       "c_co_rsolar": {"value": {"amount": "3200.00", "currency": "USD"}, "display": "3,200.00", "drill": "dh_c4"},
+       "c_combined":  {"value": {"amount": "3200.00", "currency": "USD"}, "display": "3,200.00", "drill": "dh_c5"}}},
     {"row_id": "r_itm_rev_total", "item_id": "itm_rev", "type": "group_total", "depth": 0, "label": "Total Revenue",
      "cells": {
        "c_co_ridge":  {"value": {"amount": "99900.00", "currency": "USD"}, "display": "99,900.00", "drill": "dh_c1"},
@@ -901,10 +918,7 @@ Not in a combined run (refused with a sentence): dimension, job, cost code and c
        "c_co_ridge":  {"value": null, "display": "—", "drill": null},
        "c_co_rsolar": {"value": null, "display": "—", "drill": null},
        "c_combined":  {"value": {"amount": "-2500.00", "currency": "USD"}, "display": "(2,500.00)", "drill": null,
-                       "explain": "− Ridgeline Solar Leasing LLC account 4900 Intercompany revenue 2,500.00"}}},
-    {"row_id": "r_unmatched_co_rsolar", "type": "unmatched_account", "company_id": "co_rsolar", "depth": 0,
-     "label": "Unmatched: 4950 Lease income (Ridgeline Solar Leasing LLC)",
-     "cells": {"c_co_rsolar": {"value": {"amount": "3200.00", "currency": "USD"}, "display": "3,200.00", "drill": "dh_c4"}}}
+                       "explain": "− Ridgeline Solar Leasing LLC account 4900 Intercompany revenue 2,500.00"}}}
   ],
   "kpis": [],
   "charts": []
@@ -917,7 +931,8 @@ The elimination row's tokens: `[{"t": "op", "op": "-"}, {"t": "ref", "kind": "co
 **Drill.** A company cell's handle carries its company; `drill_combined` re-checks access in that file and
 returns that company's rows. A Combined cell returns every company's rows, each with `company` and a `link` that
 includes `company_id` (opening it switches company through the shell). KPIs are not combined in v1 (`kpis` is
-empty). Export and the R34 PDF take the `run_combined` request. Saving and scheduling: Q21.
+empty). Export and the R34 PDF take the `run_combined` request. A combined report can be saved in the current
+company, with its company list, and added to packs; it cannot be scheduled in v1 (Q21 A).
 
 ---
 
@@ -1129,8 +1144,8 @@ closed (so a closed period's figures never move).
 
 `refresh_derived_measures` `{"measure_ids": ["nfm_kw"], "period_ids": [...]}` recomputes derived values for open
 periods only (also run on every report run for open periods; closed periods are skipped, Q16 B). Result:
-`{"updated": [{"measure_id": "nfm_kw", "period_id": "per_2026_10", "derived": "51.3"}]}`. The rule runs through the records engine (section 5), with the same row rules: a derived
-value is a company figure, computed with no row limits (Q17 A).
+`{"updated": [{"measure_id": "nfm_kw", "period_id": "per_2026_10", "derived": "51.3"}]}`. The rule runs through the records engine (section 5),
+with the same row rules: a derived value is a company figure, computed with no row limits (Q17 A).
 
 ---
 
@@ -1303,8 +1318,8 @@ The data layer fakes `version`, conflicts and file handles (g3, g4).
 
 ## 11. Questions for the owner
 
-Each has the recommended option first. Owner answers of 2026-11-19 are recorded under Q1-Q18; Q19-Q26 are new
-and open.
+Each has the recommended option first. Every question is answered: Q1-Q18 in fix mode 1 and Q19-Q26 in fix
+mode 2 (owner, 2026-11-19). No question is open.
 
 **Q1. "As reclassed" amounts.**
 - A. **Recommended:** amounts always equal the GL for each cell's dates (both views); "As reclassed" changes only
@@ -1338,7 +1353,7 @@ and open.
   formula or measure, format) and a stored value per period. When a period closes, its KPI values are frozen
   (like the close snapshot: each close keeps its own values; a reopen and re-close stores new ones, earlier ones
   kept). Reports read frozen values for closed periods and live values for open ones. Built into sections 2.7,
-  3.1, 4.2 and 4.6; the item `kpi` flag is removed. Follow-ups: Q24-Q26.
+  3.1, 4.2 and 4.6; the item `kpi` flag is removed. Follow-ups: Q24-Q26 (all A).
 
 **Q6. Ratio format.**
 - A. **Recommended:** "1.85 : 1".
@@ -1390,7 +1405,8 @@ and open.
   as custom formulas. The user picks companies; only files the user can open and is signed in to, holding
   `report.financial` and `money.view` in each; each company's figures are computed by its own file's services,
   then combined. A formula operand for one company's group or account lets an elimination formula reference it.
-  Built into section 4.7 and the `company_group` / `company_account` operands (3.1). Follow-ups: Q19-Q23.
+  Built into section 4.7 and the `company_group` / `company_account` operands (3.1).
+  Follow-ups: Q19 (B, amended) and Q20-Q23 (A).
 
 **Q15. A Records report with a money filter run by someone without money.view.**
 - A. **Recommended:** the filter, sort, group-by and formulas on money fields are dropped too, with the notice.
@@ -1402,8 +1418,8 @@ and open.
 - A. **Recommended:** editable and logged (not ledger data).
 - B. Locked with the period.
 - **Owner answer (2026-11-19): B.** Typed values are locked with their period, editable again only after a
-  reopen, changes logged (section 6.2). Planning's reading, for review: derived values are not recomputed while
-  the period is closed either.
+  reopen, changes logged (section 6.2). Derived values are not recomputed while their period is closed either
+  (planning's reading, confirmed by the owner in fix mode 2).
 
 **Q17. Row limits on derived measures.**
 - A. **Recommended:** derived measures are company figures computed without row limits (only counts or sums, no
@@ -1426,6 +1442,11 @@ and open.
   fits (range or type), with only the rest shown as unmatched.
 - C. A stored mapping per company (each other company's accounts mapped to this company's, kept and edited on a
   mapping screen).
+- **Owner answer (2026-11-19, fix mode 2): B, as amended by the owner.** Accounts are matched by account number.
+  An unmatched account shows as its own row under its group (or "Not in any group"), labelled with its company,
+  and counts in the group and report totals. The run returns a warning listing the unmatched accounts. The
+  combined total always equals the sum of the companies. Built into sections 2.2 and 4.7. "Its group" is read
+  as the group whose `auto_include` rule the account's number or type fits.
 
 **Q20. Combined run: companies with different currencies.**
 - A. **Recommended:** refused: "These companies use different currencies (USD and PHP). Pick companies with the
@@ -1433,6 +1454,7 @@ and open.
 - B. Converted to the current company's currency at a rate the user enters for the run (average for P&L,
   closing for balance sheet), labelled on the report.
 - C. Converted using stored exchange rates (needs a rates table and a source; later).
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q21. Saving and scheduling a combined report.**
 - A. **Recommended:** it can be saved as a report in the current company (its company list kept with it) and
@@ -1440,32 +1462,38 @@ and open.
 - B. Saved and scheduled; a scheduled run that cannot open one of its companies is "partly delivered" with the
   reason.
 - C. Neither: a combined report is run on demand only.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q22. Combined run: companies with different fiscal years or adjustment settings.**
 - A. **Recommended:** dates resolve on the current company's calendar and apply to each company by calendar
   date; only calendar-month columns are allowed when fiscal year starts differ, and the basis must be
   pre-adjustment unless every company has adjustment periods on.
 - B. Refuse companies whose fiscal year start differs from the current company's.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q23. Combined run: plan comparisons and filters.**
 - A. **Recommended:** not in v1 (plan versions, dimensions, jobs and contacts are per file); prior period and
   prior year comparisons are allowed.
 - B. Plan comparison by version name, when each company has a plan version with the same name.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q24. KPI basis.**
 - A. **Recommended:** each KPI stores its own basis (method and adjustments; default accrual and the company's
   default adjustment basis), and its frozen values use it.
 - B. One company-wide KPI basis in Company Settings.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q25. A KPI over several periods (quarter, year, total columns).**
 - A. **Recommended:** each KPI sets `range_method`: `sum`, `average` or `last` of the per-period values (frozen
   for closed periods), or `recalculate` from its source over the range (for ratios such as gross margin).
 - B. Always recalculated live over the range; frozen values are used only for single-period columns.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 **Q26. A KPI created after a period closed.**
 - A. **Recommended:** that period shows the live value marked "Not frozen: this KPI was added after Sep 2026
   closed."; it is frozen at the next close of that period.
 - B. Saving a new KPI freezes values for every closed period at once, from the current figures.
+- **Owner answer (2026-11-19, fix mode 2): A.**
 
 ---
 
@@ -1487,10 +1515,10 @@ For area 17 unless another area is named. Every editable table gets `row_version
 6. Records layout parts: `records_column` (field, summary, `where` (Q11 A), format, formula tokens),
    `records_group_by` (up to 3, bucket), `records_sort`, `records_filter`.
 7. `saved_report` (layout, owner, shared, `parameters` with the dynamic date preset or fixed dates,
-   `plan_version_id`; for a combined report the chosen `company_id` list, per Q21), `report_pack`,
+   `plan_version_id`; for a combined report the chosen `company_id` list, Q21 A), `report_pack`,
    `report_pack_item` (sort), with the usage count and the delete block; `report_pack.pack_dates` (Q12 A).
 8. **KPIs (Q5):** `kpi` (`kpi_id`, name, source kind group | formula | measure, `layout_id` + `item_id` or
-   `measure_id`, `format`, `decimals`, `over_plan_is`, basis per Q24, `range_method` per Q25, `is_active`,
+   `measure_id`, `format`, `decimals`, `over_plan_is`, basis (Q24 A), `range_method` (Q25 A), `is_active`,
    `row_version`) and `kpi_value` (`kpi_id`, `period_id`, `close_event_id` → `period_status_history`, value as
    `value_cents` or `value_decimal` text, `note`, `frozen_at`, `frozen_by`): insert-only, written by the period
    close service in the close transaction for every active KPI, never updated or deleted, audit-logged (AX4).
@@ -1514,14 +1542,20 @@ For area 17 unless another area is named. Every editable table gets `row_version
     line ids and the original's name, date, memo, item and job, and the reason.
 14. Permissions (area 18): `money.view` (decided, not sensitive) and the Q8 A codes `report.records`,
     `report.design`, `report.schedule` (not sensitive): permission rows, the role caps and level defaults, and
-    `money.view` seeded in every level that holds `report.financial` or `report.job_cost` (Q7 A). Check against
-    area 18 2.4.2, where Operations · Standard holds `report.job_cost`. `AGENT_ALLOWED` gains `report.records`
-    only if planning wants the Assistant to run Records reports.
-15. **Combined runs (Q14):** no new company-file table if Q21 A (the company list lives in `saved_report`).
+    `money.view` seeded in every level that holds `report.financial` or `report.job_cost` (Q7 A).
+    **Area 18 seed tables (owner, fix mode 2):** in 2.4.2 add `money.view` to Accountant · View only (holds
+    `report.financial` and `report.job_cost`), Sales rep · Manager and Operations · Standard (each holds
+    `report.job_cost`); levels are cumulative, so the higher levels inherit it. Add `money.view` to the
+    Accountant, Sales rep and Operations caps (2.4.1). Shipped templates that add a report code (Payroll, Sales
+    manager, Project manager, Estimator, Staff accountant) sit on a level that already gives `money.view` or
+    need it added: planning checks each row in area 18. `AGENT_ALLOWED` gains `report.records` only if planning
+    wants the Assistant to run Records reports.
+15. **Combined runs (Q14 B, Q19 B, Q20-Q23 A):** no new company-file table (Q21 A: the company list lives in
+    `saved_report`; no schedule).
     Needs: a master-side service that lists the companies a user may open (exists for the launcher) and builds a
     `ServiceContext` per company; `company_settings.base_currency` and `fiscal_year_start` read per file (exist);
-    account matching by `account.code` (exists). A stored account mapping table only if Q19 C. A rates table only
-    if Q20 C.
+    account matching by `account.code` (exists); unmatched accounts placed by the layout's `auto_include` rules
+    (item 3). No account mapping table and no exchange rates table.
 16. Records source tables not in the baseline (areas 6, 8, 15): `lead`, lead stage/status history, `activity`,
     job stage history, job cancellation reason, `service_case` and its status history, lead → job link (X4),
     sales rep on the contract.
