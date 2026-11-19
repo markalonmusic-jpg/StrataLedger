@@ -1,9 +1,9 @@
 # Step 2.9 schema replan, area 18: admin, security, audit, attachments
 
-Status: **drafted, owner answers recorded** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17 2026-11-18,
-folded in below). Docs only: nothing here changes code, a baseline, a migration or a test. Nothing is built until
-the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every table, column and code
-below is PROPOSED until then. New questions from the seed tables: Q18-Q23 (section 7).
+Status: **doc approved by the owner (2026-11-19)** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17
+2026-11-18, folded in below, 2a3b497). Docs only: nothing here changes code, a baseline, a migration or a test.
+Nothing is built until the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every
+table, column and code below is PROPOSED until then. Still open: questions Q18-Q24 (section 7).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 18 and the source keys.
