@@ -963,3 +963,12 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-19: owner approved the step 2.9 area 18 doc (docs/replan_2.9/area_18_admin_security_audit.md; draft
   6e9cdf8, owner answers Q1-Q17 and the access seed tables 2a3b497; hook run 4169 passed, 2 skipped). Owner answers
   Q18-Q24 (2026-11-19): all A; C8 closed by Q24 A, C9 by Q18 A. The next session starts in a new chat.
+- 2026-11-19: owner approved area 18 as Owner-approved (Q18-Q24 all A, C8 and C9 closed; d38e11e) and the commit hook
+  timeout stopgap 900 s -> 1500 s (55df6ef; hook runs 4169 passed, 2 skipped). Quiet-machine timing run
+  (`-n auto --durations=25`): 243.7 s, slowest test 14.1 s; the 862 s run was machine load (Codex QA scripts).
+- 2026-11-19: area 18 seed tables aligned with Q20 A (shipped Payroll template) and Q22 A (`retainage.release` in Controller);
+  scratch check: 77 codes placed (7 Admin-only), no level default holds a sensitive code, every template inside its caps.
+  Roadmap reordered to the owner's phase order (AI is Phase 5, installer Phase 6, hosted after). Tests never touch the real
+  clipboard in a normal run: autouse `fake_clipboard` in conftest; real-clipboard tests are `live_clipboard` (deselected
+  unless STRATALEDGER_LIVE_CLIPBOARD=1, file lock kept); `system_clipboard` marker removed. 3 parallel full runs with
+  text on the clipboard: 4173 passed, 2 skipped each.

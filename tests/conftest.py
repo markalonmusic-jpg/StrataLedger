@@ -32,7 +32,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # The system clipboard is one per computer. A test with one of these markers holds CLIPBOARD_LOCK while it runs, so
 # parallel workers (pytest-xdist) and a second test run at the same time take turns (tests/test_clipboard_lock.py).
 # xdist_group cannot do this: xdist 3.8 renames `item._nodeid`, which pytest 9.2 no longer reads.
-CLIPBOARD_MARKERS = ("system_clipboard", "live_clipboard")
+#
+# A normal run never touches the real clipboard (owner 2026-11-19): `fake_clipboard` (autouse) replaces Tk's clipboard
+# and the Windows clipboard calls with one in-memory text, and any call that would reach the real Windows API fails.
+# Only a test marked live_clipboard gets the real clipboard; those are deselected unless STRATALEDGER_LIVE_CLIPBOARD=1.
+CLIPBOARD_MARKERS = ("live_clipboard",)
 CLIPBOARD_LOCK = Path(tempfile.gettempdir()) / "strataledger-tests-system-clipboard.lock"
 
 
@@ -73,26 +77,79 @@ def system_clipboard_lock(timeout=600, path=None):
         os.close(handle)
 
 
-@pytest.fixture(autouse=True)
-def _one_test_at_a_time_on_the_system_clipboard(request):
+@contextlib.contextmanager
+def hold_clipboard_lock_if_marked(node, path=None):
     """Holds the lock for a marked test, and records on the test item whether it does (`clipboard_lock_held`), so
-    tests/test_clipboard_lock.py can check this test's own state without racing another worker for the lock."""
-    if any(request.node.get_closest_marker(name) for name in CLIPBOARD_MARKERS):
-        with system_clipboard_lock():
-            request.node.clipboard_lock_held = True
+    tests/test_clipboard_lock.py can check a test's own state without racing another worker for the lock."""
+    if any(node.get_closest_marker(name) for name in CLIPBOARD_MARKERS):
+        with system_clipboard_lock(path=path):
+            node.clipboard_lock_held = True
             try:
                 yield
             finally:
-                request.node.clipboard_lock_held = False
+                node.clipboard_lock_held = False
     else:
-        request.node.clipboard_lock_held = False
+        node.clipboard_lock_held = False
         yield
 
 
+@pytest.fixture(autouse=True)
+def _one_test_at_a_time_on_the_system_clipboard(request):
+    with hold_clipboard_lock_if_marked(request.node):
+        yield
+
+
+class FakeClipboard:
+    """The one in-memory clipboard that Tk's clipboard calls and the Windows clipboard calls share."""
+
+    def __init__(self):
+        self.text = ""
+
+
+@pytest.fixture(autouse=True)
+def fake_clipboard(request, monkeypatch):
+    """Every test but a live_clipboard one gets an empty in-memory clipboard instead of the person's real one. The
+    code under test (platform_support) runs for real on top of it; its Windows calls and Tk's clipboard methods are
+    swapped, and `_api` (the door to user32) raises, so a test cannot reach the real clipboard by accident. Yields the
+    FakeClipboard (`.text`), or None for a live_clipboard test."""
+    if request.node.get_closest_marker("live_clipboard"):
+        yield None
+        return
+    import tkinter
+    from modules import platform_support
+    store = FakeClipboard()
+
+    def clipboard_clear(self, **_options):
+        store.text = ""
+
+    def clipboard_append(self, string, **_options):
+        store.text += string
+
+    def clipboard_get(self, **_options):
+        if not store.text:
+            raise tkinter.TclError('CLIPBOARD selection doesn\'t exist or form "STRING" not defined')
+        return store.text
+
+    def copy_windows(text):
+        store.text = text
+        return True
+
+    def no_real_clipboard(*_args, **_kwargs):
+        raise AssertionError("a normal test reached the real clipboard; mark it live_clipboard or use fake_clipboard")
+
+    monkeypatch.setattr(tkinter.Misc, "clipboard_clear", clipboard_clear)
+    monkeypatch.setattr(tkinter.Misc, "clipboard_append", clipboard_append)
+    monkeypatch.setattr(tkinter.Misc, "clipboard_get", clipboard_get)
+    monkeypatch.setattr(platform_support, "_copy_windows", copy_windows)
+    monkeypatch.setattr(platform_support, "_read_windows", lambda: store.text)
+    monkeypatch.setattr(platform_support, "_clear_windows", lambda: setattr(store, "text", ""))
+    monkeypatch.setattr(platform_support, "_api", no_real_clipboard)
+    yield store
+
+
 def pytest_configure(config):
-    config.addinivalue_line("markers", "live_clipboard: uses the real Windows clipboard; runs only when "
-                                       "STRATALEDGER_LIVE_CLIPBOARD=1")
-    config.addinivalue_line("markers", "system_clipboard: uses the real system clipboard; holds the clipboard lock "
+    config.addinivalue_line("markers", "live_clipboard: uses the person's real clipboard; deselected unless "
+                                       "STRATALEDGER_LIVE_CLIPBOARD=1, and holds the clipboard lock while it runs "
                                        "so parallel workers take turns")
 
 

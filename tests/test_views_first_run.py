@@ -83,28 +83,6 @@ def tk_root(tk_app):
         child.destroy()
 
 
-@pytest.fixture(autouse=True)
-def _private_clipboard(request, monkeypatch):
-    """The system clipboard is one per computer, so parallel workers would race on it (step-reviewer H1). A test
-    marked system_clipboard uses the real one (and holds the clipboard lock); every other test gets an in-memory
-    clipboard through the same platform_support functions the screen calls."""
-    if request.node.get_closest_marker("system_clipboard"):
-        yield None
-        return
-    held = {"text": ""}
-
-    def copy(widget, text):
-        held["text"] = text
-        return "tk"
-
-    def clear(widget):
-        held["text"] = ""
-    monkeypatch.setattr(platform_support, "copy_secret_text", copy)
-    monkeypatch.setattr(platform_support, "read_clipboard_text", lambda widget: held["text"])
-    monkeypatch.setattr(platform_support, "clear_clipboard", clear)
-    yield held
-
-
 @pytest.fixture
 def dialogs(monkeypatch):
     shown = SimpleNamespace(errors=[], infos=[], confirms=[], answer=True)
@@ -359,9 +337,13 @@ def test_closing_after_the_box_is_ticked_still_asks_until_continue(setup):
 
 # --- The clipboard ---------------------------------------------------------------------------------------------------
 
-# The system clipboard is one per computer, so parallel workers (pytest-xdist) would race on it: every test that
-# reads or writes it holds the clipboard lock (tests/conftest.py, tests/test_clipboard_lock.py).
-SYSTEM_CLIPBOARD = pytest.mark.system_clipboard
+# A normal run never touches the person's real clipboard: conftest's `fake_clipboard` stands in for Tk's clipboard and
+# the Windows calls, and the screen's real platform_support code runs on top of it. The tests that read or write the
+# clipboard run twice: on the fake, and on the real one only on demand (live_clipboard, STRATALEDGER_LIVE_CLIPBOARD=1),
+# where they hold the clipboard lock (tests/conftest.py, tests/test_clipboard_lock.py).
+@pytest.fixture(params=["fake", pytest.param("real", marks=pytest.mark.live_clipboard)])
+def either_clipboard(request):
+    return request.param
 
 
 def clipboard(root):
@@ -388,20 +370,19 @@ def test_every_test_that_touches_the_system_clipboard_holds_the_clipboard_lock()
                 and any(call in inspect.getsource(function) for call in ("clipboard(tk_root)", "clipboard_append", "another_program_copies("))]
     assert len(touching) == 5
     for name, function in touching:
-        marks = getattr(function, "pytestmark", [])
-        assert any(m.name == "system_clipboard" for m in marks), name
+        assert "either_clipboard" in inspect.signature(function).parameters, name
 
 
-def test_a_test_outside_the_group_never_reaches_the_system_clipboard(setup, _private_clipboard):
+def test_a_test_outside_the_group_never_reaches_the_system_clipboard(setup, fake_clipboard):
     """Any other test (copy_code, continue_ and the full-run log test included) gets the in-memory clipboard."""
-    assert _private_clipboard is not None
+    assert fake_clipboard is not None
     make_master(setup)
     setup.wizard.copy_code()
-    assert _private_clipboard["text"] == setup.wizard.vars["code"].get()
+    assert fake_clipboard.text == setup.wizard.vars["code"].get()
     setup.wizard.vars["acknowledged"].set(True)
     setup.wizard.on_ack_changed()
     setup.wizard.continue_()
-    assert _private_clipboard["text"] == ""
+    assert fake_clipboard.text == ""
 
 
 def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch):
@@ -412,8 +393,7 @@ def test_copy_goes_through_the_platform_module_with_the_code(setup, monkeypatch)
     assert seen == [setup.wizard.vars["code"].get()]
 
 
-@SYSTEM_CLIPBOARD
-def test_a_failed_windows_copy_still_copies_and_does_not_crash(setup, tk_root, monkeypatch):
+def test_a_failed_windows_copy_still_copies_and_does_not_crash(setup, tk_root, monkeypatch, either_clipboard):
     make_master(setup)
     monkeypatch.setattr(platform_support, "IS_WINDOWS", True)
     monkeypatch.setattr(platform_support, "_copy_windows", lambda text: (_ for _ in ()).throw(OSError("busy")))
@@ -428,15 +408,13 @@ def test_the_code_screen_warns_about_clipboard_history(setup):
     assert "clipboard history" in text.lower() and "some systems" in text.lower()
 
 
-@SYSTEM_CLIPBOARD
-def test_copy_puts_the_code_on_the_clipboard(setup, tk_root):
+def test_copy_puts_the_code_on_the_clipboard(setup, tk_root, either_clipboard):
     make_master(setup)
     setup.wizard.copy_code()
     assert clipboard(tk_root) == setup.wizard.vars["code"].get()
 
 
-@SYSTEM_CLIPBOARD
-def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root):
+def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root, either_clipboard):
     make_master(setup)
     setup.wizard.copy_code()
     setup.wizard.vars["acknowledged"].set(True)
@@ -445,8 +423,7 @@ def test_continue_clears_the_clipboard_if_it_still_holds_the_code(setup, tk_root
     assert clipboard(tk_root) == ""
 
 
-@SYSTEM_CLIPBOARD
-def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
+def test_continue_leaves_other_clipboard_text_alone(setup, tk_root, either_clipboard):
     make_master(setup)
     setup.wizard.copy_code()
     another_program_copies(tk_root, "something else the user copied")
@@ -456,8 +433,7 @@ def test_continue_leaves_other_clipboard_text_alone(setup, tk_root):
     assert clipboard(tk_root) == "something else the user copied"
 
 
-@SYSTEM_CLIPBOARD
-def test_continue_clears_a_clipboard_holding_the_code_without_dashes(setup, tk_root):
+def test_continue_clears_a_clipboard_holding_the_code_without_dashes(setup, tk_root, either_clipboard):
     make_master(setup)
     code = setup.wizard.vars["code"].get()
     another_program_copies(tk_root, code.replace("-", "").lower())
