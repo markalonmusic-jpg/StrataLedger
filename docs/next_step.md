@@ -83,6 +83,16 @@ Status: **STOP C is awaiting the owner's approval** (review gate). Do not start 
   nothing writes no audit row. Not built (finding 7): a test proving the label check sits inside the write
   transaction (only the two-writer test covers it). Bank-number names are checked on Contact fields only, as planned.
 
+- **Mutation test of e61dec2 and 67e9f56:** 151 mutants (custom_fields.py, the fields.manage registry entry and
+  seed row). 124 killed by tests/test_custom_fields.py, 20 by tests/test_mutation_stop_c_extra.py (each re-checked),
+  7 equivalent:
+  - `_pick` without the AGENT_ALLOWED filter: `is_allowed` applies it again.
+  - `_AGENT_READ` without `project.view`: it is the only Project reader, so the fallback gives the same code.
+  - The missing-contact Agent skip, `group[-1]` for `group[0]`, and the group without `customer.manage`: the
+    fallback is `customer.manage`, or every code in the group is held.
+  - `_store_value` writing None into the type's column, and Yes/No stored as a bool: the same stored values.
+  - The existing no-op update test compared only after a later deactivation; the new file checks the no-op alone.
+
 ## Commit hook
 
 `.claude/settings.json` runs `.claude/hooks/pre_commit_pytest.py` before any `git commit`. It runs
