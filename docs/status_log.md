@@ -1029,3 +1029,5 @@ Rotation and key-lost text as it stood before the trim:
   `service_type.manage`, `job.stage.backdate`; 86 to 92 seeded), the Accountant cap to 71 and the Operations cap to 37,
   and the area 8 reasons; no derived or exempt tables. Owner-approved 2026-11-19. Docs only, so the commit hook
   skipped the suite ("docs only: suite skipped").
+- 2026-11-19/20 area 15 CRM: draft 2237b63, answers 03477c0 and this commit ("Area 15 fix mode 2"); amendment lines
+  in areas 8 and 18; awaiting owner approval.

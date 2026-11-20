@@ -463,7 +463,7 @@ Proposed new codes, to be confirmed in areas 8 and 15 and not seeded here: `lead
   `access_template_permission(permission_code)`, `role_level_permission(permission_code)`,
   `user_job_title(job_title_id)`.
 
-Amendment 2026-11-19 (owner 11:20 PM, from area 15): Q18: `role_level` and `access_template` each gain `lead_scope`
+Amendment 2026-11-19 (owner 11:40 PM, from area 15): Q18: `role_level` and `access_template` each gain `lead_scope`
 TEXT NOT NULL CHECK (`lead_scope` IN ('All', 'Own')) DEFAULT 'All', beside `project_scope`. Own limits `lead.view` to
 leads where the user is the sales rep, Unassigned leads, and leads the user takes part in. It resolves like MR3:
 `lead.view` is limited to Own only when every source that grants it (level row or template) has `lead_scope =
@@ -566,7 +566,7 @@ manager template's four in the Operations cap; the two union templates inside th
 `job.stage.backdate` is sensitive and is in no level and no template but the Controller's
 (docs/replan_2.9/area_8_pm_schedules.md section 8).
 
-Amendment 2026-11-19 (owner 11:20 PM, from area 15): Q19 A with Q18: ten new codes, module Projects / CRM, none
+Amendment 2026-11-19 (owner 11:40 PM, from area 15): Q19 A with Q18: ten new codes, module Projects / CRM, none
 sensitive: `lead.view`, `lead.create`, `lead.edit`, `lead.own`, `lead.assign`, `activity.log_for_others`,
 `crm.settings`, `case.view`, `case.create`, `case.work`. No `lead.view_all`. `project.create` keeps its code with the
 description "Create jobs". Caps (2.4.1): the Sales rep cap gains all ten (17 to 27 codes); the Operations cap gains

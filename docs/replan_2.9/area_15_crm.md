@@ -435,14 +435,18 @@ reads `service_case` and its status history.
 
 **`case_type`** (new; Q12 B): `case_type(case_type_id PK, name TEXT NOT NULL UNIQUE COLLATE NOCASE, kind TEXT NOT
 NULL CHECK IN ('Complaint', 'Service', 'Billing', 'Cancellation', 'Other'), default_owner TEXT NOT NULL CHECK IN ('Job
-PM', 'Sales rep', 'User'), default_owner_user_id INTEGER, default_due_business_days INTEGER CHECK (NULL or 0-60),
-is_shipped, is_active, sort_order, row_version)`; CHECK `default_owner_user_id` NULL unless `default_owner = 'User'`.
-No role queue (Q12 B): the type's default always resolves to one user. Seeds: Complaint: Job PM, 2; Service or
-warranty: Job PM, 5; Billing question: User, 3; Cancellation request: Sales rep, 1. `kind` drives fixed behaviour
-(Cancellation offers "Cancel the contract", area 6), so the names can change. **Not settled by Q12 B (open item
-13):** a shipped seed cannot name a user, and Job PM or Sales rep gives no user when the case has no job or no rep;
-until the owner decides a fallback, the case form leaves the owner empty in those cases and the service refuses to
-save without one ("Choose who owns this case.").
+PM', 'Sales rep', 'User'), default_owner_user_id INTEGER NULL, default_due_business_days INTEGER CHECK (NULL or
+0-60), is_shipped, is_active, sort_order, row_version)`; CHECK `default_owner_user_id` NULL unless `default_owner =
+'User'`. No role queue (Q12 B). Seeds: Complaint: Job PM, 2; Service or warranty: Job PM, 5; Billing question: User,
+3; Cancellation request: Sales rep, 1. `kind` drives fixed behaviour (Cancellation offers "Cancel the contract",
+area 6), so the names can change.
+
+**Default owner user (open item 13, owner 2026-11-20 12:05 AM):** `default_owner_user_id` names a user (a plain
+integer: the user table is in the master and a company file has no cross-file FK, CLAUDE.md section 4; the service
+checks the user exists). It is empty in every shipped type and set in CRM settings (`crm.settings`). Creating a case
+fills the owner from the type's default (the job's PM, the sales rep, or `default_owner_user_id`). When that gives no
+user, or the user is inactive, the person logging the case picks the owner. The service refuses a case with no owner
+("Choose who owns this case.").
 
 **`service_case`** (new):
 
@@ -495,8 +499,8 @@ seeded to a shipped "Service" type with its own short delivery stages).
   needs a reason and adds 1 to `reopen_count`; Close sets `closed_at`; Closed refuses every action. Each call writes
   one history row and the case row in one transaction, after `authorize(context, 'case.work', ...)`.
 - Opening writes the first row (NULL → Open, `via` Opened). Owner and due default from the type: Job PM gives the
-  job's PM, Sales rep the job's or lead's sales rep, User the type's user; the owner is always a user (Q12 B; open
-  item 13 for the case where the default gives none).
+  job's PM, Sales rep the job's or lead's sales rep, User the type's user; the owner is always a user (Q12 B); when
+  the default gives none or an inactive user, the person logging the case picks the owner (open item 13, closed).
 - `cases.run_auto_close(context)`: origin System; Resolved cases whose `last_resolved_at` is more than
   `case_auto_close_days` before `context.now` go to Closed (`via` Auto-close). Idempotent. Same schedule as
   auto-lost.
@@ -741,7 +745,8 @@ transaction (rule 10); every date and time comes from the context (H2).
 - **F10 C9 "Require the signed contract file before signing" is listed as a PROPOSED control OFF**, while A 11-14
   and A 11-15 item 2 make the signed copy required. Area 6's to settle; noted because the lead's Won depends on it.
 - **F11 Case owner "user or team".** A 11-15 item 4 says owner (user or team); there is no team table, and R25
-  pickers list users. **Answered: Q12 B** (always a user; open item 13 for a default that gives no user).
+  pickers list users. **Answered: Q12 B** (always a user; open item 13, closed 2026-11-20, for a default that gives
+  no user).
 - **F12 Status updates.** C31 makes Status update an activity type with health fields; S 11-17 5:55 PM makes
   activity types company-defined and generic, with no health fields. **Answered: Q8 A.**
 - **F13 Activities on jobs.** A 11-17 5:55 PM names links to lead, customer and case; C31 and C103 give the job page
@@ -817,7 +822,10 @@ alerts.
 Q12. **Case owner (F11).** A (recommended): a user or a role queue (for example "Accountant" for billing questions),
 exactly one. B: always a user; the type's default picks a user.
 **Answer: B.** A case owner is always a user (`owner_user_id` NOT NULL); the case type's default picks a user; no
-role queue (section 3.3; open item 13).
+role queue (section 3.3). **Open item 13 answered (owner 2026-11-20, 12:05 AM):** `case_type.default_owner_user_id`
+INTEGER NULL, empty in shipped types, set in CRM settings (`crm.settings`); creating a case fills the owner from it;
+when it is empty or the user is inactive, the person logging the case picks the owner; the service refuses a case
+with no owner. Open item 13 is closed.
 
 Q13. **Case and job link (F9).** A (recommended): both, as the owner wrote: `case_job` lists a case's jobs and
 `project.source_case_id` is the job's back link, written together and checked by a test. B: only
@@ -907,6 +915,7 @@ Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'C
 11. Saved views on Activities and Leads use area 17's `saved_view`/list prefs; nothing new here.
 12. The job page's single timeline (C31) is a read across `activity` (job, its lead, its cases) and the two stage
     histories; built in Phase 3 from the services above.
-13. From Q12 B (for the owner): the case owner is always a user, but a shipped case type cannot name a user, and the
-    Job PM or Sales rep default gives none when the case has no job or no rep. Until the owner picks a fallback, the
-    person logging the case chooses the owner in those cases (section 3.3).
+13. Closed (owner 2026-11-20, 12:05 AM): `case_type.default_owner_user_id` INTEGER NULL, empty in shipped types, set
+    in CRM settings (`crm.settings`); creating a case fills the owner from it; when it is empty or the user is
+    inactive, the person logging the case picks the owner; the service refuses a case with no owner (section 3.3;
+    recorded under Q12 in section 10).

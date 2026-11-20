@@ -497,6 +497,9 @@ Approved, and refuse any update of an Approved header except nothing (an approve
 CO, so Void applies to Draft and Submitted only). Budget and contract totals derive from approved lines, so this
 is the same kind of lock as posted `journal_line` rows.
 
+Note 2026-11-20 (owner 12:05 AM): Superseded by the 2026-11-19 amendment: Void from any open state (PCO pending,
+Draft, With sales rep, Submitted); Approved and Rejected stay final.
+
 **Approval service** (`change_orders.py`; `change_order.create` to draft and send, `change_order.approve` to record
 customer approval; the internal approval chain, when a company turns on "Change order approval", is area 14's
 single mechanism, default OFF):
@@ -615,11 +618,15 @@ Amendment 2026-11-19 (owner 11:20 PM, from area 15): `job_forecast_revision.kind
 `job_forecast_line` gains `change_order_id` INTEGER NULL (FK `change_order`), so a pending PCO's cost is its own line
 by cost code. Moving a change order to PCO pending writes a revision of kind 'PCO' and the tagged lines; PCO rejected
 or Void writes a revision that removes them; customer approval leaves the ETC unchanged, and the revised budget never
-moves before customer approval (section 5.3 amendment). **Not settled by the answer:** the primary key
-(`project_id`, `cost_code_id`) cannot hold a second line for the same cost code, so it has to change (for example a
-surrogate key with a unique index on (`project_id`, `cost_code_id`, `change_order_id`) that treats NULL as one
-value), and `job_forecast_revision_line` (key `revision_id`, `cost_code_id`) needs the same decision; left for the
-owner.
+moves before customer approval (section 5.3 amendment).
+
+Amendment 2026-11-20 (owner 12:05 AM, from area 15): `job_forecast_line` gains `change_order_id` INTEGER NULL (FK
+`change_order`). The key (`project_id`, `cost_code_id`) is replaced by two partial unique indexes: UNIQUE
+(`project_id`, `cost_code_id`) WHERE `change_order_id` IS NULL, and UNIQUE (`project_id`, `cost_code_id`,
+`change_order_id`) WHERE `change_order_id` IS NOT NULL. `job_forecast_revision_line` gets the same: `change_order_id`
+INTEGER NULL (FK `change_order`), and its key (`revision_id`, `cost_code_id`) is replaced by UNIQUE (`revision_id`,
+`cost_code_id`) WHERE `change_order_id` IS NULL and UNIQUE (`revision_id`, `cost_code_id`, `change_order_id`) WHERE
+`change_order_id` IS NOT NULL. Revision lines copy `change_order_id` from the forecast lines they snapshot.
 
 ### 6.4 How it lands, effects, tests
 
