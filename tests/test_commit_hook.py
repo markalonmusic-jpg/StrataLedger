@@ -7,6 +7,7 @@ blocked with what to install.
 """
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,10 +18,14 @@ HOOK = Path(__file__).resolve().parent.parent / ".claude" / "hooks" / "pre_commi
 SETTINGS = Path(__file__).resolve().parent.parent / ".claude" / "settings.json"
 
 
-def load_hook():
+def load_hook(staged=None, real_git=False):
+    """The hook module. staged_files is pinned (default None: "git cannot say", so the suite runs) so no test depends
+    on what happens to be staged in this repo; real_git=True keeps the real function for the temp-repo tests."""
     spec = importlib.util.spec_from_file_location("pre_commit_pytest", HOOK)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if not real_git:
+        module.staged_files = lambda root: staged
     return module
 
 
@@ -160,3 +165,179 @@ def test_plain_pytest_still_works_without_xdist():
                              "tests/test_requirements.py"], cwd=HOOK.parent.parent.parent, capture_output=True,
                             text=True, timeout=300)
     assert result.returncode == 0, result.stdout[-2000:]
+
+
+# --- docs-only commits skip the suite (owner 2026-11-19) ------------------------------------------------------
+
+COMMIT = {"tool_name": "Bash", "tool_input": {"command": "git commit -q -F msg.txt"}}
+
+
+def suite_must_not_run(root):
+    pytest.fail("the suite must not run for a docs-only commit")
+
+
+def test_a_commit_of_only_docs_files_skips_the_suite(monkeypatch, tmp_path):
+    hook = load_hook(staged=["docs/next_step.md", "docs/replan_2.9/area_13_close_and_locks.md"])
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    monkeypatch.setattr(hook, "run_suite", suite_must_not_run)
+    assert hook.decide(COMMIT, root=".") == (0, "docs only: suite skipped (2 files)")
+    assert (tmp_path / "last.txt").read_text(encoding="utf-8") == "docs only: suite skipped (2 files)\n"
+
+
+def test_one_staged_docs_file_is_worded_in_the_singular(monkeypatch, tmp_path):
+    hook = load_hook(staged=["docs/status_log.md"])
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    monkeypatch.setattr(hook, "run_suite", suite_must_not_run)
+    assert hook.decide(COMMIT, root=".") == (0, "docs only: suite skipped (1 file)")
+
+
+def test_docs_plus_one_other_file_runs_the_full_suite(monkeypatch, tmp_path):
+    hook = load_hook(staged=["docs/next_step.md", "modules/services/periods.py"])
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    ran = []
+    monkeypatch.setattr(hook, "run_suite", lambda root: ran.append(root) or (0, "5 passed in 1.00s"))
+    assert hook.decide(COMMIT, root=".") == (0, "")
+    assert ran == ["."]
+    assert (tmp_path / "last.txt").read_text(encoding="utf-8") == "5 passed in 1.00s\n"
+
+
+@pytest.mark.parametrize("other", [
+    "tests/test_commit_hook.py", "migrations/001_company.sql", ".claude/hooks/pre_commit_pytest.py",
+    ".claude/settings.json", "CLAUDE.md", "documents/x.md", "docs", "scripts/docs/x.md",
+])
+def test_any_file_outside_docs_runs_the_suite(monkeypatch, tmp_path, other):
+    """Only the path prefix docs/ counts: a look-alike (documents/, docs without the slash, a nested docs/) does not."""
+    hook = load_hook(staged=["docs/a.md", other])
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    monkeypatch.setattr(hook, "run_suite", lambda root: (1, "1 failed in 1.00s"))
+    assert hook.decide(COMMIT, root=".")[0] == 2
+
+
+@pytest.mark.parametrize("staged", [None, []])
+def test_nothing_staged_or_git_unreadable_runs_the_suite(monkeypatch, tmp_path, staged):
+    hook = load_hook(staged=staged)
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    monkeypatch.setattr(hook, "run_suite", lambda root: (1, "1 failed in 1.00s"))
+    assert hook.decide(COMMIT, root=".")[0] == 2
+
+
+@pytest.mark.parametrize("command", [
+    "git add docs/a.md && git commit -m x",
+    "git add docs/a.md; git commit -m x",
+    "git commit -a -m x",
+    "git commit -am x",
+    "git commit --all -m x",
+    "git commit --amend --no-edit",
+    "git commit -m x -- modules/a.py",
+    "git commit --include modules/a.py -m x",
+    "git commit --only modules/a.py -m x",
+    "git -C ../elsewhere commit -m x",
+    "git mv docs/a.md modules/a.md && git commit -m x",
+])
+def test_a_command_that_changes_the_staged_set_runs_the_suite(monkeypatch, tmp_path, command):
+    """The hook looks before the command runs, so a staged set of docs only is not final when the same command stages
+    or rewrites: those commits run the suite (stage in one call and commit in the next to get the skip)."""
+    hook = load_hook(staged=["docs/a.md"])
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    monkeypatch.setattr(hook, "run_suite", lambda root: (1, "1 failed in 1.00s"))
+    assert hook.decide({"tool_name": "Bash", "tool_input": {"command": command}}, root=".")[0] == 2
+
+
+@pytest.mark.parametrize("command", [
+    "git commit -q -F msg.txt", "git commit -m 'Area 12 fix'", "git commit --allow-empty -m x",
+    "git commit -q -F - <<'EOF'\nArea 13 answers recorded\nEOF",
+])
+def test_a_plain_commit_command_is_eligible_for_the_skip(command):
+    assert not load_hook().changes_staging(command)
+
+
+def test_a_non_commit_call_never_asks_git_for_the_staged_files(monkeypatch):
+    hook = load_hook()
+    monkeypatch.setattr(hook, "staged_files", lambda root: pytest.fail("git must not be asked"))
+    assert hook.decide({"tool_name": "Bash", "tool_input": {"command": "git status"}}, root=".") == (0, "")
+
+
+# --- the staged list is read from git, renames included ---------------------------------------------------------
+
+def git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                    *args], check=True, capture_output=True, text=True, timeout=60)
+
+
+def make_repo(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "modules").mkdir()
+    (repo / "docs" / "a.md").write_text("a\n", encoding="utf-8")
+    (repo / "modules" / "x.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True, timeout=60)
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "start")
+    return repo
+
+
+def decide_in(repo, monkeypatch, tmp_path):
+    """The hook's verdict for a plain commit in repo, with the real staged_files; (decision, suite_ran)."""
+    hook = load_hook(real_git=True)
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")
+    ran = []
+    monkeypatch.setattr(hook, "run_suite", lambda root: ran.append(root) or (0, "1 passed in 1.00s"))
+    return hook.decide(COMMIT, root=str(repo)), bool(ran)
+
+
+def test_the_docs_only_line_is_printed_to_stdout_with_exit_zero(tmp_path):
+    """Run as the real hook, in a temp repo with only docs staged: exit 0 and the one line on stdout."""
+    repo = make_repo(tmp_path)
+    git(repo, "mv", "docs/a.md", "docs/b.md")
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(repo)}
+    result = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(COMMIT), capture_output=True, text=True,
+                            timeout=60, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "docs only: suite skipped (2 files)"      # a rename counts as old and new path
+    assert result.stderr == ""
+
+
+def test_staged_files_lists_what_git_has_staged(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "docs" / "new.md").write_text("n\n", encoding="utf-8")
+    git(repo, "add", "docs/new.md")
+    assert load_hook(real_git=True).staged_files(str(repo)) == ["docs/new.md"]
+
+
+def test_a_real_docs_only_commit_skips_and_a_real_code_commit_runs(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    (repo / "docs" / "a.md").write_text("changed\n", encoding="utf-8")
+    git(repo, "add", "docs/a.md")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, "docs only: suite skipped (1 file)"), False)
+    (repo / "modules" / "x.py").write_text("x = 2\n", encoding="utf-8")
+    git(repo, "add", "modules/x.py")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, ""), True)
+
+
+def test_a_rename_out_of_docs_runs_the_suite(tmp_path, monkeypatch):
+    """git sees docs/a.md -> modules/a.md as one rename whose new path is outside docs/; both paths are read."""
+    repo = make_repo(tmp_path)
+    git(repo, "mv", "docs/a.md", "modules/a.md")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, ""), True)
+
+
+def test_a_rename_into_docs_runs_the_suite(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    git(repo, "mv", "modules/x.py", "docs/x.py")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, ""), True)
+
+
+def test_a_rename_inside_docs_is_still_docs_only(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    git(repo, "mv", "docs/a.md", "docs/renamed.md")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, "docs only: suite skipped (2 files)"), False)
+
+
+def test_a_deletion_outside_docs_runs_the_suite(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    git(repo, "rm", "-q", "modules/x.py")
+    assert decide_in(repo, monkeypatch, tmp_path) == ((0, ""), True)
+
+
+def test_git_failing_in_a_folder_that_is_not_a_repo_runs_the_suite(tmp_path):
+    assert load_hook(real_git=True).staged_files(str(tmp_path)) is None
