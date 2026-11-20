@@ -1,48 +1,52 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12 and 10 approved; next is area 17)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10 and 17 approved; next is area 8)
 
-Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved areas 13, 12 and 10. Start a fresh session (MR1)
-and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
+Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved area 17. Start a fresh session (MR1) and read
+.claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
 ## Where 2.9 stands (owner decision 2026-11-17; docs only so far)
 
 - Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
   never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- **Owner-approved: 4 of 21 areas, plus the report contracts.**
+- **Owner-approved: 5 of 21 areas, plus the report contracts.**
 
   | Area | Doc | Commits |
   |------|-----|---------|
-  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12 and 10 |
-  | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ two amendment lines) |
+  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12, 10 and 17 |
+  | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ amendment lines from areas 12, 10 and 17) |
   | 12 Bank and reconciliation | docs/replan_2.9/area_12_bank_and_reconciliation.md | d9032ea, a837bc1, d239f32 |
   | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a |
-  | Report builder service contracts (input to area 17) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf |
+  | 17 Field registry, list layouts, report builder, KPIs, measures | docs/replan_2.9/area_17_fields_layouts_reports.md | 809fb22, fded8c4 |
+  | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
-- **Todo (16):** areas 1-9, 11, 14, 15, 16, 19, 20, 21, and area 17 (next). Only owner-approved areas are built; an area
+- **Todo (16):** areas 1-9, 11, 14, 15, 16, 19, 20, 21; area 8 is next. Only owner-approved areas are built; an area
   still todo or drafted is not, and PROPOSED items are not built as final.
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
   Nothing in the baselines or code has changed for 2.9 yet.
 
-## Next: area 17, field registry, list layouts, report builder
+## Next: area 8, PM: stages, service types, schedules, change orders
 
-Draft `docs/replan_2.9/area_17_report_builder.md` in the layout of the area 13 doc (0 Summary table; per topic current
-state with file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests,
-tests to write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended
-option first; open items). Sources: the area 17 row of the working doc (A 11-15 field registry, list layout preferences,
-report builder and consolidation; C 92, 100, 156; S 11-18 3:19 and 3:22 PM; `money.view` for Records money fields).
+Draft `docs/replan_2.9/area_8_pm_stages_schedules.md` in the layout of the area 13 doc (0 Summary table; per topic
+current state with file:line, decided with source, proposed schema, how it lands in the baselines, effect on services
+and tests, tests to write later; row version and audit; conflicts flagged; questions for the owner, multiple choice,
+recommended option first; open items). Sources: the area 8 row of the working doc (A 11-13 stage history effective
+date, 11-15 PM flow, service types; C 21, 28, 29, 34, 108, 109, 26 and 30 (11-17); X 5: project site, target dates,
+stage and status history entries, never overwrite; S 11-18 2:31 PM job Closed = Completed or Cancelled with a reason
+list and stage; stages and fields per job type) and its "Inbox inputs": 2026-11-13 controller_review construction PM
+items; 2026-11-17 schedule items link to a phase and the job calendar (4:19 PM), schedule data model and services (5:35
+PM), schedule baseline lock, thresholds, billing link and customer view (5:46 PM), schedule terms (5:58 PM); and the
+schedule hierarchy entry shared with area 3 (schedule in 8; holds, pay-when-paid and sub retainage in 3).
 
-What the approved areas already hand to area 17 (do not redesign; reference them):
-- docs/contracts/reports.md section 12 lists the schema needs: layouts and items, formula tokens, charts, Records
-  parts, saved reports and packs, **KPIs (`kpi`, `kpi_value`, frozen in the close transaction)**, schedules and
-  deliveries, non-financial measures, the operating plan (area 7), combined runs (no new table), Records source
-  tables from areas 6, 8 and 15, and the cash flow category and company Accrual/Cash default (item 18).
-- Area 13 section 4.5: the close inserts `kpi_value` rows in the same transaction as the snapshot; typed measures are
-  refused in a closed period and derived ones skipped (area 13 Q19 A). Area 13 section 4.4 defines ending cash (area 12
-  Q12 A: every `bank_account` kind except Credit card, plus undeposited funds), the cash set the cash flow report uses.
-- Area 10 section 4: `ledger_period_balance`, `dimension_set`, `dimension_set_member`, written only in
-  `ledger._seal_and_post` (`ledger.py:927`); area 17 only reads them. Area 10 section 2: `reclass_line` for "As
-  reclassed" (contracts 4.4).
-- Area 18 amendments: the Q8 report codes and `money.view` placement, derived-table exempt list.
+What the approved areas already hand to area 8 (reference, do not redesign):
+- Area 13: the company work week and holidays (`company_settings.work_week`, `company_holiday`, area 13 Q14 A) are
+  reused by the schedule; close tasks from the PM role (estimates to complete, completed-job review) and the checks
+  `wip_current`, `manual_pct_complete`, `estimates_to_complete_updated`, `completed_job_review` need area 8's
+  `project.manual_*` columns, stage and Completed state (area 13 section 2.3).
+- Area 17: the Records sources `src_jobs`, `src_job_stages` (time in stage from append-only stage history),
+  `src_jobs_cancelled` (stage and reason) and `src_cases` need the project, stage history and cancellation reason
+  tables from area 8 (service cases from area 15); `custom_field_def` job type scoping (with area 16); `from_jobs`
+  measures read `project.completed_on` and `cf.project.*`; the split-by columns use `job`, `job_type` and `pm`.
+- Area 10: job cost shows a deferred line's cost as recognized; WIP and job cost read GL lines carrying the job.
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
@@ -51,12 +55,22 @@ What the approved areas already hand to area 17 (do not redesign; reference them
 - **Area 3/5:** a job per bill and invoice line (area 10 F8); the bill void calls `deferrals.void_for_bill`.
 - **Area 7/8:** job cost reads GL lines carrying a job (deferred cost as recognized); `project.manual_*` columns for the
   manual % complete close check; WIP recalculation; area 8 reuses area 13's work week and holidays (area 13 Q14 A).
+- **Area 7 (from area 17):** `operating_plan_version` and `operating_plan_line` (a saved report's plan compare points at
+  the version); `project_budget` for the `job_budget` compare; area 17 adds `saved_report.split_by`.
+- **Areas 6, 8, 15, 16 (from area 17):** the Records source tables (`lead`, stage and status history, `activity`,
+  `service_case`, the lead-to-job link, the sales rep on the contract) and `custom_field_def.record_type` 'Lead'; until
+  they exist those sources are not offered (Estimates and Jobs can ship first).
 - **Area 9:** an item table for `reclass_line.original_item_ref`; the warehouse close checks (area 13 section 2.3).
 - **Area 11:** reuses the prepaid schedule grid; depreciation and loan lock areas.
 - **Area 14:** `pending_approvals` beyond journal entries; the approvals the new codes need.
 - **Area 21:** `row_version` on `company_settings` and the stale-save refusal; the open payments limits (30 and 180
   days) as policy records (area 12 Q16 A).
-- **Areas 12, 13, 10 build items for later phases:** `bank_feed.py`, `reconciliation.py`, `banking.py`,
+  Also from area 17: a general notification feed (a delivered report is unread while `report_delivery.read_at` is
+  empty) and whether saved views can be shared.
+- **Areas 12, 13, 10 and 17 build items for later phases:** (area 17: `field_registry`, `list_prefs`, `report_layouts`,
+  `report_formulas`, `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`, `report_combined`,
+  `kpis`, `measures`, `report_schedules`, `report_output`, and the `perf` test.)
+- **Areas 12, 13 and 10 build items:** `bank_feed.py`, `reconciliation.py`, `banking.py`,
   `period_locks.py`, `close_tasks.py`, `deferrals.py`, `reclass.py`; the static test that every journal-writing service
   calls `period_locks.check_open`.
 - **Still open from STOP C:** custom field columns `help_text`, on board card, shown from stage, job types (area 16, with

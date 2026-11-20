@@ -1,11 +1,10 @@
 # Step 2.9 schema replan, area 17: field registry, list layouts, report builder, KPIs and measures
 
-Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, 809fb22; owner answers Q1-Q25
-2026-11-19, Q12 B and Q13 B, the rest A, folded in below; section 13). Docs only: nothing here changes code, a
-baseline, a migration or a test. Nothing is built until the owner marks area 17 owner-approved in
-`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
-questions are open. The amendments to areas 13 and 18 and to docs/contracts/reports.md are dated lines in those docs
-(section 14).
+Status: **Owner-approved 2026-11-19** (first draft 2026-11-19, 809fb22; owner answers Q1-Q25 2026-11-19, Q12 B and
+Q13 B, the rest A, folded in below, fded8c4; section 13). Docs only: nothing here changes code, a baseline, a
+migration or a test. Planning has marked area 17 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
+Every table, column, code and check below is built only in the 2.9 baseline pass. No questions are open. The
+amendments to areas 13 and 18 and to docs/contracts/reports.md are dated lines in those docs (section 14).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 17, the source keys and the "Inbox inputs" section (it lists no

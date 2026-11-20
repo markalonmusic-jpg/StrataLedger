@@ -1004,3 +1004,14 @@ Rotation and key-lost text as it stood before the trim:
   (4210 passed, 2 skipped). 2514794, the first docs-only commit, skipped the suite ("docs only: suite skipped (4 files)").
   docs/next_step.md overwritten: areas 18, 13, 12 and 10 owner-approved, next is area 17 (field registry, list layouts,
   report builder).
+- 2026-11-19: Step 2.9 schema replan, area 17 (field registry, list layouts, report builder, KPIs and measures), docs only:
+  docs/replan_2.9/area_17_fields_layouts_reports.md. Draft 809fb22; owner answers Q1-Q25 (A except Q12 B and Q13 B)
+  recorded in fded8c4. Proposes a code field registry, per-user list layouts and a company default, financial and
+  Records layouts with formula tokens as rows, saved reports with typed parameters and packs, in-app schedules, KPIs
+  frozen in the close transaction (also for periods 13 and 14 when the basis includes them), non-financial measures,
+  combined runs by account number, and `money.view`, `report.records`, `report.design` and `report.schedule`. A
+  customer or vendor filter reads `journal_line` (summary key unchanged). The amendments touched area 13 (section 4.5,
+  the freeze on periods 13 and 14), area 18 (audit exemption for display and event rows, the four codes, three
+  templates, AGENT_ALLOWED) and docs/contracts/reports.md (share modes, pack items, `split_by` and `job_budget`,
+  derived measures stored only at close, KPIs for periods 13 and 14). Owner-approved 2026-11-19. Docs only, so the
+  commit hook skipped the suite ("docs only: suite skipped").
