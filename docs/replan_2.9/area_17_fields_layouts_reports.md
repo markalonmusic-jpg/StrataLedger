@@ -1032,3 +1032,9 @@ Recommended option first.
 Amendment 2026-11-20 (owner 11-14 12:50 PM, decision audit; answered 1:50 AM, Q3 A): the direct-method cash flow view
 is an owner decision, not optional. The "not built in 2.9" line above names it, and the CF1 cash flow rows are
 designed with both an indirect and a direct view before v1.0 ships.
+
+Amendment 2026-11-20 (owner 2:25 AM, from area 7): Records source `src_wip`, the WIP schedule (every open job grouped
+by service type, with the `poc_snapshot` figures; area 7 section 8.3, Q18 A). `src_jobs` offers the billing method
+(area 7 Q3 A), the sales rep, and the budget figures original, approved change orders and revised (summed from
+`project_budget`, area 7 Q5 A); it has no draft field (area 7 Q1). The 'plan' compare reads `operating_plan_line` by
+`fiscal_year` and `period_no` 1-12 (area 7 Q13 A) and joins actuals on area 10's `dimension_set` (area 7 Q12 A).

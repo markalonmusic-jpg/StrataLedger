@@ -623,6 +623,23 @@ sits inside the union of its roles' caps (the Sales rep and Sales manager additi
 manager and Estimator ones in the Operations cap, the Controller's in the Accountant cap)
 (docs/replan_2.9/area_6_estimates_contracts.md section 12).
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q9 A and Q14): four new codes, none sensitive, none in
+`AGENT_ALLOWED`: `job.budget.enter` (module Projects / CRM: the "Budget code" choice of `job_budget_entry`),
+`cost_code.manage` (cost codes and cost types) and `dimension.manage` (dimension types and values; not
+`required_mode`, which is `company.settings`), both in a new module Lists (area 7 section 9.2), and `plan.manage`
+(module Reports: operating plan versions, imports and grid). 107 seeded codes become 111 (107 + 4). Caps (2.4.1): the
+Accountant cap gains all four (76 to 80 codes); the Operations cap gains `job.budget.enter` and `cost_code.manage`
+(43 to 45); the Sales rep cap is unchanged (32). Level defaults (2.4.2, cumulative): Accountant · Manager adds
+`job.budget.enter` and `plan.manage`; `cost_code.manage` and `dimension.manage` are in no level (Q14). Shipped
+templates (2.4.3): the Controller template adds all four in its non-sensitive column; the Project manager template
+adds `job.budget.enter` (the Project manager + Estimator and Sales rep + Project manager union templates inherit it).
+Admin and the Master hold all four. Anyone else gets `cost_code.manage` or `dimension.manage` only by a custom
+template or a per-user Add with a reason, inside their role caps. Placement check re-run in words: every new code is
+in the Accountant cap, so all 111 seeded codes are placed (107 with areas 12, 10, 17, 8, 15 and 6); every level
+default sits inside its role's cap and holds no sensitive code; View only gains nothing; every template sits inside
+the union of its roles' caps (the Controller's four in the Accountant cap, the Project manager's `job.budget.enter`
+in the Operations cap) (docs/replan_2.9/area_7_jobs_budgets_cost_codes.md section 9.2).
+
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
 | Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
@@ -904,6 +921,10 @@ read-only and returns scope, affected roles and people, existing and new work wi
 and conflicts. `settings.apply_change(context, key, new_value, row_version)` re-runs the preview's checks and writes
 the setting and its AX4 audit row in one transaction. A low-impact setting saves in one call and is still logged.
 Areas 8 and 15 use the same pair for stages and triggers.
+
+Amendment 2026-11-20 (owner 2:25 AM, from area 7): the settings registry marks `company_settings.job_budget_entry`,
+`company_settings.require_budget_before_costs` and each `dimension_type.required_mode` as high-impact (preview and
+apply); each change needs `company.settings` and a reason and is audit-logged (area 7 section 9.3).
 
 Amendment 2026-11-20 (owner 11-19 2:58 PM and planning 3:12 PM, decision audit; answered 1:50 AM): every user's
 company open writes an `auth_event` of type 'Company opened' with `company_id` in the master. Today only the Master's

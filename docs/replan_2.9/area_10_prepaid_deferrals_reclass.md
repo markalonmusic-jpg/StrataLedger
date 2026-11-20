@@ -352,6 +352,13 @@ entry is sealed and marked posted, group its lines by key, look up or add the di
 (`INSERT ... ON CONFLICT ... DO UPDATE`, H5) in the same transaction. A static test allows no other writer of the
 three tables.
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q12 A): `dimension_set` and `dimension_set_member` get a second
+writer, the operating plan service (area 7 section 6.3), for `operating_plan_line.dimension_set_id`, so reports join
+plan and actuals on the same set. Both writers call one shared get-or-create function (look up the fingerprint;
+insert the set and its members when absent) inside their own write transaction; sets stay insert-only.
+`ledger_period_balance` keeps its single writer; the static test allows the plan service as the one other writer of
+the two set tables.
+
 ### 4.4 Lands, effects, tests
 
 - Company baseline: the three tables and indexes; no audit triggers (exempt). Area 17 reads them.

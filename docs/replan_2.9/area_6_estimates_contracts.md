@@ -306,6 +306,10 @@ the estimate after insert.
 **Summary by cost code** (derived, no table): per revision, cost code, its cost type, sum of cost, sum of price.
 Signing writes the job's budget rows from it through area 7's budget service (section 9).
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q7 A): `estimate_cost_line.cost_code_id` must be an active leaf code
+(not a division, not a code with active sub-codes), as postings are (RP5); the service refuses any other code with one
+sentence naming it, so the budget rows from the summary land where costs post.
+
 ### 3.4 Boundary with area 7 and area 9
 
 Area 6 needs from area 7: `cost_type` (company list, five shipped, `is_shipped`, `is_active`, `sort_order`), and
@@ -660,6 +664,11 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
   Any refusal rolls everything back. Nothing posts. Signer names print on the contract only; nothing is recorded per
   signer.
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7): step 3 calls `jobs.create_from_signing` and step 4 calls
+`job_budgets.set_original_from_signing` (area 7 sections 1.3 and 2.3); the signer's `contract.sign` stands in for the
+budget entry right, and the original budget locks in the same transaction. There are no draft jobs before Mark signed:
+a lead whose estimate isn't signed is the "draft" (area 7 Q1).
+
 ### 9.4 Tests to write later
 
 - Mark signed without the signed document is refused.
@@ -702,6 +711,13 @@ attachment replaces it).
   section 5.3 item 1). CO pricing reads the same pricing template rules (section 3.3).
 - `Completed` is set by area 8's job close (outcome Completed); `Cancelled` by section 11.
 - The Contracts list is a read over sent revisions and contracts (no separate list table).
+
+Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q2 A): New job (a direct job: migration, paper contract) writes its
+`contract` row through this service, called by area 7's `jobs.create_job` in its transaction, with source 'Direct', no
+estimate revision and no lead. `contract.revision_id` (the owner's answer calls it `source_revision_id`) becomes
+INTEGER NULL UNIQUE; new `source` TEXT NOT NULL CHECK IN ('Estimate', 'Direct'), with CHECK (`source` = 'Estimate') =
+(`revision_id` IS NOT NULL). A Direct contract needs the contract value (`original_amount_cents`), retainage, terms and
+the signed file (`signed_attachment_id` stays NOT NULL, Q10 A); its number comes from the CT- series (Q21 B).
 
 ### 10.3 Tests to write later
 

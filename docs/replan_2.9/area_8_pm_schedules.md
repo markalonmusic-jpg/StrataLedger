@@ -705,6 +705,14 @@ Asked of area 7 (listed so nothing is lost): `project_budget.revision_id` (nulla
 dropped and `project.on_hold` added (Q6 C); cached `revised_budget_cents` (F12); the project's `row_version` (rule g); the seven close columns,
 four site columns, two target dates, manual % columns, `billing_type`, `warranty_for_job_id`, `source_case_id`.
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7): area 7 section 1.3 writes the full `project` DDL with every column
+asked above. Confirmed: `project.status` is dropped and `project.on_hold` added (Q6 C); `original_budget_cents` and
+`revised_budget_cents` are dropped and every reader sums `project_budget` (area 7 Q5 A; F12 here);
+`project_budget.revision_id` is a nullable FK (Q18). There is no draft flag: no draft jobs exist (area 7 Q1). A
+Warranty job (`billing_type` 'Warranty') is the warranty service job: its costs post on the Warranty cost code to the
+`warranty_expense` account (5080) in the open period, with no reserve, and roll up to the Warranty line of the
+`warranty_for_job_id` job (area 7 Q16, Q17 A).
+
 ---
 
 ## 8. Controls, permissions, row version and audit

@@ -1,14 +1,15 @@
 # Step 2.9 schema replan, area 7: jobs, job cost budgets, cost codes and cost types, dimensions, operating plan, WIP
 
-Status: **Draft 2026-11-20, for the owner's answers (section 12).** Docs only: nothing here changes code, a baseline,
-a migration or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after
-the replan is approved. PROPOSED items from the sources are not built as final. Amendments this area needs in the
-approved areas (6, 8, 10, 13, 17, 18) are listed as open items (section 13), not written there.
+Status: **Draft 2026-11-20; owner's answers recorded (2026-11-20, 2:25 AM; section 12).** Docs only: nothing here
+changes code, a baseline, a migration or a test. Every table, column, code and check below would be built only in the
+2.9 baseline pass, after the replan is approved. PROPOSED items from the sources are not built as final. Amendment
+lines the answers settle are written in areas 6, 8, 10, 13, 17 and 18 ("Amendment 2026-11-20 (owner 2:25 AM, from
+area 7)"); the rest stay open items (section 13).
 
 Checked against (`Strata_Teams\shared_decisions.md`, by entry time): 2026-11-14 2:45 PM, 2:50 PM, 4:30 PM;
 2026-11-15 2:08 PM, 3:52 PM; 2026-11-16 2:02 PM; 2026-11-18 2:14 AM, 1:25 PM, 3:14 PM, 3:16 PM; 2026-11-19 12:52 PM
 (planning, chart rows), 2:20 PM, 9:28 PM, 11:20 PM (planning, estimate flow records); 2026-11-20 1:50 AM (planning,
-decision audit answers: entities are area 21's).
+decision audit answers: entities are area 21's), 2:25 AM (owner answers to this area).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 7 (A 11-14 new job, budget rights, jobs decisions; 11-15 dimension
@@ -43,15 +44,15 @@ Sources read (only these, searched by date, title or code):
 
 | # | Topic | Proposal in one line | Baseline |
 |---|-------|----------------------|----------|
-| 1 | The job record | One `project` DDL that gathers what areas 6, 8, 13 and 15 asked for, plus the New job screen's fields: job number from the customer code, draft flag (Q1), billing method (Q3), sales rep, customer PO, prevailing wage, recognition method; `status`, the two cached budget totals (Q5) and `source_estimate_id` go | company |
+| 1 | The job record | One `project` DDL that gathers what areas 6, 8, 13 and 15 asked for, plus the New job screen's fields: job number from the customer code, a service job on a known job numbered from it (Q4 B), billing method (Q3 A), sales rep, customer PO, prevailing wage, recognition method; no draft jobs (Q1: a job exists only from a signed contract; a direct job writes a 'Direct' contract, Q2 A); `status`, the two cached budget totals (Q5 A) and `source_estimate_id` go | company |
 | 2 | Job cost budget | `project_budget` becomes the one budget table: kind Original, Change order or Transfer, with its source link, who and when; the original locks at the first save; changes only by change orders and transfers (no approval); who may enter it is a company setting (Q9); "Require a budget before costs post" is a control, OFF | company |
 | 3 | Cost codes and cost types | `cost_type` company list (five shipped); `cost_code.cost_type_id` NOT NULL replaces `cost_type_label`; default account and "counts toward % complete" inherited by sub-codes; codes fixed once saved and never reused; three levels kept (RP5) | company |
-| 4 | Default accounts for General conditions and Warranty | Owner questions Q15-Q17 with the chart's candidates; defaults found by role, never by number (Q20) | company (template) |
+| 4 | Default accounts for General conditions and Warranty | General conditions defaults to 5070 Indirect Job Costs (Q15 A); warranty work is a service job posting to 5080 Warranty Expense in the open period, no reserve (Q16); defaults found by role, never by number (Q20 A) | company (template) |
 | 5 | Dimensions | Which lines a dimension applies to; Required per dimension (Never, From job, Always) as a control (Q10); codes fixed; never deleted; moves logged; `project_dimension` for JD1 with one shared resolver; depth limit (Q11) | company |
 | 6 | Operating plan | `operating_plan_version`, `operating_plan_line`, `operating_plan_import`; any number of named versions, no approved or default status; all-or-nothing import; never named "budget" | company |
-| 7 | Job cost, Budget vs actual, warranty roll-up | Reads only: job cost from GL lines carrying the job (as recognized, area 10); committed from areas 4 and 9; a Warranty job's cost reported on the original job's Warranty line (Q17) | none |
+| 7 | Job cost, Budget vs actual, warranty roll-up | Reads only: job cost from GL lines carrying the job (as recognized, area 10); committed from areas 4 and 9; a warranty service job's cost reported on the original job's Warranty line through the job link (Q16, Q17 A) | none |
 | 8 | Percentage of completion and WIP | `project.poc_method` (D3), `poc_snapshot` gains who, when and the forecast revision used; WIP schedule of every open job grouped by service type; the WIP service is a build item (Q18) | company |
-| 9 | Permissions, controls, settings | Existing `project.*` codes kept; new `job.budget.enter`, `cost_code.manage`, `dimension.manage`, `plan.manage` (Q9, Q14); two settings and one per-dimension control, all logged, all R36 high-impact | master (codes) |
+| 9 | Permissions, controls, settings | Existing `project.*` codes kept; new `job.budget.enter`, `cost_code.manage`, `dimension.manage`, `plan.manage` (Q9 A; Q14: the two manage codes held by Admin, Master and the Controller template, in no level); two settings and one per-dimension control, all logged, all R36 high-impact | master (codes) |
 | 10 | Row version and audit | `row_version` on every editable table; imports and history insert-only; every new table audited | company |
 
 Master file: only the new permission codes (registry rows). Entities inside one company file are area 21's (owner
@@ -84,10 +85,13 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | Decision | Source |
 |----------|--------|
 | A job can be created directly for an existing customer on a full New job screen; jobs from leads still come from signing | S 11-14 2:45 PM; A 11-14 "New job screen"; C62 |
+| No draft jobs: a job exists only from a signed contract; a lead whose estimate isn't signed is the "draft". `project.is_draft` and every draft rule and test are dropped | owner 2026-11-20 2:25 AM, Q1 |
+| New job (a direct job: migration, paper contract) writes a `contract` row through area 6's contract service with source 'Direct', no estimate revision and no lead; it needs the contract value, retainage, terms and the signed file (area 6 Q10: the signed copy is always required) | owner 2026-11-20 2:25 AM, Q2 A |
+| A service job created from a case on a known job is numbered from it, `<job number>-S<two digits>` (AC0001-001-S01); other jobs take the customer's next number; the case keeps its CS- number and the link | owner 2026-11-20 2:25 AM, Q4 B |
 | Billing method: fixed price, pay applications, milestones, T&M or not billed | S 11-14 2:45 PM; C62 section 3 |
 | Job number from the customer code, never typed; assigned in the create transaction | A 11-14; C62; design_decisions "Customer codes" |
 | Fields: job name, service type, PM (required), sold by, start and target finish, job site, site contact and phone, customer PO no., contract value, retainage %, terms, optional accepted estimate (locked on create) | A 11-14; C62 sections 1-3 |
-| A draft job takes no costs and no invoices | A 11-14; C62 ("A draft job can't take costs or invoices") |
+| A draft job takes no costs and no invoices. Superseded by Q1 (owner 2026-11-20 2:25 AM): there are no draft jobs | A 11-14; C62 ("A draft job can't take costs or invoices"); Q1 |
 | T&M jobs default bill lines to Billable with the job's markup | A 11-14; C62 section 3 |
 | Another open job on the same site shows a note, never a block | C62 section 2 |
 | A job gets a "Prevailing wage" flag now; certified payroll (WH-347) in v1.1 | S 11-14 4:10 PM (payroll, area 19) |
@@ -105,8 +109,9 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | Column | Type and rule | From |
 |--------|---------------|------|
 | `project_id` | INTEGER PRIMARY KEY | kept |
-| `project_number` | TEXT NOT NULL UNIQUE; `customer_code` + '-' + three-digit `project_seq` (AC0001-001), written by the service | kept; design_decisions |
-| `project_seq` | INTEGER NOT NULL CHECK (>= 1); UNIQUE (`contact_id`, `project_seq`) | new |
+| `project_number` | TEXT NOT NULL UNIQUE; `customer_code` + '-' + three-digit `project_seq` (AC0001-001), or, for a service job numbered from a known job (Q4 B), that job's `project_number` + '-S' + two-digit `service_seq` (AC0001-001-S01); written by the service | kept; design_decisions; Q4 B |
+| `project_seq` | INTEGER NULL CHECK (>= 1); UNIQUE (`contact_id`, `project_seq`); NULL exactly when `numbered_from_job_id` is set (CHECK) | new |
+| `numbered_from_job_id`, `service_seq` | INTEGER NULL FK project; INTEGER NULL CHECK (1-99); both set or both NULL (CHECK); UNIQUE (`numbered_from_job_id`, `service_seq`); set only by `create_service_job` when the case has a job (Q4 B) | new |
 | `name` | TEXT NOT NULL CHECK (length 1-200) | kept |
 | `contact_id` | INTEGER NOT NULL FK contact (must be a customer; service) | kept |
 | `service_type_id`, `service_stage_id` | kept (RP4); `service_type_id` NOT NULL for new jobs (service) | kept |
@@ -114,9 +119,7 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | `sales_rep_user_id` | INTEGER NULL (master user id, no FK) | area 15 |
 | `source_revision_id` | INTEGER NULL FK `estimate_revision` (area 6); replaces `source_estimate_id` | area 6 |
 | `source_case_id` | INTEGER NULL; FK `service_case` and index added by area 15 | areas 8, 15 |
-| `billing_method` | TEXT NOT NULL CHECK IN (Q3 values) | new |
-| `is_draft` | INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) (Q1 A) | new |
-| `activated_at`, `activated_by` | TEXT NULL (UTC), INTEGER NULL; set when a draft is created as a job | new |
+| `billing_method` | TEXT NOT NULL CHECK IN ('Progress billing', 'Milestones', 'Fixed price', 'Time and materials', 'Not billed') (Q3 A: area 6's schedule types plus Not billed, jobs only; Progress billing shows as "Pay applications" on job screens; signing copies the schedule type) | new |
 | `customer_po` | TEXT NULL CHECK (length <= 60) | new |
 | `is_prevailing_wage` | INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) | new (area 19 reads it) |
 | `poc_method` | TEXT NOT NULL DEFAULT 'Cost to cost' CHECK IN ('Cost to cost', 'Manual percent', 'Completed contract') | D3 |
@@ -134,36 +137,42 @@ Dropped: `status` (area 8 Q6 C), `source_estimate_id` (area 6), `original_budget
 (Q5 A: derived from `project_budget`).
 
 Contract value, retainage %, terms, T&M markup and not-to-exceed for a direct job are not `project` columns: they
-live on the contract record (Q2 A), so pay apps and invoices read one place for every job.
+live on the contract record (Q2 A), so pay apps and invoices read one place for every job. Dropped by Q1: `is_draft`,
+`activated_at`, `activated_by`.
 
 **`project_number_seq`** (new): `contact_id` INTEGER PRIMARY KEY FK contact, `last_seq` INTEGER NOT NULL DEFAULT 0;
 the sequence pattern (`sequences.py`), bumped inside the job's write transaction. Hosted: one row lock per customer.
 
+**`project_service_seq`** (new; Q4 B): `project_id` INTEGER PRIMARY KEY FK project (the known job), `last_seq`
+INTEGER NOT NULL DEFAULT 0; bumped in the service job's write transaction like `project_number_seq`.
+
 **Job service (`jobs.py`)**:
-- `create_job(context, input, row_version=None)`: `authorize(context, 'project.create')`; customer must exist and be
-  active; PM required (an R25 pick: active user with access to the company and `project.view`); number assigned;
-  `is_draft` per the request ("Save draft" or "Create job"); optional `source_revision_id` (an accepted revision,
-  locked on create; area 6); the budget lines, if given, go through section 2's service in the same transaction and
-  lock it; one sentence per refused field.
-- `activate_job` (a draft becomes a job), `update_job` (`project.manage`, project scope; R29 lookups stay read-only;
-  `row_version`), `set_sales_rep` (logged, `project.manage`).
+- `create_job(context, input, row_version=None)` (New job, a direct job: migration or paper contract):
+  `authorize(context, 'project.create')`; customer must exist and be active; PM required (an R25 pick: active user
+  with access to the company and `project.view`); number assigned; contract value, retainage, terms and the signed
+  file required (Q2 A; area 6 Q10); in the same transaction it writes the `contract` row through area 6's contract
+  service with source 'Direct', no estimate revision and no lead; the budget lines, if given, go through section 2's
+  service in the same transaction and lock it; one sentence per refused field. No "Save draft" (Q1).
+- `update_job` (`project.manage`, project scope; R29 lookups stay read-only; `row_version`), `set_sales_rep` (logged,
+  `project.manage`).
 - `jobs.create_from_signing(context, ...)`: called by area 6's `contracts.mark_signed` in its transaction (area 6
-  section 9.3 step 3); never a draft.
-- `jobs.create_service_job(context, case_id, billing_type)`: called by area 15 ("Create service job"); number per Q4.
-- Draft rule: every service that posts a cost or issues an invoice for a job refuses a draft job with one sentence
-  ("Job AC0001-004 is a draft. Create the job first."). The ledger check sits beside `_check_cost_codes`
-  (`ledger.py:176`), so every document type gets it once (rule 7).
+  section 9.3 step 3).
+- `jobs.create_service_job(context, case_id, billing_type)`: called by area 15 ("Create service job"). When the case
+  has a job (`service_case.project_id`), the number is that job's number + '-S' + the next two-digit `service_seq`
+  (AC0001-001-S01); otherwise the customer's next number (Q4 B). The case keeps its CS- number and the link
+  (`source_case_id`).
+- No draft rule (Q1): no service checks a draft job, since none exists.
 - The "same site" note and the Jobs list figures (days vs target, forecast margin) are reads, not columns.
 
 ### 1.4 How it lands in the baselines
 
 `001_company.sql`: the `project` table rebuilt in the baseline (no released file yet, CLAUDE.md section 5.1), its
-audit triggers rewritten for the new column list, `project_number_seq`, the indexes (`contact_id`, `assigned_pm_id`,
+audit triggers rewritten for the new column list, `project_number_seq`, `project_service_seq` (Q4 B), the indexes (`contact_id`, `assigned_pm_id`,
 `sales_rep_user_id`, `service_stage_id`, `warranty_for_job_id`). Master: the codes of section 9.
 
 ### 1.5 Effect on existing services and tests
 
-- `ledger.py`: the draft-job check (and section 2's budget control) beside `_check_cost_codes`.
+- `ledger.py`: section 2's budget control beside `_check_cost_codes` (no draft-job check, Q1).
 - `custom_fields.py:55` (Project read and write codes) unchanged.
 - Tests that insert jobs (`authz_world.py:137`, `test_ledger_rules.py:250`, `test_roles_schema.py:53`) add the new
   NOT NULL columns (`project_seq`, `billing_method`, `created_at`); `test_schema_replan.py` gains the new checks.
@@ -172,7 +181,10 @@ audit triggers rewritten for the new column list, `project_number_seq`, the inde
 
 - The number is the customer code plus the next sequence; two jobs for one customer get -001 and -002; a typed
   number is ignored; a failed create leaves the sequence unchanged (rollback).
-- A draft job: a bill line, a journal line and an invoice for it are refused; after activation they post.
+- (Q4 B) a service job from a case on AC0001-001 is AC0001-001-S01, the next is -S02; a service job from a case with
+  no job takes the customer's next number; the case keeps its CS- number.
+- (Q2 A) New job without the signed file, contract value, retainage or terms is refused; a created direct job has one
+  `contract` row with source 'Direct', no revision and no lead.
 - `create_job` without `project.create` is refused before the write transaction (rule 10).
 - `status` is gone; the derived state reads from the stage and outcome (area 8 tests).
 - A sales rep change writes one audit row with before and after; `contract.sales_rep_user_id` is unchanged.
@@ -249,7 +261,7 @@ area 18 section 4 amendment G9).
 - `add_transfer_rows(context, project_id, from_code, to_code, amount_cents, reason, revision_id)`: called only by area
   8's `transferBudget` (which authorizes `job.budget.transfer` and writes the revision first); never approval; the
   job total is unchanged; amount > 0; the "from" code may go negative only with a warning (rule 0).
-- `require_budget_before_costs` ON: the ledger check (beside the draft check) refuses a cost line (an expense-type
+- `require_budget_before_costs` ON: the ledger check (beside `_check_cost_codes`) refuses a cost line (an expense-type
   account in the Cost of sales subtype, or any line with a cost code) for a job with no `budget_locked_at`, naming the
   job. OFF: nothing is checked.
 
@@ -376,12 +388,18 @@ trigger, updated audit triggers); the RP5 triggers kept.
   warranty line (S 11-18 2:14 AM; area 8 section 3.1 `billing_type`, `warranty_for_job_id`).
 - Account numbers follow the repo construction chart (S 11-19 12:52 PM).
 - Until the owner answers, the mockup leaves the default account blank for these two codes (inbox 1:15 AM).
+  Answered 2026-11-20 2:25 AM (below).
+- General conditions defaults to 5070 Indirect Job Costs (Overhead) (owner 2:25 AM, Q15 A).
+- Warranty work is a service job ("works like a service job"): its costs post to the service job on the Warranty
+  cost code, to the account with role `warranty_expense` (5080 Warranty Expense), in the open period; no reserve. Job
+  cost reads add warranty service-job lines to the original job's Warranty line through the job link
+  (`warranty_for_job_id`; Q17 A) (owner 2:25 AM, Q16).
+- Accounts are found by role (owner 2:25 AM, Q20 A).
 
-### 4.3 Proposed (by the answers)
+### 4.3 Proposed (by the answers, 2026-11-20 2:25 AM)
 
-- Q15 picks General conditions' default account; Q16 picks how Warranty is accounted for; Q17 the roll-up mechanics
-  if Warranty is a job cost; Q20 how a shipped code finds its account (by role).
-- With Q15 A, Q16 A, Q17 A and Q20 A: the chart template gains roles on 5070 (`job_overhead`) and 5080
+- Q15 A, Q16 (owner's wording), Q17 A and Q20 A settle this section.
+- The chart template gains roles on 5070 (`job_overhead`) and 5080
   (`warranty_expense`); cost type Other's default role is `job_overhead`; the shipped cost code list (a new
   `templates/cost_codes/construction.csv`, read like the chart templates) names a role per code where it differs from
   its type's (Warranty → `warranty_expense`); `company_settings.warranty_cost_code_id` INTEGER NULL FK cost_code names
@@ -391,8 +409,9 @@ trigger, updated audit triggers); the RP5 triggers kept.
 
 - Applying the construction chart then the cost code list fills every code's `account_id` from roles; no code reads
   an account number; a chart without the role leaves the code's account empty and the setup lists it.
-- (Q17 A) a Warranty job's cost appears on the original job's Warranty line in job cost and in Budget vs actual, and
-  not again on the service job's own total in the roll-up.
+- (Q16, Q17 A) a warranty service job's cost posts to 5080 by role in the open period with no reserve entry, and
+  appears on the original job's Warranty line in job cost and in Budget vs actual, and not again on the service job's
+  own total in the roll-up.
 
 ---
 
@@ -435,7 +454,8 @@ trigger, updated audit triggers); the RP5 triggers kept.
 **`dimension_value`** (changed): `dimension_type_id` FK becomes **ON DELETE RESTRICT** (a type with values is
 deactivated, never deleted); `parent_value_id` ON DELETE RESTRICT; `sort_order`; `created_at` TEXT (UTC),
 `created_by`, `updated_at`, `updated_by`; `row_version`. Trigger `dimension_value_code_fixed` refuses UPDATE OF
-`code` (integrity, like the cost code). The depth check follows Q11. "Moved from Solar on 11/15" comes from the audit
+`code` (integrity, like the cost code). The depth check keeps RP3's limit of 10 levels and the refusal names the
+limit (Q11 A). "Moved from Solar on 11/15" comes from the audit
 log (no column).
 
 **`project_dimension`** (new; JD1): `project_id` FK project, `dimension_type_id`, `dimension_value_id`, PRIMARY KEY
@@ -453,13 +473,13 @@ every line of that kind. With every `required_mode` 'Never' (default) nothing is
 ### 5.4 How it lands in the baselines
 
 `001_company.sql`: the two tables rebuilt (new columns, RESTRICT, the fixed-code trigger, audit triggers per area 18
-section 1.2); `project_dimension` with audit triggers. `database.py` changes only if Q11 changes the depth.
+section 1.2); `project_dimension` with audit triggers. `database.py` is unchanged (Q11 A keeps the depth of 10).
 
 ### 5.5 Effect on existing services and tests
 
 - `ledger.py` posting calls the resolver for the required check; `_copy_dimensions` (R45) unchanged (reversals keep
   the original values, never re-resolved).
-- `test_schema_replan.py` dimension depth tests change only with Q11 B or C.
+- `test_schema_replan.py` dimension depth tests are unchanged (Q11 A).
 
 ### 5.6 Tests to write later
 
@@ -622,11 +642,11 @@ Registry codes in use (`permissions.py`): `project.view`, `project.create`, `pro
 
 ### 9.2 Proposed codes (master registry; none sensitive; none in `AGENT_ALLOWED`)
 
-| Code | Module | Use | Placement (proposed; area 18 amendment) |
+| Code | Module | Use | Placement (area 18 amendment 2026-11-20, owner 2:25 AM) |
 |------|--------|-----|------------------------------------------|
-| `job.budget.enter` (Q9 A) | Projects | the "Budget code" choice of `job_budget_entry` | Accountant cap; Accountant · Manager level; Controller and Project manager templates |
-| `cost_code.manage` (Q14 A) | Lists | cost codes and cost types | Accountant and Operations caps; Accountant · Manager, Operations · Manager levels |
-| `dimension.manage` (Q14 A) | Lists | dimension types and values (not `required_mode`, which is `company.settings`) | Accountant cap; Accountant · Manager level |
+| `job.budget.enter` (Q9 A) | Projects | the "Budget code" choice of `job_budget_entry` | Accountant and Operations caps (the Operations cap so the Project manager template stays inside it); Accountant · Manager level; Controller and Project manager templates |
+| `cost_code.manage` (Q14) | Lists | cost codes and cost types | Accountant and Operations caps; no level; Controller template; Admin and Master hold it; others by custom template or per-user Add |
+| `dimension.manage` (Q14) | Lists | dimension types and values (not `required_mode`, which is `company.settings`) | Accountant cap; no level; Controller template; Admin and Master hold it; others by custom template or per-user Add |
 | `plan.manage` | Reports | operating plan versions, imports and grid | Accountant cap; Accountant · Manager level; Controller template |
 
 ### 9.3 Controls and settings (all default OFF or permissive, audit-logged, on the Controls page, R36 high-impact)
@@ -662,122 +682,161 @@ transfer, a dimension or cost code deactivation, a change to `required_mode`, `j
 
 ---
 
-## 11. Conflicts with decisions (flagged, not resolved)
+## 11. Conflicts with decisions (settled by the owner's answers, 2026-11-20 2:25 AM)
 
 - **F1 Dimension depth.** S 11-15 3:52 PM: "unlimited depth (no cycles)". RP3 (2026-11-16): `MAX_DIMENSION_DEPTH`
-  is 10 (`database.py:14`; the insert and update triggers check it). Q11.
+  is 10 (`database.py:14`; the insert and update triggers check it). Q11. **Settled: Q11 A (nesting capped at 10
+  levels).**
 - **F2 Required dimensions.** C6 (chart section, 2026-11-11): required dimension per account, a control, off. JD1:
   "Require dimensions on lines without a job" is a future control, off. S 11-15 2:08 PM: per dimension, never / from
   job / always. C94's mockup default is "From job", while section 0 asks for a permissive default. The draft follows
-  2:08 PM per dimension (the latest) and asks the default (Q10).
+  2:08 PM per dimension (the latest) and asks the default (Q10). **Settled: Q10 A (per dimension, default
+  'Never').**
 - **F3 Company plan model.** J2 (2026-11-11): `budget_version` with status Draft/Approved/Locked and `budget_line`;
   J3 rolling forecasts build on "the latest locked budget". S 11-18 3:14 and 3:16 PM: "operating plan", no approved
   or default status, never called a budget. The draft follows 11-18; J2's name and statuses and J3's "locked budget"
-  wording need the owner's word that they are replaced.
+  wording need the owner's word that they are replaced. **Settled with Q12 A and Q13 A: the operating plan of 11-18
+  stands (shared dimension sets, fiscal year + month 1-12, no statuses); J2's `budget_version` and J3's "locked
+  budget" wording are replaced.**
 - **F4 Forecast storage.** D10: `cost_forecast` append-only per job, cost code and **period**. Area 8 (approved):
-  `job_forecast_line` (current ETC per code, no period) and insert-only revisions. Q19.
+  `job_forecast_line` (current ETC per code, no period) and insert-only revisions. Q19. **Settled: Q19 A (D10 is
+  replaced by the job forecast per cost code).**
 - **F5 Budget level.** A 11-15 3:52 PM item 2 and C111: "Budgets at any level; a parent with children sums them".
   RP5: postings go to active leaf codes. Area 6 asks whether estimate lines must use leaf codes. A parent row and
-  child rows on one job would double count. Q6, Q7.
+  child rows on one job would double count. Q6, Q7. **Settled: Q6 A (one level per branch per job) and Q7 A
+  (estimate lines on lowest-level codes).**
 - **F6 Posting level wording.** A 11-15 3:52 PM item 2: "postings go to the lowest level used on the line". RP5
-  (later, built in `ledger.py:176`): a code with active sub-codes is refused. The draft keeps RP5.
+  (later, built in `ledger.py:176`): a code with active sub-codes is refused. The draft keeps RP5. **Settled: RP5
+  kept; Q7 A puts estimate lines on the same leaf codes.**
 - **F7 Billing method names.** S 11-14 2:45 PM and C62: fixed price, pay applications, milestones, T&M, not billed.
   Area 6 (approved) schedule types: Progress billing, Milestones, Fixed price, Time and materials (no "Not billed"),
-  and "the schedule type becomes the job's billing method at signing". Q3.
+  and "the schedule type becomes the job's billing method at signing". Q3. **Settled: Q3 A (one list plus Not
+  billed for jobs only).**
 - **F8 Service job numbers.** design_decisions "Customer codes": "a service case's project_code is the parent job's
   project_code + '-S' + a 2-digit sequence". Area 15 (approved): cases are numbered `CS-0001` from
-  `case_number_seq`; "Create service job" makes a job of type Service. The -S rule names neither. Q4.
+  `case_number_seq`; "Create service job" makes a job of type Service. The -S rule names neither. Q4. **Settled:
+  Q4 B (a service job from a case on a known job is AC0001-001-S01; others take the customer's next number; the case
+  keeps its CS- number).**
 - **F9 Draft jobs.** A 11-14 and C62: a job can be saved as a draft (no costs or invoices). Area 8 Q6 C drops
-  `project.status` and derives the state from the stage. A draft needs its own flag (Q1).
+  `project.status` and derives the state from the stage. A draft needs its own flag (Q1). **Settled: Q1 (owner's
+  wording): no draft jobs; the unsigned lead is the draft; no flag.**
 - **F10 Default accounts.** Inbox 1:15 AM: the mockup's "6000 Overhead" is a header in the Operating Expenses group
-  of the construction chart (not postable, not a job cost). Q15, Q16.
+  of the construction chart (not postable, not a job cost). Q15, Q16. **Settled: Q15 A (5070) and Q16 (warranty
+  work is a service job posting to 5080 by role).**
 - **F11 Budget rights by role.** A 11-14: "Accounting roles (Controller, Accountant)". L7 and area 18: permissions are
-  codes, never role names. Q9.
+  codes, never role names. Q9. **Settled: Q9 A (four choices mapped to codes; default Job editors).**
 - **F12 Direct job contract value.** C62 and A 11-14: the New job screen takes contract value, retainage % and terms.
   Area 6 (approved): the `contract` row is written once at Mark signed from an estimate revision. A direct job has no
-  revision. Q2.
+  revision. Q2. **Settled: Q2 A (a 'Direct' contract row through area 6's contract service, with the signed file).**
 
 ---
 
-## 12. Questions for the owner (recommended option first)
+## 12. Questions for the owner: answers recorded (2026-11-20, 2:25 AM)
+
+Owner 2026-11-20 2:25 AM: Q2, Q3, Q5-Q13, Q15 and Q17-Q20 A; Q4 B; Q1, Q14 and Q16 in the owner's wording. Each
+answer is folded into the sections above.
 
 **Q1. Draft jobs (F9).**
 - A. `project.is_draft` (0/1): a draft has a number and appears in lists as Draft; every cost and invoice service
   refuses it; "Create job" activates it (logged).
 - B. A "Draft" stage role before the first delivery stage, so the state derives from the stage like the rest.
 - C. No drafts: Save draft keeps the form only on the page.
+**Answer (owner's wording, replaces A, B and C):** no draft jobs. A job exists only from a signed contract; a lead
+whose estimate isn't signed is the "draft". `project.is_draft` and every draft rule and test are dropped. Sections
+1.2, 1.3, 1.5, 1.6, 2.3.
 
 **Q2. Contract value on a direct job (F12).**
 - A. "Create job" writes a `contract` row through area 6's contract service (no estimate revision; source 'Direct'),
   so pay apps, invoices and WIP read one contract for every job (area 6 amendment: `contract.source_revision_id`
   nullable).
 - B. `project` columns (contract value, retainage %, terms) for direct jobs only; readers check two places.
+**Answer: A.** New job (a direct job: migration, paper contract) writes a `contract` row through the contract service
+with source 'Direct', no estimate revision and no lead; it needs the contract value, retainage, terms and the signed
+file (area 6 Q10: the signed copy is always required). Area 6 amendment: the contract's revision link nullable and
+`source` CHECK IN ('Estimate', 'Direct'). Sections 1.2, 1.3.
 
 **Q3. Billing method values (F7).**
 - A. One list for jobs and estimates: Progress billing (label "Pay applications" on job screens), Milestones, Fixed
   price, Time and materials, plus Not billed (jobs only); signing copies the schedule type.
 - B. Two lists, mapped at signing.
+**Answer: A.**
 
 **Q4. Service job numbers (F8).**
 - A. Every job, service jobs included, takes the customer's next number (AC0001-004); the case keeps its `CS-`
   number and the link; the -S rule in design_decisions is retired.
 - B. A service job from a case on a known job takes that job's number + '-S' + two digits (AC0001-001-S01); others
   take the next number.
+**Answer: B.** A service job created from a case on a known job is numbered from it, `<job number>-S<two digits>`
+(AC0001-001-S01); other jobs take the customer's next number. The case keeps its CS- number and the link. Section
+1.3 (`numbered_from_job_id`, `service_seq`, `project_service_seq`).
 
 **Q5. Cached budget totals (area 8 F12).**
 - A. Drop `original_budget_cents` and `revised_budget_cents`; every reader sums `project_budget` (indexed by job and
   code).
 - B. Keep `revised_budget_cents`, updated in the same transaction as every budget row.
+**Answer: A.**
 
 **Q6. Budget level on one job (F5).**
 - A. Rows on one level per branch per job: a code whose descendants have rows on that job can't take its own, and the
   reverse; a parent shows the sum of its branch.
 - B. Rows at any level, and a parent's figure adds its own rows and its children's.
+**Answer: A.**
 
 **Q7. Estimate lines and leaf codes (area 6 section 3.4; F5).**
 - A. Estimate cost lines use active leaf codes (as postings, RP5), so budgets from estimates land where costs post;
   hand-entered budgets follow Q6.
 - B. Estimates may use any non-division code.
+**Answer: A.**
 
 **Q8. Budget rows are never changed.**
 - A. Integrity triggers refuse UPDATE and DELETE on `project_budget` (corrections are new rows), as area 8 locks
   approved CO lines.
 - B. A service rule only.
+**Answer: A.**
 
 **Q9. Who may enter a job's budget (F11).**
 - A. The setting's four choices map to codes: Job editors (`project.manage` with project scope), Job PM (the job's
   `assigned_pm_id`), Budget code (new `job.budget.enter`, seeded per section 9.2), PM or budget code; default Job
   editors.
 - B. Keep "Accounting" as the Accountant role.
+**Answer: A.**
 
 **Q10. Required dimensions default (F2).**
 - A. 'Never' for every dimension (section 0: permissive by default).
 - B. 'From job', as the mockup shows.
+**Answer: A.**
 
 **Q11. Dimension depth (F1).**
 - A. Keep RP3's limit of 10 levels; the refusal names the limit.
 - B. Unlimited: drop the depth check, keep the cycle check.
 - C. Raise the limit (for example 20).
+**Answer: A.**
 
 **Q12. Plan lines and dimension combinations.**
 - A. Plan lines use area 10's `dimension_set` through one shared get-or-create function (area 10 amendment: a second
   writer besides `ledger.py`), so reports join plan and actuals on the same set.
 - B. Plan lines keep their own `operating_plan_line_dimension` rows; uniqueness is a service check.
+**Answer: A.**
 
 **Q13. Plan months.**
 - A. `fiscal_year` plus `period_no` 1-12, so a plan can exist before its fiscal periods are created; adjustment
   periods 13 and 14 are not planned.
 - B. A foreign key to `fiscal_period`; a plan only for years whose periods exist.
+**Answer: A.**
 
 **Q14. Who manages cost codes and dimensions.**
 - A. Two codes, `cost_code.manage` and `dimension.manage` (section 9.2).
 - B. One `lists.manage` for cost codes, cost types and dimensions.
 - C. Reuse `account.manage`.
+**Answer (owner's wording):** two codes, `cost_code.manage` and `dimension.manage`. Admin and Master hold them (they
+hold every code); the shipped Controller template includes both; no role level gets them by default; others get them
+by a custom template or a per-user Add. Area 18 amendment for placement. Section 9.2.
 
 **Q15. Default account for General conditions (inbox 1:15 AM, a).**
 - A. 5070 Indirect Job Costs (Overhead).
 - B. 5060 Permits, Bonds and Job Insurance.
 - C. A new account 5065 General Conditions under 5000 Job Costs.
+**Answer: A.**
 
 **Q16. How Warranty is accounted for (inbox 1:15 AM, b).**
 - A. A job cost on the original job: the Warranty code defaults to 5080 Warranty Expense, and warranty work's cost
@@ -785,20 +844,27 @@ transfer, a dimension or cost code deactivation, a change to `required_mode`, `j
 - B. A reserve: at completion accrue Dr 5080 / Cr a new 2335 Warranty Reserve per job; later warranty costs post Dr
   2335, so the closed job's cost does not change.
 - C. A period expense: 5080 with no job.
+**Answer (owner's wording: "works like a service job"):** warranty work is a service job. Its costs post to the
+service job on the Warranty cost code, to the account with role `warranty_expense` (5080 Warranty Expense), in the open
+period; no reserve. Job cost reads add warranty service-job lines to the original job's Warranty line through the job
+link (Q17 A). Sections 4.2-4.4, 7.2.
 
 **Q17. Warranty roll-up mechanics (with Q16 A).**
 - A. Warranty job lines keep the service job; job cost reads add them to the original job under the company's
   Warranty cost code (`warranty_cost_code_id`).
 - B. Posting puts the original job and its Warranty code on the line directly, with the service job as a reference.
+**Answer: A** (follows Q16).
 
 **Q18. WIP scope in 2.9.**
 - A. Schema now (`poc_method`, `counts_toward_pct`, the `poc_snapshot` additions); the WIP service designed and built
   with the v1.1 construction work.
 - B. Design the WIP service fully in this area now.
+**Answer: A.**
 
 **Q19. D10 per-period cost forecast (F4).**
 - A. D10 is replaced by area 8's `job_forecast_line` and revisions; no per-period forecast in v1 (J3 later).
 - B. Keep D10 as a separate per-period table for J3.
+**Answer: A.**
 
 **Q20. How a shipped cost code finds its default account.**
 - A. By role: each cost type has a default account role (Labor `job_labor` 5010, Material `job_materials` 5030,
@@ -806,32 +872,44 @@ transfer, a dimension or cost code deactivation, a change to `required_mode`, `j
   gets those roles (and `warranty_expense` on 5080), and the shipped cost code list names a role only where it
   differs from its type.
 - B. The shipped list names account numbers, resolved once against the company's chart when the list is applied.
+**Answer: A.**
 
 ---
 
 ## 13. Open items (not decisions)
 
-Amendments needed in approved areas (proposed here, written there only after the owner approves this area):
-1. **Area 6:** with Q2 A, `contract.source_revision_id` nullable and a 'Direct' source; the budget call is
-   `job_budgets.set_original_from_signing`; the job call is `jobs.create_from_signing`; with Q7 A, estimate cost
-   lines are refused on non-leaf codes.
-2. **Area 8:** `service_type` default dimension values (C62 "starts with profit and cost center") as a
-   `service_type_dimension` table, and a default `poc_method`; the transfer and CO services call section 2's
-   functions; `job_forecast_line` seeding moves into `set_original`.
-3. **Area 10:** with Q12 A, `dimension_set` gets a second writer (the plan service) through one shared function.
-4. **Area 13:** `wip_current` reads `poc_snapshot.computed_at` (section 8.3); `manual_pct_complete` reads the
-   `project.manual_*` columns placed here.
-5. **Area 17:** `src_wip` (WIP schedule by service type); `src_jobs` fields (billing method, sales rep, budget
-   figures, draft); the plan compare reads `period_no` (Q13 A).
-6. **Area 18:** the four codes of section 9.2 with their caps, levels and templates; R36's high-impact list gains
-   `job_budget_entry`, `require_budget_before_costs` and `required_mode`.
-7. **Chart template (`templates/coa/construction.csv`):** the roles of Q20 A; the Q15 and Q16 accounts; no row
-   carries `contract_cost` today although `company_settings.contract_cost_acct_id` exists.
-8. **design_decisions "Customer codes":** the -S rule, by Q4.
+Amendments in approved areas (owner answers 2026-11-20 2:25 AM; the done ones carry "Amendment 2026-11-20 (owner
+2:25 AM, from area 7)" lines there):
+1. **Area 6: done** (sections 3.3, 9.3 and 10.2): Q2 A, the contract's revision link nullable and a 'Direct' source;
+   the budget call is `job_budgets.set_original_from_signing`; the job call is `jobs.create_from_signing`; with Q7 A,
+   estimate cost lines are refused on non-leaf codes.
+2. **Area 8:** the `project` columns and the dropped `status` are confirmed: **done** (section 7). Still open:
+   `service_type` default dimension values (C62 "starts with profit and cost center") as a `service_type_dimension`
+   table, and a default `poc_method`; the transfer and CO services call section 2's functions; `job_forecast_line`
+   seeding moves into `set_original`.
+3. **Area 10: done** (section 4.3): with Q12 A, `dimension_set` gets a second writer (the plan service) through one
+   shared function.
+4. **Area 13: done** (section 2.3): `wip_current` reads `poc_snapshot.computed_at` (section 8.3; Q18 A);
+   `manual_pct_complete` reads the `project.manual_*` columns placed here.
+5. **Area 17: done** (section 14): `src_wip` (WIP schedule by service type); `src_jobs` fields (billing method, sales
+   rep, budget figures; no draft, Q1); the plan compare reads `period_no` (Q13 A).
+6. **Area 18: done** (sections 2.4.2 and 4.2): the four codes of section 9.2 with their caps, levels and templates
+   (Q9 A, Q14); R36's high-impact list gains `job_budget_entry`, `require_budget_before_costs` and `required_mode`.
+7. **Chart template (`templates/coa/construction.csv`):** the roles of Q20 A; the accounts are settled (Q15 A 5070,
+   Q16 5080), the file changes in the baseline pass; no row carries `contract_cost` today although
+   `company_settings.contract_cost_acct_id` exists.
+8. **design_decisions "Customer codes": done**, no edit: Q4 B keeps the -S rule.
+
+Raised by the answers (for the owner):
+- **Q1 and service jobs:** "a job exists only from a signed contract", but a service job from a case (area 15, Q4 B,
+  Q16) has no signing; whether such a job needs a contract row, and which `schedule_type` a 'Not billed' or Warranty
+  job's contract would carry (area 6's four types have no Not billed), is not settled.
+- **Q4 B edges:** a case whose job is itself a service job (AC0001-001-S01-S01, or numbered from the root job), and a
+  100th service job on one job (`service_seq` CHECK 1-99).
 
 Handed to areas not yet drafted:
-- **Areas 3, 4, 5, 9, 19:** every cost and invoice service calls the draft check, the budget control and the JD1
-  resolver; committed amounts (4, 9); the PO's inline over-budget transfer calls `add_transfer_rows` (9); T&M lines
+- **Areas 3, 4, 5, 9, 19:** every cost and invoice service calls the budget control and the JD1 resolver (no draft
+  check, Q1); committed amounts (4, 9); the PO's inline over-budget transfer calls `add_transfer_rows` (9); T&M lines
   default Billable with the job's markup (5); `is_prevailing_wage` and WH-347 (19); the customer's job-sites list and
   tax rate from the site (5).
 - **Area 16:** job custom fields per stage and service type.

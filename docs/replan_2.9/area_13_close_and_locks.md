@@ -330,6 +330,12 @@ Amendment 2026-11-20 (owner 11-14 7:16 PM, decision audit; answered 1:50 AM): se
 `track_clearing_id = 1` other than AR and AP, which `ar_tie_out` and `ap_tie_out` cover. It warns by default (L2) and
 ships now.
 
+Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q18 A): `wip_current` compares `poc_snapshot.computed_at` with the
+latest posting carrying the job and the latest `job_forecast_revision` (area 7 section 8.3); `manual_pct_complete`
+reads `project.manual_pct_complete`, `manual_pct_reason`, `manual_pct_by` and `manual_pct_at` (area 7 section 1.3).
+The columns land in the 2.9 baseline; the WIP service (`wip.py`) ships with the v1.1 construction work, and
+`wip_current` is seeded when it does.
+
 ### 2.4 Proposed schema
 
 **`period_close_check`** (kept; the system-check registry): keep `check_code`, `mode`; add `step_code`
