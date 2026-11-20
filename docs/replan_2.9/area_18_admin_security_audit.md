@@ -640,6 +640,17 @@ default sits inside its role's cap and holds no sensitive code; View only gains 
 the union of its roles' caps (the Controller's four in the Accountant cap, the Project manager's `job.budget.enter`
 in the Operations cap) (docs/replan_2.9/area_7_jobs_budgets_cost_codes.md section 9.2).
 
+Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): every service job starts from a signed
+quote, so the people who sign quotes need Sign contracts. `contract.sign` stays sensitive and in no level. It is
+already in the shipped Sales manager and Sales rep templates' sensitive columns (area 6 amendment above), and is also
+in a new shipped **Service manager** template (2.4.3). Proposed for the owner: role Sales rep; scope Assigned;
+non-sensitive codes `case.view`, `case.create`, `case.work`, `estimate.view`, `estimate.create`, `estimate.send`,
+`project.view`; sensitive code `contract.sign`. Every code is in the Sales rep cap (2.4.1 with the area 15 and area 6
+amendments), so the template sits inside its role's cap. An Operations user gets it only with a Sales rep role as
+well, because `estimate.send` and `contract.sign` are not in the Operations cap. No new code: the seeded count stays
+111; shipped templates gain one. `AGENT_ALLOWED` is unchanged. The 2:45 AM `service_quote_limit_cents` setting and its
+high-impact mark are withdrawn (section 4.2).
+
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
 | Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
@@ -926,7 +937,8 @@ Amendment 2026-11-20 (owner 2:25 AM, from area 7): the settings registry marks `
 `company_settings.require_budget_before_costs` and each `dimension_type.required_mode` as high-impact (preview and
 apply); each change needs `company.settings` and a reason and is audit-logged (area 7 section 9.3).
 
-Amendment 2026-11-20 (owner 2:45 AM, from area 7): `company_settings.service_quote_limit_cents` (Settings › Service,
+**Withdrawn 2026-11-20 (owner 3:15 AM)**: the quote limit is dropped, so the setting and its high-impact mark are
+withdrawn (section 2.4.2, the 3:15 AM line): Amendment 2026-11-20 (owner 2:45 AM, from area 7): `company_settings.service_quote_limit_cents` (Settings › Service,
 area 15) is changed with `company.settings` and a reason and is audit-logged; the registry marks it high-impact,
 since it decides which flow billable service work takes. No new permission code: Case warranty and Case T&M jobs use
 `case.work` and `project.create` (area 15), the quote uses `estimate.create`, `estimate.send` and `estimate.approve`,

@@ -117,6 +117,13 @@ is area 21's; sending email is area 20's.
 The old `name`, `contact_id`, `assigned_pm_id`, `total_*`, `status` and `created_at` DEFAULT are dropped: the name is
 the lead's, totals are per revision, status is per revision (Q5 A).
 
+Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): this amends Q4 A, so an estimate has a
+lead or a case. A service quote started from a service case (area 15 "Create service job") links to the case and the
+customer and makes no lead: new `case_id` INTEGER NULL REFERENCES service_case; `lead_id` becomes INTEGER NULL; CHECK
+exactly one of `lead_id` or `case_id` is set; `customer_contact_id` is the case's customer; `option_label` is unique
+per lead or per case. A case quote runs the same estimate flow with service terms (the service type's contract
+template); there is no quote limit.
+
 **`estimate_revision`** (new; Rev 1, 2, ...):
 
 | Column | Type and constraint |
@@ -669,6 +676,14 @@ Amendment 2026-11-20 (owner 2:25 AM, from area 7): step 3 calls `jobs.create_fro
 budget entry right, and the original budget locks in the same transaction. There are no draft jobs before Mark signed:
 a lead whose estimate isn't signed is the "draft" (area 7 Q1).
 
+Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): Mark signed is the one action for
+projects and service quotes. The rep prints the quote to PDF, the customer signs, and the rep uploads the signed PDF
+with the signer's name and the real signed date, both required (`mark_signed` gains `signer_name` and `signed_on`).
+For a quote with a `case_id`: step 2 uses the case's customer; step 3 creates the service job through area 7
+(`source_case_id` the case, numbered from the original root job when the case has a job, area 7 section 1.3); step 7
+supersedes the case's other options; step 8 is skipped (no lead), and an Open case moves to In progress through area
+15's `cases.change_status` in the same transaction.
+
 ### 9.4 Tests to write later
 
 - Mark signed without the signed document is refused.
@@ -719,7 +734,8 @@ INTEGER NULL UNIQUE; new `source` TEXT NOT NULL CHECK IN ('Estimate', 'Direct'),
 (`revision_id` IS NOT NULL). A Direct contract needs the contract value (`original_amount_cents`), retainage, terms and
 the signed file (`signed_attachment_id` stays NOT NULL, Q10 A); its number comes from the CT- series (Q21 B).
 
-Amendment 2026-11-20 (owner 2:45 AM, from area 7): every service job has exactly one `contract` row and needs no
+**Withdrawn 2026-11-20 (owner 3:15 AM)**, all but warranty work Not billed with value 0 and the Warranty roll-up
+(see the 3:15 AM line below): Amendment 2026-11-20 (owner 2:45 AM, from area 7): every service job has exactly one `contract` row and needs no
 signed file. `contract.source` CHECK IN ('Estimate', 'Direct', 'Service quote', 'Case warranty', 'Case T&M');
 `revision_id` is set exactly for 'Estimate' and 'Service quote' (CHECK); `signed_attachment_id` becomes NULL-able,
 required (CHECK) for 'Estimate' and 'Direct' only. **Service quote:** billable service work over
@@ -734,6 +750,18 @@ billed' (added to the CHECK, allowed for this source only), `original_amount_cen
 job's Warranty line (area 7 Q16, Q17 A). **Case T&M:** `schedule_type` 'Time and materials', the company rate card's
 lines frozen as `contract_rate_line`, optional `not_to_exceed_cents`. Schedule type per source: 'Estimate' and
 'Service quote' copy the revision's; 'Direct' takes one of the four from New job.
+
+Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): every service job starts from a
+signed quote (billable, warranty or no charge, T&M). `contract.source` CHECK IN ('Estimate', 'Direct') only: a project
+estimate and a service quote are both 'Estimate' (the contract's source is the signed quote's estimate and revision).
+'Service quote', 'Case warranty', 'Case T&M', the acceptance columns and `accepted_method` are withdrawn;
+`signed_attachment_id` stays NOT NULL for every contract (Q10 A). Every contract, project or service, starts as
+Signed, with the signed PDF, the signer's name (new `signed_by_name` TEXT NOT NULL) and the real signed date
+(`signed_on`, entered on upload, never defaulted to the creation date). A warranty or no-charge service quote has
+`schedule_type` 'Not billed' (added to the `estimate_revision` and `contract` CHECKs, allowed only on an estimate with
+a `case_id`) and may total 0; its job's costs roll up to the original job's Warranty line (area 7 Q16, Q17 A). A T&M
+service quote freezes the company rates (`contract_rate_line`) and the optional `not_to_exceed_cents` onto the
+contract, as for projects.
 
 ### 10.3 Tests to write later
 

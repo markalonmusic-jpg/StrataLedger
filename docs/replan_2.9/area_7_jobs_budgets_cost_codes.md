@@ -4,8 +4,9 @@ Status: **Draft 2026-11-20; owner's answers recorded (2026-11-20, 2:25 AM; secti
 changes code, a baseline, a migration or a test. Every table, column, code and check below would be built only in the
 2.9 baseline pass, after the replan is approved. PROPOSED items from the sources are not built as final. Amendment
 lines the answers settle are written in areas 6, 8, 10, 13, 17 and 18 ("Amendment 2026-11-20 (owner 2:25 AM, from
-area 7)"), and for the owner's 2:45 AM service-job decision in areas 6, 15 and 18 ("owner 2:45 AM, from area 7"); the
-rest stay open items (section 13).
+area 7)"), and for the owner's 2:45 AM service-job decision in areas 6, 15 and 18 ("owner 2:45 AM, from area 7"),
+whose sources the owner's 3:15 AM decision replaces ("owner 3:15 AM, from area 7; replaces the 2:45 AM sources"; the
+withdrawn items are marked "Withdrawn 2026-11-20 (owner 3:15 AM)"); the rest stay open items (section 13).
 
 Checked against (`Strata_Teams\shared_decisions.md`, by entry time): 2026-11-14 2:45 PM, 2:50 PM, 4:30 PM;
 2026-11-15 2:08 PM, 3:52 PM; 2026-11-16 2:02 PM; 2026-11-18 2:14 AM, 1:25 PM, 3:14 PM, 3:16 PM; 2026-11-19 12:52 PM
@@ -89,7 +90,8 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | No draft jobs: a job exists only from a signed contract; a lead whose estimate isn't signed is the "draft". `project.is_draft` and every draft rule and test are dropped | owner 2026-11-20 2:25 AM, Q1 |
 | New job (a direct job: migration, paper contract) writes a `contract` row through area 6's contract service with source 'Direct', no estimate revision and no lead; it needs the contract value, retainage, terms and the signed file (area 6 Q10: the signed copy is always required) | owner 2026-11-20 2:25 AM, Q2 A |
 | A service job created from a case on a known job is numbered from it, `<job number>-S<two digits>` (AC0001-001-S01); other jobs take the customer's next number; the case keeps its CS- number and the link | owner 2026-11-20 2:25 AM, Q4 B |
-| Every job has exactly one contract row. A service job's contract needs no signed file; its source is 'Service quote' (billable work over `service_quote_limit_cents`, default $1,000, through the estimate flow, accepted online or recorded by the rep), 'Case warranty' (Not billed, value $0, costs roll up to the original job's Warranty line) or 'Case T&M' (billable repairs under the limit at company rates frozen onto the contract, optional not-to-exceed) | owner 2026-11-20 2:45 AM |
+| Every job has exactly one contract row. A service job's contract needs no signed file; its source is 'Service quote' (billable work over `service_quote_limit_cents`, default $1,000, through the estimate flow, accepted online or recorded by the rep), 'Case warranty' (Not billed, value $0, costs roll up to the original job's Warranty line) or 'Case T&M' (billable repairs under the limit at company rates frozen onto the contract, optional not-to-exceed). **Withdrawn 2026-11-20 (owner 3:15 AM)**: the three sources, the limit and "no signed file"; kept: one contract row per job, warranty work Not billed with value $0 and the Warranty roll-up | owner 2026-11-20 2:45 AM |
+| Every service job starts from a signed quote (billable, warranty or no charge, T&M): a service quote is an estimate in the estimate flow with service terms; the rep prints it to PDF, the customer signs, and the rep uploads the signed PDF with Mark signed (signer name, the real signed date entered on upload, never the creation date). `contract.source` is only 'Estimate' (project or service quote) or 'Direct'; every contract starts as Signed. A quote started from a case links to the case and the customer and makes no lead. No quote limit | owner 2026-11-20 3:15 AM (replaces the 2:45 AM sources) |
 | A case raised on a service job is numbered from the original (root) job (AC0001-001-S03, never -S01-S01); after S99 the number widens (S100) | owner 2026-11-20 2:45 AM (planning, accepted) |
 | Billing method: fixed price, pay applications, milestones, T&M or not billed | S 11-14 2:45 PM; C62 section 3 |
 | Job number from the customer code, never typed; assigned in the create transaction | A 11-14; C62; design_decisions "Customer codes" |
@@ -114,7 +116,7 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | `project_id` | INTEGER PRIMARY KEY | kept |
 | `project_number` | TEXT NOT NULL UNIQUE; `customer_code` + '-' + three-digit `project_seq` (AC0001-001), or, for a service job numbered from a known job (Q4 B), the root job's `project_number` + '-S' + `service_seq` padded to at least two digits (AC0001-001-S01 to -S99, then -S100; 2:45 AM); written by the service | kept; design_decisions; Q4 B; 2:45 AM |
 | `project_seq` | INTEGER NULL CHECK (>= 1); UNIQUE (`contact_id`, `project_seq`); NULL exactly when `numbered_from_job_id` is set (CHECK) | new |
-| `numbered_from_job_id`, `service_seq` | INTEGER NULL FK project (always the root job: when the case's job is itself a service job, its `numbered_from_job_id`; 2:45 AM); INTEGER NULL CHECK (>= 1; no upper limit, 2:45 AM); both set or both NULL (CHECK); UNIQUE (`numbered_from_job_id`, `service_seq`); set only by `create_service_job` when the case has a job (Q4 B) | new |
+| `numbered_from_job_id`, `service_seq` | INTEGER NULL FK project (always the root job: when the case's job is itself a service job, its `numbered_from_job_id`; 2:45 AM); INTEGER NULL CHECK (>= 1; no upper limit, 2:45 AM); both set or both NULL (CHECK); UNIQUE (`numbered_from_job_id`, `service_seq`); set only by `create_service_job` when the case has a job (Q4 B; 3:15 AM: set by `create_from_signing` when the signed quote has a case with a job) | new |
 | `name` | TEXT NOT NULL CHECK (length 1-200) | kept |
 | `contact_id` | INTEGER NOT NULL FK contact (must be a customer; service) | kept |
 | `service_type_id`, `service_stage_id` | kept (RP4); `service_type_id` NOT NULL for new jobs (service) | kept |
@@ -160,7 +162,8 @@ the sequence pattern (`sequences.py`), bumped inside the job's write transaction
   `project.manage`).
 - `jobs.create_from_signing(context, ...)`: called by area 6's `contracts.mark_signed` in its transaction (area 6
   section 9.3 step 3).
-- `jobs.create_service_job(context, case_id, billing_type)`: called by area 15 ("Create service job"). When the case
+- **Withdrawn 2026-11-20 (owner 3:15 AM)** (no direct case jobs; the numbering below is kept and moves to
+  `create_from_signing`): `jobs.create_service_job(context, case_id, billing_type)`: called by area 15 ("Create service job"). When the case
   has a job (`service_case.project_id`), the number is the root job's number + '-S' + the next `service_seq`
   (AC0001-001-S01; a case on AC0001-001-S01 gives AC0001-001-S03 when S02 exists; S100 after S99; 2:45 AM); otherwise
   the customer's next number (Q4 B). The case keeps its CS- number and the link (`source_case_id`). In the same
@@ -170,10 +173,22 @@ the sequence pattern (`sequences.py`), bumped inside the job's write transaction
     original job's Warranty line (Q16, Q17 A).
   - 'Case T&M': `billing_method` 'Time and materials'; the company rate card frozen onto the contract
     (`contract_rate_line`, area 6 section 6); optional `not_to_exceed_cents`.
-- Service quote (owner 2:45 AM): billable service work over `company_settings.service_quote_limit_cents` does not
+- **Withdrawn 2026-11-20 (owner 3:15 AM)**: Service quote (owner 2:45 AM): billable service work over `company_settings.service_quote_limit_cents` does not
   create a job from the case; it starts the estimate flow (area 6, with service terms), and the job is created when
   the quote is accepted (online, or recorded by the rep), by `jobs.create_from_signing` with contract source 'Service
   quote'; `billing_method` copies the quote's schedule type (Fixed price or Time and materials).
+
+Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): every service job starts from a
+signed quote (billable, warranty or no charge, T&M). "Create service job" on a case starts a service quote: an
+estimate with `case_id` and the case's customer and no lead (area 6), run through the same estimate flow with service
+terms; there is no quote limit and no job is created from the case directly. The job is created at Mark signed by
+`jobs.create_from_signing`, the same action as projects (signed PDF, signer name, the real signed date), with the
+contract source 'Estimate'. For a quote with a case: `source_case_id` is the case; when the case has a job, the number
+is the root job's number + '-S' + the next `service_seq` (S100 after S99) and otherwise the customer's next number;
+a Not billed (warranty or no-charge) quote gives `billing_type` 'Warranty', `billing_method` 'Not billed', contract
+value 0 allowed, `warranty_for_job_id` the case's job, and its costs roll up to that job's Warranty line (Q16, Q17
+A); a T&M quote's company rates and optional `not_to_exceed_cents` are frozen onto the contract as for projects;
+otherwise `billing_method` copies the quote's schedule type.
 - No draft rule (Q1): no service checks a draft job, since none exists.
 - The "same site" note and the Jobs list figures (days vs target, forecast margin) are reads, not columns.
 
@@ -198,9 +213,14 @@ audit triggers rewritten for the new column list, `project_number_seq`, `project
   no job takes the customer's next number; the case keeps its CS- number.
 - (2:45 AM) a case on AC0001-001-S01 numbers from AC0001-001 (the next free -S, never -S01-S01); after -S99 the next
   is -S100.
-- (2:45 AM) every job has exactly one contract row; a Case warranty job's contract is Not billed with value 0 and no
+- **Withdrawn 2026-11-20 (owner 3:15 AM)**: (2:45 AM) every job has exactly one contract row; a Case warranty job's contract is Not billed with value 0 and no
   signed file; a Case T&M job's contract holds the company rates as of creation (a later rate card change leaves it
   unchanged) and an optional not-to-exceed.
+- (3:15 AM) a case has no "create job" path: Create service job starts a quote with `case_id` and no lead; Mark
+  signed on it without the signed PDF, the signer name or the signed date is refused; signing creates the service job
+  numbered from the root job, with `source_case_id`; a Not billed quote at value 0 signs and its job's costs show on
+  the original job's Warranty line; a T&M quote's contract keeps the company rates as of signing and the optional
+  not-to-exceed.
 - (Q2 A) New job without the signed file, contract value, retainage or terms is refused; a created direct job has one
   `contract` row with source 'Direct', no revision and no lead.
 - `create_job` without `project.create` is refused before the write transaction (rule 10).
@@ -675,7 +695,7 @@ Registry codes in use (`permissions.py`): `project.view`, `project.create`, `pro
 | `company_settings.require_budget_before_costs` | 0 | control |
 | `dimension_type.required_mode` | 'Never' (Q10 A) | control, per dimension |
 | `company_settings.warranty_cost_code_id` | NULL | setting (Q17 A) |
-| `company_settings.service_quote_limit_cents` (Settings › Service; defined in area 15) | 100000 ($1,000) | setting (owner 2:45 AM) |
+| `company_settings.service_quote_limit_cents` (Settings › Service; defined in area 15) | 100000 ($1,000) | setting (owner 2:45 AM). **Withdrawn 2026-11-20 (owner 3:15 AM)**: no quote limit |
 
 ---
 
@@ -763,7 +783,9 @@ answer is folded into the sections above.
 **Answer (owner's wording, replaces A, B and C):** no draft jobs. A job exists only from a signed contract; a lead
 whose estimate isn't signed is the "draft". `project.is_draft` and every draft rule and test are dropped. Sections
 1.2, 1.3, 1.5, 1.6, 2.3. Owner 2:45 AM: every job has exactly one contract row; service jobs need no signed file
-(sources 'Service quote', 'Case warranty', 'Case T&M'; section 1.3).
+(sources 'Service quote', 'Case warranty', 'Case T&M'; section 1.3). **Withdrawn 2026-11-20 (owner 3:15 AM)**: the
+three sources and "no signed file". Owner 3:15 AM: every service job starts from a signed quote; `contract.source` is
+'Estimate' or 'Direct'; every contract starts as Signed (section 1.3).
 
 **Q2. Contract value on a direct job (F12).**
 - A. "Create job" writes a `contract` row through area 6's contract service (no estimate revision; source 'Direct'),
@@ -927,20 +949,25 @@ Raised by the answers (for the owner):
   'Estimate' and 'Service quote' copy the revision's (a service quote: Fixed price or Time and materials); 'Direct'
   takes the New job's billing method (one of the four); 'Case T&M' is Time and materials; 'Case warranty' is 'Not
   billed' (added to `contract.schedule_type` for that source only). Amendment lines in areas 6, 15 and 18.
+  **Withdrawn 2026-11-20 (owner 3:15 AM)**: the three sources and "no signed file". Still closed, by the 3:15 AM rule:
+  every service job starts from a signed quote, `contract.source` is 'Estimate' or 'Direct', and every contract starts
+  as Signed. Schedule type: 'Estimate' copies the revision's, which for a warranty or no-charge service quote is 'Not
+  billed'; 'Direct' takes one of the four from New job. Amendment lines in areas 6, 15 and 18 ("owner 3:15 AM").
 - **Q4 B edges: closed** (planning, accepted by the owner 2:45 AM): a case on a service job numbers from the root job
   (AC0001-001-S03, never -S01-S01); after S99 the number widens (S100).
 
 New open items (owner 2:45 AM):
 - **Online customer acceptance** of a service quote needs a customer link (connections; hosted later). Desktop v1
-  records the approval by the rep (method, who, when, amount).
-- **Service manager:** a shipped job title or access template for the person who enters a service quote's costs
-  (area 18 section 2.4.3).
-- **The service quote's lead:** the quote uses the estimate flow, and `estimate.lead_id` is NOT NULL (area 6 Q4 A); a
-  quote started from a case needs a lead made in the same transaction (as the wizard does) or a case link instead.
-- **The limit check:** a Case T&M job has no amount when it is created, so how `service_quote_limit_cents` is applied
-  (the person's choice on Create service job, or a check against the not-to-exceed) is not settled.
-- **Contract status for service sources:** `contract.status` starts at 'Signed' and `signed_on` names a signing;
-  for 'Case warranty' and 'Case T&M' nothing is signed, and for 'Service quote' acceptance replaces it.
+  records the approval by the rep (method, who, when, amount). **Withdrawn 2026-11-20 (owner 3:15 AM)**: no
+  "accepted" quotes; every quote is signed and uploaded.
+- **Service manager: closed** (owner 3:15 AM): a new shipped Service manager access template (area 18 section 2.4.3
+  amendment, proposed codes for the owner).
+- **The service quote's lead: closed** (owner 3:15 AM): a quote started from a case links to the case and the customer
+  and makes no lead; `estimate.case_id`, with a CHECK for exactly one of `lead_id` or `case_id` (area 6 amendment).
+- **The limit check: closed** (owner 3:15 AM): the quote limit is dropped; every service quote runs the same estimate
+  flow.
+- **Contract status for service sources: closed** (owner 3:15 AM): every contract, project or service, starts as
+  Signed, with the real signed date entered on upload, the signer's name and the signed PDF.
 
 Handed to areas not yet drafted:
 - **Areas 3, 4, 5, 9, 19:** every cost and invoice service calls the budget control and the JD1 resolver (no draft

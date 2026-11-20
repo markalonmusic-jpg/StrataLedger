@@ -519,7 +519,7 @@ seeded to a shipped "Service" type with its own short delivery stages).
   the case is Open, moves it to In progress through `change_status` (`via` 'Service job created', `changed_by` the
   user) in the same transaction.
 
-  Amendment 2026-11-20 (owner 2:45 AM, from area 7): "Create service job" makes a 'Case warranty' job (Warranty, Not
+  **Withdrawn 2026-11-20 (owner 3:15 AM)** (see the 3:15 AM line below): Amendment 2026-11-20 (owner 2:45 AM, from area 7): "Create service job" makes a 'Case warranty' job (Warranty, Not
   billed, value 0) or a 'Case T&M' job (billable repairs under the quote limit, at company rates frozen onto the
   contract, optional not-to-exceed), each with its one contract row and no signed file, through area 7's
   `jobs.create_service_job`. Billable work over the limit starts a Service quote instead (area 6's estimate flow with
@@ -527,6 +527,13 @@ seeded to a shipped "Service" type with its own short delivery stages).
   INTEGER NOT NULL DEFAULT 100000 CHECK (>= 0) (Settings › Service; $1,000), changed with `company.settings` and a
   reason, audit-logged. How the limit is applied to a Case T&M job, and the quote's lead, are area 7 open items
   (section 13).
+
+  Amendment 2026-11-20 (owner 3:15 AM, from area 7; replaces the 2:45 AM sources): there are no direct case jobs.
+  "Create service job" starts a service quote from the case: an estimate with `case_id`, the case's customer and no
+  lead (area 6 section 1.3 amendment), in the same estimate flow with service terms, for billable, warranty or
+  no-charge, and T&M work alike; there is no quote limit and no `service_quote_limit_cents`. Starting the quote needs
+  `case.work` and `estimate.create`. The service job is created only when the rep uploads the signed quote with Mark
+  signed (area 6 section 9.3), which also moves an Open case to In progress (`via` 'Service job created').
 - Resolve prompt (derived, never stored, never automatic): a case not Resolved or Closed with at least one job whose
   `source_case_id` is the case, and every such job in a Complete or Closed stage role (area 8). Area 8's job stage
   service, when a job with a `source_case_id` reaches Complete, writes one notification to the case owner (area 21
