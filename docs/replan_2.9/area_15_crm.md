@@ -172,6 +172,14 @@ Service rules (`leads.py`, H4; none of these is a trigger):
 - Billing address: when `billing_same_as_site = 1` every reader returns the site address as the billing address;
   the copy into the customer at signing is area 5's.
 
+Amendment 2026-11-20 (owner, from area 6 Q4): `estimate.lead_id` is NOT NULL, and the estimate wizard's first step
+picks an existing lead or creates one in the same transaction: `leads.create` is called inside the estimate service's
+write transaction (one `authorize` for `lead.create`, then the estimate's own check), so a repeat customer's lead is
+made inside the wizard and no separate lead form comes first. A lead made there gets the service type chosen at
+wizard step 2 (Job), in the same transaction (S 11-19 8:42 PM: service type required on every lead), with its
+Primary contact from step 1 and the first Sales stage of that type; a failure rolls back both
+(docs/replan_2.9/area_6_estimates_contracts.md section 1.3).
+
 **`lead_contact`** (new; Q6 A):
 `lead_contact(lead_contact_id PK, lead_id NOT NULL FK lead, role TEXT NOT NULL CHECK IN ('Primary', 'Second'),
 first_name TEXT NOT NULL, last_name TEXT NOT NULL, phone TEXT, email TEXT, preferred_channel TEXT NOT NULL CHECK IN
@@ -685,6 +693,13 @@ it, the reason's label at the time of use, written by the service in the same tr
 never rewrites history or reports). Every FK to `reason_option` is ON DELETE RESTRICT: a used reason cannot be
 deleted, only hidden (`is_active = 0`). In this area: `lead.lost_reason_label`, `lead_stage_history.reason_label`
 and `continue_reason_label`.
+
+Amendment 2026-11-20 (owner, from area 6 Q13 B): `reason_option.kind` CHECK gains 'Rate change' (a T&M rate typed
+on an estimate, `estimate_rate_line.change_reason_id`) and 'Contract wording' (a section wording override on one
+deal, `estimate_section_choice.override_reason_id`), each with `reason_label` beside it. The 9:48 PM rule applies: a
+note is needed only when Other is picked (at least 10 characters). Shipped rows: 'Rate change': "Agreed with the
+customer", "Other"; 'Contract wording': "Requested by the customer", "Other" (Admins rename, add and hide as for
+every kind) (docs/replan_2.9/area_6_estimates_contracts.md sections 6.3 and 7.3).
 
 ---
 

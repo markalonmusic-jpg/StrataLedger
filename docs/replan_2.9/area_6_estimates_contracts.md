@@ -1,9 +1,11 @@
 # Step 2.9 schema replan, area 6: estimates, contracts, pricing, T&M rates, contract templates
 
-Status: **Draft** (first draft 2026-11-20). Docs only: nothing here changes code, a baseline, a migration or a test.
+Status: **Draft, answers recorded** (first draft 2026-11-20, 2c82148; owner answers 2026-11-20 folded in below,
+section 15: all A except Q11 (Mark signed, owner's wording), Q12 B, Q13 B and Q21 B; amendment lines written in
+area 8 sections 1.3, 4.3 and 5.3, area 15 sections 1.3 and 7.3, and area 18 sections 1.2, 2.4 and 3.2). Docs only: nothing here changes code, a baseline, a migration or a test.
 Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan is
-approved. PROPOSED items from the sources are not built as final. Amendments this area needs in approved areas (8,
-15, 17, 18) are listed as open items (section 14), not made in those docs.
+approved. PROPOSED items from the sources are not built as final. Amendments this area needs in approved areas 8,
+15 and 18 are written there as dated amendment lines (owner 2026-11-20); area 17's is an open item (section 16).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 6, the source keys, and the "Inbox inputs" for "15 and 6", "6, 8
@@ -50,8 +52,8 @@ Sources read (only these, searched by date, title or code):
 | 6 | T&M rates | `rate_card` and `rate_card_line`; `company_settings.tm_rate_source` and the company card; the control "Estimates may change their rates" ON (permissive) by default; `estimate_rate_line` frozen on the revision and `contract_rate_line` at signing; a row typed by hand keeps its source rate and a reason | company |
 | 7 | Contract templates | `contract_template` (kind Contract or Change order terms), insert-only published `contract_template_version` with `contract_template_section` rows, a `contract_clause` library; per-revision section choices and wording overrides; control "Contract wording changes need approval" OFF | company |
 | 8 | Send, decline, expire, revise | Send freezes the revision, stores the rendered PDF as an attachment, calls `leads.take_expected_value`; Declined with a reason; Expired by a daily run or by area 15's auto-lost; Revise copies to Rev n+1 | company |
-| 9 | Signing | One `contracts.sign` transaction: signers recorded, signed PDF required, customer via area 5, job via area 7, budget from the summary, contract row, SOV, milestones, frozen rates, a draft (unposted) deposit invoice via area 5, the lead to Contract signed and Won via area 15 | company |
-| 10 | Contract record and change orders | Keep `contract`, written once at signing as the signed agreement (Q1 A); revised amount derived from SOV lines, CO lines add SOV lines (area 8's approval calls area 6); `sales_rep_user_id` kept as the rep at signing | company |
+| 9 | Signing | One "Mark signed" action (`contracts.mark_signed`, Q11): signed document required, no per-signer record, customer via area 5, job via area 7, budget from the summary, contract row, SOV, milestones, frozen rates, a draft (unposted) deposit invoice via area 5, the lead to Contract signed and Won via area 15 | company |
+| 10 | Contract record and change orders | Keep `contract`, written once at Mark signed as the signed agreement (Q1 A), number from its own CT- series (Q21 B); revised amount derived from SOV lines, CO lines add SOV lines (area 8's approval calls area 6); `sales_rep_user_id` kept as the rep at signing | company |
 | 11 | Cancellation (C105) | `contracts.cancel`: reason (kind 'Job cancel'), date received, case link; never posts; approval OFF by default; job Closed as Cancelled (area 8), revision Cancelled | company |
 | 12 | Permissions | Keep `estimate.create`, `estimate.approve`, `contract.approve`; add `estimate.view`, `estimate.send`, `contract.sign`, `contract.cancel`, `sales.templates.manage` (Q19 A) | master (codes) |
 | 13 | Row version and audit | `row_version` on every editable table; history and published versions insert-only with integrity triggers; every table audited | company |
@@ -92,6 +94,7 @@ is area 21's; sending email is area 20's.
 | Customer on the estimate: link an existing customer or "create on signing" (null = create from the estimate's customer fields); the picker works until signing | C126, C127, C129 |
 | Signing passes the lead's addresses, contacts and signer to area 5; the estimate copies `lead.sales_rep_user_id` | area 15 section 9 (hand-off) |
 | `estimate.lead_id` added; `estimate.contact_id` nullable before signing | area 15 open item 2 |
+| `estimate.lead_id` is NOT NULL; the wizard's first step picks an existing lead or creates one in the same transaction (a repeat customer's lead is made inside the wizard, no separate lead form first); a lead made there gets the service type chosen at wizard step 2 (Job) | owner 2026-11-20, Q4 |
 
 ### 1.3 Proposed schema
 
@@ -101,7 +104,7 @@ is area 21's; sending email is area 20's.
 |--------|---------------------|
 | `estimate_id` | INTEGER PRIMARY KEY |
 | `estimate_number` | TEXT NOT NULL UNIQUE; from `sequences.py`, series EST- (unique, gaps allowed; not a registered gapless series) |
-| `lead_id` | INTEGER NOT NULL REFERENCES lead (Q4 A) |
+| `lead_id` | INTEGER NOT NULL REFERENCES lead (Q4 A: the wizard creates the lead in the same transaction when there is none, through area 15's `leads.create`) |
 | `option_label` | TEXT NULL (for example "Option A"); UNIQUE (`lead_id`, `option_label`) |
 | `service_type_id` | INTEGER NOT NULL REFERENCES service_type; copied from the lead at creation; changes only with the lead's (area 15: a lead's service type is locked once an estimate names it) |
 | `customer_contact_id` | INTEGER NULL REFERENCES contact; NULL = create the customer at signing; the service checks a linked contact has a customer code |
@@ -158,11 +161,13 @@ the same kind of lock as area 8's approved change order lines; workflow (who may
   pricing template, set the rep's adjustment, hand off, send, decline, `mark_expired`, `run_expiry`.
 - `custom_fields.py` keeps refusing Estimate until `estimates.py` exists; then the refusal is removed and its test
   replaced (open item 9).
-- `sequences.py` gains the EST- series (and the contract number, Q21).
+- `sequences.py` gains the EST- series and the CT- contract series (Q21 B).
 
 ### 1.5 Tests to write later
 
 - Creating an estimate from a lead copies service type and sales rep; an estimate without a lead is refused (Q4 A).
+- The wizard with "new lead" writes the lead (service type from step 2) and the estimate in one transaction; a
+  failure in either leaves neither.
 - Two open revisions on one estimate are refused (partial unique index).
 - After send, an UPDATE of a sent revision's price columns and any change to its child rows is refused by the
   trigger; status, decision columns and memo still change.
@@ -404,8 +409,9 @@ send (a price change spreads in proportion, remainder on the last line, C125).
 
 **Service type defaults** (area 8 amendment, open item 3): `service_type.default_schedule_type`,
 `default_deposit_pct`, `default_retainage_pct`, `pricing_template_id`, `contract_template_id`,
-`co_terms_template_id`, `cancellation_period_days` (Q12 A), and `service_type_milestone` (rows as
-`estimate_milestone` with `service_type_id`). The rate card link (`service_type.rate_card_id`) is already area 8's.
+`co_terms_template_id`, and `service_type_milestone` (rows as `estimate_milestone` with `service_type_id`); no
+cancellation period (Q12 B: it is on the template version, section 7.3). `service_type.rate_card_id` (area 8)
+becomes a nullable FK to `rate_card`; NULL falls back to the company card.
 
 **At signing** (section 9) the contract gets copies: `contract.schedule_type` (replacing `contract_type`, Q20 A),
 deposit, retainage, not-to-exceed; `contract_milestone` (new: `contract_milestone_id` PK, `contract_id` FK,
@@ -463,8 +469,9 @@ and logged).
 **`estimate_rate_line`** (new; T&M revisions): `rate_line_id` PK, `revision_id` FK, `kind`, `label`, `unit`,
 `rate_cents`, `markup_pct` (as `rate_card_line`), `source` CHECK IN ('Company card', 'Service type', 'Estimate'),
 `source_rate_card_line_id` INTEGER NULL FK, `source_unit`, `source_rate_cents`, `source_markup_pct` (what Reset
-returns to), `change_reason` TEXT NULL (Q13 A; CHECK required when the row differs from its source), `changed_by`,
-`changed_at`, `sort_order`, `row_version`. With source 'Estimate' the rows are built from the cost lines (cost ×
+returns to), `change_reason_id` FK reason_option (kind 'Rate change') ON DELETE RESTRICT, `change_reason_label`,
+`change_note` TEXT NULL (Q13 B: a reason is required when the row differs from its source; the note only with Other,
+at least 10 characters, the 9:48 PM rule), `changed_by`, `changed_at`, `sort_order`, `row_version`. With source 'Estimate' the rows are built from the cost lines (cost ×
 markup) and have no card line.
 
 **`contract_rate_line`** (new): the same columns with `contract_id` in place of `revision_id`, written once at
@@ -500,7 +507,7 @@ is replaced by area 18's `attachment`.
 | Sections with title, text, "Show this section" condition, "Reps may turn it off", "Reps may change the wording" (off for locked legal sections) | contract editor sections 3 and 5; C121 |
 | Limited rich text (bold, italic, underline, H2/H3, lists, table block, page break, field keys); a clause library whose edits offer to update every template using it, each as a new draft version | C122, C123, contract editor section 5 |
 | A rep may change one deal's wording; changes are marked against the template (Compare, Reset, a required one-line reason) and logged; "Contract wording changes need approval" is a Sales control, OFF by default | contract editor owner decision 4 and section 3 |
-| Several signers per contract (name, email, title, order); the company signer from Company settings | contract editor sections 2 and 4; C125 |
+| Several signers per contract (name, email, title, order) print on the contract; the company signer from Company settings. Superseded in part by Q11 (owner 2026-11-20): signers are not recorded one by one | contract editor sections 2 and 4; C125; Q11 |
 | Email template (subject, body, fields), cover page with letter, body text size 10/11/12 pt, header with logo slot and company cells | contract editor section 5; C125 |
 | One PDF renderer for preview, download, send and print, with exact cents; a field resolver reads the lead or customer, the estimate and company settings (no SQL in the template) | contract editor item 5; C121; C122 |
 | A change order has a terms template (kind "Change order terms"), default from the service type; the PM picks it, the rep may change it before sending; publishing a new version does not change COs already sent | S 11-19 10:22 PM |
@@ -514,7 +521,9 @@ is replaced by area 18's `attachment`.
 (`template_id`, `version_no`), `status` CHECK IN ('Draft', 'Published', 'Retired'), `body_pt` INTEGER NOT NULL
 DEFAULT 11 CHECK IN (10, 11, 12), `header_show_logo` 0/1, `header_cells` TEXT (JSON of the company cells as
 published), `cover_letter` TEXT NULL, `email_subject` TEXT, `email_body` TEXT, `version_note` TEXT, `published_at`,
-`published_by`, `row_version`. Partial unique index: one Draft per template.
+`published_by`, `cancellation_period_days` INTEGER NULL CHECK (NULL or >= 0) (Q12 B; kind Contract only; the
+template's "cancellation period" field and C105's cancellation-period line read it), `row_version`. Partial unique
+index: one Draft per template.
 
 **`contract_template_section`** (new; Q9 A): `section_id` PK, `version_id` FK, `section_key` TEXT NOT NULL (stable
 across versions, used by overrides and Compare), UNIQUE (`version_id`, `section_key`), `sort_order`, `title`,
@@ -529,9 +538,11 @@ Published → Retired) and DELETE: a sent document's terms must stay reproducibl
 
 **Per revision:** **`estimate_section_choice`** (new): `revision_id` FK, `section_key`, PRIMARY KEY both;
 `is_shown` 0/1 (only when the section allows it), `override_body` TEXT NULL (CHECK only when `reps_may_edit`, by
-the service), `override_reason` TEXT NULL (required with an override; Q13 A), `changed_by`, `changed_at`,
-`row_version`. **`estimate_signer`** (new): `signer_id` PK, `revision_id` FK, `sort_order`, `name` NOT NULL, `email`,
-`title`, `lead_contact_id` NULL (area 15), `signed_on` TEXT NULL CHECK date, `row_version`.
+the service), `override_reason_id` FK reason_option (kind 'Contract wording') ON DELETE RESTRICT,
+`override_reason_label`, `override_note` (Q13 B: a reason is required with an override; the note only with Other, at
+least 10 characters), `changed_by`, `changed_at`, `row_version`. **`estimate_signer`** (new): `signer_id` PK,
+`revision_id` FK, `sort_order`, `name` NOT NULL, `email`, `title`, `lead_contact_id` NULL (area 15), `row_version`.
+Signers are names that print on the contract and receive the email; no per-signer signature is recorded (Q11).
 
 **Change order terms:** area 8's `change_order` gains `terms_template_version_id` FK contract_template_version
 (kind Change order terms), set when priced, changeable until sent (area 8 amendment, open item 3).
@@ -539,8 +550,9 @@ the service), `override_reason` TEXT NULL (required with an override; Q13 A), `c
 **Wording approval control:** `approval_policy` for document type 'Contract' with the condition "wording changed"
 (area 14), OFF by default. When on and any section has an override, Send becomes Submit for approval.
 
-**Branding** (Q22 A): `company_branding` (new, one row): `logo_attachment_id` FK attachment (PNG, SVG or JPG up to
-2 MB, checked by the service), `accent_color` TEXT (stored as data, not a Theme value: it prints on documents),
+**Branding** (Q22 A): `company_branding` (new, one row): `logo_storage_key` TEXT NULL (through `storage.py`, H3; C125),
+`logo_content_type`, `logo_size_bytes` (PNG, SVG or JPG up to 2 MB, checked by the service; not an `attachment` row,
+so no record type is needed), `accent_color` TEXT (stored as data, not a Theme value: it prints on documents),
 `footer_text`, `show_page_numbers`, `signer_name`, `signer_email`, `signer_phone`, `signer_block`, `row_version`.
 Invoices, statements and pay app prints reuse it through the one letterhead (areas 4 and 5).
 
@@ -618,34 +630,39 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
 | Customer codes are assigned once: in the Create New Customer wizard or at signing, by the same service | design_decisions "Customer codes" |
 | Signing moves the lead to Contract signed (via Signed), sets Won and `lead.project_id`; `contract.sales_rep_user_id` keeps the rep at signing; `project.sales_rep_user_id` is copied from the lead | area 15 section 9; S 11-19 11:20 PM |
 | The summary by cost code becomes the job budget at signing and freezes the estimate | S 11-19 11:20 PM |
-| Several signers; the Contracts list shows "1 of 2 signed" when recorded partly | contract editor sections 4 and 6 |
+| One "Mark signed" action plus the uploaded signed document; no digital signature field, no per-signer record, no partial signing; the job is created at Mark signed; the 8:50 PM checks stay (warning plus reason; blocks only with the stage gate on); the summary by cost code becomes the job budget; the rep is copied to `project.sales_rep_user_id` and `contract.sales_rep_user_id` (replaces the contract editor's "1 of 2 signed") | owner 2026-11-20, Q11 |
 | Automation never posts (rule 0) | CLAUDE.md section 0 |
 
 ### 9.3 Proposed rules (`contracts.py`)
 
-- `record_signature(context, revision_id, signer_ids, signed_on, row_version)`: sets `estimate_signer.signed_on` for
-  the ticked signers; allowed on a Sent or Expired revision (Expired with a Continue anyway reason); writes no job
-  (Q11 A: partial signing is recorded; the job is created when the last signer is recorded).
-- `sign(context, revision_id, signed_attachment_id, customer_input, job_input, row_version)` (called when every
-  signer has `signed_on`): `authorize(context, 'contract.sign', ...)` first; then, in one write transaction:
-  1. The signed PDF attachment exists on this revision (required, Q10 A).
+- `mark_signed(context, revision_id, signed_attachment_id, customer_input, job_input, continue_reason, row_version)`
+  (Q11): `authorize(context, 'contract.sign', ...)` first. Allowed on a Sent revision; an Expired, unsent or
+  unapproved one returns the S 11-19 8:50 PM warning and needs a "Continue anyway" reason (`reason_option`), and is
+  refused only when `stage_requirements_block` is on (area 8). Then, in one write transaction:
+  1. The signed document attachment exists on this estimate (required, Q10 A).
   2. Customer: `estimate.customer_contact_id` set → that customer; NULL → area 5's create-customer service with the
      revision's customer block and the lead's contacts (code assigned there).
-  3. Job: area 7's job service (number, service type, PM = `costs_by_user_id` unless changed, `sales_rep_user_id`
-     from the lead, `source_revision_id`, first Delivery stage, default schedule template, area 8).
-  4. Budget: one row per cost code of the summary through area 7's budget service.
-  5. `contract` row (section 10) with copies of the schedule, `contract_line` + cost codes, `contract_milestone`,
+  3. Job: area 7's job service (number, service type, PM = `costs_by_user_id` unless changed,
+     `project.sales_rep_user_id` from the estimate's rep, `source_revision_id`, first Delivery stage, default
+     schedule template, area 8).
+  4. Budget: one row per cost code of the summary by cost code, through area 7's budget service.
+  5. `contract` row (section 10) with `contract_number` from the CT- series (Q21 B), `sales_rep_user_id` (the same
+     rep, kept as the rep at signing), copies of the schedule, `contract_line` + cost codes, `contract_milestone`,
      `contract_rate_line`.
   6. Draft deposit invoice through area 5's invoice service (not posted; credit side by role `customer_deposits`,
      never by account number).
-  7. Revision status Signed; other open or sent revisions and the lead's other options become Superseded (Q18 A);
-     `estimate.customer_contact_id` set.
+  7. Revision status Signed (one history row); other open or sent revisions and the lead's other options become
+     Superseded (Q18 A); `estimate.customer_contact_id` set.
   8. `leads.mark_signed(context, lead_id, project_id)` (area 15: stage Contract signed, Won, `project_id`).
-  Any refusal rolls everything back. Nothing posts.
+  Any refusal rolls everything back. Nothing posts. Signer names print on the contract only; nothing is recorded per
+  signer.
 
 ### 9.4 Tests to write later
 
-- Sign without the signed PDF is refused; with one signer missing `signed_on` it is refused.
+- Mark signed without the signed document is refused.
+- Mark signed on an Expired, unsent or unapproved revision without a Continue anyway reason is refused; with the
+  reason it succeeds when the stage gate is off and is refused when it is on.
+- The job's and the contract's `sales_rep_user_id` both equal the estimate's rep after Mark signed.
 - Signing a prospect creates exactly one customer with a code and one job; a linked customer gets no new contact.
 - Budget rows equal the summary by cost code; the contract's original amount equals the revision's frozen total.
 - The deposit invoice is a draft with no `journal_entry`; its amount follows the schedule (NTE base for T&M).
@@ -666,8 +683,8 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
 ### 10.2 Proposed (Q1 A)
 
 **`contract`** (replaced): `contract_id` PK; `project_id` NOT NULL UNIQUE FK project; `customer_contact_id` NOT NULL
-FK contact; `revision_id` NOT NULL UNIQUE FK estimate_revision; `contract_number` NOT NULL UNIQUE (Q21 A: the
-estimate number); `schedule_type` (Q20 A, replaces `contract_type`); `signed_on` (replaces `contract_date`),
+FK contact; `revision_id` NOT NULL UNIQUE FK estimate_revision; `contract_number` NOT NULL UNIQUE (Q21 B: its own
+CT- series, assigned at Mark signed); `schedule_type` (Q20 A, replaces `contract_type`); `signed_on` (replaces `contract_date`),
 `start_date`, `completion_date` (area 8 reads it as the schedule's contract date); `original_amount_cents` NOT NULL;
 `deposit_pct`/`deposit_cents`, `retainage_pct`, `not_to_exceed_cents`; `payment_terms`; `sales_rep_user_id`
 INTEGER NULL (written once at signing, area 15 hand-off); `template_version_id` FK; `signed_attachment_id` NOT NULL
@@ -696,7 +713,8 @@ attachment replaces it).
 ### 11.1 Decided
 
 C105 (owner item 12, answers 4-6): contract-cancel opened from Contracts, the job's More menu and a cancellation
-case; Reason (required), Date received, Case link; a cancellation-period line from the job type (information only);
+case; Reason (required), Date received, Case link; a cancellation-period line (information only; read from the
+contract's template version, Q12 B, not the job type);
 money on the job with guided actions that each post on their own screen; the screen never posts; approval
 "Contract cancellations" OFF by default (when on, Submit for approval and the job stays open until approved);
 result: job Cancelled, estimate Cancelled (not Lost), customer and code kept, case gets a note. Area 15's
@@ -727,14 +745,15 @@ the approval request and stops; otherwise in one transaction: contract Cancelled
   cancellation approvals when on). Add `estimate.view` (the read code STOP C found missing), `estimate.send` (send,
   decline, revise), `contract.sign` (sensitive: creates customer, job, budget), `contract.cancel` (sensitive),
   `sales.templates.manage` (pricing templates, cost templates, contract templates and clauses, rate cards, branding).
-  102 seeded codes become 107. `crm.settings` (area 15) stays for CRM lists.
+  Five new codes, so 102 seeded codes become 107 (102 + 5; area 18 amendment in its section 2.4). `crm.settings`
+  (area 15) stays for CRM lists.
 - **Records sources** (area 17): `src_leads_estimates` reads `estimate`, `estimate_revision` (sent figures) and the
   history; the money fields follow `money.view`.
 - **Custom fields** (area 16 / STOP C): values attach to `estimate` (shared by its revisions, Q25 A); the refusal in
   `custom_fields.py` is lifted when `estimates.py` ships.
 - **Attachments** (area 18): the sent PDF and the signed PDF are `attachment` rows with `record_type` 'Estimate'
   (record id the estimate) and linked from the revision and contract by FK; area 18's list gains 'Contract' for files
-  added on the contract later (open item 6).
+  added on the contract later (area 18 amendment, section 3.2). The logo is not an attachment (section 7.3).
 
 ---
 
@@ -753,54 +772,55 @@ the approval request and stops; otherwise in one transaction: contract Cancelled
 Every new table gets audit triggers (area 18). Integrity triggers in this area guard only what must never change:
 sent revisions and their children (section 1.3), published template versions (section 7.3), the history and the
 frozen contract rates (insert-only). No trigger enforces a workflow rule (H4). Reasons required (area 18's table,
-open item 6): send back, decline, cancel, a T&M rate change, a wording change, signing an expired or unapproved
-revision (Continue anyway), abandoning an estimate.
+amendment in its section 1.2): send back (kind Send back), decline (Lost lead), cancel a contract (Job cancel), a
+T&M rate change (Rate change, Q13 B), a wording change (Contract wording, Q13 B), Mark signed on an expired, unsent or
+unapproved revision (Continue anyway), abandoning an unsent estimate (a note of at least 10 characters in the history
+row), and changing an area 6 control or setting.
 
 ---
 
-## 14. Conflicts with decisions (flagged, not resolved)
+## 14. Conflicts with decisions (resolved by the owner's answers, 2026-11-20)
 
 - **F1 A contract record or not.** A 11-14: "No separate contract record; Contracts becomes a view of sent and
   signed estimates." But the baseline has `contract` (`:878`) with area 8's `change_order.contract_id` and the pay
-  app's `contract_id`; C121 asks `contract.template_id`; S 11-19 11:20 PM asks `contract.sales_rep_user_id`. → Q1.
+  app's `contract_id`; C121 asks `contract.template_id`; S 11-19 11:20 PM asks `contract.sales_rep_user_id`. **Resolved by Q1 A.**
 - **F2 Approval default.** A 11-14 and C76: "Only under the margin floor or over the rep's discount authority
   (DEFAULT, owner's choice)". S 11-19 11:20 PM, RI1, D9 and C122's leftovers: OFF by default. The later decisions
-  agree with section 0. → Q2.
+  agree with section 0. **Resolved by Q2 A.**
 - **F3 Self-approval.** C22 makes "the estimator cannot approve their own estimate" an integrity rule; A 11-14 and C76
-  say the pricer can't approve their own. CLAUDE.md section 0 lists separation of duties as a control, OFF. → Q3.
+  say the pricer can't approve their own. CLAUDE.md section 0 lists separation of duties as a control, OFF. **Resolved by Q3 A.**
 - **F4 State names.** C22 (Requested · Estimating · Sales review · Margin approval · Ready to send · Sent · Signed),
   C76 (Requested · Estimating · With sales · Approval · Ready to send · Sent · Signed), C125 (Draft, Requested, In
   approval, Ready to send, Sent, Declined, Signed) and S 11-19 11:20 PM (With rep, With PM, In approval, Sent back,
   Approved, Ready to send, Sent). The latest is used; Approved and Ready to send overlap (both are "with the rep,
-  priced"). → Q6.
+  priced"). **Resolved by Q6 A.**
 - **F5 Price override and rep adjustment.** C125: `contract_total_cents` override with "Price override: ($1,896.17)"
-  and Reset; S 11-19 8:58 PM: the rep adds markup or discount within authority. Two ways to change one price. → Q7.
+  and Reset; S 11-19 8:58 PM: the rep adds markup or discount within authority. Two ways to change one price. **Resolved by Q7 A.**
 - **F6 Where scope and wording live.** C128 (11-16 2:13 PM): scope, inclusions and exclusions only in the template,
   dropped from the estimate; A 11-14: the revision carries scope, inclusions and exclusions; the contract editor
-  (11-15, owner decision 4): a Scope step with "Use the service type's default" and per-deal wording overrides. →
-  Q8.
+  (11-15, owner decision 4): a Scope step with "Use the service type's default" and per-deal wording overrides. **Resolved by Q8 A.**
 - **F7 Template body shape.** C121 and C122: `contract_template_section` rows; C124: "the template body stored as one
   rich-text document" where H2 blocks carry show_when. Per-section overrides, locks and Compare need a stable section
-  identity. → Q9.
+  identity. **Resolved by Q9 A.**
 - **F8 Signed copy required.** A 11-14, C102 and the contract editor (C6): attaching the signed PDF is required. C9
   lists "Require the signed contract file before signing" as a PROPOSED control OFF (area 15 F10 passed this here).
-  → Q10.
+  **Resolved by Q10 A.**
 - **F9 Cancellation period.** C105: a "Cancellation period (days)" field on each job type (service type); C121: the
-  template settings hold "cancellation period" and the template offers it as a contract field. → Q12.
+  template settings hold "cancellation period" and the template offers it as a contract field. **Resolved by Q12 B.**
 - **F10 Estimate requests and routing.** C120 (11-15): a setting "Estimate requests go to an estimator" (OFF; ON
   makes the estimator required) and C125's `estimate_request` table; S 11-19 8:58 PM: the wizard's third step lets
   the rep send to a PM or enter costs, and "the rep may skip the PM". The C120 re-test is still open in
-  to_ux_research. → Q17.
+  to_ux_research. **Resolved by Q17 A.**
 - **F11 Contract type and status lists.** The baseline `contract_type` ('Fixed price', 'Cost-plus', 'Time and
   materials', 'Unit price') differs from the schedule types of A 11-16 and S 11-19 8:42 PM ('Progress billing',
   'Milestones', 'Fixed price', 'Time and materials'); `contract.status` ('Draft', 'Executed', 'Complete',
-  'Terminated') has no Cancelled, while C105 cancels contracts. → Q20.
+  'Terminated') has no Cancelled, while C105 cancels contracts. **Resolved by Q20 A.**
 - **F12 T&M bill rates.** D8 (v1.1): bill rates per role or employee on `time_entry.bill_rate_cents`, material markup.
   S 11-19 8:35 PM and the 8:42 PM answer: rates frozen onto the contract from a rate card or the estimate; time from
-  payroll import. Two places for a bill rate. → Q26.
+  payroll import. Two places for a bill rate. **Resolved by Q26 A.**
 - **F13 Options and the primary revision.** D9: "only the primary revision" can be signed; C125: a lead lists every
   version and option (v1, v2, Option A), each with its own status. Which option is signable and what happens to the
-  others is not decided. → Q18.
+  others is not decided. **Resolved by Q18 A.**
 - **F14 Customer at contract sent.** C24 (11-13) proposed creating the customer when the contract is marked sent (a
   PROPOSED control); C76 merged contracts into the estimate, and the customer-code decision and S 11-18 4:36 PM keep
   creation at signing. Not built (PROPOSED); noted only.
@@ -812,7 +832,10 @@ revision (Continue anyway), abandoning an estimate.
 
 ---
 
-## 15. Questions for the owner
+## 15. Questions for the owner: answers recorded (2026-11-20)
+
+Owner 2026-11-20: every question A except Q11 (the owner's wording below), Q12 B, Q13 B and Q21 B. Each answer is
+folded into the sections above.
 
 **Q1. The contract record.** (F1)
 - A. Keep `contract`, written once at signing as the signed agreement (snapshot of the schedule, SOV, milestones,
@@ -821,121 +844,158 @@ revision (Continue anyway), abandoning an estimate.
 - B. No contract table (11-14 literally): the signed revision is the contract; `change_order` and pay apps point at
   the revision.
 - C. Keep `contract`, created at first send and updated until signing.
+**Answer: A.**
 
 **Q2. Estimate approval default.** (F2)
 - A. OFF (11:20 PM, RI1, D9): no approval unless a company turns on the Estimate policy.
 - B. ON by default "only under the margin floor or over discount authority" (C76).
+**Answer: A.**
 
 **Q3. Approving your own estimate.** (F3)
 - A. It follows the separation-of-duties control (OFF by default: allowed and marked Self-approved; ON: refused).
 - B. Always refused, an integrity rule (C22).
+**Answer: A.**
 
 **Q4. Must an estimate have a lead?**
 - A. Yes, `estimate.lead_id` NOT NULL: every estimate starts from a lead (a repeat customer gets a Repeat customer
   lead, area 15); Solo too.
 - B. No: an office or Solo estimate may exist without a lead (the lead's calls are skipped).
+**Answer: A** (owner's wording). `estimate.lead_id` stays NOT NULL. The wizard's first step picks an existing lead or
+creates one in the same transaction, so a repeat customer's lead is made inside the wizard and no separate lead form
+comes first. A lead made in the wizard gets the service type chosen at wizard step 2 (Job), in the same transaction
+(S 11-19 8:42 PM: service type required on every lead). Sections 1.2, 1.3 and 1.5; area 15 amendment (section 1.3).
 
 **Q5. Where status and holder live.**
 - A. On the revision (each revision has its own hand-off and history; the estimate shows the newest).
 - B. On the estimate (one hand-off across revisions).
+**Answer: A.**
 
 **Q6. Approved and Ready to send.** (F4)
 - A. Keep both: Approved = priced and approved (or PM one-click when the control is off), back with the rep; Ready to
   send = the rep has checked price, payment schedule and proposal and the send checklist passes.
 - B. Merge them into "Ready to send" (approval lands there directly).
+**Answer: A.**
 
 **Q7. Changing the customer price.** (F5)
 - A. The rep's adjustment only: extra markup % or a discount (% or amount); typing a lump-sum contract total is
   stored as a discount amount and shows "Price override: ($...)" with Reset; authority reads the implied %.
 - B. Keep C125's separate contract-total override beside the rep's markup and discount.
 - C. Only the lump-sum override (no markup or discount fields).
+**Answer: A.**
 
 **Q8. Scope, inclusions and exclusions.** (F6)
 - A. They are template sections; the deal changes them with the per-section wording override (marked, reason,
   logged); no separate estimate columns (C128 plus the contract editor).
 - B. Columns on the revision prefilled from the service type, inserted into the template by field keys.
+**Answer: A.**
 
 **Q9. Template body.** (F7)
 - A. Section rows with a stable `section_key` (needed for overrides, locks, Compare and conditions); the editor shows
   them as one flowing document.
 - B. One rich-text document per version (C124), with section identity inside the document.
+**Answer: A.**
 
 **Q10. The signed copy.** (F8)
 - A. Always required to sign, not a control (owner decisions 11-14 and 11-15).
 - B. A control "Require the signed contract file before signing", OFF by default (C9).
+**Answer: A.**
 
 **Q11. Several signers.**
 - A. Record signers one at a time ("1 of 2 signed"); the job is created when the last one is recorded.
 - B. One Record signature for all signers at once; partial signing is not stored.
+**Answer (owner's wording, replaces A and B):** there is no digital signature field. Signing is one "Mark signed"
+action plus the uploaded signed document. Signer names may still print on the contract, but signers are not recorded
+one by one, there is no partial signing, and the job is created at Mark signed. Mark signed keeps the S 11-19 8:50 PM
+checks (an expired, unsent or unapproved estimate: warning plus reason; blocks only when the stage gate is on). At
+Mark signed the summary by cost code becomes the job budget and the rep is copied to `project.sales_rep_user_id` and
+`contract.sales_rep_user_id`. Sections 7.3, 9.2-9.4.
 
 **Q12. Cancellation period.** (F9)
 - A. On the service type (`cancellation_period_days`, C105); the template's "cancellation period" field reads it.
 - B. On the template version (C121); the service type does not hold it.
+**Answer: B.** The cancellation period is on the contract template version (`cancellation_period_days`); the service
+type does not hold it. Sections 5.3, 7.3, 11.
 
 **Q13. Reasons for rate changes and wording changes.**
 - A. A required one-line text (at least 10 characters), stored with the change and in the audit row.
 - B. Pick from new Reasons kinds 'Rate change' and 'Contract wording' (area 15 amendment), with Other + text.
+**Answer: B**, with the S 11-19 9:48 PM rule: the reason is picked from the `reason_option` kinds 'Rate change' and
+'Contract wording' (stored as `reason_id` + `reason_label`); a note is needed only when Other is picked (at least 10
+characters). Stored with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (section 7.3).
 
 **Q14. Rep authority limits.**
 - A. `sales_authority_limit` policy records defined here (per role or user, OFF), read by area 14's routing when the
   Estimate policy is on.
 - B. Left wholly to area 14 (area 6 stores only the adjustment on the revision).
+**Answer: A.**
 
 **Q15. Margin floor and target.**
 - A. Company settings 20% and 22% by default, warnings and colours only, a blank value turns them off.
 - B. Empty by default (no colours until a company sets them).
+**Answer: A.**
 
 **Q16. SOV lines and cost codes.**
 - A. A link table: a merged SOV line keeps several cost codes; each cost code sits on one SOV line.
 - B. One cost code per SOV line (today's `contract_line.cost_code_id`); merging is not allowed.
+**Answer: A.**
 
 **Q17. Estimate requests.** (F10)
 - A. No setting and no `estimate_request` table: the wizard's "Who enters costs" step (send to a PM with a due date,
   or enter costs myself) is the request; holder and history record it.
 - B. Keep C120's control "Estimate requests go to an estimator" (OFF); ON hides "enter costs myself" for reps.
+**Answer: A.**
 
 **Q18. Options on one lead.** (F13)
 - A. Each option is its own `estimate` with `option_label`; any sent option can be signed; signing one marks the
   lead's other options Superseded.
 - B. Options are revisions of one estimate; only the newest sent revision can be signed (D9 "primary").
+**Answer: A.**
 
 **Q19. Permission codes.**
 - A. Add `estimate.view`, `estimate.send`, `contract.sign` (sensitive), `contract.cancel` (sensitive),
   `sales.templates.manage`; keep the three existing codes (102 to 107).
 - B. Add only `estimate.view` and `contract.sign`; sending is `estimate.create`, cancelling is `contract.approve`,
   templates are `crm.settings` (102 to 104).
+**Answer: A.**
 
 **Q20. Contract type and status.** (F11)
 - A. Replace `contract_type` with `schedule_type` (the four schedule types) and `status` with ('Signed', 'Cancelled',
   'Completed').
 - B. Keep `contract_type` as a separate legal kind beside `schedule_type`; status adds 'Cancelled' to today's list.
+**Answer: A.**
 
 **Q21. Contract number.**
 - A. The estimate number (one number per deal; the contract row repeats it).
 - B. Its own series (CT-), assigned at signing.
+**Answer: B.** Contracts have their own series, CT-, from `sequences.py`, assigned at Mark signed. Sections 1.4, 10.2.
 
 **Q22. Branding (logo, signer, footer).**
 - A. `company_branding` (one row) defined here, since contracts are the first document to use it; invoices,
   statements and pay apps reuse it.
 - B. Left to area 21 (whole-app); area 6 reads it.
+**Answer: A.**
 
 **Q23. Published template versions.**
 - A. Read-only by an integrity trigger (a sent contract's terms stay reproducible).
 - B. Read-only by the service only.
+**Answer: A.**
 
 **Q24. Expired.**
 - A. A stored status set by the daily `run_expiry` and by `mark_expired`; signing an Expired revision needs a
   Continue anyway reason.
 - B. Derived from `valid_until` only (no stored status); area 15's `mark_expired` call is removed.
+**Answer: A.**
 
 **Q25. Custom fields on estimates.**
 - A. On `estimate` (shared by all revisions).
 - B. On each revision (frozen at send with the rest).
+**Answer: A.**
 
 **Q26. T&M bill rates.** (F12)
 - A. The contract's frozen rate lines are the only bill rates; `time_entry.bill_rate_cents` (D8) is not built, and
   area 19/5 bill payroll hours at those rates.
 - B. Keep D8's per-employee bill rate on time entries as an override of the contract rate.
+**Answer: A.**
 
 ---
 
@@ -949,23 +1009,23 @@ revision (Continue anyway), abandoning an estimate.
    contacts); the draft deposit invoice (credit by role `customer_deposits`); T&M monthly drafts from the frozen
    rates and the near-NTE warning; `contract_milestone.invoice_id`; the T&M revenue account (4040 has no system role
    in `templates/coa/construction.csv`; area 5 decides whether it needs one).
-3. **Area 8 amendment needed (approved area):** `service_type` gains `default_schedule_type`, `default_deposit_pct`,
-   `default_retainage_pct`, `pricing_template_id`, `contract_template_id`, `co_terms_template_id`,
-   `cancellation_period_days` (per Q12) and the child table `service_type_milestone`; `service_type.rate_card_id`
+3. **Area 8 (amendment lines written 2026-11-20, sections 1.3, 4.3 and 5.3):** `service_type` gains
+   `default_schedule_type`, `default_deposit_pct`, `default_deposit_cents`, `default_retainage_pct`,
+   `pricing_template_id`, `contract_template_id`, `co_terms_template_id` and the child table `service_type_milestone`
+   (no cancellation period, Q12 B); `service_type.rate_card_id`
    becomes an FK to `rate_card`; `job_schedule_task.payment_milestone_id` becomes an FK to `contract_milestone`;
    `change_order` gains `terms_template_version_id`; CO pricing lines follow the pricing template (markup per cost
    type, fixed or editable, margin %), which area 8's `change_order_line` must carry; the CO approval calls
    `contracts.add_change_order_lines`.
-4. **Area 15 (approved):** `lead.expected_value_revision_id` becomes an FK to `estimate_revision` (already foreseen
-   there); the calls `leads.take_expected_value` (send), `leads.mark_signed` (sign) and the Lost move on decline are
-   as area 15 defined, except `mark_signed`'s name (area 15 says "signing moves the lead"); with Q13 B, two new
-   reason kinds.
+4. **Area 15 (amendment lines written 2026-11-20, sections 1.3 and 7.3):** the wizard creates a lead in the
+   estimate's transaction with the step 2 service type (Q4); `reason_option.kind` gains 'Rate change' and 'Contract
+   wording' (Q13 B). Unchanged: `lead.expected_value_revision_id` becomes an FK to `estimate_revision` (foreseen
+   there); `leads.take_expected_value` (send), `leads.mark_signed` (Mark signed) and the Lost move on decline.
 5. **Area 9:** `material_code` (C129); until it exists, `estimate_cost_line.material_code_id` is a plain integer and
    the Material kind is not offered.
-6. **Area 18 amendment needed (approved area):** the codes of Q19 (102 seeded to 107, or 104 with B), their caps
-   (Sales rep: `estimate.view`, `estimate.send`; Operations: `estimate.view`; Accountant: `estimate.view`; the
-   sensitive ones Admin-only or Controller as area 18 places sensitive codes); the reasons table rows of section 13;
-   `attachment.record_type` gains 'Contract'.
+6. **Area 18 (amendment lines written 2026-11-20, sections 1.2, 2.4 and 3.2):** the five codes of Q19 A (102 to
+   107) with caps, level defaults and templates; the reasons rows of section 13; `attachment.record_type` gains
+   'Contract'.
 7. **Area 14:** the Estimate policy (and its condition "under the margin floor or over authority"), the Contract
    policy for wording changes and for cancellations, reading `sales_authority_limit`; area 14's document type list
    keeps 'Estimate' and 'Contract'.
@@ -982,4 +1042,5 @@ revision (Continue anyway), abandoning an estimate.
 14. **The PDF renderer:** one service (`documents.py` or similar) for preview, download, send and print; the library
     choice and H1 (no UI imports in services) are for the build step, not the schema.
 15. **Batch D mock data:** the data-layer calls in to_ux_research 11:20 PM stay valid as names; `data.signEstimate`
-    becomes `recordSignature` plus `sign` if Q11 A, and `setRepAdjustment` carries a discount amount if Q7 A.
+    becomes `markSigned(id, signedFileId, continueReason, rowVersion)` (Q11; no per-signer call), and
+    `setRepAdjustment` carries a discount amount (Q7 A).

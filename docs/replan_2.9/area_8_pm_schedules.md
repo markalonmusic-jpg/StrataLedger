@@ -97,6 +97,20 @@ Decided by Q4 A (the source, C34, proposed it ON at 7 days with permission `pipe
 card; a plain integer until area 6 adds the `rate_card` tables, then a foreign key in the same baseline pass, like
 open item 4), `row_version`.
 
+Amendment 2026-11-20 (owner, from area 6): `service_type` also holds the estimate and contract defaults (S 11-19
+8:42 PM "service type holds the default payment schedule"; docs/replan_2.9/area_6_estimates_contracts.md section 5.3):
+`contract_template_id` INTEGER NULL REFERENCES `contract_template` (kind Contract), `pricing_template_id` INTEGER NULL
+REFERENCES `pricing_template`, `co_terms_template_id` INTEGER NULL REFERENCES `contract_template` (kind Change order
+terms; the service checks the kind), and the default payment schedule: `default_schedule_type` TEXT NULL CHECK (NULL
+or IN ('Progress billing', 'Milestones', 'Fixed price', 'Time and materials')), `default_deposit_pct` REAL NULL CHECK
+(NULL or 0-100), `default_deposit_cents` INTEGER NULL CHECK (NULL or >= 0; CHECK not both deposit columns set),
+`default_retainage_pct` REAL NULL CHECK (NULL or 0-100), plus the child table `service_type_milestone`
+(`milestone_id` PK, `service_type_id` FK, `sort_order`, `name` NOT NULL, `share_pct` REAL NOT NULL CHECK (> 0 AND <=
+100), `billed_when` TEXT NOT NULL, `row_version`; the service checks deposit + shares = 100). `rate_card_id` is a
+nullable FK to area 6's `rate_card`; NULL falls back to the company rate card (`company_settings.company_rate_card_id`).
+A new estimate copies these defaults and may change them. The cancellation period is not on the service type (area 6
+Q12 B: it is on the contract template version). Audited like the table; edits need `service_type.manage`.
+
 **`service_stage`** (existing): replace `is_closed_stage` by `stage_role` TEXT NOT NULL DEFAULT 'Normal' CHECK IN
 ('Normal', 'Contract signed', 'Complete', 'Closed'); add `target_days` INTEGER CHECK (NULL or >= 0), `can_skip`
 INTEGER NOT NULL DEFAULT 0, `guidance` TEXT CHECK (NULL or length <= 500), `row_version`. A job's stage must be a
@@ -373,6 +387,11 @@ ordinary audited `company_settings` change (not a control).
   row_version)`. Same shape CHECKs as the template item; CHECK at most one of `crew_id`, `vendor_id` is set.
   Milestones use `forecast_finish` and `actual_finish` only. **No planned columns on the task:** planned dates are
   the lines of the newest baseline. Before the baseline is set, planned equals forecast.
+
+  Amendment 2026-11-20 (owner, from area 6): `payment_milestone_id` is INTEGER NULL REFERENCES area 6's
+  `contract_milestone` (the job's payment-schedule milestone copied at Mark signed;
+  docs/replan_2.9/area_6_estimates_contracts.md section 5.3); the service checks the milestone belongs to the
+  task's job's contract.
   The stage tag is copied from the template item by stage name into the job's service type (NULL when the job's
   type has no stage of that name).
 - `job_schedule_baseline(baseline_id PK, schedule_id FK, version_no INTEGER NOT NULL, set_at, set_by,
@@ -485,6 +504,18 @@ series; drafts may be deleted). Price and cost totals are sums of lines, never s
 
 **`change_order_line`** (existing): add `markup_pct` REAL (an entry aid; `revenue_change_cents` is the stored
 price, rounded by the company rounding rule) and `row_version`.
+
+Amendment 2026-11-20 (owner, from area 6; S 11-19 9:44 PM, 10:10 PM and 10:22 PM): the terms template and pricing
+on change orders. `change_order` gains `terms_template_version_id` INTEGER NULL REFERENCES area 6's
+`contract_template_version` (kind Change order terms), defaulting from `service_type.co_terms_template_id`; the PM
+picks it on the pricing screen and the sales rep may change it until Submitted; a published version is fixed, so a
+sent CO keeps its terms. `change_order` also gains `pricing_template_id` INTEGER NULL REFERENCES `pricing_template`
+(from the service type when priced). On `change_order_line`, `markup_pct` comes from that template by the line's cost
+code's cost type (area 7); a fixed (non-editable) markup refuses a different `markup_pct` ("This markup is set by the
+<name> pricing template."); Margin % is derived, never stored. Customer approval (section 5.3 item 1) calls area 6's
+`contracts.add_change_order_lines(context, contract_id, change_order_id, lines)` in the same transaction, which adds
+the SOV lines; `change_order_line.sov_line_id` names the SOV line it raised (docs/replan_2.9/area_6_estimates_contracts.md
+sections 3.3 and 10.2).
 
 **`field_event`** (new): `field_event_id` PK, `event_number` TEXT NOT NULL UNIQUE (FE-0008), `project_id` NOT NULL FK,
 `raised_at`, `raised_by`, `occurred_on`, `note` NOT NULL, `customer_signed_name` TEXT, `status` CHECK IN ('Open',

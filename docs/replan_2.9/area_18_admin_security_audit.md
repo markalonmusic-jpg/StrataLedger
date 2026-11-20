@@ -212,6 +212,17 @@ removing a comment (`comment.removed_reason`), and changing any area 15 CRM sett
 `auto_lost_warn_days`, `case_auto_close_days`, `service_job_type_id`). A reason picked from the Reasons list is
 stored as `reason_id` with its `reason_label` beside it (docs/replan_2.9/area_15_crm.md section 7.3).
 
+Amendment 2026-11-20 (owner, from area 6): area 6 reasons added to this table: send an estimate back ("Send back";
+`estimate_revision_history.reason_id` and `reason_label`), decline a sent estimate ("Lost lead";
+`estimate_revision.decision_reason_id` and `decision_reason_label`), abandon an unsent estimate (a note of at least 10
+characters in the history row), Mark signed on an expired, unsent or unapproved estimate ("Continue anyway"), cancel a
+contract ("Job cancel" plus the date received; `contract.cancel_reason_id` and `cancel_reason_label`), a T&M rate typed
+on an estimate ("Rate change"; `estimate_rate_line.change_reason_id`), a contract wording override ("Contract
+wording"; `estimate_section_choice.override_reason_id`), and changing an area 6 control or setting
+(`allow_estimate_rate_change`, `tm_rate_source`, `company_rate_card_id`, the margin floor and target, the Estimate and
+Contract approval policies). A reason from the Reasons list is stored as `reason_id` with its `reason_label`; a note
+is needed only with Other (at least 10 characters) (docs/replan_2.9/area_6_estimates_contracts.md section 13).
+
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
 **Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
@@ -584,6 +595,27 @@ default sits inside its role's cap and holds no sensitive code; View only gains 
 both read codes; every template is unchanged and so still inside its roles' caps
 (docs/replan_2.9/area_15_crm.md section 7.3).
 
+Amendment 2026-11-20 (owner, from area 6 Q19 A): five new codes, module Projects / CRM: `estimate.view` (the read
+code STOP C found missing), `estimate.send` (send, decline and revise an estimate) and `sales.templates.manage`
+(pricing templates, cost templates, contract templates and clauses, rate cards, branding), none sensitive; and
+`contract.sign` (Mark signed: creates the customer, job, budget and contract) and `contract.cancel`, both sensitive.
+102 seeded codes become 107 (102 + 5). The existing `estimate.create`, `estimate.approve` and `contract.approve` keep
+their codes and meaning. Caps (2.4.1): the Sales rep cap gains all five (27 to 32 codes); the Operations cap gains
+`estimate.view` (42 to 43); the Accountant cap gains `estimate.view` (75 to 76). Level defaults (2.4.2, cumulative):
+Sales rep · View only adds `estimate.view`; Sales rep · Standard adds `estimate.send`; Sales rep · Manager adds
+`sales.templates.manage`; Operations · View only adds `estimate.view`; Accountant · View only adds `estimate.view`.
+`contract.sign` and `contract.cancel` are in no level (sensitive). Shipped templates (2.4.3): the Sales manager
+template adds `estimate.view`, `estimate.send` and `sales.templates.manage` in its non-sensitive column and
+`contract.sign` and `contract.cancel` in its sensitive column; the Sales rep template adds `estimate.view` and
+`estimate.send` in its non-sensitive column and `contract.sign` in its sensitive column (it had none); the Project
+manager, Estimator and Controller templates add `estimate.view` (the two union templates inherit it). Admin and the
+Master hold all five. `AGENT_ALLOWED` adds `estimate.view` only. Placement check re-run in words: every new code is in
+the Sales rep cap, so all 107 seeded codes are placed (102 with areas 12, 10, 17, 8 and 15); every level default sits
+inside its role's cap and holds no sensitive code; View only gains only `estimate.view`, a read code; every template
+sits inside the union of its roles' caps (the Sales rep and Sales manager additions in the Sales rep cap, the Project
+manager and Estimator ones in the Operations cap, the Controller's in the Accountant cap)
+(docs/replan_2.9/area_6_estimates_contracts.md section 12).
+
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
 | Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
@@ -756,6 +788,12 @@ for uploaded files.
   for example "This bill's period is closed, so its attachments can't be removed. Reopen the period first."
   Whether area 13's area locks (Sales or Purchases) also block removal is open item O6.
 - The Agent has no attachment reads or writes in v1; Phase 6 decides.
+
+Amendment 2026-11-20 (owner, from area 6): `attachment.record_type` CHECK gains 'Contract' (files added to a signed
+contract later). The sent PDF and the signed document of an estimate are 'Estimate' rows (record id the estimate),
+linked by FK from `estimate_revision.sent_attachment_id` and `contract.signed_attachment_id`; the signed document is
+required for Mark signed. The company logo is not an attachment (`company_branding.logo_storage_key`, through
+`storage.py`) (docs/replan_2.9/area_6_estimates_contracts.md sections 7.3 and 12).
 
 ### 3.3 How it lands in the baselines
 
