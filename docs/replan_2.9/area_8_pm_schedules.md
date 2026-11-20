@@ -285,6 +285,8 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 | Warranty and service jobs | A 11-18 | none | `project.billing_type` TEXT NOT NULL DEFAULT 'Billable' CHECK IN ('Billable', 'Warranty'); `warranty_for_job_id` INTEGER REFERENCES project; `source_case_id` INTEGER (FK added by area 15, which defines `service_case`; the link table `case_job(case_id, job_id)` is area 15's). Editable until the first cost posts (service rule); a Warranty job cannot be invoiced; its costs roll up to the original job's warranty line (area 7/10 job cost) |
 | PM prompts (stage move, bill next milestone) | S 11-17 5:35 and 5:46 PM | none | `pm_prompt` below |
 
+Corrected 2026-11-20 (consistency scan F4): The case link is `project.source_case_id` (FK to area 15's `service_case`); there is no `case_job` table. Job-cancel and delay reasons use area 15's `reason_option`, kinds 'Job cancel' and 'Delay'; `job_cancel_reason` and `delay_reason` are not built.
+
 **`project_hold_history`** (new, insert-only; owner Q6 C): `hold_history_id` PK, `project_id` NOT NULL FK,
 `from_on_hold` INTEGER NOT NULL, `to_on_hold` INTEGER NOT NULL (both 0/1; CHECK `from_on_hold <> to_on_hold`),
 `reason` TEXT NOT NULL CHECK (length 1-1000), `changed_by` INTEGER NOT NULL, `changed_at` TEXT NOT NULL (UTC ISO 8601
@@ -756,6 +758,8 @@ cancelling; `change_order.create` and `change_order.approve` keep their meaning.
 | `job_forecast_line` | yes | no, token is the revision number (Q20) |
 | `job_forecast_revision`, `job_forecast_revision_line` | insert-only | no |
 | `calendar_item_notify` | insert and delete | no |
+
+Corrected 2026-11-20 (consistency scan F4): Replace `job_cancel_reason` and `delay_reason` in this matrix with area 15's editable `reason_option` (kinds 'Job cancel' and 'Delay'), which has `row_version`; neither separate reason table is built. The job's case link is `project.source_case_id`, with no `case_job` table.
 
 Every new table gets audit triggers (area 18). Reasons required (area 18's table gains these rows, amendment 2026-11-19): put a job on hold or take it off
 (`project_hold_history.reason`), reopen a closed

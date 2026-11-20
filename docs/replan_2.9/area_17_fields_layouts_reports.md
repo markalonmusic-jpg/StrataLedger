@@ -446,6 +446,8 @@ through `storage.py` (H3).
 - **`report_delivery`**: `delivery_id`, `run_id`, `recipient_user_id`, `delivered_at`, `read_at` (NULL = unread;
   this is the in-app notification, Q19 A). The outbox read re-checks that the recipient can still run the report.
 
+Corrected 2026-11-20 (consistency scan F6): Integrity triggers permit `report_schedule_run` one completion UPDATE only: `finished_at` changes from NULL to non-NULL and only `finished_at`, `status`, `message`, `file_storage_key`, `file_name` and `size_bytes` may change in that update; all later UPDATEs and every DELETE are refused. `report_delivery` permits one UPDATE changing only `read_at` from NULL to non-NULL; all later UPDATEs and every DELETE are refused.
+
 ### 5.4 Service rules
 
 `report_schedules.py`: `list`, `get`, `save` (authorize `report.schedule` plus the run permissions), `delete`,
@@ -463,6 +465,8 @@ per missed day; a run uses the owner's permissions (an owner who lost `money.vie
 recipient who cannot run the report is refused at save; a recipient reads only their own deliveries; two app windows
 cannot fire the same due run twice (the `last_fired_*` update is in the same transaction as the run row); a combined
 saved report cannot be scheduled; the Agent cannot save, run or read a schedule.
+
+Corrected 2026-11-20 (consistency scan F6): Tests to write later: the one completion UPDATE on `report_schedule_run` and the one NULL-to-value `report_delivery.read_at` UPDATE succeed; a second UPDATE and DELETE on each table are refused.
 
 ---
 
@@ -587,6 +591,8 @@ deactivation is refused while a formula or KPI uses the measure. Area 13 Q19 A: 
   through `storage.py`), `row_count`, `value_count`, `imported_by`, `imported_at`. A rejected file stores nothing
   (all-or-nothing, with the error list returned, never saved).
 
+Corrected 2026-11-20 (consistency scan F6): `nonfinancial_import` is insert-only; integrity triggers `nonfinancial_import_no_update` and `nonfinancial_import_no_delete` refuse every UPDATE and DELETE.
+
 ### 7.4 Rules
 
 - **Typed save:** authorize `report.design`; refuse a closed period (`PeriodClosedError`, the contracts' sentence);
@@ -609,6 +615,8 @@ stored until the close and then equals what the live computation gave on the clo
 move a closed period's derived value; `typed` overrides `derived`; periods 13 and 14 refused; a measure used by a
 formula or KPI cannot be deleted or deactivated; the rule cannot use a money field without `money.view`; the Agent
 cannot define or enter values.
+
+Corrected 2026-11-20 (consistency scan F6): Tests to write later: UPDATE and DELETE of `nonfinancial_import` are refused by their integrity triggers.
 
 ---
 
@@ -797,6 +805,7 @@ contracts section 12 item 14 states the owner's rows for `money.view` and leaves
   pass the reason through `tx.py`; no new action needs a required reason (no new control is added).
 - Integrity backstops here guard only closed-record data: `kpi_value` insert-only. Everything else (read-only
   built-ins, one-group-per-account is a key; the rest are service rules, H4).
+Corrected 2026-11-20 (consistency scan F6): Integrity triggers also protect event rows: `nonfinancial_import_no_update` and `nonfinancial_import_no_delete` refuse UPDATE and DELETE, respectively; `report_schedule_run_no_delete` refuses DELETE and `report_schedule_run_complete_once` allows only its single completion UPDATE defined in section 5.3; `report_delivery_no_delete` refuses DELETE and `report_delivery_read_once` allows only its single NULL-to-value `read_at` UPDATE defined in section 5.3.
 - Controls: none added. The settings in 9.4 are permissive defaults, not controls.
 
 ---

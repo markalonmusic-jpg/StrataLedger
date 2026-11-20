@@ -197,6 +197,8 @@ report reads it; the others can be renamed and hidden; a used source is never de
 **`lead_number_seq`** (new): `(seq INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER NOT NULL UNIQUE FK lead)`,
 the existing sequence-table pattern. Unique, gaps allowed (Q20).
 
+Corrected 2026-11-20 (consistency scan F5): This is a per-lead counter advanced by `sequences.py` inside the lead-creation transaction; no other code updates it, `lead_number_seq_no_delete` refuses deletion, and it has no `row_version`.
+
 ### 1.4 Lead stages and `lead_stage_history`
 
 **Stage roles.** Area 8's `service_stage.stage_role` CHECK gains `'Lost'` (area 8 handed this over): each service
@@ -281,6 +283,7 @@ points to (open item 2).
 
 - `lead`: CHECKs (billing columns NULL when same as site; lost columns only when Lost; `project_id` only when Won;
   auto-lost only when Lost; `closed_on` with outcome); `lead_number` from the sequence, never reused.
+Corrected 2026-11-20 (consistency scan F5): Tests to write later: two leads created in a row receive consecutive numbers; deleting a `lead_number_seq` row is refused.
 - Service type lock: changing it with no estimate writes a 'Service type changed' row; with one estimate it is
   refused with the exact sentence.
 - Expected value: editable before a sent revision; after `take_expected_value` an edit is refused, the value equals
@@ -497,6 +500,8 @@ first row), to_status TEXT NOT NULL, changed_at TEXT NOT NULL, changed_by INTEGE
 
 **`case_number_seq`** (new), the sequence pattern.
 
+Corrected 2026-11-20 (consistency scan F5): This is a per-case counter advanced by `sequences.py` inside the case-creation transaction; no other code updates it, `case_number_seq_no_delete` refuses deletion, and it has no `row_version`.
+
 **Settings:** `company_settings.case_auto_close_days` INTEGER NOT NULL DEFAULT 7 CHECK (0-90; 0 = off; Q15).
 `company_settings.service_job_type_id` INTEGER FK service_type, the default for "Create service job" (Q14 A;
 seeded to a shipped "Service" type with its own short delivery stages).
@@ -556,6 +561,7 @@ seeded to a shipped "Service" type with its own short delivery stages).
   job list (read by `source_case_id`) shows both; a case with no owner is refused (NOT NULL and the service
   sentence); the Resolve prompt appears only when every job of the case is complete; days to resolve includes
   waiting time.
+Corrected 2026-11-20 (consistency scan F5): Tests to write later: two cases created in a row receive consecutive numbers; deleting a `case_number_seq` row is refused.
 
 ---
 
@@ -730,11 +736,15 @@ Corrected 2026-11-20 (owner 12:50 AM, area 6 Q13 B): a short note is required on
 | `lead_number_seq`, `case_number_seq` | insert-only sequences | no |
 | `company_settings` (new columns) | yes | area 21 adds it to the row |
 
+Corrected 2026-11-20 (consistency scan F5): `lead_number_seq` and `case_number_seq` are counters, advanced only by `sequences.py` inside their record's creation transaction; `lead_number_seq_no_delete` and `case_number_seq_no_delete` refuse row deletion, and neither table has a `row_version`.
+
 Every new table gets audit triggers (area 18), including the history and link tables (insert only). None is derived
 or a per-user display preference, so area 18's exempt list is unchanged. Integrity triggers in this area guard
 insert-only rows only (`lead_stage_history`, `case_status_history`, `comment_mention`); stage rules, case
 transitions, assignment and every workflow rule live in services (H4). Every write calls `authorize` before its write
 transaction (rule 10); every date and time comes from the context (H2).
+
+Corrected 2026-11-20 (consistency scan F5): `lead_number_seq_no_delete` and `case_number_seq_no_delete` also refuse DELETE; the sequence counters are advanced only by `sequences.py` inside their record-creation transactions, not by user-facing edits.
 
 ---
 
