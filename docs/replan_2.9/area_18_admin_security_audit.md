@@ -190,6 +190,11 @@ undo a posted feed line, undo a reconciliation (`bank_reconciliation_event.reaso
 (`void_reason`); a reconciliation set to Reopened by a period reopen carries the reopen's reason
 (docs/replan_2.9/area_12_bank_and_reconciliation.md section 7).
 
+Amendment 2026-11-19 (owner, area 10 Q10 A): area 10 reasons added to this table: stop a prepaid schedule and change a
+schedule (`deferral.stop_reason`; the change through the audit row), a reclass (`reclass_line.reason`, on every pair),
+remove a "Related to" link, and changing the `allow_cross_type_reclass` control
+(docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 7).
+
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
 **Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
@@ -241,6 +246,10 @@ sum of posted `journal_line` rows written only by `ledger.py` (docs/replan_2.9/a
 
 Amendment 2026-11-19 (owner, area 12 Q10 A): `deposit_sequence` (company) is added to this derived list; a counter,
 each number is on an audited `deposit` row (docs/replan_2.9/area_12_bank_and_reconciliation.md section 4.3).
+
+Amendment 2026-11-19 (owner, area 10 F13): `dimension_set` and `dimension_set_member` (company) are added to this
+derived list; they are the dimension combinations of posted lines, written only by `ledger.py` with
+`ledger_period_balance` (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 4).
 
 Not business tables, and outside the owner's two categories, so they form a third exempt category
 (Q24 A; C8 closed), listed by name in the same schema test:
@@ -480,6 +489,13 @@ defaults (2.4.2), revised 2026-11-19 by the owner: Accountant · Standard adds b
 by the owner: the Controller template adds `bank.unreconcile` to its sensitive codes; Admin and the Master keep it;
 anyone else only by that template or an Add override with a reason. None in AGENT_ALLOWED
 (docs/replan_2.9/area_12_bank_and_reconciliation.md section 3.5).
+
+Amendment 2026-11-19 (owner, area 10 Q10 A): two new codes, module Ledger, both not sensitive: `deferral.manage` and
+`je.reclass`, in the Accountant cap (2.4.1, 62 to 64 codes with area 12's three). Level defaults (2.4.2): Accountant ·
+Standard adds `deferral.manage`; `je.reclass` goes at the level that holds `je.post`, Accountant · Manager. No
+shipped template changes. Neither in AGENT_ALLOWED. Placement check re-run in words: every code still placed; the
+levels stay inside the cap with no sensitive code; View only unchanged; every template inside its roles' caps
+(docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 7.1).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 

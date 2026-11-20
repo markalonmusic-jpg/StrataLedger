@@ -1,8 +1,10 @@
 # Step 2.9 schema replan, area 10: prepaid, deferrals, reclass, period balance summary
 
-Status: **Drafted 2026-11-19** for the owner. Docs only: nothing here changes code, a baseline, a migration or a
-test. Nothing is built until the owner marks area 10 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
-Every table, column, code and check below is PROPOSED until then. Choices for the owner are in section 9.
+Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, 3f79eb3; owner answers Q1-Q19 2026-11-19,
+all A, Q2 and Q10 with the owner's detail, folded in below; section 9). Docs only: nothing here changes code, a
+baseline, a migration or a test. Nothing is built until the owner marks area 10 owner-approved in
+`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
+questions are open. The amendments to areas 13 and 18 are dated lines in those docs (section 10).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 10 and the source keys.
@@ -34,7 +36,8 @@ Sources read (only these, searched by date, title or code):
 | 3 | Deferral close checks | `deferral_entries_posted` reads the schedule lines due in the period; `deferral_tie_out` compares the subledger's open balance with the GL of the deferral accounts at period end; warn by default (L2) | company |
 | 4 | Period balance summary | `ledger_period_balance` plus `dimension_set` / `dimension_set_member`, written only in `ledger._seal_and_post`; tie-out check and rebuild tool (area 13 section 6, Q21 A, Q22 A) | company |
 | 5 | Lock checks | Every entry here calls `period_locks.check_open` with the Journal entries area (area 13 Q5 A); a bill's own posting and its void use Bills and vendor credits | company |
-| 6 | Journal entries and Clearing ID | Built in 2.5 (reverse-only, R47, R57, R60); this area adds only the informational "Related to" link | company |
+| 6 | Journal entries and Clearing ID | Built in 2.5 (reverse-only, R47, R57, R60); this area adds only the informational "Related to" link (Q18 A) | company |
+| 7 | Permissions | `deferral.manage` at Accountant · Standard; `je.reclass` at Accountant · Manager (the level that holds `je.post`); neither in AGENT_ALLOWED (Q10 A; area 18 amended) | company |
 
 Master file: no change.
 
@@ -98,9 +101,9 @@ Master file: no change.
 
 | Column | Change |
 |--------|--------|
-| `kind`, `advance_type` | kept; v1 builds Expense / Billed in advance from a bill line (Q1) |
+| `kind`, `advance_type` | kept; v1 builds Expense / Billed in advance from a bill line (Q1 A) |
 | `invoice_id`, `invoice_line_id` | NOT NULL for a bill-line schedule (CHECK by kind and advance type); partial unique index (`invoice_line_id`) WHERE `status` IN ('Active', 'Finished') (one live schedule per line) |
-| `method` | CHECK IN ('Spread', 'One date') (the 11-18 dialog; replaces Straight-line / Manual, Q4) |
+| `method` | CHECK IN ('Spread', 'One date') (the 11-18 dialog; replaces Straight-line / Manual, Q4 A) |
 | `months` | INTEGER, CHECK (`method` = 'Spread') = (`months` BETWEEN 1 AND 120) |
 | `start_date` | the first day of the start month; `end_date` the last entry's date |
 | `proration` | dropped (Q4 A) |
@@ -145,8 +148,10 @@ told apart by `deferral.prepaid_entry_id`.
 
 ### 1.4 How it posts
 
-- **Defer on an unposted bill (Q2 A):** the bill's own posting sends the line to the prepaid account (with the line's
-  job and dimensions dropped on the prepaid line, kept on the schedule). No separate entry.
+- **Defer on an unposted bill (Q2 A, owner's words):** an unposted bill has no GL impact, so marking a line Defer only
+  sets up the schedule. When the bill posts, that line posts straight to the prepaid account: one entry, no expense
+  first. The line's job and dimensions stay on the schedule (and reach the GL on each recognition), not on the
+  prepaid line.
 - **Defer on a posted bill:** a separate entry, Dr prepaid / Cr the line's expense account carrying the line's job,
   cost code and dimensions (so job cost drops by the deferred amount), dated the bill date when its period is open
   and not locked, else the first day of the current open period (Q3 A).
@@ -163,8 +168,8 @@ told apart by `deferral.prepaid_entry_id`.
   Origin System, posted through `ledger.py` with no approval (Q7 A; open question 7 in next_step.md).
 - **Recognize the rest now:** posts the remaining Scheduled lines as one entry dated `context.today` (lines become
   Posted with that date; the schedule Finished).
-- **Stop:** no entry; Scheduled lines become Replaced; the remainder stays in prepaid; reason required (C1 conflict,
-  F5).
+- **Stop:** no entry; Scheduled lines become Replaced; the remainder stays in prepaid; reason required (Q19 A: a
+  refund is a vendor credit through its own service).
 - **Void the bill (1:21 AM):** one transaction: void the bill's entry (void rules), void every Posted or Caught up
   recognition entry and the prepaid entry (`ledger.void_document_entry`, R41: never before the original; an open
   period; R48: refused, never moved), mark those lines Reversed, the Scheduled ones Replaced, the schedule Stopped
@@ -275,7 +280,7 @@ the Controls page, audited with a reason (Q15 A).
 - Each pair copies the original line's contact, job, cost code and dimensions onto the In line except what is being
   changed; the Out line mirrors the original exactly.
 - Posting goes through `ledger.py` like a manual entry (approval rules for manual entries apply, Q16 A); permission
-  `je.reclass` (Q10).
+  `je.reclass` (Q10 A, section 7.1).
 - Reversing a reclass entry is an ordinary reversal (`ledger.reverse_entry`); the restored view follows from the
   reversal, and the line may be reclassed again.
 
@@ -404,54 +409,96 @@ Refused means refused, never moved (R48), except the runner's documented catch-u
 
 - Audit triggers on `deferral`, `deferral_schedule_line`, `deferral_dimension`, `reclass_line`,
   `journal_line_related` (area 18 section 1). The three summary tables are exempt as derived.
-- Reasons required: stop a schedule, change a schedule (Q8), reclass (on every pair), remove a Related to link, the
-  cross-type control change. Area 18's reasons table needs these rows (F13).
+- Reasons required: stop a schedule, change a schedule (Q8 A), reclass (on every pair), remove a Related to link, the
+  cross-type control change. Area 18's reasons table lists them through its dated amendment (Q10 A, F13).
 - Integrity backstops here guard only posted or insert-only data (posted schedule lines, `reclass_line`, the
   one-document-per-entry rule). Schedule states, amounts summing to the line, the runner's rules and the reclass
   account rules are service rules with tests (H4).
 
----
 
-## 8. Conflicts with decisions (flagged, not resolved)
+### 7.1 Permissions (Q10 A, with the owner's change)
 
-- **F1 Blocked or caught up.** to_planning 11-18 item 3: an entry dated in a closed period is Blocked on the Close
-  checklist; "reopen or move the date". S 11-19 12:45 AM: amounts in a closed period are caught up in the first open
-  period and marked caught up. Q5.
-- **F2 Proration.** C5: full-month proration by default with a 15th cut-off, daily per deferral; the baseline has
-  Full month / Half month / Daily. The 11-18 dialog only spreads evenly over N months or posts on one date. Q4.
-- **F3 Vocabulary.** The baseline's method (Straight-line / Manual) and status (Draft / Fully amortized / Cancelled)
-  vs the decided Spread / One date and Active / Finished / Stopped. This draft follows the decision.
-- **F4 Paid in advance.** The design decision: the payment comes first and attaching the bill later creates no new
-  ledger entry. The 11-18 flow starts from a bill. This draft builds the bill flow and keeps `payment_id` for later
-  (Q1).
-- **F5 Early cancellation.** C1: recognize the remainder now, or reclass it to a refund receivable or payable.
-  S 11-18: Stop leaves the remainder in prepaid; Recognize the rest is separate. Q19.
-- **F6 "An Admin allows it".** 12:40 AM: cross-type reclass when "an Admin setting allows it"; CLAUDE.md section 0:
-  an optional check is a control, OFF or permissive by default, on the Controls page. Here the permissive
-  direction is unclear (allowing cross-type is the looser one). Q15.
-- **F7 Which accounts refuse reclass.** 12:45 AM names "clearing accounts (AR, AP; RP2)" and bank and card; R60 lets
-  other accounts track clearing groups (and area 12 Q11 A marks undeposited funds). Q12.
-- **F8 Bill line job.** 11-18: the schedule keeps "the line's job"; `invoice_line` has no `project_id` (the job is on
-  the bill header). Area 3 or 5 must add a line job; until then the schedule takes the header's job.
-- **F9 Prepaid is a controlled account.** The construction chart gives 1400 control type Deferral (A5): manual JEs
-  to it are flagged or refused by `allow_manual_control_je`. System deferral entries are not manual. Reclass of it:
-  Q17.
-- **F10 System posting.** Open question 7 (next_step.md): how System-origin entries pass `post_journal_entry`
-  (approvals, date warnings). The runner depends on it. Q7.
-- **F11 Area 13's tie-out wording.** Area 13 section 2.3 names "1400 Prepaid and the unearned revenue account" by
-  number; section 3 here finds them by flag and role (area 13 F11 already says by role).
-- **F12 Contracts item 13.** Contracts section 12 item 13 lists "the original's name, date, memo, item and job, and the
-  reason" on reclass lines; this draft adds the tax code (12:40 AM item 4: sales tax follows the original's tax code)
-  and the root line for chains.
-- **F13 Area 18 amendments.** Area 18's (owner-approved) seed tables, reasons table and exempt list lack
-  `deferral.manage`, `je.reclass`, the reasons in section 7, and `dimension_set` / `dimension_set_member` (derived).
-  Adding them amends an approved area. Q10.
+| Code | Module | Sensitive | Used by |
+|------|--------|-----------|---------|
+| `deferral.manage` | Ledger | no | defer a line, change a schedule, recognize the rest, stop, run due entries (the runner needs a signed-in user who holds it, Q7 A) |
+| `je.reclass` | Ledger | no | post a reclass entry; reversing one uses `je.reverse` as any entry |
+
+Placement in area 18's seed tables (owner 2026-11-19; area 18 carries the dated amendment):
+- **Caps (2.4.1):** both in the Accountant cap only (62 → 64 codes with area 12's three).
+- **Level defaults (2.4.2):** Accountant · Standard adds `deferral.manage`. `je.reclass` goes at the level that holds
+  `je.post`, which is **Accountant · Manager** (area 18 2.4.2: Manager adds `je.post`, `je.reverse`, ...). So in
+  practice it is Manager; it is tied to `je.post`'s level, so if that level moves, `je.reclass` moves with it.
+- **Templates:** no shipped template changes. The Staff accountant and Controller templates hold `je.post` by name but
+  not `je.reclass`; a user on them below Manager gets `je.reclass` only by an Add override (see section 10).
+- **AGENT_ALLOWED:** neither.
+- **Area 18 section 2.4 placement check, re-run in words (2026-11-19):** every code is still placed (both new codes are
+  in the Accountant cap; area 12's three and the rest are unchanged); Accountant · Standard and Manager's cumulative
+  defaults stay inside the Accountant cap and hold no sensitive code (both new codes are not sensitive); View only
+  still holds read codes only; every template still sits inside the union of its roles' caps. No rule fails.
 
 ---
 
-## 9. Questions for the owner
+## 8. Conflicts with decisions (all resolved by the owner's answers, 2026-11-19)
 
-Recommended option first.
+- **F1 Blocked or caught up.** to_planning 11-18 item 3 (Blocked; reopen or move the date) vs S 11-19 12:45 AM (caught
+  up in the first open period). **Resolved by Q5 A:** closed-period amounts are caught up automatically and marked
+  Caught up; Blocked is kept only for an open but locked period (Q6 A).
+- **F2 Proration.** C5 and the baseline's Full month / Half month / Daily vs the 11-18 dialog. **Resolved by Q4 A:**
+  monthly entries at each period end (Spread or One date); `proration` dropped.
+- **F3 Vocabulary.** Baseline method and status values vs the decided ones. **Resolved as drafted (no question):**
+  Spread / One date and Active / Finished / Stopped.
+- **F4 Paid in advance.** The design decision's payment-first flow vs the 11-18 bill flow. **Resolved by Q1 A:** bill
+  flow now; `payment_id` and revenue kept for later.
+- **F5 Early cancellation.** C1's refund-receivable option vs 11-18's Stop. **Resolved by Q19 A:** Stop leaves the
+  remainder in prepaid; a refund is a vendor credit.
+- **F6 "An Admin allows it".** **Resolved by Q15 A:** a control `allow_cross_type_reclass`, OFF by default, on the
+  Controls page, changed with a reason.
+- **F7 Which accounts refuse reclass.** **Resolved by Q12 A and Q17 A:** every `track_clearing_id` account, every
+  bank and card account, and the deferral accounts.
+- **F8 Bill line job.** **Resolved as drafted (no question):** area 3 or 5 adds a line job; until then the schedule
+  takes the header's job (section 10).
+- **F9 Prepaid is a controlled account.** **Resolved by Q17 A:** deferral accounts refuse reclass; system deferral
+  entries are not manual.
+- **F10 System posting.** **Resolved by Q7 A:** the runner posts while the app is open, origin System, under the
+  signed-in user (who must hold `deferral.manage`), with no approval and no date warnings. This also answers open
+  question 7 for deferral entries.
+- **F11 Area 13's tie-out wording.** **Resolved (owner 2026-11-19):** area 13 section 2.3 carries a dated amendment
+  line: `deferral_tie_out` finds the prepaid and unearned revenue accounts by flag and role, not by number.
+- **F12 Contracts item 13.** **Resolved as drafted (no question):** `reclass_line` also stores the tax code and the
+  root line; the contracts doc is unchanged.
+- **F13 Area 18 amendments.** **Resolved by Q10 A and the owner's amendment (2026-11-19):** area 18 carries dated
+  amendment lines for the two codes (section 7.1), the reasons (section 7) and `dimension_set` /
+  `dimension_set_member` on the derived exempt list.
+
+---
+
+## 9. Questions for the owner: answers recorded (2026-11-19)
+
+All nineteen answered A, one by one; Q2 and Q10 with the owner's detail. The options as asked are kept in 9.1.
+
+| Q | Answer | Where it lands |
+|---|--------|----------------|
+| Q1 Revenue and paid in advance | schema keeps both; expense schedules from bill lines only now | 1.3, 1.6 |
+| Q2 Unposted bill | **A, owner's words:** no GL impact until posting; Defer only sets up the schedule; at posting the line goes straight to prepaid (one entry, no expense first) | 1.4 |
+| Q3 Prepaid entry date | bill date if open and not locked, else first day of the current open period | 1.4 |
+| Q4 Proration | monthly only; `proration` dropped | 1.3 |
+| Q5 Closed period | caught up automatically, marked Caught up | 1.4, 3 |
+| Q6 Locked period | Blocked and retried; caught up once closed | 1.4, 5 |
+| Q7 Runner | while the app is open, origin System, no approval, needs `deferral.manage` | 1.4 |
+| Q8 Approval and reasons | no approval type; reasons for Change and Stop | 7 |
+| Q9 Rule 8 edit | refused while a schedule is Active | 1.4 |
+| Q10 Permissions | **A with the owner's change:** `deferral.manage` at Accountant · Standard; `je.reclass` at the level holding `je.post` (Accountant · Manager); neither in AGENT_ALLOWED | 7.1 |
+| Q11 Reclass details | insert-only `reclass_line` | 2.3 |
+| Q12 Refused accounts | tracked, bank, card and deferral accounts | 2.4 |
+| Q13 Locked original period | refused with the lock sentence | 2.4 |
+| Q14 Current open period | the period holding today if open, else the earliest open after the original | 2.4 |
+| Q15 Cross-type | control, OFF by default | 2.3 |
+| Q16 Reclass approval | manual-entry approval rules apply | 2.4 |
+| Q17 Deferral accounts | refuse reclass | 2.4 |
+| Q18 Related to | `journal_line_related` now | 6 |
+| Q19 Early cancellation | Stop leaves the remainder; refund by vendor credit | 1.4 |
+
+### 9.1 The questions as asked
 
 **Q1. Revenue deferrals and Paid in advance in this pass.** (F4)
 - A. The schema keeps both kinds and `payment_id`; the service builds expense schedules from bill lines only; revenue
@@ -546,8 +593,10 @@ Recommended option first.
 - Area 3 or 5: a job per bill line (F8); bill void service calls `deferrals.void_for_bill` in its transaction.
 - Area 7 or 8: job cost reads GL lines carrying a job (deferred cost as recognized).
 - Area 9: an item table for `reclass_line.original_item_ref`.
-- Area 13: the two deferral checks' text points here; area 13 section 2.3's account numbers are examples.
+- Area 13: the two deferral checks' text points here; section 2.3 carries the dated by-role amendment (F11).
 - Area 17: reads `ledger_period_balance`, `dimension_set` and `reclass_line` for "As reclassed".
-- Area 18: the permission rows and placement (Q10), the reasons rows, the derived exempt rows (F13).
+- Area 18: the permission rows and placement, the reasons rows and the derived exempt rows are dated amendments
+  there (Q10 A, F13). Whether the Staff accountant and Controller templates should also name `je.reclass` beside
+  `je.post` is not decided (no template change was asked).
 - Open question 7 (System origin in `post_journal_entry`) is decided by Q7 or in the posting work.
 - Area 11 reuses the schedule grid for fixed assets.

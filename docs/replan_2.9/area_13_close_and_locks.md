@@ -316,6 +316,10 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 | `completed_job_review` (keep open or close out), per Completed job | PM estimates | C56 | asked | area 8 |
 | `kpi_freeze_note`: KPIs whose value will fail at close (stored as null with a note; never blocks) | Close | contracts 2.7 | asked | area 17 |
 
+Amendment 2026-11-19 (owner, area 10 F11): `deferral_tie_out` finds the prepaid and unearned revenue accounts by flag
+(`account.is_deferral_account`) and role (`company_settings.prepaid_expenses_acct_id`, `unearned_revenue_acct_id`),
+not by number; "1400" in the row above is an example (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 3).
+
 Codes not yet buildable are seeded only when their service ships (each adds its seed row and its CHECK value in
 the same baseline edit as long as the baseline is unreleased; a numbered migration after release). The C56 "role
 tasks" are shipped template rows of kind System when a check backs them, otherwise shipped Custom rows, owners by
