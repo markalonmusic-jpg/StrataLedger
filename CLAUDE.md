@@ -154,11 +154,11 @@ add-ons. Items marked PROPOSED in a design doc are not decided: do not build the
 Plan, phases, backlog and schema plan: docs/roadmap.md. Dated history: docs/status_log.md (append an entry
 there at the end of each step, and update the paragraph below).
 
-**Where we are (2026-11-18):** Phase 2 (service layer). Done: 2.1-2.6 (2.5: chain, keys, approvals, reversals,
-rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet). Phase 2.7 is three
-STOPs (MR1): STOP A (multi-role, MR2-MR9), STOP B (hooks and add-ons, HA1-HA7) and step B2 (WAL, backups, data
-folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) and STOP C (custom fields service, FR1 as amended;
-`fields.manage`) are done. Next: 2.9 schema replan (docs/next_step.md), 2.8 (PW1-PW11), Phase 3.
+**Where we are (2026-11-20):** Phase 2 (service layer). Done: 2.1-2.7 (2.5: chain, keys, approvals, reversals,
+rounding, allocations; KS1-KS21, R15-R60, RP1-RP11; the service can post, no posting screen yet; 2.7: STOPs A, B, C
+and step B2). Now: step 2.9 schema replan, docs only so far: 9 of 21 areas owner-approved (18, 13, 12, 10, 17, 8, 15,
+6, 7) plus the report contracts (plan and todo areas: docs/next_step.md). The baselines change in one pass, tests
+first, after the replan is approved. Phase order: 2.9, 2.8 (PW1-PW11), 3 HTML front end, 4, 5, 6.
 
 **Known issues (code as it is today):**
 - `auth._now()` is the one allowed clock read in services (H2 allow-list) until auth takes `now` as an argument.
