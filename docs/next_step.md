@@ -1,5 +1,33 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
 
+## Current stop (2026-11-20): Git hook repair awaiting planning review
+
+- State: on `main`; local `core.hooksPath` is `.githooks`. The hook, settings and `CLAUDE.md` changes were already
+  staged. `tests/test_commit_hook.py` now covers the tracked Git hook instead of the removed Claude PreToolUse entry;
+  its focused run passed (68 tests). The `.codex/hooks.json` and `.codex/hooks/` paths remain untouched and untracked.
+- Test outcome: with default `%TEMP%`, the focused ACL test failed and the full suite had 4,209 passed, 2 skipped,
+  1 failed in 315.94 s. A later dedicated-basetemp attempt found `PYTEST_ADDOPTS` unset but passed a Windows path with
+  backslashes. Pytest parsed them as escapes and created the test temp under the repo at
+  `C:\Users\marka\StrataLedger-clean\Usersmarka.pytest-strataledger-acl`; the focused test failed its exact-mask
+  assertion there (1 failed in 0.15 s). That generated directory was removed. No ACL inspection or full-suite run
+  followed. The original `%TEMP%` still inherits the recorded `Modify, Synchronize` ACEs for `CodexSandboxUsers` and
+  SID `S-1-5-21-3876112204-1666981215-754291341-1030728988`. The ACL test was not changed or skipped.
+- Python: 3.11.9, pytest 9.2.0 and `xdist` import passed under the non-admin `marka` identity.
+- Blocker/open question: the dedicated-basetemp attempt did not reach the proposed path because `PYTEST_ADDOPTS`
+  consumed the Windows backslashes. No ACLs or pytest settings were changed.
+- Next action: rerun with the dedicated path written with forward slashes in `PYTEST_ADDOPTS`, confirm the focused
+  test directory is actually under `C:\Users\marka\.pytest-strataledger-acl`, inspect its ACL read-only, then run the
+  full suite with the same option. Stop on any failure. Only after a full pass, verify the commit-launching process
+  inherits the basetemp option, stage the approved paths, commit normally on `main`, verify the hook record timestamp,
+  and push. **No commit or push has occurred.**
+- Follow-up (2026-11-20): the forward-slash preflight resolved exactly to
+  `C:/Users/marka/.pytest-strataledger-acl`; the target was absent before the run. The focused ACL test passed (1
+  passed), but read-only inspection found an inherited `CodexSandboxUsers` ACE with mask `1179817` on the test
+  directory, not the expected full-control mask `2032127`. The ACL gate failed, so the full suite was not run. This
+  pass applies only to the dedicated basetemp and does not repair `%TEMP%`'s inherited ACEs. Blocker: investigate the
+  dedicated directory's inherited ACE without changing the test or ACL. Next: planning review of the service-quote
+  amendments in this step, then resume ACL diagnosis before any later commit.
+
 Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. Start a fresh session (MR1) and read
 .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
@@ -111,10 +139,12 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
   amendment line in area 6 section 3.3).
 - **Area 5:** the create-customer service and contacts at Mark signed; the draft (unposted) deposit invoice, credit side
   by role `customer_deposits`; `contract_milestone.invoice_id`; T&M monthly drafts at the contract's frozen rates and
-  the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role.
+  the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role. Carry the
+  estimate revision's frozen tax rate, taxable-line detail, pre-tax, tax and tax-inclusive total onto the invoice.
 - **Area 9:** `material_code`; until it exists `estimate_cost_line.material_code_id` is a plain integer.
 - **Area 14:** the Estimate policy, `sales_authority_limit` routing, the Contract policies (wording changes and contract
-  cancellation approval), all OFF by default.
+  cancellation approval), all OFF by default. Define service-quote send-back routing to whoever submitted it (PM or
+  rep), with insert-only from, to, status and reason history.
 - **Area 19:** payroll import hours (employee, job, cost code) as the T&M time source, billed at the frozen rates.
 - **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
 - **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with

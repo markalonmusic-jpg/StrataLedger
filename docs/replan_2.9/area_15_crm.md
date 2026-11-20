@@ -539,6 +539,12 @@ seeded to a shipped "Service" type with its own short delivery stages).
   no-charge, and T&M work alike; there is no quote limit and no `service_quote_limit_cents`. Starting the quote needs
   `case.work` and `estimate.create`. The service job is created only when the rep uploads the signed quote with Mark
   signed (area 6 section 9.3), which also moves an Open case to In progress (`via` 'Service job created').
+
+Withdrawn 2026-11-20 (owner 2:10 PM): the preceding automatic transition to In progress on signed-quote upload is
+replaced by the cost-work-start rule below; signed-quote upload still creates the service job and its contract row.
+
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): starting cost work moves the case to In progress. A
+declined or expired quote leaves the case open (Waiting on customer, or Resolve with a note).
 - Resolve prompt (derived, never stored, never automatic): a case not Resolved or Closed with at least one job whose
   `source_case_id` is the case, and every such job in a Complete or Closed stage role (area 8). Area 8's job stage
   service, when a job with a `source_case_id` reaches Complete, writes one notification to the case owner (area 21
@@ -562,6 +568,9 @@ seeded to a shipped "Service" type with its own short delivery stages).
   sentence); the Resolve prompt appears only when every job of the case is complete; days to resolve includes
   waiting time.
 Corrected 2026-11-20 (consistency scan F5): Tests to write later: two cases created in a row receive consecutive numbers; deleting a `case_number_seq` row is refused.
+
+Withdrawn 2026-11-20 (owner 2:10 PM): the section 3.5 test requiring service-job creation to move the case to In
+progress in the same transaction is superseded; tests must instead cover the case transition when cost work starts.
 
 ---
 

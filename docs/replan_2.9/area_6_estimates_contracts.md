@@ -124,6 +124,11 @@ exactly one of `lead_id` or `case_id` is set; `customer_contact_id` is the case'
 per lead or per case. A case quote runs the same estimate flow with service terms (the service type's contract
 template); there is no quote limit.
 
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): one estimate model links to exactly one lead or case, as
+the preceding amendment specifies. Customer details remain on the customer record. The case problem description
+syncs to the estimate while it is a draft; quote content freezes when printed. The estimate stores the cost enterer
+and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), both copied to the job at signing.
+
 **`estimate_revision`** (new; Rev 1, 2, ...):
 
 | Column | Type and constraint |
@@ -312,6 +317,10 @@ the estimate after insert.
 
 **Summary by cost code** (derived, no table): per revision, cost code, its cost type, sum of cost, sum of price.
 Signing writes the job's budget rows from it through area 7's budget service (section 9).
+
+Amendment 2026-11-20 (owner 2:20 PM, service quote rules): optional line groups print with a tick box. At signed-quote
+upload the rep records which groups the customer accepted; that selection is stored separately from the frozen
+printed lines and is frozen on the revision.
 
 Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q7 A): `estimate_cost_line.cost_code_id` must be an active leaf code
 (not a division, not a code with active sub-codes), as postings are (RP5); the service refuses any other code with one
@@ -683,6 +692,18 @@ For a quote with a `case_id`: step 2 uses the case's customer; step 3 creates th
 (`source_case_id` the case, numbered from the original root job when the case has a job, area 7 section 1.3); step 7
 supersedes the case's other options; step 8 is skipped (no lead), and an Open case moves to In progress through area
 15's `cases.change_status` in the same transaction.
+
+Withdrawn 2026-11-20 (owner 2:10 PM): the preceding Open-case transition at signed-quote upload is replaced by area 15
+section 3.4; it occurs when cost work starts.
+
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): billing kind, price and terms freeze at signing. Any
+change requires a new estimate revision that is signed and uploaded. Each revision freezes pre-tax amount, tax,
+tax-inclusive total, tax rate and taxable-line detail; the customer signs the tax-inclusive total. The invoice must
+carry that same tax detail (invoice work is handed to area 5 in `docs/next_step.md`).
+
+Amendment 2026-11-20 (owner 2:30 PM, service quote rules): Mark signed is refused when the signed total does not
+equal the accepted line groups plus tax; it shows the difference so the rep can correct the accepted groups or print
+a new revision for signing. The contract always equals the amount the customer signed.
 
 ### 9.4 Tests to write later
 

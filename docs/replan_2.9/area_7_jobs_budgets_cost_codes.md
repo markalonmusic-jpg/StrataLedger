@@ -142,6 +142,16 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 Dropped: `status` (area 8 Q6 C), `source_estimate_id` (area 6), `original_budget_cents` and `revised_budget_cents`
 (Q5 A: derived from `project_budget`).
 
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): the job stores the cost enterer and the PM separately
+(`cost_enterer_user_id` INTEGER and `assigned_pm_id`). Both copy from the estimate; when the company has one Solo
+user or controls are not set up, the PM defaults to the cost enterer. `billing_method` (billing kind: fixed price,
+progress billing, milestones, time and materials, or not billed) is separate from `cost_destination` TEXT NOT NULL
+CHECK IN ('Job', 'Warranty line', 'Service overhead'); CHECK constraints enforce valid combinations. Billable
+methods use 'Job'; 'Warranty line' requires not billed and an original job; not billed without an original job uses
+'Service overhead'. `warranty_for_job_id` is required for 'Warranty line' and NULL for 'Service overhead'. Warranty
+costs go to the original job's Warranty line. Without an original job the job is `No charge (goodwill)` and costs go
+to a service overhead account.
+
 Contract value, retainage %, terms, T&M markup and not-to-exceed for a direct job are not `project` columns: they
 live on the contract record (Q2 A), so pay apps and invoices read one place for every job. Dropped by Q1: `is_draft`,
 `activated_at`, `activated_by`.
@@ -443,6 +453,11 @@ trigger, updated audit triggers); the RP5 triggers kept.
   `templates/cost_codes/construction.csv`, read like the chart templates) names a role per code where it differs from
   its type's (Warranty → `warranty_expense`); `company_settings.warranty_cost_code_id` INTEGER NULL FK cost_code names
   the company's Warranty code for the roll-up.
+
+Amendment 2026-11-20 (owner 2:20 PM, service quote rules): add the System account role `service_goodwill` for the
+service overhead destination. Each company maps the role to an account (it may map to 5080 Warranty Expense); no
+account number is hard-coded. Goodwill and Warranty remain distinct by `cost_destination`, regardless of whether
+they map to the same account.
 
 ### 4.4 Tests to write later
 

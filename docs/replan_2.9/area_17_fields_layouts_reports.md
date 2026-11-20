@@ -696,6 +696,10 @@ No new table. `report_layout.scope` = 'combined' (section 3.3); `formula_token.c
   filter (plan lines carry no contact): the service refuses the pairing with one sentence, and a `job_budget` compare
   is allowed (it is by job).
 - Cash basis runs from payments and allocations at run time (contracts Q9 A) and is not in the speed budget.
+
+Amendment 2026-11-20 (owner 2:20 PM, service quote rules): job cost reporting keeps Warranty and goodwill separate
+by `cost_destination`, even when both roles map to the same account. Reports group these costs by destination, never
+by the mapped account.
 - **Performance target (contracts Q10 A) and the test (Q20 A):** a 12-column P&L with a plan comparison on 250,000
   posted lines in under 1 second, accrual. The `perf` test (marker `perf`, deselected by default, run explicitly at the
   build step's review gate and before a release) builds one 250,000-line file once and asserts: (1) the unfiltered

@@ -111,6 +111,10 @@ nullable FK to area 6's `rate_card`; NULL falls back to the company rate card (`
 A new estimate copies these defaults and may change them. The cancellation period is not on the service type (area 6
 Q12 B: it is on the contract template version). Audited like the table; edits need `service_type.manage`.
 
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): the service type also defaults who prices the estimate,
+the PM, payment terms using the existing payment-term model, and quote-validity days. Copy these defaults onto the
+estimate revision.
+
 **`service_stage`** (existing): replace `is_closed_stage` by `stage_role` TEXT NOT NULL DEFAULT 'Normal' CHECK IN
 ('Normal', 'Contract signed', 'Complete', 'Closed'); add `target_days` INTEGER CHECK (NULL or >= 0), `can_skip`
 INTEGER NOT NULL DEFAULT 0, `guidance` TEXT CHECK (NULL or length <= 500), `row_version`. A job's stage must be a
