@@ -492,9 +492,11 @@ anyone else only by that template or an Add override with a reason. None in AGEN
 
 Amendment 2026-11-19 (owner, area 10 Q10 A): two new codes, module Ledger, both not sensitive: `deferral.manage` and
 `je.reclass`, in the Accountant cap (2.4.1, 62 to 64 codes with area 12's three). Level defaults (2.4.2): Accountant ·
-Standard adds `deferral.manage`; `je.reclass` goes at the level that holds `je.post`, Accountant · Manager. No
-shipped template changes. Neither in AGENT_ALLOWED. Placement check re-run in words: every code still placed; the
-levels stay inside the cap with no sensitive code; View only unchanged; every template inside its roles' caps
+Standard adds `deferral.manage`; `je.reclass` goes at the level that holds `je.post`, Accountant · Manager. Shipped
+templates (2.4.3), revised 2026-11-19 by the owner: `je.reclass` follows `je.post`, so Controller and Staff accountant
+(the only templates naming `je.post`) add `je.reclass` in their non-sensitive column. Neither code in AGENT_ALLOWED.
+Placement check re-run in words: every code still placed; the levels stay inside the cap with no sensitive code; View
+only unchanged; every template inside its roles' caps
 (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 7.1).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)

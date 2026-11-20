@@ -428,13 +428,17 @@ Placement in area 18's seed tables (owner 2026-11-19; area 18 carries the dated 
 - **Level defaults (2.4.2):** Accountant · Standard adds `deferral.manage`. `je.reclass` goes at the level that holds
   `je.post`, which is **Accountant · Manager** (area 18 2.4.2: Manager adds `je.post`, `je.reverse`, ...). So in
   practice it is Manager; it is tied to `je.post`'s level, so if that level moves, `je.reclass` moves with it.
-- **Templates:** no shipped template changes. The Staff accountant and Controller templates hold `je.post` by name but
-  not `je.reclass`; a user on them below Manager gets `je.reclass` only by an Add override (see section 10).
+- **Templates (owner 2026-11-19: `je.reclass` follows `je.post` in the shipped templates too):** every shipped template
+  that names `je.post` adds `je.reclass` in the same (non-sensitive) column. In area 18 section 2.4.3 those are
+  **Controller** and **Staff accountant**, both for the Accountant role; no other shipped template names `je.post`.
+  `deferral.manage` is added to no template.
 - **AGENT_ALLOWED:** neither.
 - **Area 18 section 2.4 placement check, re-run in words (2026-11-19):** every code is still placed (both new codes are
   in the Accountant cap; area 12's three and the rest are unchanged); Accountant · Standard and Manager's cumulative
   defaults stay inside the Accountant cap and hold no sensitive code (both new codes are not sensitive); View only
-  still holds read codes only; every template still sits inside the union of its roles' caps. No rule fails.
+  still holds read codes only; every template still sits inside the union of its roles' caps (Controller and Staff
+  accountant are Accountant templates and `je.reclass` is in the Accountant cap), and their non-sensitive column
+  holds no sensitive code. No rule fails (re-run after the template change, 2026-11-19).
 
 ---
 
@@ -596,7 +600,6 @@ All nineteen answered A, one by one; Q2 and Q10 with the owner's detail. The opt
 - Area 13: the two deferral checks' text points here; section 2.3 carries the dated by-role amendment (F11).
 - Area 17: reads `ledger_period_balance`, `dimension_set` and `reclass_line` for "As reclassed".
 - Area 18: the permission rows and placement, the reasons rows and the derived exempt rows are dated amendments
-  there (Q10 A, F13). Whether the Staff accountant and Controller templates should also name `je.reclass` beside
-  `je.post` is not decided (no template change was asked).
+  there (Q10 A, F13), including `je.reclass` in the Controller and Staff accountant templates (owner 2026-11-19).
 - Open question 7 (System origin in `post_journal_entry`) is decided by Q7 or in the posting work.
 - Area 11 reuses the schedule grid for fixed assets.
