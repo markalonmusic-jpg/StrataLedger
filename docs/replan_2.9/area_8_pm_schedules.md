@@ -1,7 +1,9 @@
 # Step 2.9 schema replan, area 8: PM stages, service types, schedules, change orders, forecast
 
-Status: **Answers recorded 2026-11-19, owner approval pending** (first draft 3d15762; owner answers Q1-Q24 and the
-8:40 PM `rate_card_id` addition folded in below, section 10). Area 8 is not owner-approved yet. Docs only: nothing here changes code, a
+Status: **Owner-approved 2026-11-19** (first draft 2026-11-19, 3d15762; owner answers Q1-Q24 and the 8:40 PM
+`rate_card_id` addition folded in below, section 10, c835d20; the on-hold rule of section 3.1 recorded with the
+approval; amendment lines in area 18 sections 1.2 and 2.4). Planning has marked area 8 owner-approved in
+`Strata_Teams\schema_replan_2026-11-17.md`. Docs only: nothing here changes code, a
 baseline, a migration or a test. Every table, column, code and check below is built only in the 2.9 baseline pass,
 after the replan is approved. PROPOSED items from the sources are not built as final. No questions are open.
 
@@ -269,8 +271,14 @@ with an offset). Integrity triggers refuse update and delete (the pattern of `pr
 on insert. The hold service (`job_hold.py`, `project.manage`, project scope) writes the history row and sets
 `project.on_hold` in one transaction; putting a job on hold and taking it off both need a reason (the service refuses
 a missing one with one sentence); a Closed job cannot be put on hold; the flag is shown beside the derived state
-("Open, on hold"). Nothing else changes by itself while a job is on hold (no stage, schedule or posting rule reads
-the flag; open item 12). Area 17's `src_jobs` offers the flag, and the history gives time on hold.
+("Open, on hold"). **On-hold rule (owner 2026-11-19, with the approval of area 8):** on hold is a label and warnings
+only. It shows on the job everywhere (job header, lists, boards, reports, the company calendar), and it pauses the PM
+prompts (`pm_prompt` rows are not created or shown for a held job) and the "schedule not updated" and other
+schedule needs-attention alerts. Costs, purchase orders and billing are still allowed, each with a warning naming the
+hold. **No posting or document is refused because of a hold**; no stage move, schedule update or change order is
+refused either. The check is a warning in the services that create costs, POs and invoices (areas 3-5, 9), which read
+`project.on_hold`; it is not a control and has no setting. Area 17's `src_jobs` offers the flag, and the history gives
+time on hold.
 
 **`pm_prompt`** (new; stores prompts so "Not now keeps it for 3 days" and "one prompt per job and stage" hold):
 `prompt_id` PK, `project_id` NOT NULL FK, `kind` CHECK IN ('Move stage', 'Bill next milestone'), `ref_type` TEXT NOT
@@ -282,7 +290,8 @@ linked jobs complete, flag the case for Resolve" prompt (A 11-18 item 4) is a ca
 ### 3.2 How it lands, effects, tests
 
 Lands in `001_company.sql` with the `project` columns (area 7 writes the DDL) and `pm_prompt`. No existing service
-or test uses these. Tests to write later: a Warranty job refuses an invoice; billing_type edit refused after the
+or test uses these. Tests to write later: a held job shows the flag, creates no `pm_prompt` and raises no schedule alert, and a cost, PO or
+invoice on it is allowed with a warning that names the hold (nothing refused); a Warranty job refuses an invoice; billing_type edit refused after the
 first posted cost; manual % outside 0-100 refused and listed by the area 13 check with who and why; one prompt per
 job and stage even when the first actual start is applied twice; snooze hides for 3 days using `context.today`.
 
@@ -851,7 +860,8 @@ integer (section 1.3).
 10. Area 17 `src_job_stages`, `src_jobs`, `src_jobs_cancelled` read `project_stage_history` and `project`; `src_cases`
     needs area 15. `custom_field_def` job type scoping and "shown from stage" are area 16's.
 11. WIP recalculation and the monthly WIP service remain area 7/10; this area supplies ETC by date.
-12. What an on-hold job does is not decided: this design only records the flag and its history. Whether a held job
-    stops schedule status warnings, the "schedule not updated" attention item, WIP prompts or posting is a later
-    owner decision.
+12. (Closed 2026-11-19, owner.) What an on-hold job does: a label and warnings only, no posting refused; the rule is in
+    section 3.1.
 13. `rate_card` and its tables (area 6) and the foreign key from `service_type.rate_card_id`.
+14. The warning on costs, POs and billing for a held job is built by the services of areas 3, 4, 5 and 9 (they read
+    `project.on_hold`); the wording names the hold and its reason. Tests belong to those services.

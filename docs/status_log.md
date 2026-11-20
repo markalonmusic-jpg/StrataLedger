@@ -1015,3 +1015,17 @@ Rotation and key-lost text as it stood before the trim:
   templates, AGENT_ALLOWED) and docs/contracts/reports.md (share modes, pack items, `split_by` and `job_budget`,
   derived measures stored only at close, KPIs for periods 13 and 14). Owner-approved 2026-11-19. Docs only, so the
   commit hook skipped the suite ("docs only: suite skipped").
+- 2026-11-19: Step 2.9 schema replan, area 8 (PM stages, service types, schedules, change orders, forecast), docs only:
+  docs/replan_2.9/area_8_pm_schedules.md. Draft 3d15762; owner answers Q1-Q24 (A except Q6 C and Q13 A with a label)
+  and the amendment to area 18 in c835d20; the on-hold rule and the approval in the commit that follows. Proposes one
+  `service_type` list with stage roles and an append-only `project_stage_history`, Closed with an outcome (Completed or
+  Cancelled) and a cancel reason list, `project.status` dropped for an on-hold flag with an append-only hold history
+  (on hold is a label and warnings only; no posting refused), schedule templates and job schedules with insert-only
+  baselines from change orders, delay reasons, calendar items and crews (label setting, default "Crew"/"Crews"),
+  change orders with field events and a lock on approved lines, and `job_forecast_line` with insert-only forecast
+  revisions (eight figures per cost code and totals) under `job.forecast.edit` and `job.budget.transfer`; also
+  `service_type.rate_card_id` (owner 8:40 PM). The amendment to area 18 (section 1.2 reasons and section 2.4 codes)
+  adds six codes (`job.forecast.edit`, `job.budget.transfer`, `job.schedule.edit`, `schedule.template.manage`,
+  `service_type.manage`, `job.stage.backdate`; 86 to 92 seeded), the Accountant cap to 71 and the Operations cap to 37,
+  and the area 8 reasons; no derived or exempt tables. Owner-approved 2026-11-19. Docs only, so the commit hook
+  skipped the suite ("docs only: suite skipped").
