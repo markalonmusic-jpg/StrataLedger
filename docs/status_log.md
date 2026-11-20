@@ -977,3 +977,30 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-19: owner approved the report builder service contracts (docs/contracts/reports.md, Owner-approved; draft 3d237d3,
   fix mode 1 221b996 Q1-Q18, fix mode 2 e869ecf Q19-Q26; hook runs 4173 passed, 2 skipped). Section 12 feeds the 2.9 replan
   (area 17, KPI freeze in area 13, money.view seeds in area 18). Stopped at the owner's request; no next step started.
+- 2026-11-19: Step 2.9 schema replan, area 13 (close and locks), docs only: docs/replan_2.9/area_13_close_and_locks.md.
+  Draft dfb26b6; owner answers Q1-Q24 (Q4 B, Q12 B, Q15 B, Q16 B, the rest A), the F13 approval and the KS15 fix
+  recorded in dac81ec; two dated amendment lines added later (ending cash, deferral tie-out by role). Proposes
+  `lock_area` and `period_lock` (reason to lock and to unlock), one shared `period_locks.check_open`, the close checklist
+  (templates, system and custom tasks, dependencies guarded by the service only), due dates and reviewed-by,
+  `period_close_snapshot` (five figures per close, insert-only), the KPI freeze hook and the period balance summary
+  writer. Owner-approved 2026-11-19 (planning marked it in the working doc). Hook runs 4173 passed, 2 skipped.
+- 2026-11-19: Step 2.9 schema replan, area 12 (bank and reconciliation), docs only:
+  docs/replan_2.9/area_12_bank_and_reconciliation.md. Draft d9032ea; owner answers Q1-Q20 (all A) and amendments to
+  areas 13 and 18 in a837bc1; permission placement revised in d239f32 (`bank.feed` and `bank.reconcile` at Accountant
+  Standard, `bank.unreconcile` in the Controller template). Proposes `bank_line_clearing` (cleared state off
+  `journal_line`), match targets by bank line, one unmatch service with lock checks, reconciliation states
+  (Reopened, Changed after finish) finishing only at $0.00, deposits and transfers, `bank_account.kind`. Owner-approved
+  2026-11-19. Hook runs 4173 passed, 2 skipped.
+- 2026-11-19: Step 2.9 schema replan, area 10 (prepaid, deferrals, reclass, period balance summary), docs only:
+  docs/replan_2.9/area_10_prepaid_deferrals_reclass.md. Draft 3f79eb3; owner answers Q1-Q19 (all A, Q2 and Q10 with the
+  owner's detail) and amendments to areas 13 and 18 in 77938bc; `je.reclass` added to the Controller and Staff
+  accountant templates in a46501a. Proposes the deferral schedule tables as one subledger (runner, catch-up, void in one
+  transaction), insert-only `reclass_line`, the two deferral close checks and `ledger_period_balance` written only in
+  `ledger._seal_and_post`. Owner-approved 2026-11-19. Hook runs 4173 passed, 2 skipped.
+- 2026-11-19: commit hook change (887da07, owner 2026-11-19): when every staged file is under docs/ the hook skips the
+  suite, prints "docs only: suite skipped (N files)" and records it in the temp result file; anything else (a file
+  outside docs/, a rename into or out of docs/, nothing staged, a git error, or a command that changes the staged set
+  such as add, -a or --amend) runs the full suite as before, timeout 1500 s. 37 new tests in tests/test_commit_hook.py
+  (4210 passed, 2 skipped). 2514794, the first docs-only commit, skipped the suite ("docs only: suite skipped (4 files)").
+  docs/next_step.md overwritten: areas 18, 13, 12 and 10 owner-approved, next is area 17 (field registry, list layouts,
+  report builder).

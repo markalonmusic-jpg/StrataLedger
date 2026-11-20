@@ -177,10 +177,10 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
 
 - This repo is StrataLedger-clean. C:\Users\marka\StrataLedger is an old archive: never edit, commit or push there.
 - Work only on the task named; plan mode first (files and why). Tests first; show diffs and the full-suite result.
-- Commit at the end of each step and push `main` to `origin`. Stage by explicit path, never `git add -A` or
-  `git add .` (the planning chat writes files here); check `git status` and `git diff --cached` first. Never
-  commit `.db` files, credentials or tokens; never force-push without asking.
-- A PreToolUse hook (.claude/settings.json) runs the parallel suite before any `git commit`; a failure blocks it.
+- Commit at the end of each step and push `main` to `origin`. Stage by explicit path, never `git add -A` or `git add .`
+  (the planning chat writes here); check `git status` and `git diff --cached` first. The hook runs the full suite before
+  every `git commit`, failure blocks; if all staged files are under docs/ it prints "docs only: suite skipped" (stage in
+  one call, commit in the next). Never commit `.db` files, credentials or tokens, or force-push without asking.
 - Only one tool edits this working folder at a time. Copilot and Codex work only in their own worktrees
   (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`, likewise codex/<task>); copilot-reviewer
   reviews their commits before merge. Commit and push between handoffs, and pull before starting.
