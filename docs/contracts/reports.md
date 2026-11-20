@@ -309,6 +309,13 @@ A records saved report has `kind: "records"` and `parameters: {"dates": {...}, "
 "lead.created_on", "filters": [...]}` (the layout's filters plus these). The plan version is kept as saved
 (3:14 PM: "a saved report or pack keeps the version it was saved with").
 
+Amendment 2026-11-19 (owner, area 17 Q8 A): `shared` is `share_mode`: `private`, `people` (with a `shared_with` list of
+company users) or `everyone` (everyone with Reports access); `shared: true` in the samples reads as not `private`.
+A saved report also gains `parameters.split_by` (Q11 A: `job`, `job_type`, `pm`, `dimension` (with a dimension type),
+`cost_code`, `month` or `entity`; one column per value) and the `compare` type `job_budget` (the job's cost budget
+from `project_budget`, never the operating plan). A customer or vendor filter (`filters.contact_ids`) is read from
+`journal_line`, not the period summary (Q12 B), and cannot be combined with a `plan` compare.
+
 ### 2.5 Pack
 
 ```json
@@ -327,6 +334,10 @@ A records saved report has `kind: "records"` and `parameters: {"dates": {...}, "
 ```
 
 `pack_dates`, when set, replaces each saved report's dates for a pack run (Q12); `null` keeps each report's own.
+
+Amendment 2026-11-19 (owner, area 17 Q9 A): a pack item has a `kind`: `cover`, `contents` (built automatically),
+`report` (a saved report) or `text` (a text page with a title and a body of at most 4,000 characters); the samples'
+`items` list shows `report` items only.
 
 ### 2.6 "Packs using this layout"
 
@@ -415,6 +426,13 @@ value for a closed period and the live value for an open one.
 - Frozen rows are insert-only, never edited, and written to the audit log (AX4).
 - A failed value at close (for example a division by zero) is stored as `null` with its note; it never blocks the
   close.
+
+Amendment 2026-11-19 (owner, area 17 Q13 B and Q14 A): KPI values are also frozen for periods 13 and 14 when the
+KPI's basis includes them (period 13 for the gaap, tax and management bases, period 14 for the tax basis; a
+measure-sourced KPI freezes months 1-12 only). A year or total column with `range_method` `sum`, `average` or `last`
+uses the frozen values of the periods the basis includes that have a value, and leaves a period without one out and
+says so. Any failure evaluating a KPI at close, expected or not, is stored as `null` with a note and the close
+continues.
 
 ---
 
@@ -1146,6 +1164,10 @@ closed (so a closed period's figures never move).
 periods only (also run on every report run for open periods; closed periods are skipped, Q16 B). Result:
 `{"updated": [{"measure_id": "nfm_kw", "period_id": "per_2026_10", "derived": "51.3"}]}`. The rule runs through the records engine (section 5),
 with the same row rules: a derived value is a company figure, computed with no row limits (Q17 A).
+
+Amendment 2026-11-19 (owner, area 17 Q16 A): derived measure values are computed live for an open period and are
+**not stored by a read**: `refresh_derived_measures` is not run by a report run. The period close stores the derived
+value of each measure for the closing period, in the close transaction; a closed period then keeps that value.
 
 ---
 

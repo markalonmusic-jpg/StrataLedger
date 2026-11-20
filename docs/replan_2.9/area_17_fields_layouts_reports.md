@@ -1,8 +1,11 @@
 # Step 2.9 schema replan, area 17: field registry, list layouts, report builder, KPIs and measures
 
-Status: **Drafted 2026-11-19** for the owner. Docs only: nothing here changes code, a baseline, a migration or a
-test. Nothing is built until the owner marks area 17 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`.
-Every table, column, code and check below is PROPOSED until then. Choices for the owner are in section 13.
+Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, 809fb22; owner answers Q1-Q25
+2026-11-19, Q12 B and Q13 B, the rest A, folded in below; section 13). Docs only: nothing here changes code, a
+baseline, a migration or a test. Nothing is built until the owner marks area 17 owner-approved in
+`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
+questions are open. The amendments to areas 13 and 18 and to docs/contracts/reports.md are dated lines in those docs
+(section 14).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 17, the source keys and the "Inbox inputs" section (it lists no
@@ -33,15 +36,15 @@ Sources read (only these, searched by date, title or code):
 | # | Topic | Proposal in one line | Baseline |
 |---|-------|----------------------|----------|
 | 1 | Field registry | A code catalogue (`field_registry.py`, hosted-ready), not a table; custom fields join it at read time from `custom_field_def` by their immutable `field_key`; every field names the permission that shows it | none (code) |
-| 2 | List layouts | `user_list_pref` kept (per user, display only, widths inside `columns_json`); one new `company_list_default` (Admin); resolved user → company → built-in | company |
+| 2 | List layouts | `user_list_pref` kept (per user, display only, widths inside `columns_json`); one new `company_list_default` (Admin, Q2 A); display-only, so exempt from audit (Q4 A); resolved user → company → built-in | company |
 | 3 | Layouts | `report_layout` (financial or records), a tree of groups and formulas, accounts in groups, auto-include rules, formula tokens as rows, charts, and the Records parts; built-in layouts made by an upkeep from code | company |
 | 4 | Saved reports and packs | `saved_report` with typed parameters (dynamic date presets stored as presets), compare and filter rows, `report_pack` and its items, sharing | company |
 | 5 | Schedules | `report_schedule`, recipients, runs and in-app deliveries; runs while the app is open, one catch-up at sign-in, as the owner | company |
-| 6 | KPIs | `kpi` and insert-only `kpi_value`, frozen in the close transaction by one writer; null with a note, never blocks | company |
+| 6 | KPIs | `kpi` and insert-only `kpi_value`, frozen in the close transaction by one writer, also when periods 13 and 14 close if the KPI's basis includes them (Q13 B); null with a note, never blocks (Q14 A) | company |
 | 7 | Measures | `nonfinancial_measure` and `nonfinancial_value`; typed values locked with the closed period; derived values live while open, frozen at close | company |
 | 8 | Combined runs | No new table beyond the saved report's company list; accounts matched by number; unmatched accounts as their own rows with a warning | company |
-| 9 | Running | Reads the period summary (area 10); "As reclassed" changes detail rows only; `money.view` enforced before any read; two company settings and `account.cash_flow_category` | company |
-| 10 | Permissions | `money.view`, `report.records`, `report.design`, `report.schedule` placed in the caps and levels; templates and AGENT_ALLOWED decided | company |
+| 9 | Running | Reads the period summary (area 10, key unchanged); a customer or vendor filter reads `journal_line` through its `contact_id` index (Q12 B); "As reclassed" changes detail rows only; `money.view` enforced before any read; two company settings and `account.cash_flow_category` | company |
+| 10 | Permissions | `money.view`, `report.records`, `report.design`, `report.schedule` placed in the caps and levels; templates and AGENT_ALLOWED placed (Q21 A, Q23 A, Q24 A) | company |
 
 Master file: no change (user ids in this area are plain integers, as everywhere in the company file).
 Counts: 30 new company-file tables, 4 new columns on existing tables (two on `company_settings`, one on `account`,
@@ -87,7 +90,7 @@ Counts: 30 new company-file tables, 4 new columns on existing tables (two on `co
   Text → text, Choice → choice (with its active choices), Number → number, Money → money (`money: true`), Date →
   date, Yes/No → bool. Visibility is the record type's own read permission (section 1.1). A deactivated field is not
   offered, but a saved layout, saved report or column preference that already uses it keeps working and shows its
-  label with "(inactive)" (Q1).
+  label with "(inactive)" (Q1 A).
 - **Permission per field:** each entry names one existing permission code (`ar.view`, `ap.view`, `project.view`,
   `payroll.view` for pay rates and wages, `view.tax_ids`, `view.bank_details`, ...). A user's catalogue is the entries
   whose code the user holds, minus money fields without `money.view`. The Agent's catalogue is built the same way
@@ -135,7 +138,7 @@ Counts: 30 new company-file tables, 4 new columns on existing tables (two on `co
 
 - **`user_list_pref` stays.** `columns_json` holds an ordered list of `{"field": "<registry key>", "width": <px>}`
   (order is the shown order; a field not listed is hidden; widths 40 to 1000, whole numbers); `sort_json` as built.
-  Add `updated_at` TEXT NOT NULL (from `context.now`). No `row_version` (display only, last write wins; Q3).
+  Add `updated_at` TEXT NOT NULL (from `context.now`). No `row_version` (display only, last write wins; Q3 A).
 - **`company_list_default`** (new): `list_key` TEXT PRIMARY KEY, `columns_json`, `sort_json`, `page_size`, `set_by`
   INTEGER NOT NULL, `set_at` TEXT NOT NULL, `row_version` INTEGER NOT NULL DEFAULT 1. Written only by an Admin
   (`company.settings`), audited.
@@ -151,10 +154,12 @@ Counts: 30 new company-file tables, 4 new columns on existing tables (two on `co
 
 ### 2.4 How it lands, effects, tests
 
-- Baseline: `company_list_default` and its audit triggers; `user_list_pref.updated_at`. If Q4 A is answered, the audit
-  triggers of `user_list_pref` and `saved_view` are dropped instead of kept (area 18's lists change).
-- Effects: `tests/test_schema_replan.py:717` keeps its key assertions; `tests/test_controls_004.py` audit lists change
-  only under Q4 A.
+- Baseline: `company_list_default` and its audit triggers; `user_list_pref.updated_at`. **The six audit triggers of
+  `user_list_pref` (`:5505`, `:5523`, `:5546`) and `saved_view` (`:5564`, `:5583`, `:5608`) are dropped** (Q4 A: display
+  only, 11-15 2:13 PM); area 18 carries a dated amendment moving both tables from its audited list to its exempt list.
+- Effects: `tests/test_schema_replan.py:717` keeps its key assertions; the audit lists in `tests/test_controls_004.py`
+  and the schema test that holds area 18's two lists drop both tables from the audited list and name them on the
+  exempt list, with `report_schedule_run` and `report_delivery`.
 - Tests to write later: resolution order; a company default is Admin-only and audited; a user's save never changes
   another user's row; unknown field refused; a lost permission hides the column without deleting the preference; a
   width outside 40-1000 refused; locked columns cannot be hidden; Reset returns the company default; the same list key
@@ -197,7 +202,7 @@ service. The `ledger_checkpoint` kind 'Report export' exists (`:535`).
 | `description` | TEXT CHECK (length <= 1000) |
 | `built_in` | INTEGER NOT NULL DEFAULT 0 CHECK IN (0, 1) |
 | `built_in_key` | TEXT UNIQUE; CHECK (`built_in` = 1) = (`built_in_key` IS NOT NULL) |
-| `built_in_version` | INTEGER (the app's version of that layout, Q5) |
+| `built_in_version` | INTEGER (the app's version of that layout, Q5 A) |
 | `copied_from_id` | INTEGER REFERENCES report_layout |
 | `source_id` | TEXT (a Records source key from code; CHECK (`kind` = 'records') = (`source_id` IS NOT NULL)) |
 | `created_by`, `created_at`, `updated_by`, `updated_at` | INTEGER, TEXT (UTC with offset, from `context.now`) |
@@ -232,7 +237,7 @@ CHECK (`type` = 'group') = (`positive_when` IS NOT NULL) and (`type` = 'formula'
 REFERENCES account_type and `subtype` TEXT (type), `role_key` TEXT (one of the company's system-account roles,
 `company_settings.*_acct_id`), cash set (area 12 section 5.3: every `bank_account` kind except Credit card, plus the
 undeposited funds role). A CHECK per kind requires exactly its own columns. Explicit `layout_group_account` rows win
-over rules; overlapping rules are refused at save by the service (contracts Q3 A). Q6 decides the rule kinds.
+over rules; overlapping rules are refused at save by the service (contracts Q3 A). The four rule kinds are Q6 A (`account_range` for company layouts only).
 
 **`formula_token`** (one row per token; replaces JSON text so a deleted item, KPI or measure is found by query)
 
@@ -279,12 +284,12 @@ column (service rule).
 References to registry fields are text keys from code (a catalogue cannot be a foreign key). A custom field is
 stored as `cf.<record_type>.<field_key>`, which never changes (FR1), so a rename cannot break it.
 
-**Built-in layouts (Q5):** `built_in = 1` rows with a `built_in_key` are created and refreshed by an idempotent
+**Built-in layouts (Q5 A):** `built_in = 1` rows with a `built_in_key` are created and refreshed by an idempotent
 upkeep at company open (as `periods.ensure_upcoming_years`, S3), from definitions in code; they are read-only by a
 service rule, "Make a copy" clones into a company layout, and saved reports and KPIs can point at them like any
 layout. A built-in layout never names an account number: it uses account type and subtype, role and cash-set rules.
 In this pass: Profit and loss (standard), Balance sheet (standard) and one blank layout per kind; the construction
-layouts (job profitability, WIP schedule, board summary) arrive with the areas that own their data (Q25).
+layouts (job profitability, WIP schedule, board summary) arrive with the areas that own their data (Q25 A).
 
 ### 3.4 How it lands in the baselines
 
@@ -308,7 +313,7 @@ authorize first (`report.design`, rule 10); `get_layout` and `list_layouts` need
   referenced item cannot be deleted (the database refuses, the service says why); division by zero is `null`.
 - A Records layout with a conditional summary computes won ÷ closed; more than 3 group-bys refused; a field the
   viewer cannot see in a saved layout makes the run fail with the contracts' sentence, not silently drop.
-- A stale `row_version` on a layout save is refused (g4); a layout in use cannot be deleted (Q7).
+- A stale `row_version` on a layout save is refused (g4); a layout in use by a saved report, a pack item or an active KPI cannot be deleted (Q7 A).
 - No built-in layout contains an account number (static scan of the definitions).
 
 ---
@@ -341,7 +346,7 @@ and packs (Pack · Reports · Period · Schedule · Last sent) (CODE_CHANGES 100
 | `layout_id` | INTEGER NOT NULL REFERENCES report_layout (RESTRICT) |
 | `name` | TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120) |
 | `owner_user_id` | INTEGER NOT NULL (master user id) |
-| `share_mode` | TEXT NOT NULL DEFAULT 'private' CHECK IN ('private', 'people', 'everyone') (Q8) |
+| `share_mode` | TEXT NOT NULL DEFAULT 'private' CHECK IN ('private', 'people', 'everyone') (Q8 A: the mockup's three modes) |
 | `dates_mode` | TEXT NOT NULL CHECK IN ('preset', 'fixed', 'periods') |
 | `dates_preset` | TEXT CHECK IN ('this_month', 'last_month', 'last_closed_month', 'this_quarter', 'last_quarter', 'quarter_to_date', 'this_fiscal_year', 'fiscal_year_to_date', 'last_fiscal_year', 'last_12_months') |
 | `date_from`, `date_to` | TEXT dates, `date_from <= date_to` (fixed mode) |
@@ -353,7 +358,7 @@ and packs (Pack · Reports · Period · Schedule · Last sent) (CODE_CHANGES 100
 | `entity_mode` | TEXT NOT NULL DEFAULT 'company' CHECK IN ('company', 'entities') (consolidated is refused until built) |
 | `reclass_view` | TEXT NOT NULL DEFAULT 'as_reclassed' CHECK IN ('as_reclassed', 'full_trail') |
 | `date_field_id` | TEXT (Records: the registry date field the range applies to) |
-| `split_by` | TEXT CHECK IN ('job', 'job_type', 'pm', 'dimension', 'cost_code', 'month', 'entity') (Q11) |
+| `split_by` | TEXT CHECK IN ('job', 'job_type', 'pm', 'dimension', 'cost_code', 'month', 'entity') (Q11 A: the mockup's split-by columns, which the approved contracts lacked) |
 | `split_dimension_type_id` | INTEGER REFERENCES dimension_type (when `split_by` = 'dimension') |
 | `last_run_at` | TEXT (set by an explicit `mark_run` call, never by a run itself) |
 | `created_by`, `created_at`, `updated_by`, `updated_at`, `row_version` | as `report_layout` |
@@ -364,12 +369,12 @@ another table).
 
 **`saved_report_compare`**: `saved_report_id`, `position` BETWEEN 1 AND 2, `type` CHECK IN ('prior_period',
 'prior_year', 'plan', 'job_budget'), `plan_version_id` INTEGER REFERENCES operating_plan_version (area 7; RESTRICT);
-CHECK (`type` = 'plan') = (`plan_version_id` IS NOT NULL). 'job_budget' only under Q11. A plan version used here
+CHECK (`type` = 'plan') = (`plan_version_id` IS NOT NULL). 'job_budget' (Q11 A) compares with the job's cost budget, `project_budget`, never with the operating plan. A plan version used here
 cannot be deleted (it can be archived, as the 11-18 3:14 PM decision says).
 
 **`saved_report_filter`**: `saved_report_id`, `position`, `kind` CHECK IN ('dimension', 'project', 'cost_code',
 'contact', 'field'), then the one typed reference the kind needs: `dimension_type_id` + `dimension_value_id` +
-`include_children`; `project_id`; `cost_code_id`; `contact_id` (Q12); or `field_id` + `op` + `value_json` + `preset`
+`include_children`; `project_id`; `cost_code_id`; `contact_id` (Q12 B: such a run reads `journal_line`, section 9.1); or `field_id` + `op` + `value_json` + `preset`
 (Records). Foreign keys RESTRICT, so a job or dimension value used by a saved report is deactivated, not deleted.
 
 **`saved_report_scope`**: `saved_report_id`, `scope_kind` CHECK IN ('period', 'entity', 'company'), `ref_id` INTEGER
@@ -383,7 +388,7 @@ user. Used only when `share_mode` = 'people'.
 `pack_dates_from` / `pack_dates_to` (NULL mode keeps each report's own dates, contracts Q12 A), `created_*`, `updated_*`,
 `row_version`. **`report_pack_item`**: `pack_item_id`, `pack_id`, `sort`, `item_kind` CHECK IN ('cover', 'contents',
 'report', 'text'), `saved_report_id` REFERENCES saved_report (RESTRICT; required for 'report'), `title`, `body_text`
-(max 4000; cover and text pages) (Q9).
+(max 4000; cover and text pages) (Q9 A).
 
 ### 4.4 Services, effects, tests
 
@@ -391,7 +396,7 @@ user. Used only when `share_mode` = 'people'.
   the kind; saving an own private report needs the run permission; a shared one needs `report.design` (contracts
   2.1). A shared report is run with the viewer's own permissions and row limits (G7), never the owner's.
 - Layout usage (`layout_usage`) counts saved reports, packs through their items, and active KPIs; delete refusals use
-  the contracts' sentence (F7, Q7).
+  the contracts' sentence (F7, Q7 A).
 - Tests to write later: every preset resolves against a fixed `context.today` and a non-calendar fiscal year
   (`last_closed_month` follows `is_closed`); a fixed range with from after to is refused; a saved plan version
   survives a newer version being added; deleting a plan version, job or dimension value used by a saved report is
@@ -434,7 +439,7 @@ through `storage.py` (H3).
   never a path), `caught_up` INTEGER, `run_as_user_id`. Insert-only except `finished_at`, `status`, `message` and
   the file columns while the run completes (service rule).
 - **`report_delivery`**: `delivery_id`, `run_id`, `recipient_user_id`, `delivered_at`, `read_at` (NULL = unread;
-  this is the in-app notification, Q19). The outbox read re-checks that the recipient can still run the report.
+  this is the in-app notification, Q19 A). The outbox read re-checks that the recipient can still run the report.
 
 ### 5.4 Service rules
 
@@ -498,7 +503,7 @@ that other users edit, so editing that item is refused while an active KPI uses 
 | `value_cents` | INTEGER, integer CHECK (format Currency) |
 | `value_decimal` | TEXT (a decimal string, other formats) |
 | `note` | TEXT CHECK (length BETWEEN 1 AND 300); required when both values are NULL |
-| `kpi_row_version`, `layout_row_version` | INTEGER NOT NULL (the definitions at freeze, Q15) |
+| `kpi_row_version`, `layout_row_version` | INTEGER NOT NULL (the definitions at freeze, Q15 A) |
 | `frozen_at`, `frozen_by` | TEXT, INTEGER NOT NULL |
 
 CHECK at most one of `value_cents`, `value_decimal`; CHECK (value both NULL) = (`note` IS NOT NULL); UNIQUE (`kpi_id`,
@@ -511,9 +516,17 @@ the closed record, as area 13's `period_close_snapshot`; H4 allows an integrity 
   (area 13 call order) inside the close transaction; a static test allows no other writer of `kpi_value`. It
   evaluates every active KPI's source on the KPI's basis for that single period, from the period summary written in
   the same transaction (area 10 section 4), so the frozen figure and the closed ledger agree.
-- **Periods:** values are frozen for the twelve month periods. Periods 13 and 14 store none; a year or total column
-  with `range_method` `recalculate` computes live, and `sum`, `average` and `last` use months 1-12 (Q13).
-- **Failures:** a failed value is stored as null with a note and never blocks. What counts as a failure is Q14.
+- **Periods (Q13 B):** values are frozen for the twelve month periods and, when the KPI's basis includes them, for
+  periods 13 and 14: period 13 for the gaap, tax and management bases, period 14 for the tax basis; the pre_adjustment
+  basis freezes months only. The freeze is called by `periods._close`, which every close of 13 and 14 goes through
+  (`close_period` on either, and `close_year`, `periods.py:484`), so area 13's call order holds for them (area 13
+  carries the dated amendment). A period's value is the source evaluated over that period's own entries, as for any
+  other period. A measure-sourced KPI freezes months 1-12 only (measures are monthly). A year or total column with
+  `range_method` `recalculate` computes live over the range; `sum`, `average` and `last` take the frozen values of the
+  periods the basis includes that have a value, so a period with no value is left out and the cell says so, and `last`
+  is the last period that has one.
+- **Failures (Q14 A):** any failure evaluating a KPI, typed or unexpected, is stored as null with a note ("Could not be
+  calculated"), logged, and the close continues; a failure never rolls the close back.
 - **Reads** (`get_kpi_values`): `frozen` (latest close event's row), `live`, or `not_frozen`; `history` lists every
   close's row; `live_now` and `differs` are computed by the service (contracts 2.7). Needs `report.financial` and
   `money.view`.
@@ -525,7 +538,10 @@ the closed record, as area 13's `period_close_snapshot`; H4 allows an integrity 
 Every active KPI gets one row per close, in the close transaction; a rolled-back close leaves none (area 13 tests
 extend); reopen and re-close adds a second row and keeps the first; a KPI created later has no frozen row (`not_frozen`);
 a division by zero stores null with its note and the close succeeds; UPDATE and DELETE are refused; a KPI that refers
-to a formula that refers to the KPI is refused at save; periods 13 and 14 store none; `kpi_row_version` equals the
+to a formula that refers to the KPI is refused at save; a gaap KPI freezes period 13 and not 14, a tax KPI freezes
+both, a pre_adjustment KPI neither, and closing period 14 alone (and `close_year`) calls the freeze; a measure-sourced
+KPI never freezes 13 or 14; `last` over a year skips a period with no value; an unexpected error inside one KPI's
+evaluation stores null with a note and the close still commits (Q14 A); `kpi_row_version` equals the
 KPI's version at the close; the frozen value does not change when the layout is edited afterwards; the frozen value
 equals the live value computed at the close date.
 
@@ -562,7 +578,7 @@ deactivation is refused while a formula or KPI uses the measure. Area 13 Q19 A: 
   `row_version`; UNIQUE (`measure_id`, `period_id`). Quantities may be REAL (CLAUDE.md rule 1 reserves integer cents
   for money); display rounding follows `decimals`. The effective value is the typed one if present, else the derived
   one.
-- **`nonfinancial_import`** (Q18): `import_id`, `fiscal_year_id`, `file_name`, `storage_key` (the uploaded file kept
+- **`nonfinancial_import`** (Q18 A): `import_id`, `fiscal_year_id`, `file_name`, `storage_key` (the uploaded file kept
   through `storage.py`), `row_count`, `value_count`, `imported_by`, `imported_at`. A rejected file stores nothing
   (all-or-nothing, with the error list returned, never saved).
 
@@ -570,7 +586,7 @@ deactivation is refused while a formula or KPI uses the measure. Area 13 Q19 A: 
 
 - **Typed save:** authorize `report.design`; refuse a closed period (`PeriodClosedError`, the contracts' sentence);
   a value in an open period but locked for Journal entries is allowed (partial locks do not apply, area 13 Q19 A).
-- **Derived values (Q16):** for an open period they are computed live at read, from the Jobs source with no row
+- **Derived values (Q16 A):** for an open period they are computed live at read, from the Jobs source with no row
   limits, and are **not stored**; the period close stores them in the close transaction (`derived_value`,
   `derived_at`), the same call that freezes KPIs, so a closed period never moves. A reopen leaves the stored value;
   the next close overwrites it (the change is in the audit log). Contracts 6.4 says derived values are recomputed
@@ -645,13 +661,29 @@ No new table. `report_layout.scope` = 'combined' (section 3.3); `formula_token.c
   period up to the column's end date, computed as one running pass over the periods, not one query per column.
   Dimension and job filters narrow the summary by `project_id`, `cost_code_id` or a precomputed set of
   `dimension_set_id` values; the 'management' basis drops accounts with `is_tax_strategy_only`.
-- **Requests to area 10** (a dated amendment line there when this area is approved): a covering index
-  `ledger_period_balance (period_id, account_id, debit_cents, credit_cents)` for the unfiltered path, and an index
-  `dimension_set_member (dimension_value_id, dimension_set_id)` for the set lookup. The summary has **no contact
-  key**, so the customer or vendor filter in contracts 4.1 cannot be answered from it (F8, Q12).
+- **Two read-path indexes, owned by this area (no change to area 10's design):** a covering index
+  `ledger_period_balance (period_id, account_id, debit_cents, credit_cents)` for the unfiltered path and an index
+  `dimension_set_member (dimension_value_id, dimension_set_id)` for the set lookup. They are added in the baseline pass
+  with area 17's tables; area 10's key, its single writer and its doc stay as approved, so area 10 gets no amendment
+  (owner, Q12 B).
+- **Customer or vendor filter (Q12 B):** the summary key has no contact and stays that way. A financial run with a
+  customer or vendor filter reads `journal_line` through `idx_journal_line_contact_id` (`:5862`), joined to
+  `journal_entry` for the period and the posted flag (and to `journal_line_dimension` when a dimension filter is also
+  set). **Expected time on 250,000 lines (an estimate to be confirmed by the perf test, not a measurement):** about 10
+  to 20 microseconds per line the contact holds in SQLite, so a contact holding 25,000 lines (10%) runs in roughly
+  0.25 to 0.5 s, inside the 1 s budget; a contact holding every line (not a real case) would take roughly 2.5 to 5 s.
+  The budget therefore covers a customer or vendor with up to about 10% of the file's lines. The same filter on a
+  balance sheet reads that contact's lines up to the column date. A plan comparison cannot be paired with a contact
+  filter (plan lines carry no contact): the service refuses the pairing with one sentence, and a `job_budget` compare
+  is allowed (it is by job).
 - Cash basis runs from payments and allocations at run time (contracts Q9 A) and is not in the speed budget.
-- **Performance target (contracts Q10 A):** a 12-column P&L with a plan comparison on 250,000 posted lines in under 1
-  second, accrual, no contact filter. Q20 decides where the test runs.
+- **Performance target (contracts Q10 A) and the test (Q20 A):** a 12-column P&L with a plan comparison on 250,000
+  posted lines in under 1 second, accrual. The `perf` test (marker `perf`, deselected by default, run explicitly at the
+  build step's review gate and before a release) builds one 250,000-line file once and asserts: (1) the unfiltered
+  12-column P&L with a plan comparison under 1 s; (2) the same with a dimension filter under 1 s; (3) a P&L filtered to
+  one contact holding 10% of the lines (25,000), no plan comparison, under 1 s; (4) a contact holding 100% of the lines
+  is run and its time recorded, not asserted (to confirm or correct the estimate above). Each case also checks that the
+  result equals a straight sum over `journal_line`.
 
 ### 9.2 "As reclassed" (contracts 4.4; area 10 section 2)
 
@@ -671,26 +703,27 @@ Closed figures and the close snapshot never change. No table in this area.
   `skipped`).
 - Row limits (project scope MR3, own-records limits, contact sides) are applied **before** grouping so totals count
   only visible rows.
-- The Agent runs reports only through `AGENT_ALLOWED`; it never exports (G7), designs or schedules (Q24).
+- The Agent runs reports only through `AGENT_ALLOWED`; it never exports (G7), designs or schedules (Q24 A).
 
 ### 9.4 Company settings and the cash flow category
 
 - `company_settings.report_basis_default` TEXT NOT NULL DEFAULT 'accrual' CHECK IN ('accrual', 'cash') (CB1: "a
   company setting picks the default") and `company_settings.report_adjustments_default` TEXT NOT NULL DEFAULT
   'pre_adjustment' CHECK IN ('pre_adjustment', 'gaap', 'tax', 'management') (contracts Q24 A). Both permissive defaults,
-  audited; the company settings audit triggers (`:3536` onward) add the two columns (Q17).
+  audited; the company settings audit triggers (`:3536` onward) add the two columns (Q17 A).
 - `account.cash_flow_category` TEXT NULL CHECK IN ('cash', 'investing', 'financing', 'op_customers', 'op_vendors',
   'op_employees', 'op_interest', 'op_taxes', 'op_other') (CF1: each account has a category, defaulted from its type
   and control type, changeable with an audit entry). NULL means "use the default derived from the account's type,
   subtype and control type" (computed by the service), so chart templates need no new column. The cash set is
   area 12's (section 5.3), not an account category on a card account. The cash flow statement's computation and rows
-  are not in the contracts; this pass stores the layout type and the column only (section 14; Q17).
+  are not in the contracts; this pass stores the layout type and the column only (section 14; Q17 A).
 
 ### 9.5 Exports and output files
 
 Excel and PDF files are written through `storage.py` (H3) and returned as handles; EX1's limits apply to Records
 exports (250,000 rows, a confirmation above 50,000). EX1 says a `Report export` checkpoint is signed "for
-journal-based reports only"; whether P&L and balance sheet exports count is Q22.
+journal-based reports only"; Q22 A: financial exports (P&L, balance sheet, cash flow, combined) sign a `Report export`
+checkpoint, being computed from the ledger; Records exports and measure files do not.
 
 ---
 
@@ -713,7 +746,7 @@ contracts section 12 item 14 states the owner's rows for `money.view` and leaves
 | `report.design` | save layouts, KPIs, measures and shared saved reports and packs |
 | `report.schedule` | save, run now and delete schedules |
 
-### 10.3 Placement (Q21; area 18 carries the dated amendment when approved)
+### 10.3 Placement (Q21 A, Q23 A, Q24 A; area 18 carries the dated amendment lines)
 
 - **Caps (2.4.1):** the Accountant cap gains all four (68 codes with areas 12 and 10); the Sales rep and Operations
   caps gain `money.view`, `report.records` and `report.design` (14 → 17 and 30 → 33). `report.schedule` only in the
@@ -725,10 +758,10 @@ contracts section 12 item 14 states the owner's rows for `money.view` and leaves
 - **Templates (2.4.3):** the Accountant templates (Controller, Staff accountant, Payroll, AP clerk, AR clerk) are on
   the Accountant role, whose View only level already gives `money.view`. Sales manager, Project manager and Estimator
   name `report.job_cost` but sit on levels that may not hold `money.view`, so each adds `money.view` in its
-  non-sensitive column (Q23); the two union templates inherit. Controller also adds `report.schedule` (it holds
+  non-sensitive column (Q23 A); the two union templates inherit. Controller also adds `report.schedule` (it holds
   `report.export` today); no other template changes.
 - **AGENT_ALLOWED:** `money.view` and `report.records` (read-only codes) are added so the Assistant keeps running
-  financial reports as G7 says; `report.design`, `report.schedule` and `report.export` are not (Q24).
+  financial reports as G7 says; `report.design`, `report.schedule` and `report.export` are not (Q24 A).
 - **Placement check, in words:** every new code is in the Accountant cap; every level default stays inside its role's
   cap and holds no sensitive code; View only holds no write code (`money.view` is a read code); each template sits
   inside the union of its roles' caps. The scratch check in area 18 section 2.4 is re-run when this is built (area 18
@@ -744,10 +777,11 @@ contracts section 12 item 14 states the owner's rows for `money.view` and leaves
 | `nonfinancial_value` | typed value | yes |
 | `layout_item`, `layout_group_account`, `layout_auto_include`, `formula_token`, `report_chart`, `report_chart_series`, `records_*`, `saved_report_compare`, `saved_report_filter`, `saved_report_scope`, `report_share`, `report_pack_item`, `report_schedule_recipient`, `nonfinancial_measure_filter` | saved with their parent row | no (the parent's `row_version` guards the whole tree) |
 | `kpi_value`, `nonfinancial_import`, `report_schedule_run`, `report_delivery` | insert-only, or one completion update | no |
-| `user_list_pref` | last write wins | no (Q3) |
+| `user_list_pref`, `saved_view` | last write wins | no (Q3 A) |
 
 - **Audit (area 18 section 1):** every new table has insert, update and delete triggers, except the event and display
-  rows Q4 may exempt (`report_schedule_run`, `report_delivery`, `user_list_pref`, `saved_view`). `kpi_value`,
+  rows exempted by Q4 A: `report_schedule_run`, `report_delivery`, `user_list_pref` and `saved_view` (the last two lose
+  the triggers they have today, section 2.4). Area 18's amendment adds them to its exempt list. `kpi_value`,
   `nonfinancial_value` and `nonfinancial_import` are audited (AX4), with before and after on every change. Services
   pass the reason through `tx.py`; no new action needs a required reason (no new control is added).
 - Integrity backstops here guard only closed-record data: `kpi_value` insert-only. Everything else (read-only
@@ -756,56 +790,83 @@ contracts section 12 item 14 states the owner's rows for `money.view` and leaves
 
 ---
 
-## 12. Conflicts with decisions (flagged, not resolved)
+## 12. Conflicts with decisions (all resolved by the owner's answers, 2026-11-19)
 
-- **F1 Charts as layout items.** Contracts 2.2 shows a chart as an item of `type: "chart"` in the tree, and section 12
-  item 2 lists `chart` as an item type beside item 5's `layout_chart`. This draft stores charts in `report_chart`
-  and `report_chart_series` (one table for both kinds, since a records chart's series are columns); the service still
-  presents a chart item in the contracts' JSON. No question: the service output is unchanged.
-- **F2 Sharing.** Contracts 2.4 has `shared: true|false`; CODE_CHANGES 100 (owner 11-15) has Only me · Specific people ·
-  Everyone with Reports access. Q8.
-- **F3 Pack contents.** Contracts 2.5 holds saved reports only; CODE_CHANGES 100 shows Cover page, Contents (auto),
-  reports and text pages. Q9.
-- **F4 Where the plan version lives.** 11-18 inbox item 7 puts `plan_version_id` on the saved report; contracts 2.4
-  puts it inside `compare` (up to two compare columns). This draft uses compare rows.
-- **F5 Preferences and audit.** 11-15 2:13 PM: the per-user store is not audit-logged and never shared. The baseline
-  audits `user_list_pref` and `saved_view` (`:5505-5608`) and area 18 (owner-approved) lists them as audited and
-  exempts only derived tables and three named categories. Q4.
-- **F6 Account ranges.** The 11-18 decision lets a group take "an account range so new GL accounts join
-  automatically", which is a rule by account number; the task rule says accounts are found by role or group rules, never
-  by number, with combined-run matching as the one exception. This draft keeps the range as a user-defined group rule
-  and keeps every shipped layout number-free. Q6.
-- **F7 Deleting a layout.** Contracts 2.1 and the 11-18 inbox item 8 refuse deletion only while a pack uses it; a saved
-  report or an active KPI that uses it would otherwise have a dangling reference. Q7.
-- **F8 Contact filter vs the summary.** Contracts 4.1 allows a customer or vendor filter on financial runs; area 10's
-  summary key (`period`, `account`, `entity`, `project`, `cost_code`, `dimension_set`) has no contact, so that filter
-  cannot use the summary and cannot meet the 1 second budget. Q12.
-- **F9 Derived measures written on every run.** Contracts 6.4: `refresh_derived_measures` recomputes and writes derived
-  values for open periods "on every report run". A read that writes conflicts with the rule that reads write nothing
-  (workflow-standards prevention rule; CLAUDE.md rule 7). Q16.
-- **F10 Builder features the contracts omit.** CODE_CHANGES 100 (owner 11-15, confirmed 2:03 PM) lists columns "split by
-  Job, Job type, PM, Profit center, Cost center, Cost code, Month, Entity" and a Budget and Variance column from job
-  budgets; the approved contracts have `columns.mode` only by period, quarter and year, and compare types prior
-  period, prior year and plan. Job cost reports (job profitability, WIP schedule) have no `report_type`. Q11.
-- **F11 KPI freeze never blocks.** Contracts 2.7: a failed value is null with a note and never blocks the close.
-  Area 13's freeze runs inside the close transaction, so an unexpected error would roll the close back. Q14.
-- **F12 Consolidation entity.** CODE_CHANGES 100 and the 11-15 answer show an Entity "consolidated" with an
-  Eliminations column for subsidiaries inside one file; contracts 4.1 refuses `entity.mode: consolidated` until
-  consolidation is built (planned). No schema here; `entity_mode` has no 'consolidated' value.
-- **F13 AGENT_ALLOWED.** G7 says the Assistant can run reports but never export; area 18's pattern and areas 12 and 10
-  keep new codes out of `AGENT_ALLOWED`; but a financial run needs `money.view` (contracts Q7 A), so leaving it out
-  would silently remove the Assistant's financial reports. Q24.
-- **F14 Report export checkpoint.** EX1: a `Report export` checkpoint "for journal-based reports only"; not stated
-  for the summary-based P&L and balance sheet. Q22.
-- **F15 Area 18 and area 10 amendments.** Area 18's approved seed tables do not place the four codes or the template
-  changes; area 10's approved summary lacks the two indexes. Adding them amends approved areas (dated lines when this
-  area is approved).
-- **F16 Management basis.** `periods.BASES` has no 'management' (`periods.py:27`) while A1 and contracts 4.1 do. The
-  report engine adds it; no schema.
+- **F1 Charts as layout items.** Contracts 2.2 shows a chart as an item of the tree; this draft stores charts in
+  `report_chart` and `report_chart_series`. **Resolved as drafted (no question):** the service still presents a chart
+  item in the contracts' JSON.
+- **F2 Sharing.** Contracts: a yes/no flag; CODE_CHANGES 100: three modes. **Resolved by Q8 A:** private, specific
+  people, everyone with Reports access; the contracts carry a dated amendment line.
+- **F3 Pack contents.** **Resolved by Q9 A:** cover, contents, report and text items; the contracts carry a dated
+  amendment line.
+- **F4 Where the plan version lives.** **Resolved as drafted (no question):** compare rows
+  (`saved_report_compare`), as the contracts have it.
+- **F5 Preferences and audit.** 11-15 2:13 PM (not audit-logged) vs the baseline and area 18 (audited). **Resolved by
+  Q4 A:** `user_list_pref`, `saved_view`, `report_schedule_run` and `report_delivery` are exempt from audit; the two
+  existing sets of triggers are dropped in the baseline plan; area 18 carries a dated amendment moving them to its
+  exempt list.
+- **F6 Account ranges.** **Resolved by Q6 A:** `account_range` stays a user-defined rule in company layouts only; every
+  shipped layout uses account type, role and cash-set rules.
+- **F7 Deleting a layout.** **Resolved by Q7 A:** refused while any saved report, pack item (through its saved report)
+  or active KPI uses it, naming them.
+- **F8 Contact filter vs the summary.** **Resolved by Q12 B:** a customer or vendor filter reads `journal_line` through
+  its `contact_id` index; the summary key is unchanged and area 10 gets no amendment. Expected time and the perf test
+  cases are in section 9.1; the filter cannot be paired with a plan comparison.
+- **F9 Derived measures written on every run.** **Resolved by Q16 A:** derived values are computed live for open
+  periods and stored only at close, never by a read; the contracts carry a dated amendment line.
+- **F10 Builder features the contracts omit.** **Resolved by Q11 A:** `saved_report.split_by` (and
+  `split_dimension_type_id`) and the compare type `job_budget` are in the schema; job cost reports are financial layouts
+  (no new `report_type`); the contracts carry a dated amendment line.
+- **F11 KPI freeze never blocks.** **Resolved by Q14 A:** any failure evaluating a KPI is stored as null with a note and
+  logged; the close continues.
+- **F12 Consolidation entity.** **Resolved as drafted (no question):** no schema here; `entity_mode` has no
+  'consolidated' value until consolidation is built.
+- **F13 AGENT_ALLOWED.** **Resolved by Q24 A:** `money.view` and `report.records` are added; `report.design`,
+  `report.schedule` and `report.export` are not; area 18 carries a dated amendment line.
+- **F14 Report export checkpoint.** **Resolved by Q22 A:** financial exports sign a `Report export` checkpoint; Records
+  exports and measure files do not.
+- **F15 Area 18 and area 10 amendments.** **Resolved by the owner's amendments (2026-11-19):** area 18 (exempt list,
+  the four codes, templates, AGENT_ALLOWED, placement check), docs/contracts/reports.md (sharing, pack items,
+  `split_by` and `job_budget`, derived measures, KPIs for periods 13 and 14) and area 13 section 4.5 (the freeze on the
+  close of 13 and 14) carry dated lines. Area 10 needs none (Q12 B).
+- **F16 Management basis.** **Resolved as drafted (no question):** the report engine adds the Management basis;
+  `periods.BASES` is not in the schema.
 
 ---
 
-## 13. Questions for the owner
+## 13. Questions for the owner: answers recorded (2026-11-19)
+
+All twenty-five answered, one by one: A except Q12 (B) and Q13 (B). The options as asked are kept in 13.1.
+
+| Q | Answer | Where it lands |
+|---|--------|----------------|
+| Q1 Custom fields in the registry | every active custom field offered; inactive ones keep working in saved definitions | 1.3 |
+| Q2 Company default list layout | `company_list_default`, Admin, audited | 2.3 |
+| Q3 `row_version` on prefs | none on `user_list_pref` and `saved_view`; one on the company default | 2.3, 11 |
+| Q4 Audit of prefs and event rows | exempt `user_list_pref`, `saved_view`, `report_schedule_run`, `report_delivery`; drop the two sets of triggers; area 18 amended | 2.4, 11 |
+| Q5 Built-in layouts | rows made by an upkeep at company open from code | 3.3 |
+| Q6 Auto-include rule kinds | account_range (company layouts only), account_type, role, cash_set | 3.3 |
+| Q7 Deleting a layout | refused while a saved report, pack item or active KPI uses it | 3.6, 4.4 |
+| Q8 Sharing | three modes plus `report_share`; contracts amended | 4.3 |
+| Q9 Pack contents | cover, contents, report, text; contracts amended | 4.3 |
+| Q10 Saved report parameters | typed columns and child rows | 4.3 |
+| Q11 Builder features the contracts omit | `split_by` and `job_budget` compare in the schema now; no new `report_type`; contracts amended | 4.3 |
+| Q12 Customer or vendor filter | **B:** reads `journal_line` through its `contact_id` index; summary key unchanged; no area 10 amendment; expected time stated and in the perf test | 9.1, 4.3 |
+| Q13 KPI values for periods 13 and 14 | **B:** also frozen when the KPI's basis includes them (13: gaap, tax, management; 14: tax); area 13 and contracts amended | 6.4, 6.5 |
+| Q14 KPI freeze failures | any failure stored as null with a note; the close continues | 6.4 |
+| Q15 Frozen KPI definition versions | `kpi_row_version` and `layout_row_version` | 6.3 |
+| Q16 Derived measures | live while open, stored once at close; contracts amended | 7.4 |
+| Q17 Settings and cash flow category | two company settings and `account.cash_flow_category` (NULL = default) now | 9.4 |
+| Q18 Measure import record | `nonfinancial_import` | 7.3 |
+| Q19 Delivery notification | `report_delivery.read_at` is the unread marker | 5.3 |
+| Q20 250,000-line speed test | `perf` marker, deselected by default; cases in 9.1 (contact-filtered case included) | 9.1 |
+| Q21 Placement of the four codes | as 10.3; area 18 amended | 10.3 |
+| Q22 Report export checkpoints | financial exports sign one; Records and measures do not | 9.5 |
+| Q23 Templates and `money.view` | added to Sales manager, Project manager and Estimator; area 18 amended | 10.3 |
+| Q24 AGENT_ALLOWED | `money.view` and `report.records` only; area 18 amended | 10.3 |
+| Q25 Built-in layouts in this pass | standard P&L, balance sheet and a blank per kind | 3.3 |
+
+### 13.1 The questions as asked
 
 Recommended option first.
 
@@ -931,17 +992,22 @@ Recommended option first.
 ## 14. Open items (not decisions)
 
 - **Area 7:** `operating_plan_version` and `operating_plan_line` (`saved_report_compare.plan_version_id` references the
-  first); job budgets (`project_budget`, `:282`) for a job budget compare (Q11).
+  first); job budgets (`project_budget`, `:282`) for a job budget compare (Q11 A).
 - **Areas 6, 8, 15:** the Records source tables (`lead`, stage and status history, `activity`, `service_case`, the
   lead-to-job link, the sales rep on the contract) and `custom_field_def.record_type` 'Lead' (contracts 12 items 16-17);
   until they exist those sources are not offered. Estimates and Jobs sources can ship first.
-- **Area 10:** a dated amendment adds the two indexes (9.1) and, under Q12 A, the contact key.
+- **Area 10:** no amendment (owner, Q12 B). The summary key is unchanged; the two read-path indexes on its tables are
+  added by this area's baseline pass (9.1).
 - **Area 13:** `periods._close` calls `kpis.freeze_for_close` and `measures.freeze_derived` after the snapshot (the
-  call order is already in area 13 section 4.5); both are one transaction with the close.
+  call order is already in area 13 section 4.5); both are one transaction with the close. Area 13 section 4.5 carries a
+  dated amendment line: the freeze also runs when periods 13 and 14 close (Q13 B).
 - **Area 12:** the cash set used by the `cash_set` auto-include rule and the cash flow report.
-- **Area 18:** the four permission rows, caps, levels, template and `AGENT_ALLOWED` lines (Q21, Q23, Q24), and the
-  exempt-list change under Q4 A; the seeded code count becomes 86.
-- **Area 21:** `row_version` mechanics and `StaleVersionError`; a general notification feed (Q19); whether
+- **Area 18:** dated amendment lines carry the four permission rows, caps, levels, template and `AGENT_ALLOWED` lines
+  (Q21 A, Q23 A, Q24 A) and the exempt-list change (Q4 A); the seeded code count becomes 86.
+- **docs/contracts/reports.md:** dated amendment lines carry the three share modes (Q8 A), the pack item kinds (Q9 A),
+  `split_by` and the `job_budget` compare type (Q11 A), derived measures stored only at close (Q16 A) and KPI values for
+  periods 13 and 14 (Q13 B); the contracts' mock-data files change with them (build rule g).
+- **Area 21:** `row_version` mechanics and `StaleVersionError`; a general notification feed (Q19 A: later); whether
   `saved_view` can be shared.
 - **Not designed by the contracts and not built in 2.9:** the cash flow statement's rows (CF1, direct method), the
   consolidated entity report (F12) and the drill-down handle format (an opaque token re-derived and re-authorized at

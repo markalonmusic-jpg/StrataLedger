@@ -251,6 +251,13 @@ Amendment 2026-11-19 (owner, area 10 F13): `dimension_set` and `dimension_set_me
 derived list; they are the dimension combinations of posted lines, written only by `ledger.py` with
 `ledger_period_balance` (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 4).
 
+Amendment 2026-11-19 (owner, area 17 Q4 A): `user_list_pref`, `saved_view`, `report_schedule_run` and
+`report_delivery` (company) are exempt from audit, as a fourth exempt category named in the same schema test:
+display-only per-user preferences (11-15 2:13 PM: UI only, not audit-logged) and report delivery event records.
+`user_list_pref` and `saved_view` leave the audited list (section 1.1 rows; their six triggers, 5505-5608, are
+dropped in the baseline plan). `company_list_default` stays audited (it is a company setting)
+(docs/replan_2.9/area_17_fields_layouts_reports.md sections 2.4 and 11).
+
 Not business tables, and outside the owner's two categories, so they form a third exempt category
 (Q24 A; C8 closed), listed by name in the same schema test:
 - The audit trail itself: `audit_log`, `audit_context` (both files), `access_event` (company), `auth_event`
@@ -498,6 +505,21 @@ templates (2.4.3), revised 2026-11-19 by the owner: `je.reclass` follows `je.pos
 Placement check re-run in words: every code still placed; the levels stay inside the cap with no sensitive code; View
 only unchanged; every template inside its roles' caps
 (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 7.1).
+
+Amendment 2026-11-19 (owner, area 17 Q21 A, Q23 A, Q24 A): four new codes, module Reports, none sensitive: `money.view`,
+`report.records`, `report.design` and `report.schedule`. Caps (2.4.1): the Accountant cap gains all four (64 to 68 codes
+with areas 12 and 10); the Sales rep cap gains `money.view`, `report.records` and `report.design` (14 to 17); the
+Operations cap gains the same three (30 to 33). Level defaults (2.4.2, cumulative): `money.view` at Accountant · View
+only, Sales rep · Manager and Operations · Standard; `report.records` at Accountant · Standard, Sales rep · Standard and
+Operations · Standard; `report.design` at Accountant · Manager, Sales rep · Manager and Operations · Manager;
+`report.schedule` at Accountant · Manager. Shipped templates (2.4.3): Sales manager, Project manager and Estimator add
+`money.view` in their non-sensitive column (the two union templates inherit it); Controller adds `report.schedule`.
+`AGENT_ALLOWED` adds `money.view` and `report.records` only. Placement check re-run in words: every new code is in the
+Accountant cap, so every code is still placed (86 seeded codes with areas 12, 10 and 17); every level default stays
+inside its role's cap and holds no sensitive code; View only holds read codes only (`money.view` is one); every
+template sits inside the union of its roles' caps; the Accountant templates already hold `money.view` through
+Accountant · View only, and the three templates that name `report.job_cost` now hold it
+(docs/replan_2.9/area_17_fields_layouts_reports.md section 10.3).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 

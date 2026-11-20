@@ -545,6 +545,10 @@ g2). Today's values can differ only after a reopen and a repost, or after an acc
 - The close transaction also inserts area 17's `kpi_value` rows (contracts section 12 item 8) with the same
   `close_event_id`; area 13 owns the call order: checks → close flag → history row → snapshot → KPI values →
   commit → checkpoint (section 5). A KPI failure is a null value with a note and never blocks.
+  Amendment 2026-11-19 (owner, area 17 Q13 B): the KPI freeze also runs when periods 13 and 14 close, through
+  `periods._close` (so through `close_period` on either, and through `close_year`), for each KPI whose basis includes
+  the period: period 13 for the gaap, tax and management bases, period 14 for the tax basis; a measure-sourced KPI
+  freezes months 1-12 only (docs/replan_2.9/area_17_fields_layouts_reports.md section 6.4).
 - Non-financial measures (area 17, item 10): typed values refused with `PeriodClosedError` in a closed period;
   derived recomputation skips closed periods. Partial locks do not apply to measures (Q19 A).
 - Reopen: snapshots and KPI values are kept; reports show live values again while the period is open
