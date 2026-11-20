@@ -482,6 +482,12 @@ leads where the user is the sales rep, Unassigned leads, and leads the user take
 'Own'`. Every seeded level row and shipped template keeps the default All. There is no `lead.view_all` code
 (docs/replan_2.9/area_15_crm.md section 7.2).
 
+Amendment 2026-11-20 (owner 11-14 1:30 PM, decision audit; answered 1:50 AM): deactivating a user returns their open
+work in each company they can open: leads where they are sales rep, estimate revisions they hold, open cases and
+activities they own, jobs where they are PM, and items waiting on their approval. It offers to reassign each item
+through its owning service, with a reason, and logs it. Open work never blocks deactivation (rule 0), and the list
+stays available afterwards so items can be reassigned later.
+
 ### 2.4 Seed tables (O1)
 
 Checked by a scratch script, not project code:
@@ -890,6 +896,20 @@ own backups (the reasoning of K14).
 - Indexes: `(company_id, started_at)`, and `(result)` for the "need attention" item.
 - Writer: the 2.8 backup service, around `database.backup_database`. The helper stays a database-layer function
   without master access. Recorded in the master only.
+
+Amendment 2026-11-20 (owner 11-18 2:00 PM, decision audit; answered 1:50 AM): the settings registry marks each
+setting, control and policy record as high-impact (who approves, how posting works, what a workflow does) or
+low-impact. A high-impact change is saved in two calls. `settings.preview_change(context, key, new_value)` is
+read-only and returns scope, affected roles and people, existing and new work with counts and links, and dependencies
+and conflicts. `settings.apply_change(context, key, new_value, row_version)` re-runs the preview's checks and writes
+the setting and its AX4 audit row in one transaction. A low-impact setting saves in one call and is still logged.
+Areas 8 and 15 use the same pair for stages and triggers.
+
+Amendment 2026-11-20 (owner 11-19 2:58 PM and planning 3:12 PM, decision audit; answered 1:50 AM): every user's
+company open writes an `auth_event` of type 'Company opened' with `company_id` in the master. Today only the Master's
+opens are logged, and only inside the company file. The Companies page reads the latest event per company without
+opening any file. The Users page reads last sign-in from `auth_event` and "Must change password" from
+`app_user.temp_password_expires_at`.
 
 ### 4.3 How it lands in the baselines
 

@@ -564,6 +564,24 @@ Amendment 2026-11-19 (owner 11:20 PM, from area 15):
   writes a revision that removes them. Customer approval writes the budget and contract rows as already approved
   and leaves the ETC unchanged. The revised budget never moves before customer approval.
 
+Amendment 2026-11-20 (owner 11-19 9:58 PM, decision audit; answered 1:50 AM): `field_event` gains `reason_id`
+INTEGER NOT NULL (FK `reason_option`, kind 'Change order', ON DELETE RESTRICT) and `reason_label` TEXT NOT NULL (the
+label at the time of use); `expected_days_impact` INTEGER NULL CHECK (NULL or >= 0); `pricer_user_id` INTEGER NOT
+NULL once saved (a master user id, plain integer, no FK, since users live in the master file), defaulting to the
+job's PM, and the person logging the event can change it (an R25 pick from users who hold `change_order.create` on
+the job); and `price_due_on` TEXT NULL (a date, optional). Saving the field event writes one notification to the
+pricer (area 21 feed). Converting it copies `expected_days_impact` into `change_order.days_added` as the starting
+value.
+
+Amendment 2026-11-20 (owner 11-14 12:40 PM, decision audit; answered 1:50 AM): a change order whose margin is under
+`company_settings.estimate_margin_floor_pct` (area 6 s4.3) shows an R27 Check alert on the pricing screen, and its
+send (to Submitted) returns a warning and succeeds. It never refuses (rule 0). With "Change order approval" ON, the
+under-floor condition is area 14's policy condition, the same as for estimates.
+
+Amendment 2026-11-20 (owner 11-19 10:10 PM, decision audit; answered 1:50 AM, Q2 A): an office change order is
+created with `field_event_id` NULL and enters PCO pending once its costs are entered. From there it follows the same
+statuses, forecast revision (kind 'PCO') and "Change order approval" step as the field-event path.
+
 ### 5.4 How it lands, effects, tests
 
 - Lands in `001_company.sql`: the new columns, `field_event`, the lock triggers, audit triggers for the three tables,

@@ -325,6 +325,11 @@ the same baseline edit as long as the baseline is unreleased; a numbered migrati
 tasks" are shipped template rows of kind System when a check backs them, otherwise shipped Custom rows, owners by
 role (Q11 A).
 
+Amendment 2026-11-20 (owner 11-14 7:16 PM, decision audit; answered 1:50 AM): section 2.3 gains the check
+`clearing_open_items` (step Reconciliations). It lists open Clearing ID items, with their age, on accounts with
+`track_clearing_id = 1` other than AR and AP, which `ar_tie_out` and `ap_tie_out` cover. It warns by default (L2) and
+ships now.
+
 ### 2.4 Proposed schema
 
 **`period_close_check`** (kept; the system-check registry): keep `check_code`, `mode`; add `step_code`

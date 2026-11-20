@@ -151,6 +151,12 @@ Counts: 30 new company-file tables, 4 new columns on existing tables (two on `co
   from the request). The Agent has no preferences.
 - `saved_view` is unchanged here; whether views can be shared is not decided and not built (section 14).
 
+Amendment 2026-11-20 (owner 11-17 10:56 PM, decision audit; answered 1:50 AM): `user_list_pref` also holds document
+line tables (invoice, bill, JE, PO, estimate, change order, credit memo, G703, deposit and transfer lines). Their
+`list_key` values are registry keys of kind 'line table'. `columns_json` stores widths only, because the form fixes
+the order and the shown columns. `sort_json` and `page_size` stay NULL, because line tables never sort (R23). Reset
+deletes the row. There is no company default for line tables.
+
 ### 2.4 How it lands, effects, tests
 
 - Baseline: `company_list_default` and its audit triggers; `user_list_pref.updated_at`. **The six audit triggers of
@@ -627,6 +633,12 @@ warning; currencies must match; dimension, job, cost code and contact filters, e
 refused; KPIs are not combined; a combined report can be saved (with its company list) and added to packs, but not
 scheduled.
 
+Amendment 2026-11-20 (owner 11-15 2:08 PM and 11-16 2:02 PM, decision audit; answered 1:50 AM, Q1 A): sections 8 and
+14. Consolidating entities inside one company file (`company_entity`, `journal_line.entity_id`, intercompany
+accounts, eliminations) is an owner decision, designed in area 21. Until that design is approved,
+`saved_report.entity_mode` 'entities' stays refused. Entity screens stay hidden until a company has a second entity.
+Planning adds the topic to area 21's row in schema_replan_2026-11-17.md.
+
 ### 8.3 Proposed schema
 
 No new table. `report_layout.scope` = 'combined' (section 3.3); `formula_token.company_id` and `account_code` (3.3);
@@ -1016,3 +1028,7 @@ Recommended option first.
 - **Services this area adds** (none exist): `field_registry`, `list_prefs`, `report_layouts`, `report_formulas`,
   `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`, `report_combined`, `kpis`, `measures`,
   `report_schedules`, `report_output`.
+
+Amendment 2026-11-20 (owner 11-14 12:50 PM, decision audit; answered 1:50 AM, Q3 A): the direct-method cash flow view
+is an owner decision, not optional. The "not built in 2.9" line above names it, and the CF1 cash flow rows are
+designed with both an indirect and a direct view before v1.0 ships.
