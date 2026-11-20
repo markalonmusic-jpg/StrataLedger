@@ -719,6 +719,22 @@ INTEGER NULL UNIQUE; new `source` TEXT NOT NULL CHECK IN ('Estimate', 'Direct'),
 (`revision_id` IS NOT NULL). A Direct contract needs the contract value (`original_amount_cents`), retainage, terms and
 the signed file (`signed_attachment_id` stays NOT NULL, Q10 A); its number comes from the CT- series (Q21 B).
 
+Amendment 2026-11-20 (owner 2:45 AM, from area 7): every service job has exactly one `contract` row and needs no
+signed file. `contract.source` CHECK IN ('Estimate', 'Direct', 'Service quote', 'Case warranty', 'Case T&M');
+`revision_id` is set exactly for 'Estimate' and 'Service quote' (CHECK); `signed_attachment_id` becomes NULL-able,
+required (CHECK) for 'Estimate' and 'Direct' only. **Service quote:** billable service work over
+`company_settings.service_quote_limit_cents` (area 15) goes through this area's estimate flow (rep wizard, a service
+manager enters costs, approval if the Estimate policy is on, a quote with service terms from the service type's
+contract template). The customer's acceptance replaces the signed file for this source only, stored on the contract:
+`accepted_method` TEXT CHECK IN ('Online', 'Email', 'Phone', 'In person', 'Other'), `accepted_by_name` TEXT (who at the
+customer), `accepted_recorded_by` INTEGER (the user; NULL when Online), `accepted_at` TEXT (UTC), `accepted_amount_cents`
+INTEGER; all set exactly when the source is 'Service quote' (CHECK). The rep records it under `contract.sign`. The row
+freezes the quote's price or T&M rates (`contract_rate_line`) and the terms. **Case warranty:** `schedule_type` 'Not
+billed' (added to the CHECK, allowed for this source only), `original_amount_cents` 0; costs roll up to the original
+job's Warranty line (area 7 Q16, Q17 A). **Case T&M:** `schedule_type` 'Time and materials', the company rate card's
+lines frozen as `contract_rate_line`, optional `not_to_exceed_cents`. Schedule type per source: 'Estimate' and
+'Service quote' copy the revision's; 'Direct' takes one of the four from New job.
+
 ### 10.3 Tests to write later
 
 - A second contract for the same job or the same revision is refused (UNIQUE).

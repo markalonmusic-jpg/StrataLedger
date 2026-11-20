@@ -926,6 +926,12 @@ Amendment 2026-11-20 (owner 2:25 AM, from area 7): the settings registry marks `
 `company_settings.require_budget_before_costs` and each `dimension_type.required_mode` as high-impact (preview and
 apply); each change needs `company.settings` and a reason and is audit-logged (area 7 section 9.3).
 
+Amendment 2026-11-20 (owner 2:45 AM, from area 7): `company_settings.service_quote_limit_cents` (Settings › Service,
+area 15) is changed with `company.settings` and a reason and is audit-logged; the registry marks it high-impact,
+since it decides which flow billable service work takes. No new permission code: Case warranty and Case T&M jobs use
+`case.work` and `project.create` (area 15), the quote uses `estimate.create`, `estimate.send` and `estimate.approve`,
+and recording the customer's acceptance uses `contract.sign` (area 6).
+
 Amendment 2026-11-20 (owner 11-19 2:58 PM and planning 3:12 PM, decision audit; answered 1:50 AM): every user's
 company open writes an `auth_event` of type 'Company opened' with `company_id` in the master. Today only the Master's
 opens are logged, and only inside the company file. The Companies page reads the latest event per company without

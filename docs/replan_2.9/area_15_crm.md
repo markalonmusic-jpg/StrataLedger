@@ -518,6 +518,15 @@ seeded to a shipped "Service" type with its own short delivery stages).
   `warranty_for_job_id` = the case's job when Warranty; `source_case_id` = the case, the only link, Q13 B), and, if
   the case is Open, moves it to In progress through `change_status` (`via` 'Service job created', `changed_by` the
   user) in the same transaction.
+
+  Amendment 2026-11-20 (owner 2:45 AM, from area 7): "Create service job" makes a 'Case warranty' job (Warranty, Not
+  billed, value 0) or a 'Case T&M' job (billable repairs under the quote limit, at company rates frozen onto the
+  contract, optional not-to-exceed), each with its one contract row and no signed file, through area 7's
+  `jobs.create_service_job`. Billable work over the limit starts a Service quote instead (area 6's estimate flow with
+  service terms); its job is created when the quote is accepted. New setting `company_settings.service_quote_limit_cents`
+  INTEGER NOT NULL DEFAULT 100000 CHECK (>= 0) (Settings › Service; $1,000), changed with `company.settings` and a
+  reason, audit-logged. How the limit is applied to a Case T&M job, and the quote's lead, are area 7 open items
+  (section 13).
 - Resolve prompt (derived, never stored, never automatic): a case not Resolved or Closed with at least one job whose
   `source_case_id` is the case, and every such job in a Complete or Closed stage role (area 8). Area 8's job stage
   service, when a job with a `source_case_id` reaches Complete, writes one notification to the case owner (area 21
