@@ -1,8 +1,8 @@
 # Step 2.9 schema replan, area 6: estimates, contracts, pricing, T&M rates, contract templates
 
-Status: **Draft, answers recorded** (first draft 2026-11-20, 2c82148; owner answers 2026-11-20 folded in below,
+Status: **Owner-approved 2026-11-20 (2c82148, answers d297397, b0bea27)** (first draft 2026-11-20, 2c82148; owner answers 2026-11-20 folded in below,
 section 15: all A except Q11 (Mark signed, owner's wording), Q12 B, Q13 B and Q21 B; amendment lines written in
-area 8 sections 1.3, 4.3 and 5.3, area 15 sections 1.3 and 7.3, and area 18 sections 1.2, 2.4 and 3.2). Docs only: nothing here changes code, a baseline, a migration or a test.
+area 8 sections 1.3, 4.3 and 5.3, area 15 sections 1.3 and 7.3, and area 18 sections 1.2, 2.4 and 3.2). Docs only: nothing here changes code, a baseline, a migration or a test. No questions are open.
 Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan is
 approved. PROPOSED items from the sources are not built as final. Amendments this area needs in approved areas 8,
 15 and 18 are written there as dated amendment lines (owner 2026-11-20); area 17's is an open item (section 16).

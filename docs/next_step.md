@@ -1,13 +1,13 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8 and 15 approved; next area chosen by the owner)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15 and 6 approved; next area chosen by the owner)
 
-Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 15. Start a fresh session (MR1) and read
+Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 6. Start a fresh session (MR1) and read
 .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
 ## Where 2.9 stands (owner decision 2026-11-17; docs only so far)
 
 - Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
   never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- **Owner-approved: 7 of 21 areas, plus the report contracts.**
+- **Owner-approved: 8 of 21 areas, plus the report contracts.**
 
   | Area | Doc | Commits |
   |------|-----|---------|
@@ -18,9 +18,10 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 15. S
   | 17 Field registry, list layouts, report builder, KPIs, measures | docs/replan_2.9/area_17_fields_layouts_reports.md | 809fb22, fded8c4 |
   | 8 PM: stages, service types, schedules, change orders, forecast | docs/replan_2.9/area_8_pm_schedules.md | 3d15762, c835d20 and the approval commit b9ff295 (+ amendment lines in area 18; amendment lines from area 15) |
   | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; area 18 seeded codes 102) |
+  | 6 Estimates, contracts, pricing, T&M rates, contract templates | docs/replan_2.9/area_6_estimates_contracts.md | 2c82148, d297397, b0bea27 and the approval commit (+ amendment lines in areas 8, 15 and 18; area 18 seeded codes 107) |
   | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
-- **Todo (14):** areas 1-7, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built; an area
+- **Todo (13):** areas 1-5, 7, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built; an area
   still todo or drafted is not, and PROPOSED items are not built as final.
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
@@ -28,14 +29,15 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 15. S
 
 ## Next: an area chosen by the owner
 
-Ask the owner which todo area to draft next (areas 1-7, 9, 11, 14, 16, 19, 20, 21). Draft it in
+Ask the owner which todo area to draft next (areas 1-5, 7, 9, 11, 14, 16, 19, 20, 21). Draft it in
 `docs/replan_2.9/area_<n>_<name>.md` in the layout of the area 13 doc (0 Summary table; per topic current state with
 file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests, tests to
 write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended option
 first; open items), from the area's row and "Inbox inputs" in the working doc. Cite "C21" style codes as sections of
-`CODE_CHANGES_NEEDED.md`, not decision codes. Areas 6 (estimates, contracts, rate cards) and 7
-(jobs, budgets, cost codes) now have the most waiting on them (below), including the estimate-flow answers of
-2026-11-19 11:20 PM in `Strata_Teams\shared_decisions.md` (read them by that date when drafting area 6 or 7).
+`CODE_CHANGES_NEEDED.md`, not decision codes. Area 7 (jobs, budgets, cost codes) now has the most waiting on it
+(below), including the estimate-flow answers of 2026-11-19 11:20 PM in `Strata_Teams\shared_decisions.md` (read them
+by that date when drafting area 7). Every area prompt lists "Checked against: <shared_decisions entry times>" (owner
+2026-11-20 12:56 AM), and the area's report repeats it.
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
@@ -74,9 +76,8 @@ first; open items), from the area's row and "Inbox inputs" in the working doc. C
   target dates, `manual_pct_*`, `billing_type`, `warranty_for_job_id`, `source_case_id`) and drop `status`; add
   `project_budget.revision_id` (budget transfers are rows with a revision); decide the cached `revised_budget_cents`;
   `project.row_version`; the `job_budget` compare reads `project_budget`.
-- **Area 6:** `rate_card` tables (`service_type.rate_card_id`), the payment-schedule milestone table (a plain integer
-  on `job_schedule_task.payment_milestone_id` until then), new SOV lines from an approved change order, the contract's
-  completion date as the schedule's contract date.
+- **Area 6 (done, approved 2026-11-20; amendment lines written in area 8):** `rate_card`, `contract_milestone`, new SOV
+  lines from an approved change order; still open: the contract's completion date as the schedule's contract date.
 - **Area 15 (done, approved 2026-11-20; Q13 B dropped `case_job`):** reuses `crew` and `calendar_item` times for busy
   checks; defines `service_case`, the lead stage history twin and the lead-side stage role 'Lost'; the case Resolve
   prompt.
@@ -100,6 +101,31 @@ first; open items), from the area's row and "Inbox inputs" in the working doc. C
 - **Area 16:** Lead and Case custom fields; per-service-type fields.
 - **Area 20:** the `.ics` invite details; the company calendar address.
 - **Area 21:** the notification feed; `last_seen_at`; the CRM alerts.
+
+## Handed to later areas by area 6 (open items, not decisions)
+
+Area 6's amendment lines are already in areas 8, 15 and 18; these are the items that are not.
+- **Area 7:** `cost_type` (company list, five shipped) and `cost_code.cost_type_id` NOT NULL replacing the free-text
+  `cost_type_label`; the budget from the estimate's summary by cost code at Mark signed (`project_budget` rows through
+  area 7's service; `project_budget.estimate_line_id` dropped or replaced by a revision link);
+  `project.sales_rep_user_id`; `project.source_estimate_id` becomes `source_revision_id`; whether estimate lines must
+  use leaf codes.
+- **Area 5:** the create-customer service and contacts at Mark signed; the draft (unposted) deposit invoice, credit side
+  by role `customer_deposits`; `contract_milestone.invoice_id`; T&M monthly drafts at the contract's frozen rates and
+  the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role.
+- **Area 9:** `material_code`; until it exists `estimate_cost_line.material_code_id` is a plain integer.
+- **Area 14:** the Estimate policy, `sales_authority_limit` routing, the Contract policies (wording changes and contract
+  cancellation approval), all OFF by default.
+- **Area 19:** payroll import hours (employee, job, cost code) as the T&M time source, billed at the frozen rates.
+- **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
+- **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with
+  `estimates.py`. **Area 17:** `src_leads_estimates` field ids and the rep on the contract. **Area 20:** the proposal
+  email and its log id. **Area 21:** notifications (PM assigned, Ask the rep, send back, the 3-day expiry reminder) and
+  `row_version` on the new `company_settings` columns.
+- **2.8 (backups):** the company logo's `storage.py` key (`company_branding.logo_storage_key`) is included in the
+  company backup and restore, like attachments, and recorded in `backup_run`.
+- **Build items for later phases (area 6):** `estimates.py`, `contracts.py`, `pricing.py`, `rate_cards.py`,
+  `contract_templates.py`, and one PDF renderer service (the library choice is for the build step).
 
 ## Commit hook (owner 2026-11-19; changed in 887da07)
 

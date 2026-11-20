@@ -700,6 +700,7 @@ deal, `estimate_section_choice.override_reason_id`), each with `reason_label` be
 note is needed only when Other is picked (at least 10 characters). Shipped rows: 'Rate change': "Agreed with the
 customer", "Other"; 'Contract wording': "Requested by the customer", "Other" (Admins rename, add and hide as for
 every kind) (docs/replan_2.9/area_6_estimates_contracts.md sections 6.3 and 7.3).
+Corrected 2026-11-20 (owner 12:50 AM, area 6 Q13 B): a short note is required on every rate change and contract-wording change; Other needs at least 10 characters.
 
 ---
 

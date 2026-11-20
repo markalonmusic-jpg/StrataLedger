@@ -222,6 +222,7 @@ wording"; `estimate_section_choice.override_reason_id`), and changing an area 6 
 (`allow_estimate_rate_change`, `tm_rate_source`, `company_rate_card_id`, the margin floor and target, the Estimate and
 Contract approval policies). A reason from the Reasons list is stored as `reason_id` with its `reason_label`; a note
 is needed only with Other (at least 10 characters) (docs/replan_2.9/area_6_estimates_contracts.md section 13).
+Corrected 2026-11-20 (owner 12:50 AM, area 6 Q13 B): a short note is required on every rate change and contract-wording change; Other needs at least 10 characters.
 
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
