@@ -139,6 +139,7 @@ and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), bot
 | `status` | TEXT NOT NULL CHECK IN ('With rep', 'With PM', 'In approval', 'Sent back', 'Approved', 'Ready to send', 'Sent', 'Declined', 'Expired', 'Signed', 'Superseded', 'Cancelled') (section 2) |
 | `holder_user_id` | INTEGER NULL; NOT NULL while the status is a working state (CHECK) |
 | `costs_by_user_id` | INTEGER NULL (who entered costs; the default job PM at signing, A 11-14) |
+| `assigned_pm_id` | INTEGER NULL (the job PM; default from the service type, distinct from `costs_by_user_id`) |
 | `costs_due_on` | TEXT NULL CHECK date (the PM's due date) |
 | `valid_until` | TEXT NULL CHECK date; required to send (service) |
 | `pricing_template_id` | INTEGER NULL REFERENCES pricing_template (the template applied) |
@@ -154,6 +155,9 @@ and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), bot
 | `decided_at`, `decided_by`, `decision_reason_id`, `decision_reason_label` | Declined, Expired or Cancelled facts; `decision_reason_id` FK reason_option ON DELETE RESTRICT |
 | `memo` | TEXT CHECK (length <= 4000) |
 | `created_by`, `created_at`, `row_version` | as above |
+
+Withdrawn 2026-11-20 (owner 2:10 PM): the `costs_by_user_id` default of job PM at signing is replaced by the
+independent service-type defaults for cost enterer and PM in the amendment above.
 
 CHECKs: the six working states ('With rep', 'With PM', 'In approval', 'Sent back', 'Approved', 'Ready to send')
 need `sent_at` NULL; 'Sent', 'Declined', 'Expired', 'Signed' and 'Superseded' need it set; 'Cancelled' allows either
@@ -698,8 +702,7 @@ section 3.4; it occurs when cost work starts.
 
 Amendment 2026-11-20 (owner 2:10 PM, service quote rules): billing kind, price and terms freeze at signing. Any
 change requires a new estimate revision that is signed and uploaded. Each revision freezes pre-tax amount, tax,
-tax-inclusive total, tax rate and taxable-line detail; the customer signs the tax-inclusive total. The invoice must
-carry that same tax detail (invoice work is handed to area 5 in `docs/next_step.md`).
+tax-inclusive total, tax rate and taxable-line detail; the customer signs the tax-inclusive total.
 
 Amendment 2026-11-20 (owner 2:30 PM, service quote rules): Mark signed is refused when the signed total does not
 equal the accepted line groups plus tax; it shows the difference so the rep can correct the accepted groups or print
