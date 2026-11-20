@@ -470,8 +470,8 @@ and logged).
 `rate_cents`, `markup_pct` (as `rate_card_line`), `source` CHECK IN ('Company card', 'Service type', 'Estimate'),
 `source_rate_card_line_id` INTEGER NULL FK, `source_unit`, `source_rate_cents`, `source_markup_pct` (what Reset
 returns to), `change_reason_id` FK reason_option (kind 'Rate change') ON DELETE RESTRICT, `change_reason_label`,
-`change_note` TEXT NULL (Q13 B: a reason is required when the row differs from its source; the note only with Other,
-at least 10 characters, the 9:48 PM rule), `changed_by`, `changed_at`, `sort_order`, `row_version`. With source 'Estimate' the rows are built from the cost lines (cost ×
+`change_note` TEXT NULL (Q13 B, owner 12:50 AM: a reason and a short note are both required when the row differs from
+its source; with Other the note is at least 10 characters), `changed_by`, `changed_at`, `sort_order`, `row_version`. With source 'Estimate' the rows are built from the cost lines (cost ×
 markup) and have no card line.
 
 **`contract_rate_line`** (new): the same columns with `contract_id` in place of `revision_id`, written once at
@@ -485,7 +485,8 @@ posted payroll hours (area 19) at the contract's frozen rates.
 ### 6.4 Tests to write later
 
 - Source Service type with no card on the type falls back to the company card.
-- Typing a rate keeps the source columns; Reset restores them; a change without a reason is refused.
+- Typing a rate keeps the source columns; Reset restores them; a change without a reason, or with a reason but no
+  note, is refused; with Other the note must be at least 10 characters.
 - With the control off, a changed row is refused; with it on, the change is audit-logged with the reason.
 - A card edit after signing changes neither the estimate's nor the contract's rate lines; UPDATE on
   `contract_rate_line` is refused.
@@ -539,8 +540,8 @@ Published → Retired) and DELETE: a sent document's terms must stay reproducibl
 **Per revision:** **`estimate_section_choice`** (new): `revision_id` FK, `section_key`, PRIMARY KEY both;
 `is_shown` 0/1 (only when the section allows it), `override_body` TEXT NULL (CHECK only when `reps_may_edit`, by
 the service), `override_reason_id` FK reason_option (kind 'Contract wording') ON DELETE RESTRICT,
-`override_reason_label`, `override_note` (Q13 B: a reason is required with an override; the note only with Other, at
-least 10 characters), `changed_by`, `changed_at`, `row_version`. **`estimate_signer`** (new): `signer_id` PK,
+`override_reason_label`, `override_note` (Q13 B, owner 12:50 AM: a reason and a short note are both required with an
+override; with Other the note is at least 10 characters), `changed_by`, `changed_at`, `row_version`. **`estimate_signer`** (new): `signer_id` PK,
 `revision_id` FK, `sort_order`, `name` NOT NULL, `email`, `title`, `lead_contact_id` NULL (area 15), `row_version`.
 Signers are names that print on the contract and receive the email; no per-signer signature is recorded (Q11).
 
@@ -554,13 +555,15 @@ Signers are names that print on the contract and receive the email; no per-signe
 `logo_content_type`, `logo_size_bytes` (PNG, SVG or JPG up to 2 MB, checked by the service; not an `attachment` row,
 so no record type is needed), `accent_color` TEXT (stored as data, not a Theme value: it prints on documents),
 `footer_text`, `show_page_numbers`, `signer_name`, `signer_email`, `signer_phone`, `signer_block`, `row_version`.
-Invoices, statements and pay app prints reuse it through the one letterhead (areas 4 and 5).
+Invoices, statements and pay app prints reuse it through the one letterhead (areas 4 and 5). The logo's `storage.py`
+key is included in the 2.8 backups and restore, like attachments (open item 16).
 
 ### 7.4 Tests to write later
 
 - Publishing a draft makes it read-only (trigger) and a new Draft can be started; a sent revision still renders
   with the version it was sent with after a newer version is published.
-- An override on a section with `reps_may_edit` 0 is refused; an override without a reason is refused.
+- An override on a section with `reps_may_edit` 0 is refused; an override without a reason, or with a reason but no
+  note, is refused; with Other the note must be at least 10 characters.
 - Turning off a section that does not allow it is refused.
 - The renderer output for preview and send is byte-identical for the same inputs; cents are exact (no rounding to
   dollars, C2 of the contract editor brief).
@@ -919,9 +922,10 @@ type does not hold it. Sections 5.3, 7.3, 11.
 **Q13. Reasons for rate changes and wording changes.**
 - A. A required one-line text (at least 10 characters), stored with the change and in the audit row.
 - B. Pick from new Reasons kinds 'Rate change' and 'Contract wording' (area 15 amendment), with Other + text.
-**Answer: B**, with the S 11-19 9:48 PM rule: the reason is picked from the `reason_option` kinds 'Rate change' and
-'Contract wording' (stored as `reason_id` + `reason_label`); a note is needed only when Other is picked (at least 10
-characters). Stored with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (section 7.3).
+**Answer: B**, amended by the owner at 12:50 AM: the reason is picked from the `reason_option` kinds 'Rate change' and
+'Contract wording' (stored as `reason_id` + `reason_label`), and a short note is required on every rate change and
+every contract-wording change, not only when Other is picked; with Other the note is at least 10 characters. Stored
+with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (section 7.3).
 
 **Q14. Rep authority limits.**
 - A. `sales_authority_limit` policy records defined here (per role or user, OFF), read by area 14's routing when the
@@ -1044,3 +1048,6 @@ characters). Stored with the change and in the audit row. Sections 6.3, 7.3; are
 15. **Batch D mock data:** the data-layer calls in to_ux_research 11:20 PM stay valid as names; `data.signEstimate`
     becomes `markSigned(id, signedFileId, continueReason, rowVersion)` (Q11; no per-signer call), and
     `setRepAdjustment` carries a discount amount (Q7 A).
+16. **2.8 backups and restore:** the company logo's `storage.py` key (`company_branding.logo_storage_key`) is included
+    in the company backup and restore, like attachments (area 18 Q14: a company backup without them is not complete),
+    and recorded in `backup_run`.
