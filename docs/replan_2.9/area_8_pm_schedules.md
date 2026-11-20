@@ -1,8 +1,9 @@
 # Step 2.9 schema replan, area 8: PM stages, service types, schedules, change orders, forecast
 
-Status: **Drafted 2026-11-19, awaiting the owner's answers** (section 10). Docs only: nothing here changes code, a
+Status: **Answers recorded 2026-11-19, owner approval pending** (first draft 3d15762; owner answers Q1-Q24 and the
+8:40 PM `rate_card_id` addition folded in below, section 10). Area 8 is not owner-approved yet. Docs only: nothing here changes code, a
 baseline, a migration or a test. Every table, column, code and check below is built only in the 2.9 baseline pass,
-after the replan is approved. PROPOSED items from the sources are not built as final.
+after the replan is approved. PROPOSED items from the sources are not built as final. No questions are open.
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 8 and its "Inbox inputs" for area 8, "8 and 3" (the schedule part
@@ -19,9 +20,12 @@ Sources read (only these, searched by date, title or code):
 - `Strata_Teams\shared_decisions.md`: 2026-11-18 2:31 PM (two entries: job Closed outcome, job stages from the job
   type), 2026-11-19 2:20 PM (forecast), and the 2026-11-15 to 2026-11-17 schedule entries they cite.
 - `StrataLedger_mockups\CODE_CHANGES_NEEDED.md`: sections 21, 28, 29, 34, 108, 109 (first numbering) and 26, 30
-  (the second set, 2026-11-17). **Note:** the task named these as codes in `docs/decisions_2026-11-11.md`. That file
-  has no C-codes; they are CODE_CHANGES_NEEDED sections (the working doc's source key "C"), which is what I read.
+  (the second set, 2026-11-17). **Citation rule (planning correction, 2026-11-19):** "C21", "C34" and the like in
+  this doc are section numbers of `CODE_CHANGES_NEEDED.md` (the working doc's source key "C"), not decision codes;
+  `docs/decisions_2026-11-11.md` has no C-codes. Where two sections share a number, "(11-17)" marks the second set.
 - `Strata_Teams\codex_reports\schema_gaps_vs_mockups_2026-11-18.md` item 5 (the line only).
+- `Strata_Teams\shared_decisions.md` 2026-11-19 8:40 PM "T&M time source" and 8:42 PM (service type defaults) for
+  `service_type.rate_card_id`.
 - Approved areas: 13 (`work_week`, `company_holiday`, close tasks and checks, section 2.3), 17 (Records sources,
   `job_budget` compare, `from_jobs` measures), 18 (permissions, reasons, templates), 10 (job cost as recognized).
 - `migrations/001_company.sql` (project, project_budget, change_order, change_order_line, contract, poc_snapshot,
@@ -35,12 +39,12 @@ Sources read (only these, searched by date, title or code):
 |---|------|----------------------|----------|
 | 1 | Service types, stages, stage history | One `service_type` list for leads and jobs (Q1). Stages gain a role (bookends, Complete, Closed), target days, skip flag, guidance. New append-only `project_stage_history` with effective date, direction, reason, correction links (C34). Stages are deactivated, never deleted. Edits apply through the R36 review panel, no draft/publish set (Q3) | company |
 | 2 | Job close | `Closed` is one stage with an outcome Completed or Cancelled (Q2). Cancel reasons are a company list. `project` gains `close_outcome`, `cancel_reason_id`, `cancel_note`, `cancelled_at_stage_id`, `completed_on`, `closed_on`, `closed_at`. The cancelled-at stage is set by the service. Close and cancel are history rows too, so reports never lose a reopened job's earlier outcome | company |
-| 3 | Other job columns | Job site and target dates (Q9), manual % complete with who and why (area 13 check), billing type and warranty link (area 15), final bill requests, PM prompts (stage move, bill next milestone) | company |
+| 3 | Other job columns | Job site and target dates (Q9), manual % complete with who and why (area 13 check), billing type and warranty link (area 15), final bill requests, PM prompts (stage move, bill next milestone). `project.status` is dropped; an on-hold flag with an append-only hold history replaces its "Suspended" (Q6 C) | company |
 | 4 | Schedules | Templates (version > phase > item), job schedule copied from a version, baselines (set_at/set_by, new versions only from a change order), updates with delay reasons, calendar items, crews. Status is computed, lookahead is a view. Work days use area 13's work week and holidays | company |
 | 5 | Change orders | Existing `change_order` and lines grow reason, send, reject and approval-proof fields, markup per line, and a `field_event` table. Approving writes the budget lines (`project_budget.co_line_id`) and, with days, a new baseline version. Approved lines are locked | company |
 | 6 | Forecast | `job_forecast_line` holds the current estimate to complete (ETC) per cost code. Every forecast change or budget transfer first writes an insert-only revision (header, eight figures per cost code, totals). Codes `job.forecast.edit` and `job.budget.transfer` | company |
 | 7 | Boundary with area 7 | Area 7 owns the job record, budgets and cost codes; area 8 owns lifecycle, schedule, change orders, forecast. Table in section 7 | both |
-| 8 | Controls and permissions | New controls, all permissive by default; new codes `job.schedule.edit`, `schedule.template.manage`, `service_type.manage`, `job.stage.backdate`, and the two forecast codes (section 8) | company |
+| 8 | Controls, labels and permissions | New controls and the crew label setting, all permissive by default; new codes `job.schedule.edit`, `schedule.template.manage`, `service_type.manage`, `job.stage.backdate`, and the two forecast codes (section 8) | company |
 
 Master file: no change.
 
@@ -80,14 +84,16 @@ Master file: no change.
 | "Ready to install" style requirements (install date, crew, materials ordered) warn by default | A 11-15 3:19 PM item 5, replaced by C109 |
 | Reports and boards group by service type; time in stage is a Records source (`src_job_stages`) | C109; area 17 |
 
-Not decided (PROPOSED in the source): the control "Lock stage dates after N days", default ON, 7 days, permission
-`pipeline.backdate` (C34). See Q4 and conflict F4.
+Decided by Q4 A (the source, C34, proposed it ON at 7 days with permission `pipeline.backdate`): the control is
+`stage_backdate_days`, empty by default, with the permission `job.stage.backdate` (conflict F4).
 
 ### 1.3 Proposed schema
 
 **`service_type`** (existing): add `description` TEXT, `default_schedule_template_id` INTEGER REFERENCES
 `schedule_template` (section 4; the service type names a default template that is pre-selected at signing, S 11-17
-5:35 PM), `row_version`.
+5:35 PM), `rate_card_id` INTEGER NULL (owner 2026-11-19 8:40 PM, T&M time source: none means the company rate
+card; a plain integer until area 6 adds the `rate_card` tables, then a foreign key in the same baseline pass, like
+open item 4), `row_version`.
 
 **`service_stage`** (existing): replace `is_closed_stage` by `stage_role` TEXT NOT NULL DEFAULT 'Normal' CHECK IN
 ('Normal', 'Contract signed', 'Complete', 'Closed'); add `target_days` INTEGER CHECK (NULL or >= 0), `can_skip`
@@ -161,7 +167,7 @@ the company can edit. A new `project` row writes its first history row in the jo
 - No service reads or writes these tables today, so no service changes. `custom_fields.py` keeps working.
 - `tests/test_schema_replan.py:516-545` and the audit map at `:734` change: the `is_closed_stage` insert becomes
   `stage_role='Closed'`; the map gains the new table.
-- `project.status` is affected by Q6 (section 3.1).
+- `project.status` is dropped (Q6 C, section 3.1); no code reads it.
 
 ### 1.6 Tests to write later
 
@@ -234,7 +240,7 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 - Lands in `001_company.sql`: the seven `project` columns (written into the `project` DDL by area 7 in the same
   pass), `job_cancel_reason`, `final_bill_request`, seeds. `contract.status` stays as is (area 6).
-- Effects: `project.status` is superseded by the stage and outcome (Q6). No code reads `project.status` today
+- Effects: `project.status` is dropped; the stage and outcome replace it (Q6 C). No code reads `project.status` today
   (searched `modules/`, `tests/`, `scripts/`).
 - Tests to write later: cancel without reason refused; `cancelled_at_stage_id` taken from the current stage (a
   caller-supplied value is ignored); history row carries outcome and reason; reopen clears the project columns and
@@ -250,11 +256,21 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 | Need | Source | Today | Proposal |
 |------|--------|-------|----------|
-| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9. Recommended: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) |
+| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) |
 | Manual % complete, with who and why | area 13 check `manual_pct_complete` | none | `project.manual_pct_complete` REAL CHECK (NULL or 0-100), `manual_pct_reason` TEXT, `manual_pct_by` INTEGER, `manual_pct_at` TEXT. NULL = cost-to-cost (rule: schedule % is never used for revenue, C28) |
-| Status | baseline | `project.status` | Q6: drop it; derive "Open", "Complete" (stage role Complete, not closed) and "Closed · Completed/Cancelled" from stage and outcome |
+| Status | baseline | `project.status` | Q6 C: drop `project.status`. "Open", "Complete" (stage role Complete, not closed) and "Closed · Completed/Cancelled" derive from the stage and outcome. Add `project.on_hold` INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) (the current copy) and the append-only `project_hold_history` below |
 | Warranty and service jobs | A 11-18 | none | `project.billing_type` TEXT NOT NULL DEFAULT 'Billable' CHECK IN ('Billable', 'Warranty'); `warranty_for_job_id` INTEGER REFERENCES project; `source_case_id` INTEGER (FK added by area 15, which defines `service_case`; the link table `case_job(case_id, job_id)` is area 15's). Editable until the first cost posts (service rule); a Warranty job cannot be invoiced; its costs roll up to the original job's warranty line (area 7/10 job cost) |
 | PM prompts (stage move, bill next milestone) | S 11-17 5:35 and 5:46 PM | none | `pm_prompt` below |
+
+**`project_hold_history`** (new, insert-only; owner Q6 C): `hold_history_id` PK, `project_id` NOT NULL FK,
+`from_on_hold` INTEGER NOT NULL, `to_on_hold` INTEGER NOT NULL (both 0/1; CHECK `from_on_hold <> to_on_hold`),
+`reason` TEXT NOT NULL CHECK (length 1-1000), `changed_by` INTEGER NOT NULL, `changed_at` TEXT NOT NULL (UTC ISO 8601
+with an offset). Integrity triggers refuse update and delete (the pattern of `project_stage_history`); audit trigger
+on insert. The hold service (`job_hold.py`, `project.manage`, project scope) writes the history row and sets
+`project.on_hold` in one transaction; putting a job on hold and taking it off both need a reason (the service refuses
+a missing one with one sentence); a Closed job cannot be put on hold; the flag is shown beside the derived state
+("Open, on hold"). Nothing else changes by itself while a job is on hold (no stage, schedule or posting rule reads
+the flag; open item 12). Area 17's `src_jobs` offers the flag, and the history gives time on hold.
 
 **`pm_prompt`** (new; stores prompts so "Not now keeps it for 3 days" and "one prompt per job and stage" hold):
 `prompt_id` PK, `project_id` NOT NULL FK, `kind` CHECK IN ('Move stage', 'Bill next milestone'), `ref_type` TEXT NOT
@@ -305,7 +321,12 @@ The only fragments are `contract.start_date` and `completion_date` (`:885-886`) 
 ### 4.3 Proposed schema
 
 **Crews** (new here because the schedule needs them first; area 15 reuses the table for appointments):
-`crew(crew_id PK, name TEXT NOT NULL UNIQUE, trade_tag TEXT, is_active, row_version)`.
+`crew(crew_id PK, name TEXT NOT NULL UNIQUE, trade_tag TEXT, is_active, row_version)` (Q13 A: defined here, reused
+by area 15). The word is a company setting: `company_settings.crew_label_singular` TEXT NOT NULL DEFAULT 'Crew' and
+`crew_label_plural` TEXT NOT NULL DEFAULT 'Crews', each CHECK length 1-40. Every screen, report and export label
+that says Crew or Crews reads them (a service returns the labels with the lists; report and export column headers
+read them through area 17's field registry labels). Table and column names stay `crew`; a label change is an
+ordinary audited `company_settings` change (not a control).
 
 **Templates:**
 - `schedule_template(template_id PK, name UNIQUE NOT NULL, description, is_shipped, is_active, row_version)`.
@@ -575,7 +596,7 @@ the cost code, as recognized (area 10: a deferred line counts only as recognized
 | Job custom fields (area 16) | Service types, stages, stage history, triggers; job schedules and calendar items |
 
 Asked of area 7 (listed so nothing is lost): `project_budget.revision_id` (nullable FK, Q18); `project.status`
-decision (Q6); cached `revised_budget_cents` (F12); the project's `row_version` (rule g); the seven close columns,
+dropped and `project.on_hold` added (Q6 C); cached `revised_budget_cents` (F12); the project's `row_version` (rule g); the seven close columns,
 four site columns, two target dates, manual % columns, `billing_type`, `warranty_for_job_id`, `source_case_id`.
 
 ---
@@ -586,23 +607,26 @@ four site columns, two target dates, manual % columns, `billing_type`, `warranty
 Controls page): `stage_requirements_block` (0), `stage_backdate_days` (NULL), `schedule_at_risk_days` (1),
 `schedule_late_days` (5), `schedule_pct_behind_points` (20), `baseline_reminder_days` (14),
 `forecast_reason_over_cents` (NULL). They are `company_settings` columns now; area 21's scoped policy records may
-move them.
+move them. The crew label (`crew_label_singular`, `crew_label_plural`, default 'Crew' and 'Crews', section 4.3) is a
+label setting, not a control.
 
-**New permission codes** (an amendment line for area 18, to be written when the owner approves this area; none in
+**New permission codes** (placed by the amendment line now in area 18 section 2.4, dated 2026-11-19; none in
 `AGENT_ALLOWED`; template names are area 18's shipped templates):
 
 | Code | Meaning | Sensitive | Seeded to |
 |------|---------|-----------|-----------|
-| `job.forecast.edit` | Update the estimate to complete | no | Project manager, Controller, Admin, Master |
-| `job.budget.transfer` | Move budget between cost codes | no | Project manager, Controller, Admin, Master |
-| `job.schedule.edit` | Edit a job's schedule and calendar items (project scope) | no | Project manager, Admin, Master; read for others via `project.view` |
-| `schedule.template.manage` | Create and edit schedule templates and crews ("PM settings") | no | Admin, Master, Project manager |
-| `service_type.manage` | Edit service types, stages, triggers and cancel reasons | no | Admin, Master |
-| `job.stage.backdate` | Date a stage move earlier than the control allows | yes | Controller, Admin, Master |
+| `job.forecast.edit` | Update the estimate to complete | no | Project manager and Controller templates, Admin, Master |
+| `job.budget.transfer` | Move budget between cost codes | no | Project manager and Controller templates, Admin, Master |
+| `job.schedule.edit` | Edit a job's schedule and calendar items (project scope) | no | Project manager template, Admin, Master; others read via `project.view` |
+| `schedule.template.manage` | Create and edit schedule templates and crews ("PM settings") | no | Project manager template, Admin, Master |
+| `service_type.manage` | Edit service types, stages, triggers and cancel reasons | no | Admin and Master only (in no cap) |
+| `job.stage.backdate` | Date a stage move earlier than the control allows | yes | Controller template (sensitive column), Admin, Master |
 
-Role caps: the first four sit in the Operations and Accountant caps; none in the Sales rep cap or the View-only
-level. Existing `project.manage` covers moving stages, closing and cancelling; `change_order.create` and
-`change_order.approve` keep their meaning.
+Placement (area 18 section 2.4): the forecast and transfer codes and `job.stage.backdate` are in the Accountant cap
+(so the Controller template holds them); the forecast and transfer codes and the two schedule codes are in the
+Operations cap (so the Project manager template holds them). None is in the Sales rep cap, in a Sales rep level
+default, or in View only. Existing `project.manage` covers moving stages, putting a job on hold, closing and
+cancelling; `change_order.create` and `change_order.approve` keep their meaning.
 
 **Row version (rule g4) and audit:**
 
@@ -614,142 +638,192 @@ level. Existing `project.manage` covers moving stages, closing and cancelling; `
 | `job_schedule`, `job_schedule_phase`, `job_schedule_task`, `calendar_item` | yes | yes |
 | `job_schedule_baseline`, `_baseline_task`, `schedule_update`, `schedule_update_line` | insert-only | no |
 | `change_order`, `change_order_line`, `field_event`, `pm_prompt`, `final_bill_request` | yes (CO lines locked once Approved) | yes |
-| `project_stage_history`, `stage_trigger_run` | insert-only | no |
+| `project_stage_history`, `project_hold_history`, `stage_trigger_run` | insert-only | no |
 | `job_forecast_line` | yes | no, token is the revision number (Q20) |
 | `job_forecast_revision`, `job_forecast_revision_line` | insert-only | no |
 | `calendar_item_notify` | insert and delete | no |
 
-Every new table gets audit triggers (area 18). Reasons required (area 18's table gains these rows): reopen a closed
+Every new table gets audit triggers (area 18). Reasons required (area 18's table gains these rows, amendment 2026-11-19): put a job on hold or take it off
+(`project_hold_history.reason`), reopen a closed
 job, a Back move, a correction, close with open checklist items, cancel (the reason list plus note), a forecast
 change or transfer (per Q19), a CO rejection or void, a later forecast finish (delay reason), a control change.
-Integrity triggers in this area guard append-only and insert-only rows and the approved-CO lock; no trigger enforces
+No table in this area is derived or exempt from audit (`pm_prompt`, `calendar_item_notify` and the history tables
+are audited; none is a per-user display preference), so area 18's derived and exempt lists are unchanged. Integrity
+triggers in this area guard append-only and insert-only rows and the approved-CO lock; no trigger enforces
 a workflow rule (H4).
 
 ---
 
-## 9. Conflicts with decisions (flagged, not resolved)
+## 9. Conflicts with decisions (all resolved by the owner's answers, 2026-11-19)
 
 - **F1 Job type or service type.** S 11-15 3:30 PM renames job types to service types with one list for leads and
   jobs (RP4 built `service_type`). The 11-18 "job type stages" message and the mockup tab "Job types and custom
-  fields" still say job types and name `job_type_stages`. This draft uses one `service_type` list; Q1.
+  fields" still say job types and name `job_type_stages`. This draft uses one `service_type` list; Q1. **Resolved: Q1 A: one `service_type` list.**
+
 - **F2 Cancelled as off-ramp or outcome.** C109 lists fixed off-ramps Lost and Cancelled beside the Closed
   bookend; S 11-18 2:31 PM makes Cancelled an outcome of the Closed step with a reason. This draft follows the
-  newer one; Lost stays a lead-side concept. Q2.
+  newer one; Lost stays a lead-side concept. Q2. **Resolved: Q2 A: Cancelled is an outcome of Closed; Lost is leads only.**
+
 - **F3 Draft and publish or review panel.** C109 has "Unpublished changes: Review, Discard, Publish" for stages and
   triggers; the 11-18 R36 panel ("Review changes ... Apply / Cancel", which names service types and schedule
-  templates) replaces it. Q3.
+  templates) replaces it. Q3. **Resolved: Q3 A: changes apply through the R36 panel, no draft set.**
+
 - **F4 Backdate lock default.** C34 proposes the control ON at 7 days; CLAUDE.md section 0 says controls start OFF
-  or permissive. Q4.
+  or permissive. Q4. **Resolved: Q4 A: `stage_backdate_days`, empty by default.**
+
 - **F5 Baseline timing and template scope.** C28 (baseline at signing) and C29 (one template per job type) were
   replaced by A 5:46 PM (Set baseline or first update) and C30 (independent templates, default per service type).
-  The draft follows the newer; code and tests must cite the newer entries.
+  The draft follows the newer; code and tests must cite the newer entries. **Resolved: Q12 A (baseline from the first update) and Q15 A (immutable template versions); the newer entries stand, and code and tests cite them.**
+
 - **F6 Names.** A 4:19 PM ("a phase is a Gantt row", "Group") was replaced by the Phase > Task hierarchy; "schedule
   item" became "calendar item" (A 5:58 PM); "Lock baseline" became "Set baseline". Columns use the newer terms; the
-  sources 11-17 4:19 PM item 1 and flow section 4 still show the older ones.
+  sources 11-17 4:19 PM item 1 and flow section 4 still show the older ones. **Resolved: Q14 A (every job has a schedule, Blank is one phase); the newer terms stand, no separate question.**
+
 - **F7 Work week on the template.** The mockup shows Work week and Holidays selectors on each template; area 13 Q14 A
-  makes one company work week and holiday list, and the task says to use them. Q11.
+  makes one company work week and holiday list, and the task says to use them. Q11. **Resolved: Q11 A: the company's work week and holidays.**
+
 - **F8 "Complete" as a state.** C108/C109 and A 11-15 make Complete a stage-like state before Closed; the baseline's
   `project.status` has Completed and Closed Out; the controller review (item 5) proposes a two-step close,
   "Financially complete" (late costs allowed with a reason during a holdback window) before Closed, not decided.
-  Q6, Q7.
+  Q6, Q7. **Resolved: Q6 C (no `project.status`; Open, Complete, Closed · outcome derive, plus an on-hold flag with history), Q7 A (Complete is a stage role) and Q8 A (no two-step close now).**
+
 - **F9 Forecast reason.** S 11-16 says only a change over a threshold needs a note (no amount given); the 3:10 PM
-  design has a `reason` on every revision. Q19.
+  design has a `reason` on every revision. Q19. **Resolved: Q19 A: `forecast_reason_over_cents`, empty by default.**
+
 - **F10 Optimistic token.** Rule g4 puts `row_version` on every editable table; the forecast calls take a
-  `rowVersion` for a whole job's lines, which no single row carries. Q20.
+  `rowVersion` for a whole job's lines, which no single row carries. Q20. **Resolved: Q20 A: the latest revision number is the token.**
+
 - **F11 Change order labels.** C21 statuses (Field event, Draft, Pending customer, Approved, Rejected) differ from
   the baseline CHECK (Draft, Submitted, Approved, Rejected, Void). The draft keeps the DB values and treats "Pending
-  customer" as the label of Submitted and "Field event" as a `field_event` row.
+  customer" as the label of Submitted and "Field event" as a `field_event` row. **Resolved: Q16 A and Q17 A: DB values kept, labels differ, approved lines locked, approval writes a revision.**
+
 - **F12 Cached budget.** `project.revised_budget_cents` (`:270`) is a stored total that area 7 may derive instead; if
-  it stays, every CO approval and transfer must update it in the same transaction. Area 7's call.
+  it stays, every CO approval and transfer must update it in the same transaction. Area 7's call. **Resolved: Q18 A (one budget table); the cached `revised_budget_cents` stays area 7's call (section 7).**
+
 - **F13 Delay reason is required.** A 5:35 PM item 4 requires a reason when a forecast finish moves later. CLAUDE.md
   section 0 asks that a check that could be optional be a setting. It is an owner decision, so the draft keeps it
-  required and says so here.
+  required and says so here. **Resolved: Q10 A: a seeded company table of reasons; a later finish still needs one, as the owner decided.**
+
 - **F14 Proposed codes.** C29's `settings.schedule` and C34's `pipeline.backdate` are PROPOSED; the owner's words are
-  "PM settings", "Edit job schedules" and (C34) a manager or Admin. The codes in section 8 are proposals.
+  "PM settings", "Edit job schedules" and (C34) a manager or Admin. The codes in section 8 are proposals. **Resolved: Q4 A and the placement in section 8 and area 18's amendment: `job.stage.backdate` and the other codes are named there.**
+
 - **F15 Lead and job stage history.** C34 says "deal" and "one project, one history"; X 5 and area 17 name a job
-  history, while area 15 will need a lead history. This draft makes a job-only table; Q21.
+  history, while area 15 will need a lead history. This draft makes a job-only table; Q21. **Resolved: Q21 A: `project_stage_history` is for jobs; area 15 builds its own twin.**
+
 - **F16 Calendar items carry both a phase and a stage.** A 11-17 requires `phase_id`; A 11-18 adds an optional
-  `stage_id`. Both are kept; the stage field is a tag, the phase is the parent.
+  `stage_id`. Both are kept; the stage field is a tag, the phase is the parent. **Resolved: Q14 A: both kept, the phase is the parent and the stage a tag.**
 
 ---
 
-## 10. Questions for the owner (multiple choice, recommended first)
+## 10. Questions for the owner: answers recorded (2026-11-19)
+
+The owner answered A to Q1-Q5, Q7-Q12 and Q14-Q24, C to Q6, and A with an added label setting to Q13. Each question is
+shown as asked, with the answer under it. The design in sections 0-8 follows the answers. One addition from the owner
+(2026-11-19 8:40 PM) follows Q24.
 
 Q1. **One list for leads and jobs?** A (recommended): one `service_type` list; the job's settings tab is the same
 list shown with delivery stages (F1). B: a separate `job_type` list with its own stages for jobs.
+**Answer: A.**
 
 Q2. **Cancelled.** A (recommended): Cancelled is an outcome of the Closed stage, with a reason; Lost is leads only (F2).
 B: Cancelled is also a separate off-ramp stage on the path.
+**Answer: A.**
 
 Q3. **Editing stages and triggers.** A (recommended): changes apply through the R36 Review changes panel and are
 audit-logged; no draft set. B: keep a draft set with Publish and Discard (needs a version table for stages and
 triggers).
+**Answer: A.**
 
 Q4. **Backdating a stage move.** A (recommended): control `stage_backdate_days`, empty by default (anyone can
 backdate; always recorded and shown). B: default 7 days, earlier dates need `job.stage.backdate` (C34 as proposed).
+**Answer: A.**
 
 Q5. **Reopening a Closed job.** A (recommended): allowed by a Back move out of Closed with a reason (`project.manage`),
 clears the close columns, history keeps the outcome. B: Closed is final; a new job or a correction is the only way.
+**Answer: A.**
 
 Q6. **`project.status`.** A (recommended): drop it; "Open", "Complete" and "Closed · outcome" derive from the stage
 and outcome; no on-hold state. B: keep `status` and add a status history table (X 5 "status history"). C: drop it
 but add an `on_hold` flag with history.
+**Answer: C. Drop `project.status`; Open, Complete and Closed · outcome derive from the stage and outcome. Add an on-hold flag on the job with an append-only on-hold history (from, to, reason, by, at); putting a job on hold or taking it off needs a reason. Built as `project.on_hold` and `project_hold_history` (section 3.1).**
 
 Q7. **Complete.** A (recommended): a stage role `Complete` between the last delivery stage and Closed; `completed_on`
 is the effective date of the move into it. B: a separate PM flag on the job.
+**Answer: A.**
 
 Q8. **Two-step close "Financially complete" (controller item 5).** A (recommended): not now; Complete already allows
 costs and the checklist warns. B: build a holdback window with a reason for late costs before Closed.
+**Answer: A.**
 
 Q9. **Job site and target dates (X 5).** A (recommended): columns on `project`, copied from the contract, editable,
 changes in the audit log. B: link to a site record from the customer (area 5). C: no columns, read the contract's
 dates and the contact address.
+**Answer: A.**
 
 Q10. **Delay reasons.** A (recommended): a company table seeded with the eight reasons (add, hide, never delete a
 shipped one). B: a fixed CHECK list.
+**Answer: A.**
 
 Q11. **Work week and holidays on schedules.** A (recommended): the company's (area 13); the template selectors show
 them read only. B: each template can override.
+**Answer: A.**
 
 Q12. **Baseline set by the first update.** A (recommended): baseline v1 is the forecast dates just before that
 update's changes. B: the dates after the update.
+**Answer: A.**
 
 Q13. **Crews table.** A (recommended): defined here (`crew`) and reused by area 15. B: wait for area 15.
+**Answer: A, plus a label: the crew table is defined here and reused by area 15; a company setting holds the crew name, singular and plural (default "Crew" / "Crews"), used by every screen, report and export label (section 4.3).**
 
 Q14. **Blank schedule.** A (recommended): every job has a schedule; Blank is one phase "Project" with the two
 milestones. B: a job may have no schedule and no calendar items.
+**Answer: A.**
 
 Q15. **Template versions immutable by trigger.** A (recommended): version, phase and item rows are insert-only.
 B: plain rows kept by the service only.
+**Answer: A.**
 
 Q16. **Change order approval and forecast history.** A (recommended): approval writes a revision of kind 'Change
 order' (the budget table as it stood before). B: only ETC updates and transfers write revisions.
+**Answer: A.**
 
 Q17. **Approved CO lines locked in the database.** A (recommended): backstop triggers refuse changes to an approved
 CO's lines and header. B: the service only.
+**Answer: A.**
 
 Q18. **Where a budget transfer lives.** A (recommended): two `project_budget` rows with a `revision_id`, so every
 reader sums one table. B: a separate `job_budget_transfer` table that readers must add.
+**Answer: A.**
 
 Q19. **Reason on a forecast change.** A (recommended): `forecast_reason_over_cents` empty by default (a reason is
 always offered, never forced); the owner can set a threshold. B: default 0 (every change needs a reason). C: always
 required, no setting.
+**Answer: A.**
 
 Q20. **Stale-save token for the forecast calls.** A (recommended): the latest revision number the page saw.
 B: a `row_version` on `project`, which also changes on unrelated edits. C: a `row_version` on every
 `job_forecast_line`, and every line sent with its own.
+**Answer: A.**
 
 Q21. **Lead history.** A (recommended): `project_stage_history` is for jobs; area 15 builds its own twin with the same
 rules. B: one shared table with a record type.
+**Answer: A.**
 
 Q22. **Monthly PM forecast sign-off (controller item 7).** A (recommended): not now; area 13's close checks cover the
 PM task. B: add a `job_forecast_signoff` (job, period, signed by, at).
+**Answer: A.**
 
 Q23. **PM prompts.** A (recommended): store them in `pm_prompt` (snooze, one per job and stage). B: derive them each
 time, with no snooze.
+**Answer: A.**
 
 Q24. **Final bill requests.** A (recommended): the table now, sending later with area 20. B: leave the whole item for
 areas 3 and 9.
+**Answer: A.**
+
+Addition (owner 2026-11-19 8:40 PM, `shared_decisions` "T&M time source"): `service_type.rate_card_id` (nullable; none
+means the company rate card). The `rate_card` tables belong to area 6; until it adds them the column is a plain
+integer (section 1.3).
 
 ---
 
@@ -767,7 +841,7 @@ areas 3 and 9.
 5. Import schedule (CSV or Microsoft Project XML, C28) is a service that must follow the import-origin rule; not
    designed here.
 6. Area 18: confirm attachments can be copied from a field event to a CO and that "proof of approval" is an
-   attachment kind; write the amendment lines (codes in section 8, reasons in section 8, the area 18 table).
+   attachment kind. The amendment line for the codes and reasons is written (area 18 section 2.4, 2026-11-19).
 7. Whether "no change this month" for the `estimates_to_complete_updated` check needs its own record or a revision
    with no changed lines; settled when area 13's check is built.
 8. Area 21: the company calendar query reads job tasks, milestones and `calendar_item`; the needs-attention items
@@ -777,3 +851,7 @@ areas 3 and 9.
 10. Area 17 `src_job_stages`, `src_jobs`, `src_jobs_cancelled` read `project_stage_history` and `project`; `src_cases`
     needs area 15. `custom_field_def` job type scoping and "shown from stage" are area 16's.
 11. WIP recalculation and the monthly WIP service remain area 7/10; this area supplies ETC by date.
+12. What an on-hold job does is not decided: this design only records the flag and its history. Whether a held job
+    stops schedule status warnings, the "schedule not updated" attention item, WIP prompts or posting is a later
+    owner decision.
+13. `rate_card` and its tables (area 6) and the foreign key from `service_type.rate_card_id`.

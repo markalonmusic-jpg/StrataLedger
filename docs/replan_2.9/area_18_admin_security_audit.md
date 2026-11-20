@@ -195,6 +195,15 @@ schedule (`deferral.stop_reason`; the change through the audit row), a reclass (
 remove a "Related to" link, and changing the `allow_cross_type_reclass` control
 (docs/replan_2.9/area_10_prepaid_deferrals_reclass.md section 7).
 
+Amendment 2026-11-19 (owner, area 8 section 8): area 8 reasons added to this table: put a job on hold or take it off
+(`project_hold_history.reason`), reopen a closed job, a Back stage move and a correction
+(`project_stage_history.reason`), close a job with open checklist items, cancel a job (the cancel reason list plus a
+note), reject or void a change order, a forecast finish that moves later (the delay reason), a forecast change or
+budget transfer (`job_forecast_revision.reason`; required only above `forecast_reason_over_cents`, empty by
+default), and changing any of the new controls. No table of area 8 is added to the derived or exempt lists: its
+history and snapshot tables are insert-only and audited, `pm_prompt` and `calendar_item_notify` are audited
+(docs/replan_2.9/area_8_pm_schedules.md section 8).
+
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
 **Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
@@ -520,6 +529,27 @@ inside its role's cap and holds no sensitive code; View only holds read codes on
 template sits inside the union of its roles' caps; the Accountant templates already hold `money.view` through
 Accountant · View only, and the three templates that name `report.job_cost` now hold it
 (docs/replan_2.9/area_17_fields_layouts_reports.md section 10.3).
+
+Amendment 2026-11-19 (owner, area 8 section 8; forecast codes owner 2:20 PM and planning 3:10 PM): six new codes.
+`job.forecast.edit` and `job.budget.transfer` (module Projects / CRM, not sensitive); `job.schedule.edit` and
+`schedule.template.manage` (Projects / CRM, not sensitive); `service_type.manage` (Projects / CRM, not sensitive, Admin
+only: in no cap, like `company.settings`); `job.stage.backdate` (Projects / CRM, sensitive). Caps (2.4.1): the
+Accountant cap gains `job.forecast.edit`, `job.budget.transfer` and `job.stage.backdate` (68 to 71 codes with areas
+12, 10 and 17); the Operations cap gains `job.forecast.edit`, `job.budget.transfer`, `job.schedule.edit` and
+`schedule.template.manage` (33 to 37); the Sales rep cap is unchanged (17), so a Sales rep can hold none of them.
+Level defaults (2.4.2): unchanged; none of the six is in any level, and View only gains nothing. Shipped templates
+(2.4.3): the Project manager template adds `job.forecast.edit`, `job.budget.transfer`, `job.schedule.edit` and
+`schedule.template.manage` in its non-sensitive column (the Project manager + Estimator and Sales rep + Project manager
+union templates inherit them); the Controller template adds `job.forecast.edit` and `job.budget.transfer` in its
+non-sensitive column and `job.stage.backdate` in its sensitive column; Admin and the Master hold all six. The Sales
+manager, Sales rep, Estimator, Superintendent, Warehouse lead and View only templates, and the Viewer, get none.
+None of the six is in `AGENT_ALLOWED`. Placement check re-run in words: every new code is placed (five in a cap, the
+sixth Admin-only), so all 92 seeded codes are placed (86 with areas 12, 10 and 17); every level default is unchanged
+and so still inside its role's cap with no sensitive code; View only still holds read codes only; every template sits
+inside the union of its roles' caps (the Controller template's three new codes are in the Accountant cap; the Project
+manager template's four in the Operations cap; the two union templates inside the union of their roles' caps);
+`job.stage.backdate` is sensitive and is in no level and no template but the Controller's
+(docs/replan_2.9/area_8_pm_schedules.md section 8).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
