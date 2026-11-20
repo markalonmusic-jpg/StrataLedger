@@ -1031,3 +1031,5 @@ Rotation and key-lost text as it stood before the trim:
   skipped the suite ("docs only: suite skipped").
 - 2026-11-19/20 area 15 CRM: draft 2237b63, answers 03477c0 and this commit ("Area 15 fix mode 2"); amendment lines
   in areas 8 and 18; awaiting owner approval.
+- 2026-11-20 area 15 CRM owner-approved (2237b63, 03477c0, 3b8108b); amendment lines in areas 8 and 18; area 18 seeded
+  codes 102.

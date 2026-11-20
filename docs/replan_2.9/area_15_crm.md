@@ -1,7 +1,8 @@
 # Step 2.9 schema replan, area 15: CRM (leads, activities, cases, comments, routing)
 
-Status: **Draft, answers recorded** (first draft 2026-11-19, 2237b63; owner answers 2026-11-19 11:40 PM and the
-11:20 PM required fixes folded in below, section 10; amendment lines in area 8 sections 2.3, 4.3, 5.3 and 6.3 and
+Status: **Owner-approved 2026-11-20 (2237b63, answers 03477c0, 3b8108b)** (first draft 2026-11-19, 2237b63; owner
+answers 2026-11-19 11:40 PM and the 11:20 PM required fixes folded in below, section 10; open item 13 closed
+2026-11-20 12:05 AM; amendment lines in area 8 sections 2.3, 4.3, 5.3 and 6.3 and
 area 18 sections 1.2, 2.3 and 2.4). Docs only: nothing here changes code, a baseline, a migration or a test.
 Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan is
 approved. PROPOSED items from the sources are not built as final.

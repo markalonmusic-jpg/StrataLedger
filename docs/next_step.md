@@ -1,13 +1,13 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17 and 8 approved; next area chosen by the owner)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8 and 15 approved; next area chosen by the owner)
 
-Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved area 8. Start a fresh session (MR1) and read
+Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 15. Start a fresh session (MR1) and read
 .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
 ## Where 2.9 stands (owner decision 2026-11-17; docs only so far)
 
 - Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
   never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- **Owner-approved: 6 of 21 areas, plus the report contracts.**
+- **Owner-approved: 7 of 21 areas, plus the report contracts.**
 
   | Area | Doc | Commits |
   |------|-----|---------|
@@ -16,10 +16,11 @@ Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved area 8. St
   | 12 Bank and reconciliation | docs/replan_2.9/area_12_bank_and_reconciliation.md | d9032ea, a837bc1, d239f32 |
   | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a |
   | 17 Field registry, list layouts, report builder, KPIs, measures | docs/replan_2.9/area_17_fields_layouts_reports.md | 809fb22, fded8c4 |
-  | 8 PM: stages, service types, schedules, change orders, forecast | docs/replan_2.9/area_8_pm_schedules.md | 3d15762, c835d20 and the approval commit (+ amendment lines in area 18) |
+  | 8 PM: stages, service types, schedules, change orders, forecast | docs/replan_2.9/area_8_pm_schedules.md | 3d15762, c835d20 and the approval commit b9ff295 (+ amendment lines in area 18; amendment lines from area 15) |
+  | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; area 18 seeded codes 102) |
   | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
-- **Todo (15):** areas 1-7, 9, 11, 14, 15, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built; an area
+- **Todo (14):** areas 1-7, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built; an area
   still todo or drafted is not, and PROPOSED items are not built as final.
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
@@ -27,13 +28,14 @@ Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved area 8. St
 
 ## Next: an area chosen by the owner
 
-Ask the owner which todo area to draft next (areas 1-7, 9, 11, 14, 15, 16, 19, 20, 21). Draft it in
+Ask the owner which todo area to draft next (areas 1-7, 9, 11, 14, 16, 19, 20, 21). Draft it in
 `docs/replan_2.9/area_<n>_<name>.md` in the layout of the area 13 doc (0 Summary table; per topic current state with
 file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests, tests to
 write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended option
 first; open items), from the area's row and "Inbox inputs" in the working doc. Cite "C21" style codes as sections of
-`CODE_CHANGES_NEEDED.md`, not decision codes. Areas 7 (jobs, budgets, cost codes), 6 (estimates, contracts, rate cards)
-and 15 (CRM) now have the most waiting on them (below).
+`CODE_CHANGES_NEEDED.md`, not decision codes. Areas 6 (estimates, contracts, rate cards) and 7
+(jobs, budgets, cost codes) now have the most waiting on them (below), including the estimate-flow answers of
+2026-11-19 11:20 PM in `Strata_Teams\shared_decisions.md` (read them by that date when drafting area 6 or 7).
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
@@ -75,8 +77,9 @@ and 15 (CRM) now have the most waiting on them (below).
 - **Area 6:** `rate_card` tables (`service_type.rate_card_id`), the payment-schedule milestone table (a plain integer
   on `job_schedule_task.payment_milestone_id` until then), new SOV lines from an approved change order, the contract's
   completion date as the schedule's contract date.
-- **Area 15:** reuses `crew` and `calendar_item` times for busy checks; defines `service_case`, `case_job`, the lead
-  stage history twin and the lead-side stage role 'Lost'; the case Resolve prompt.
+- **Area 15 (done, approved 2026-11-20; Q13 B dropped `case_job`):** reuses `crew` and `calendar_item` times for busy
+  checks; defines `service_case`, the lead stage history twin and the lead-side stage role 'Lost'; the case Resolve
+  prompt.
 - **Areas 3, 4, 5, 9:** a warning naming the hold on costs, POs and invoices of a held job (never a refusal);
   `subcontract_id` on schedule tasks (area 4); committed amounts for the forecast figures (areas 4 and 9).
 - **Area 14:** the change order approval chain (default OFF) beside the customer approval.
@@ -86,6 +89,17 @@ and 15 (CRM) now have the most waiting on them (below).
   `company_settings` columns (controls and the crew label).
 - **Build items for later phases (area 8):** `job_stages.py`, `job_close.py`, `job_hold.py`, `schedule_templates.py`,
   `job_schedules.py`, `work_calendar.py`, `calendar_items.py`, `change_orders.py`, `forecast.py`.
+
+## Handed to later areas by area 15 (open items, not decisions)
+
+- **Area 6:** `estimate.lead_id`; `estimate.contact_id` nullable before signing; `contract.sales_rep_user_id`;
+  contract signing calls into `leads.py` (the lead's Won); the Cancellation case type's "Cancel the contract".
+- **Area 7:** `project.sales_rep_user_id`; `project.source_case_id` (area 8 column; FK and index from area 15).
+- **Area 5:** the `lead_contact` hand-off at signing; the contact-person table.
+- **Area 14:** approvals on sales stage moves (default OFF).
+- **Area 16:** Lead and Case custom fields; per-service-type fields.
+- **Area 20:** the `.ics` invite details; the company calendar address.
+- **Area 21:** the notification feed; `last_seen_at`; the CRM alerts.
 
 ## Commit hook (owner 2026-11-19; changed in 887da07)
 
