@@ -1035,3 +1035,6 @@ Rotation and key-lost text as it stood before the trim:
   codes 102.
 - 2026-11-20 area 6 estimates and contracts owner-approved (2c82148, d297397, b0bea27); amendment lines in areas 8, 15
   and 18; seeded codes 107.
+- 2026-11-20 area 7 jobs, budgets, cost codes, dimensions owner-approved (7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd,
+  this commit); amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager
+  template.

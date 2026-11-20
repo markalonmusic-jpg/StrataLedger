@@ -665,6 +665,14 @@ Accountant cap only, and no cap was widened; with this template a Service manage
 holding those codes sends it and records the payment. No new code: the seeded count stays 111. `AGENT_ALLOWED` is
 unchanged.
 
+Amendment 2026-11-20 (owner 3:38 AM, from area 7): `invoice.send` is added to the Operations cap and to the Service
+manager template; `payment.receive` stays in the Accountant cap only. Caps (2.4.1): the Operations cap goes from 45
+to 46 codes (with areas 17, 8, 15, 6 and 7); the Accountant (80) and Sales rep (32) caps are unchanged. Level
+defaults (2.4.2): no level gets `invoice.send` by default. Shipped templates (2.4.3): the Service manager row adds
+`invoice.send` in its non-sensitive column (22 codes plus `contract.sign`). The seeded code count is unchanged (111).
+Placement check re-run in words: every level default is unchanged; every template sits inside the union of its roles'
+caps (the Service manager's `invoice.send` in the Operations cap).
+
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
 | Template | For role(s) | Scope | Built from | Codes (non-sensitive) | Sensitive codes |
@@ -680,7 +688,7 @@ unchanged.
 | Estimator | Operations | All | new (C57 Estimator) | `project.view`, `estimate.create`, `change_order.create`, `po.view`, `inventory.view`, `report.job_cost` | none |
 | Project manager + Estimator | Operations | Assigned | union of the two | the union of Project manager and Estimator | as Project manager |
 | Sales rep + Project manager | Sales rep + Operations (Q18) | Assigned | union of the two | the union of Sales rep and Project manager | as Project manager |
-| Service manager (owner 2026-11-20 3:15 AM and 3:35 AM) | Sales rep + Operations | All | new | `case.view`, `case.create`, `case.work`, `estimate.view`, `estimate.create`, `estimate.send`, `project.view`, `project.manage`, `job.schedule.edit`, `job.forecast.edit`, `change_order.create`, `invoice.create`, `report.job_cost`, `money.view`, `customer.manage`, `ar.view`, `po.view`, `po.create`, `receiving.jobsite`, `inventory.pull`, `time.enter` | `contract.sign` |
+| Service manager (owner 2026-11-20 3:15 AM, 3:35 AM and 3:38 AM) | Sales rep + Operations | All | new | `case.view`, `case.create`, `case.work`, `estimate.view`, `estimate.create`, `estimate.send`, `project.view`, `project.manage`, `job.schedule.edit`, `job.forecast.edit`, `change_order.create`, `invoice.create`, `invoice.send`, `report.job_cost`, `money.view`, `customer.manage`, `ar.view`, `po.view`, `po.create`, `receiving.jobsite`, `inventory.pull`, `time.enter` | `contract.sign` |
 | Superintendent | Operations | Assigned | built Foreman | `project.view`, `time.enter`, `receiving.jobsite`, `inventory.pull` | none |
 | Warehouse lead | Operations | All | built Warehouse | `po.view`, `inventory.view`, `inventory.pull`, `inventory.count`, `inventory.adjust`, `receiving.stock` | none |
 | View only (Accountant), View only (Sales rep), View only (Operations) | that role | All | Viewer | none: a label for a View only user (the level gives the read codes) | none |

@@ -1,53 +1,55 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15 and 6 approved; next area chosen by the owner)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
 
-Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 6. Start a fresh session (MR1) and read
+Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. Start a fresh session (MR1) and read
 .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
 ## Where 2.9 stands (owner decision 2026-11-17; docs only so far)
 
 - Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
   never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- **Owner-approved: 8 of 21 areas, plus the report contracts.**
+- **Owner-approved: 9 of 21 areas, plus the report contracts.**
 
   | Area | Doc | Commits |
   |------|-----|---------|
-  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12, 10 and 17 |
-  | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ amendment lines from areas 12, 10 and 17) |
+  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12, 10, 17, 8, 15, 6 and 7 (seeded codes 111) |
+  | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ amendment lines from areas 12, 10, 17 and 7) |
   | 12 Bank and reconciliation | docs/replan_2.9/area_12_bank_and_reconciliation.md | d9032ea, a837bc1, d239f32 |
-  | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a |
-  | 17 Field registry, list layouts, report builder, KPIs, measures | docs/replan_2.9/area_17_fields_layouts_reports.md | 809fb22, fded8c4 |
-  | 8 PM: stages, service types, schedules, change orders, forecast | docs/replan_2.9/area_8_pm_schedules.md | 3d15762, c835d20 and the approval commit b9ff295 (+ amendment lines in area 18; amendment lines from area 15) |
-  | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; area 18 seeded codes 102) |
-  | 6 Estimates, contracts, pricing, T&M rates, contract templates | docs/replan_2.9/area_6_estimates_contracts.md | 2c82148, d297397, b0bea27 and the approval commit (+ amendment lines in areas 8, 15 and 18; area 18 seeded codes 107) |
+  | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a (+ amendment line from area 7) |
+  | 17 Field registry, list layouts, report builder, KPIs, measures | docs/replan_2.9/area_17_fields_layouts_reports.md | 809fb22, fded8c4 (+ amendment line from area 7) |
+  | 8 PM: stages, service types, schedules, change orders, forecast | docs/replan_2.9/area_8_pm_schedules.md | 3d15762, c835d20 and the approval commit b9ff295 (+ amendment lines in area 18; amendment lines from areas 15, 6 and 7) |
+  | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; amendment lines from areas 6 and 7) |
+  | 6 Estimates, contracts, pricing, T&M rates, contract templates | docs/replan_2.9/area_6_estimates_contracts.md | 2c82148, d297397, b0bea27 and the approval commit (+ amendment lines in areas 8, 15 and 18; amendment lines from area 7) |
+  | 7 Jobs, budgets, cost codes and cost types, dimensions, operating plan, WIP | docs/replan_2.9/area_7_jobs_budgets_cost_codes.md | 7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd and the approval commit (+ amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager template) |
   | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
-- **Todo (13):** areas 1-5, 7, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built; an area
-  still todo or drafted is not, and PROPOSED items are not built as final.
+- **Todo (12):** areas 1-5, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built;
+  an area still todo or drafted is not, and PROPOSED items are not built as final.
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
   Nothing in the baselines or code has changed for 2.9 yet.
 
 ## Next: an area chosen by the owner
 
-Ask the owner which todo area to draft next (areas 1-5, 7, 9, 11, 14, 16, 19, 20, 21). Draft it in
+Ask the owner which todo area to draft next (areas 1-5, 9, 11, 14, 16, 19, 20, 21). Draft it in
 `docs/replan_2.9/area_<n>_<name>.md` in the layout of the area 13 doc (0 Summary table; per topic current state with
 file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests, tests to
 write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended option
 first; open items), from the area's row and "Inbox inputs" in the working doc. Cite "C21" style codes as sections of
-`CODE_CHANGES_NEEDED.md`, not decision codes. Area 7 (jobs, budgets, cost codes) now has the most waiting on it
-(below), including the estimate-flow answers of 2026-11-19 11:20 PM in `Strata_Teams\shared_decisions.md` (read them
-by that date when drafting area 7). Every area prompt lists "Checked against: <shared_decisions entry times>" (owner
-2026-11-20 12:56 AM), and the area's report repeats it.
+`CODE_CHANGES_NEEDED.md`, not decision codes. Every area prompt lists "Checked against: <shared_decisions entry
+times>" (owner 2026-11-20 12:56 AM), and the area's report repeats it. A later owner decision that replaces an
+earlier one is added as a dated amendment line, and the replaced items are marked "Withdrawn <date> (owner <time>)"
+beside them, never deleted (area 7 fix 3).
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
 - **Area 1/2:** payment record and receipt destination (area 12 Q20 A keeps deposits and transfers in 12); pay run
   posting shape (one bank line per payment assumed); `payment.method` values for ACH, wire and card.
 - **Area 3/5:** a job per bill and invoice line (area 10 F8); the bill void calls `deferrals.void_for_bill`.
-- **Area 7/8:** job cost reads GL lines carrying a job (deferred cost as recognized); `project.manual_*` columns for the
-  manual % complete close check; WIP recalculation; area 8 reuses area 13's work week and holidays (area 13 Q14 A).
-- **Area 7 (from area 17):** `operating_plan_version` and `operating_plan_line` (a saved report's plan compare points at
-  the version); `project_budget` for the `job_budget` compare; area 17 adds `saved_report.split_by`.
+- **Area 7/8 (area 7 done, approved 2026-11-20):** job cost reads GL lines carrying a job (area 7 section 7);
+  `project.manual_*` columns (area 7 section 1.3); WIP schema now, the WIP service with v1.1 (area 7 Q18 A); area 8
+  reuses area 13's work week and holidays (area 13 Q14 A).
+- **Area 7 (from area 17; done, approved 2026-11-20):** `operating_plan_version` and `operating_plan_line`;
+  `project_budget` for the `job_budget` compare; area 17 adds `saved_report.split_by`.
 - **Areas 6, 8, 15, 16 (from area 17):** the Records source tables (`lead`, stage and status history, `activity`,
   `service_case`, the lead-to-job link, the sales rep on the contract) and `custom_field_def.record_type` 'Lead'; until
   they exist those sources are not offered (Estimates and Jobs can ship first).
@@ -58,9 +60,9 @@ by that date when drafting area 7). Every area prompt lists "Checked against: <s
   days) as policy records (area 12 Q16 A).
   Also from area 17: a general notification feed (a delivered report is unread while `report_delivery.read_at` is
   empty) and whether saved views can be shared.
-- **Areas 12, 13, 10 and 17 build items for later phases:** (area 17: `field_registry`, `list_prefs`, `report_layouts`,
-  `report_formulas`, `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`, `report_combined`,
-  `kpis`, `measures`, `report_schedules`, `report_output`, and the `perf` test.)
+- **Areas 12, 13 and 10 and 17 build items for later phases:** (area 17: `field_registry`, `list_prefs`,
+  `report_layouts`, `report_formulas`, `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`,
+  `report_combined`, `kpis`, `measures`, `report_schedules`, `report_output`, and the `perf` test.)
 - **Areas 12, 13 and 10 build items:** `bank_feed.py`, `reconciliation.py`, `banking.py`,
   `period_locks.py`, `close_tasks.py`, `deferrals.py`, `reclass.py`; the static test that every journal-writing service
   calls `period_locks.check_open`.
@@ -72,10 +74,9 @@ by that date when drafting area 7). Every area prompt lists "Checked against: <s
 
 ## Handed to later areas by area 8 (open items, not decisions)
 
-- **Area 7:** write into the `project` DDL the columns area 8 lists (stage and close columns, `on_hold`, site and
-  target dates, `manual_pct_*`, `billing_type`, `warranty_for_job_id`, `source_case_id`) and drop `status`; add
-  `project_budget.revision_id` (budget transfers are rows with a revision); decide the cached `revised_budget_cents`;
-  `project.row_version`; the `job_budget` compare reads `project_budget`.
+- **Area 7 (done, approved 2026-11-20; area 7 section 1.3 writes the `project` DDL, amendment line in area 8 section
+  7):** the area 8 columns, `status` dropped, `project_budget.revision_id`, budget totals derived (Q5 A),
+  `project.row_version`, the `job_budget` compare.
 - **Area 6 (done, approved 2026-11-20; amendment lines written in area 8):** `rate_card`, `contract_milestone`, new SOV
   lines from an approved change order; still open: the contract's completion date as the schedule's contract date.
 - **Area 15 (done, approved 2026-11-20; Q13 B dropped `case_job`):** reuses `crew` and `calendar_item` times for busy
@@ -95,7 +96,7 @@ by that date when drafting area 7). Every area prompt lists "Checked against: <s
 
 - **Area 6:** `estimate.lead_id`; `estimate.contact_id` nullable before signing; `contract.sales_rep_user_id`;
   contract signing calls into `leads.py` (the lead's Won); the Cancellation case type's "Cancel the contract".
-- **Area 7:** `project.sales_rep_user_id`; `project.source_case_id` (area 8 column; FK and index from area 15).
+- **Area 7 (done, approved 2026-11-20):** `project.sales_rep_user_id`; `project.source_case_id`.
 - **Area 5:** the `lead_contact` hand-off at signing; the contact-person table.
 - **Area 14:** approvals on sales stage moves (default OFF).
 - **Area 16:** Lead and Case custom fields; per-service-type fields.
@@ -105,11 +106,9 @@ by that date when drafting area 7). Every area prompt lists "Checked against: <s
 ## Handed to later areas by area 6 (open items, not decisions)
 
 Area 6's amendment lines are already in areas 8, 15 and 18; these are the items that are not.
-- **Area 7:** `cost_type` (company list, five shipped) and `cost_code.cost_type_id` NOT NULL replacing the free-text
-  `cost_type_label`; the budget from the estimate's summary by cost code at Mark signed (`project_budget` rows through
-  area 7's service; `project_budget.estimate_line_id` dropped or replaced by a revision link);
-  `project.sales_rep_user_id`; `project.source_estimate_id` becomes `source_revision_id`; whether estimate lines must
-  use leaf codes.
+- **Area 7 (done, approved 2026-11-20):** `cost_type` and `cost_code.cost_type_id`; the budget from the summary by cost
+  code at Mark signed; `project.sales_rep_user_id`; `project.source_revision_id`; estimate lines on leaf codes (Q7 A,
+  amendment line in area 6 section 3.3).
 - **Area 5:** the create-customer service and contacts at Mark signed; the draft (unposted) deposit invoice, credit side
   by role `customer_deposits`; `contract_milestone.invoice_id`; T&M monthly drafts at the contract's frozen rates and
   the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role.
@@ -126,6 +125,33 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
   company backup and restore, like attachments, and recorded in `backup_run`.
 - **Build items for later phases (area 6):** `estimates.py`, `contracts.py`, `pricing.py`, `rate_cards.py`,
   `contract_templates.py`, and one PDF renderer service (the library choice is for the build step).
+
+## Handed to later areas by area 7 (open items, not decisions)
+
+Area 7's amendment lines are already in areas 6, 8, 10, 13, 15, 17 and 18; these are the items that are not
+(area 7 section 13).
+- **Area 8 (still open):** `service_type` default dimension values (C62 "starts with profit and cost center") as a
+  `service_type_dimension` table, and a default `poc_method`; the transfer and CO services call area 7's budget
+  functions; `job_forecast_line` seeding moves into `job_budgets.set_original`.
+- **Chart template (`templates/coa/construction.csv`, baseline pass):** the cost type roles of Q20 A (`job_labor`
+  5010, `job_materials` 5030, `job_subcontract` 5040, `job_equipment` 5050, `job_overhead` 5070) and
+  `warranty_expense` on 5080; no row carries `contract_cost` today although `company_settings.contract_cost_acct_id`
+  exists. The shipped cost code list `templates/cost_codes/construction.csv` is new.
+- **Areas 3, 4, 5, 9, 19:** every cost and invoice service calls the budget control and the JD1 resolver (no draft
+  check, Q1); committed amounts (4, 9); the PO's inline over-budget transfer calls `add_transfer_rows` (9); T&M lines
+  default Billable with the job's markup (5); `is_prevailing_wage` and WH-347 (19); the customer's job-sites list and
+  tax rate from the site (5).
+- **Area 16:** job custom fields per stage and service type.
+- **Area 21:** entities inside one company file (which entity a job belongs to is not designed in area 7);
+  `row_version` on the new `company_settings` columns; the notification for "Enter budget".
+- **Imports (backlog 4):** cost code and dimension paste lists use the Import service; dimension tables for
+  `time_entry` and `staged_line` (JD1).
+- **Raised in the area 7 fix reports, not yet decided by the owner:** a case quote's service type and sales rep
+  (no lead to copy them from; area 15's `service_job_type_id` is the default service type); a no-charge quote on a case
+  with no job (no original job for the Warranty roll-up); the Service manager template's scope All with
+  `project.manage`; a Service manager cannot record payments (`payment.receive` stays Accountant-only, owner 3:38 AM).
+- **Build items for later phases (area 7):** `jobs.py`, `job_budgets.py`, `cost_codes.py`, `dimensions.py` (with the
+  resolver), `operating_plans.py`, `job_cost.py`, `wip.py` (v1.1), the cost code template loader.
 
 ## Commit hook (owner 2026-11-19; changed in 887da07)
 

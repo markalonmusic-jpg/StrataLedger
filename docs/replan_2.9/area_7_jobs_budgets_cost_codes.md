@@ -1,6 +1,7 @@
 # Step 2.9 schema replan, area 7: jobs, job cost budgets, cost codes and cost types, dimensions, operating plan, WIP
 
-Status: **Draft 2026-11-20; owner's answers recorded (2026-11-20, 2:25 AM; section 12).** Docs only: nothing here
+Status: **Owner-approved 2026-11-20 (7bab6f0, answers 7ebcd4f, 8b68381, d582c7e, 64519fd and this commit)** (first
+draft 2026-11-20, 7bab6f0; owner's answers recorded 2026-11-20, 2:25 AM, section 12). Docs only: nothing here
 changes code, a baseline, a migration or a test. Every table, column, code and check below would be built only in the
 2.9 baseline pass, after the replan is approved. PROPOSED items from the sources are not built as final. Amendment
 lines the answers settle are written in areas 6, 8, 10, 13, 17 and 18 ("Amendment 2026-11-20 (owner 2:25 AM, from
