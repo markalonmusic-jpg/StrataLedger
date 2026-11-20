@@ -960,8 +960,9 @@ New open items (owner 2:45 AM):
 - **Online customer acceptance** of a service quote needs a customer link (connections; hosted later). Desktop v1
   records the approval by the rep (method, who, when, amount). **Withdrawn 2026-11-20 (owner 3:15 AM)**: no
   "accepted" quotes; every quote is signed and uploaded.
-- **Service manager: closed** (owner 3:15 AM): a new shipped Service manager access template (area 18 section 2.4.3
-  amendment, proposed codes for the owner).
+- **Service manager: closed (owner 3:35 AM)**: a new shipped Service manager access template (owner 3:15 AM), for
+  roles Sales rep and Operations, scope All, with its codes in area 18 (section 2.4.2, the 3:35 AM line, and the
+  2.4.3 row).
 - **The service quote's lead: closed** (owner 3:15 AM): a quote started from a case links to the case and the customer
   and makes no lead; `estimate.case_id`, with a CHECK for exactly one of `lead_id` or `case_id` (area 6 amendment).
 - **The limit check: closed** (owner 3:15 AM): the quote limit is dropped; every service quote runs the same estimate
