@@ -1,9 +1,10 @@
 # Step 2.9 schema replan, area 15: CRM (leads, activities, cases, comments, routing)
 
-Status: **Draft 2026-11-19, waiting for the owner's answers (section 10).** Docs only: nothing here changes code, a
-baseline, a migration or a test. Every table, column, code and check below would be built only in the 2.9 baseline
-pass, after the replan is approved. PROPOSED items from the sources are not built as final. Where a question is open,
-the design shows the recommended option and says so.
+Status: **Draft, answers recorded** (first draft 2026-11-19, 2237b63; owner answers 2026-11-19 11:40 PM and the
+11:20 PM required fixes folded in below, section 10; amendment lines in area 8 sections 2.3, 4.3, 5.3 and 6.3 and
+area 18 sections 1.2, 2.3 and 2.4). Docs only: nothing here changes code, a baseline, a migration or a test.
+Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan is
+approved. PROPOSED items from the sources are not built as final.
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`: row 15 and its "Inbox inputs" for areas 15, "15 and 6" and "15 and 8".
@@ -59,12 +60,13 @@ Sources read (only these, searched by date, title or code):
 | 3 | Lead contacts | `lead_contact`: one required Primary and one optional Second decision-maker (name, phone and/or email, preferred channel), editable while the lead is open, logged; handed to the customer at signing (area 5) | company |
 | 4 | Auto-lost and win-back | A System run closes a lead as Lost N days after its latest sent estimate with no signed contract (`auto_lost_days`, default 14, 0 = off; conflict F5), warns at N−3, and asks area 6 to mark the estimate Expired. "Recreate lead" makes a new lead linked both ways, source Win-back | company |
 | 5 | Activities | One `activity` record for planned and done work: type, due date and optional time, length, owner, attendees (users), contacts taking part, location, crew, links to lead, customer, case (and job, Q7), done_at/done_by, cancelled. A lead's next activity is its earliest open one (derived). Company `activity_type` list, seeded generic. Busy check is a warning across activities, calendar items and crews | company |
-| 6 | Service cases | `service_case` with type, channel, priority, owner, due, statuses Open, In progress, Waiting on customer, Resolved, Closed; milestone dates never overwritten; append-only `case_status_history`; allowed transitions in the service; auto-close after `case_auto_close_days` (default 7); follow-up cases by `parent_case_id`. `case_type` list with default owner and due days | company |
-| 7 | Service jobs from cases | `case_job` link (many jobs per case) and `project.source_case_id` (area 8 column, FK added here); creating one moves an Open case to In progress; all linked jobs complete shows a Resolve prompt (derived, never automatic) | company |
+| 6 | Service cases | `service_case` with type, channel, priority, owner (always a user, Q12 B), due, statuses Open, In progress, Waiting on customer, Resolved, Closed; milestone dates never overwritten; append-only `case_status_history`; allowed transitions in the service; auto-close after `case_auto_close_days` (default 7); follow-up cases by `parent_case_id`. `case_type` list with a default owner user and due days | company |
+| 7 | Service jobs from cases | Only `project.source_case_id` (area 8 column; FK and index added here; Q13 B, no `case_job`); a case's jobs are read by it; creating one moves an Open case to In progress; all of a case's jobs complete shows a Resolve prompt (derived, never automatic) | company |
 | 8 | Comments | `comment` on leads, jobs, estimates and cases, internal only, never printed; `comment_mention`; notifications to the people mentioned plus the record's owner (area 21 feed) | company |
 | 9 | Routing and assignment | `lead_assignment_rule` per service type (Round-robin with a stored next-up pointer, Fixed user, Unassigned) and its members; skip inactive users and users without `lead.own`; a hand pick wins; logged | company |
 | 10 | Boundaries | Area 5 creates the customer at signing; area 6 owns estimates, revisions, sending, signing and expiry; areas 7/8 own the job; area 16 custom-field scoping; area 17 report sources; area 20 sends .ics; area 21 the calendar query and notification feed (section 6) | n/a |
-| 11 | Controls, settings, permissions | Settings `auto_lost_days`, `auto_lost_warn_days`, `case_auto_close_days`; no new control that refuses anything by default; new codes `lead.*`, `activity.log_for_others`, `crm.settings`, `case.*` (section 7) | company |
+| 11 | Controls, settings, permissions | Settings `auto_lost_days`, `auto_lost_warn_days`, `case_auto_close_days`; no new control that refuses anything by default; ten new codes `lead.*`, `activity.log_for_others`, `crm.settings`, `case.*` (Q19 A, no `lead.view_all`); lead visibility by `lead_scope` ('All', 'Own') on `role_level` and `access_template`, resolved like MR3 (Q18); one `reason_option` list for every reason dropdown, area 8's lists folded in (Q16 A), each stored reason with its `reason_label` (section 7) | company |
+| 12 | Sales rep on the job | `project.sales_rep_user_id` copied from the lead at signing, editable with history; `contract.sales_rep_user_id` keeps the rep at signing; a change order's "Forward to sales rep" reads the project's (section 6) | company |
 
 Master file: no change. This area posts nothing and names no account.
 
@@ -139,7 +141,8 @@ Master file: no change. This area posts nothing and names no account.
 | `billing_same_as_site` | INTEGER NOT NULL DEFAULT 1 | CHECK IN (0, 1) |
 | `billing_street`, `billing_city`, `billing_state`, `billing_zip` | TEXT | CHECK all NULL when `billing_same_as_site = 1` |
 | `close_outcome` | TEXT | CHECK NULL or IN ('Won', 'Lost'); the current copy of the closing history row |
-| `lost_reason_id` | INTEGER | FK reason_option (Q16 A; kind Lost lead); CHECK set only when `close_outcome = 'Lost'` |
+| `lost_reason_id` | INTEGER | FK reason_option ON DELETE RESTRICT (Q16 A; kind Lost lead); CHECK set only when `close_outcome = 'Lost'` |
+| `lost_reason_label` | TEXT | the reason's label at the time of use, written by the service (fix a, section 7.3); CHECK set iff `lost_reason_id` is set |
 | `lost_note` | TEXT | CHECK NULL or length <= 1000 |
 | `lost_at_stage_id` | INTEGER | FK service_stage; set by the service from history |
 | `closed_on` | TEXT | CHECK date; CHECK `(close_outcome IS NULL) = (closed_on IS NULL)` |
@@ -205,8 +208,8 @@ they mean the same):
 | `effective_date` | TEXT NOT NULL | CHECK `= date(...)` |
 | `recorded_at`, `recorded_by` | TEXT NOT NULL, INTEGER | `recorded_by` NULL only for origin System (auto-lost); CHECK |
 | `direction` | TEXT NOT NULL | CHECK IN ('Start', 'Forward', 'Back', 'Skip') |
-| `reason_id`, `reason` | INTEGER, TEXT | `reason_id` FK reason_option; `reason` CHECK NULL or length 1-1000. Back needs a "Moving a lead back" reason; Lost needs a "Lost lead" reason; a correction needs text; "Other" needs at least 10 characters (service) |
-| `warnings_continued` | TEXT | CHECK NULL or length <= 2000; the gate warnings shown and continued past (S 11-19 8:50 PM), with `continue_reason_id` INTEGER FK reason_option (kind Continue anyway) and the text in `reason` |
+| `reason_id`, `reason_label`, `reason` | INTEGER, TEXT, TEXT | `reason_id` FK reason_option (RESTRICT); `reason_label` the label at the time of use, set iff `reason_id` is set (fix a); `reason` CHECK NULL or length 1-1000. Back needs a "Moving a lead back" reason; Lost needs a "Lost lead" reason; a correction needs text; "Other" needs at least 10 characters (service) |
+| `warnings_continued` | TEXT | CHECK NULL or length <= 2000; the gate warnings shown and continued past (S 11-19 8:50 PM), with `continue_reason_id` INTEGER FK reason_option (kind Continue anyway, RESTRICT), `continue_reason_label` TEXT beside it (fix a) and the text in `reason` |
 | `via` | TEXT NOT NULL | CHECK IN ('Lead created', 'Manual', 'Trigger', 'Auto-lost', 'Signed', 'Service type changed', 'Stage removed', 'Blocked', 'Unblocked') |
 | `origin` | TEXT NOT NULL DEFAULT 'User' | CHECK IN ('User', 'System', 'Import'); CHECK `(origin = 'System') = (recorded_by IS NULL)` |
 | `is_correction`, `corrects_history_id` | INTEGER, INTEGER | CHECK `(is_correction = 1) = (corrects_history_id IS NOT NULL)`; self FK |
@@ -407,7 +410,7 @@ the event details; nobody is sent an invite (S 11-18 11:45 AM; conflict F4). Whe
 
 Nothing. docs/crm_pm_design.md section 4.2 sketches `service_case` as a 1:1 detail of a `project` of kind 'Service
 case'; the owner's 11-18 decisions replace that shape (conflict F3). Area 8 adds `project.source_case_id` as a plain
-integer and leaves `service_case`, `case_job` and the Resolve prompt to this area. `src_cases` (reports contract)
+integer and leaves `service_case`, `case_job` (not built, Q13 B) and the Resolve prompt to this area. `src_cases` (reports contract)
 reads `service_case` and its status history.
 
 ### 3.2 Decided
@@ -423,21 +426,23 @@ reads `service_case` and its status history.
 | Auto-close Resolved cases after the company setting (default 7 days), `changed_by` = System | A 11-18 item 4; S 11-18 2:08 AM |
 | Days to resolve = calendar days opened → last resolved, waiting included | A 11-18 item 5 |
 | Cases show the R33 path, display only | S 11-18 2:14 AM |
-| `case_jobs(case_id, job_id)`, many jobs per case; `jobs.source_case_id` back link; billing type Billable or Warranty (area 8 columns); creating a linked job moves an Open case to In progress through the case status service; when all linked jobs are complete, a Resolve prompt; never resolve automatically | A 11-18 "service jobs"; S 11-18 2:14 AM |
+| `case_jobs(case_id, job_id)`, many jobs per case; `jobs.source_case_id` back link (Q13 B: only the back link is built; a case's jobs are read by it); billing type Billable or Warranty (area 8 columns); creating a linked job moves an Open case to In progress through the case status service; when all linked jobs are complete, a Resolve prompt; never resolve automatically | A 11-18 "service jobs"; S 11-18 2:14 AM |
 | "Create service job" makes a job of type Service for the same customer and site | S 11-18 2:14 AM |
 | Cases tab on customer and job; job header "2 open cases"; homes show "Cases due today" (overdue included) | C104 |
 | Contract cancellation: reason, date received, case link; never auto-posts; approval OFF by default | A 11-15 items 5 and 2:41 PM; C105 (area 6) |
 
 ### 3.3 Proposed schema
 
-**`case_type`** (new): `case_type(case_type_id PK, name TEXT NOT NULL UNIQUE COLLATE NOCASE, kind TEXT NOT NULL CHECK
-IN ('Complaint', 'Service', 'Billing', 'Cancellation', 'Other'), default_owner TEXT NOT NULL CHECK IN ('Job PM',
-'Sales rep', 'Role', 'User'), default_owner_role_code TEXT, default_owner_user_id INTEGER, default_due_business_days
-INTEGER CHECK (NULL or 0-60), is_shipped, is_active, sort_order, row_version)`; CHECK the role code set iff
-`default_owner = 'Role'`, the user iff 'User'. Seeds: the four owner types (Complaint: Job PM, fallback role
-Operations, 2; Service or warranty: Job PM, Operations, 5; Billing question: Role Accountant, 3; Cancellation
-request: Sales rep, 1). `kind` drives fixed behaviour (Cancellation offers "Cancel the contract", area 6), so the
-names can change.
+**`case_type`** (new; Q12 B): `case_type(case_type_id PK, name TEXT NOT NULL UNIQUE COLLATE NOCASE, kind TEXT NOT
+NULL CHECK IN ('Complaint', 'Service', 'Billing', 'Cancellation', 'Other'), default_owner TEXT NOT NULL CHECK IN ('Job
+PM', 'Sales rep', 'User'), default_owner_user_id INTEGER, default_due_business_days INTEGER CHECK (NULL or 0-60),
+is_shipped, is_active, sort_order, row_version)`; CHECK `default_owner_user_id` NULL unless `default_owner = 'User'`.
+No role queue (Q12 B): the type's default always resolves to one user. Seeds: Complaint: Job PM, 2; Service or
+warranty: Job PM, 5; Billing question: User, 3; Cancellation request: Sales rep, 1. `kind` drives fixed behaviour
+(Cancellation offers "Cancel the contract", area 6), so the names can change. **Not settled by Q12 B (open item
+13):** a shipped seed cannot name a user, and Job PM or Sales rep gives no user when the case has no job or no rep;
+until the owner decides a fallback, the case form leaves the owner empty in those cases and the service refuses to
+save without one ("Choose who owns this case.").
 
 **`service_case`** (new):
 
@@ -452,7 +457,7 @@ names can change.
 | `channel` | TEXT NOT NULL | CHECK IN ('Phone', 'Email', 'Text', 'In person', 'Website', 'Other') |
 | `priority` | TEXT NOT NULL DEFAULT 'Normal' | CHECK IN ('Low', 'Normal', 'High', 'Urgent') |
 | `description` | TEXT NOT NULL | CHECK length 1-4000 |
-| `owner_user_id`, `owner_role_code` | INTEGER, TEXT | Q12 A: CHECK exactly one set (a role code is a team queue) |
+| `owner_user_id` | INTEGER NOT NULL | Q12 B: always a user holding `case.work` (service; R25 picker); no role queue |
 | `due_date` | TEXT | CHECK date; default from the type in business days (area 13's work week and holidays) |
 | `status` | TEXT NOT NULL DEFAULT 'Open' | CHECK IN ('Open', 'In progress', 'Waiting on customer', 'Resolved', 'Closed') |
 | `resolution_note` | TEXT | CHECK NULL or length 1-4000; required by Resolve (service) |
@@ -473,10 +478,9 @@ first row), to_status TEXT NOT NULL, changed_at TEXT NOT NULL, changed_by INTEGE
 'Service job created', 'Auto-close'))`; both status columns CHECK IN the five statuses; CHECK `(origin = 'System') =
 (changed_by IS NULL)`. Triggers `case_status_history_no_update` and `_no_delete`. Index (`case_id`, `history_id`).
 
-**`case_job`** (new; Q13 A): `(case_id FK service_case, project_id FK project UNIQUE, linked_at TEXT NOT NULL,
-linked_by INTEGER NOT NULL, PRIMARY KEY (case_id, project_id))`, insert-only (two triggers). `project.source_case_id`
-gets its FK to `service_case` in the same pass (area 8 open item 4). The service writes both in one transaction; a
-schema test checks every `source_case_id` has its `case_job` row.
+**Case to job link (Q13 B):** no `case_job` table. `project.source_case_id` (area 8's column) gets its FK to
+`service_case` and an index in the same pass (area 8 open item 4). A case's jobs are the projects with that
+`source_case_id`, read through the index; there is one link, so no test is needed to keep two in step.
 
 **`case_number_seq`** (new), the sequence pattern.
 
@@ -490,35 +494,39 @@ seeded to a shipped "Service" type with its own short delivery stages).
   above; Resolve sets `last_resolved_at` and, the first time, `first_resolved_at`; Reopen (Resolved → In progress)
   needs a reason and adds 1 to `reopen_count`; Close sets `closed_at`; Closed refuses every action. Each call writes
   one history row and the case row in one transaction, after `authorize(context, 'case.work', ...)`.
-- Opening writes the first row (NULL → Open, `via` Opened). Owner and due default from the type; for Job PM the job's
-  PM, else the type's fallback role.
+- Opening writes the first row (NULL → Open, `via` Opened). Owner and due default from the type: Job PM gives the
+  job's PM, Sales rep the job's or lead's sales rep, User the type's user; the owner is always a user (Q12 B; open
+  item 13 for the case where the default gives none).
 - `cases.run_auto_close(context)`: origin System; Resolved cases whose `last_resolved_at` is more than
   `case_auto_close_days` before `context.now` go to Closed (`via` Auto-close). Idempotent. Same schedule as
   auto-lost.
 - `case_jobs.create_service_job(context, case_id, service_type_id, billing_type)`: needs `case.work` and
   `project.create`; calls area 7's job-creation service (customer and site from the case or its job; `billing_type`;
-  `warranty_for_job_id` = the case's job when Warranty; `source_case_id`), writes `case_job`, and, if the case is
-  Open, moves it to In progress through `change_status` (`via` 'Service job created', `changed_by` the user) in the
-  same transaction.
-- Resolve prompt (derived, never stored, never automatic): a case not Resolved or Closed with at least one linked job
-  and every linked job in a Complete or Closed stage role (area 8). Area 8's job stage service, when a job linked to
-  a case reaches Complete, writes one notification to the case owner (area 21 feed).
+  `warranty_for_job_id` = the case's job when Warranty; `source_case_id` = the case, the only link, Q13 B), and, if
+  the case is Open, moves it to In progress through `change_status` (`via` 'Service job created', `changed_by` the
+  user) in the same transaction.
+- Resolve prompt (derived, never stored, never automatic): a case not Resolved or Closed with at least one job whose
+  `source_case_id` is the case, and every such job in a Complete or Closed stage role (area 8). Area 8's job stage
+  service, when a job with a `source_case_id` reaches Complete, writes one notification to the case owner (area 21
+  feed).
 - Days to resolve and the open-case counts are computed in the service and the reports layer, never in a page, and
   without SQLite-only date functions (H5).
 
 ### 3.5 Lands, effects, tests
 
-- Lands in `001_company.sql`: `case_type` (seeded), `service_case`, `case_status_history`, `case_job`,
-  `case_number_seq`, their integrity and audit triggers, two `company_settings` columns, the FK on
-  `project.source_case_id`, the shipped Service type.
+- Lands in `001_company.sql`: `case_type` (seeded), `service_case`, `case_status_history`, `case_number_seq`, their
+  integrity and audit triggers, two `company_settings` columns, the FK and index on `project.source_case_id` (no
+  `case_job`, Q13 B), the shipped Service type.
 - No existing service changes. Area 17's `src_cases` can be offered once `cases.py` exists.
 - Tests: every allowed transition passes and every other one is refused with one sentence; Resolve without a note
   and Reopen without a reason refused; `first_resolved_at` set once across Resolve, Reopen, Resolve; `reopen_count`
   counts; nothing is cleared; history update and delete refused; a Closed case refuses every action and offers only a
   follow-up with `parent_case_id`; auto-close at day 7 and not day 6, with origin System and `changed_by` NULL, and
-  `case_auto_close_days = 0` never closes; creating a service job writes `case_job`, `source_case_id` and the In
-  progress row in one transaction and rolls all back on a job validation error; a second job on the same case works;
-  the Resolve prompt appears only when every linked job is complete; days to resolve includes waiting time.
+  `case_auto_close_days = 0` never closes; creating a service job writes `source_case_id` and the In progress row in
+  one transaction and rolls both back on a job validation error; a second job on the same case works and the case's
+  job list (read by `source_case_id`) shows both; a case with no owner is refused (NOT NULL and the service
+  sentence); the Resolve prompt appears only when every job of the case is complete; days to resolve includes
+  waiting time.
 
 ---
 
@@ -592,8 +600,8 @@ OFF (S 11-15 8:36 PM; C120). Leads import uses the rule when Sales rep is blank 
 | Area | Owns | Area 15 asks or provides |
 |------|------|--------------------------|
 | 5 Customers | The customer create service and validation, the contact-person table, structured customer addresses | Signing (area 6) passes the lead's site and billing address, Primary contact and signer to area 5's service; on success `lead.customer_contact_id` is set. A Repeat customer lead links an existing customer at creation. Leads never create customers |
-| 6 Estimates and contracts | `estimate` replan, revisions, sending, approval, signing, Expired, cancellation, the sales rep on the estimate and contract | Adds `estimate.lead_id` and makes `estimate.contact_id` nullable before signing (today NOT NULL, `:217`); the send calls `leads.take_expected_value`; `mark_expired` is called by auto-lost; signing moves the lead to Contract signed (`via` Signed), sets `close_outcome` Won and `lead.project_id`; the estimate copies `lead.sales_rep_user_id` (for `src_rep_contract_payments`). The lead-side gate reads "has a sent revision" and "is approved, unexpired" from area 6 |
-| 7/8 Jobs | The job record, its stages, `billing_type`, `warranty_for_job_id`, `source_case_id` column, `crew`, `calendar_item` | Area 15 adds the FK on `source_case_id`, `case_job`, the stage role 'Lost', reuses `crew` and `calendar_item` times for the busy check. The job page timeline shows the job's activities and, through `lead.project_id`, the lead's sales history (C31's "one continuous record" as a view, F1) |
+| 6 Estimates and contracts | `estimate` replan, revisions, sending, approval, signing, Expired, cancellation, the sales rep on the estimate and contract | Adds `estimate.lead_id` and makes `estimate.contact_id` nullable before signing (today NOT NULL, `:217`); the send calls `leads.take_expected_value`; `mark_expired` is called by auto-lost; signing moves the lead to Contract signed (`via` Signed), sets `close_outcome` Won and `lead.project_id`; the estimate copies `lead.sales_rep_user_id` (for `src_rep_contract_payments`). The lead-side gate reads "has a sent revision" and "is approved, unexpired" from area 6. **Hand-off (fix b, owner 11:20 PM):** area 6 adds `contract.sales_rep_user_id` INTEGER, written once by the signing service from `lead.sales_rep_user_id` and kept as the rep at signing (not changed when the job's rep changes); in the same signing transaction it copies the same value to `project.sales_rep_user_id` (area 7's column) |
+| 7/8 Jobs | The job record, its stages, `billing_type`, `warranty_for_job_id`, `source_case_id` column, `crew`, `calendar_item` | Area 15 adds the FK and index on `source_case_id` (no `case_job`, Q13 B), the stage role 'Lost', reuses `crew` and `calendar_item` times for the busy check. The job page timeline shows the job's activities and, through `lead.project_id`, the lead's sales history (C31's "one continuous record" as a view, F1). **Hand-off (fix b, owner 11:20 PM):** area 7 adds `project.sales_rep_user_id` INTEGER (NULL when the lead had no sales rep), copied from `lead.sales_rep_user_id` at signing and editable afterwards with history (the audit log's before and after rows, no new table); area 8's change order "Forward to sales rep" ('With sales rep') reads `project.sales_rep_user_id` |
 | 14 Approvals | `pending_approvals`, approval chains | C13.5 sales approvals (`deal_stage_move`) are not designed here (open item 7) |
 | 16 Custom fields | Scoping by service type and stage, board-card, help text | Area 15 adds `'Lead'` and `'Case'` to `record_type` (Q23 A) |
 | 17 Reports | Records sources | Supplies the base tables of `src_leads`, `src_leads_estimates` (with area 6), `src_activities`, `src_cases`, `src_lead_job_invoices`; field ids `lead.sales_rep`, `lead.status` (derived), `lead.days_in_stage`, `lead.source`, `lead.created_on`. Row limits of section 7.2 are what report section 5.4 applies |
@@ -620,18 +628,21 @@ Lost is final except a correction; automation never posts, approves or moves mon
 
 ### 7.2 Row limits (rule e: in services, never pages)
 
-Q18 A: a user with `lead.view` sees leads where they are the sales rep, the lead is Unassigned, or they own or attend
-one of its activities; `lead.view_all` sees every lead. Activities follow their linked record's visibility, plus
+Q18 (owner's choice, area 18's scope mechanism): `role_level` and `access_template` gain `lead_scope` TEXT NOT NULL
+CHECK IN ('All', 'Own') DEFAULT 'All', beside `project_scope`. A user with `lead.view` at scope All sees every lead;
+at scope Own they see leads where they are the sales rep, Unassigned leads, and leads they take part in (they own or
+attend one of its activities). It resolves like MR3: `lead.view` is limited to Own only when every source that grants
+it (level row or template) has `lead_scope = 'Own'`. There is no `lead.view_all` code. Every seeded row keeps the
+default All; a company sets Own per level or template. Activities follow their linked record's visibility, plus
 the user's own activities. Cases: `case.view` sees all cases (cases are customer service, not sales territory);
 job-linked cases also need project scope (MR3) for job details. Report sources apply the same limits (reports
 contract 5.4). In Solo nothing is hidden.
 
-### 7.3 Permission codes (Q19 A; area 18 places them by an amendment line on approval)
+### 7.3 Permission codes (Q19 A with Q18: ten codes; placed by the amendment line in area 18 section 2.4, 2026-11-19)
 
 | Code | Meaning | Sensitive | Cap (area 18 2.4.1) | Level default |
 |------|---------|-----------|---------------------|---------------|
-| `lead.view` | Read leads (own, unassigned, ones you take part in) | no | Sales rep, Operations, Accountant | Sales rep · View only |
-| `lead.view_all` | Read every lead | no | Sales rep, Operations, Accountant | Sales rep · Manager |
+| `lead.view` | Read leads, limited by `lead_scope` (section 7.2) | no | Sales rep, Operations, Accountant | Sales rep · View only |
 | `lead.create` | Create leads (also import) | no | Sales rep | Sales rep · Standard |
 | `lead.edit` | Edit, move stages, mark Lost, recreate, log activities on leads you can see | no | Sales rep | Sales rep · Standard |
 | `lead.own` | Can be a lead's sales rep (R25 picker) | no | Sales rep | Sales rep · Standard |
@@ -646,11 +657,11 @@ contract 5.4). In Solo nothing is hidden.
 and Accountant see leads only through a template or `lead.view` (their caps allow it, their levels do not give it).
 Activities on jobs and cases need the record's own write code (`project.manage` or `case.work`) or `lead.edit`.
 
-**`AGENT_ALLOWED`** (Q19 A): add `lead.view`, `lead.view_all` and `case.view`, following the list's own rule
+**`AGENT_ALLOWED`** (Q19 A with Q18): add `lead.view` and `case.view` only, following the list's own rule
 ("every *.view code that is not sensitive", `permissions.py:115`); no write code. Agent-origin activities or cases are
 not possible.
 
-**Reasons required** (area 18's table gains these rows by amendment on approval): a Back lead move (Moving a lead
+**Reasons required** (area 18's table gains these rows, amendment 2026-11-19 in its section 1.2): a Back lead move (Moving a lead
 back), Lost (Lost lead), continuing past a gate warning (Continue anyway), a lead stage correction, blocking a lead,
 Reopen a case, Resolve (the resolution note), cancel an appointment (`activity.cancel_reason`), remove a comment
 (`comment.removed_reason`), and changing any section 7.1 setting.
@@ -661,7 +672,14 @@ is_shipped, is_active, sort_order, is_other INTEGER NOT NULL DEFAULT 0, billable
 only), requires_note INTEGER NOT NULL DEFAULT 0, row_version)`, UNIQUE (`kind`, `name`); "Other" rows need at least
 10 characters of text (service). Shipped rows for the three CRM kinds, including "No signature in N days
 (automatic)" (kind Lost lead, shipped, hidden from manual pickers). Area 8's `job_cancel_reason` and `delay_reason`
-fold in as kinds 'Job cancel' and 'Delay' only if the owner approves an amendment line to area 8 (F6).
+and the `change_order.reason` CHECK list fold in as kinds 'Job cancel', 'Delay' and 'Change order' (Q16 A, owner
+11:20 PM; amendment lines in area 8 sections 2.3, 4.3 and 5.3), so those two tables are not built.
+
+**Stored reasons (fix a, owner 11:20 PM):** every column that stores a `reason_id` has a `reason_label` TEXT beside
+it, the reason's label at the time of use, written by the service in the same transaction (so renaming a reason
+never rewrites history or reports). Every FK to `reason_option` is ON DELETE RESTRICT: a used reason cannot be
+deleted, only hidden (`is_active = 0`). In this area: `lead.lost_reason_label`, `lead_stage_history.reason_label`
+and `continue_reason_label`.
 
 ---
 
@@ -670,42 +688,45 @@ fold in as kinds 'Job cancel' and 'Delay' only if the owner approves an amendmen
 | Table | Editable? | `row_version` |
 |-------|-----------|---------------|
 | `lead`, `lead_contact`, `lead_source`, `activity_type`, `activity`, `case_type`, `service_case`, `comment`, `lead_assignment_rule`, `user_away`, `reason_option` | yes | yes |
-| `lead_stage_history`, `case_status_history`, `case_job`, `comment_mention` | insert-only | no |
+| `lead_stage_history`, `case_status_history`, `comment_mention` | insert-only | no |
 | `activity_attendee`, `activity_contact`, `lead_assignment_member` | insert and delete | no (a delete names its key) |
 | `lead_number_seq`, `case_number_seq` | insert-only sequences | no |
 | `company_settings` (new columns) | yes | area 21 adds it to the row |
 
 Every new table gets audit triggers (area 18), including the history and link tables (insert only). None is derived
 or a per-user display preference, so area 18's exempt list is unchanged. Integrity triggers in this area guard
-insert-only rows only (`lead_stage_history`, `case_status_history`, `case_job`, `comment_mention`); stage rules, case
+insert-only rows only (`lead_stage_history`, `case_status_history`, `comment_mention`); stage rules, case
 transitions, assignment and every workflow rule live in services (H4). Every write calls `authorize` before its write
 transaction (rule 10); every date and time comes from the context (H2).
 
 ---
 
-## 9. Conflicts with decisions (flagged, not resolved)
+## 9. Conflicts with decisions (answers recorded 2026-11-19)
 
 - **F1 Lead is a project from day one.** docs/design_decisions.md "CRM and project lifecycle" ("A lead is a project
   from day one ... no separate opportunity table"), docs/crm_pm_design.md section 2 and C31 ("lead and job are one
   record") against later approved work: area 8 Q21 A (a lead stage history twin), area 8's rule that a job's stage
   is a Delivery stage, the reports contract's `src_leads` with base `lead` and the "lead → job link" (section 12
   item 16), and the baseline's `project.project_number`, `contact_id`, `assigned_pm_id` NOT NULL. This draft makes
-  `lead` its own table and keeps C31's single timeline on screen through `lead.project_id`. Q1.
+  `lead` its own table and keeps C31's single timeline on screen through `lead.project_id`. **Answered: Q1 A.**
 - **F2 Lost leads reopen.** design_decisions says "Lost leads can be reopened"; S 11-18 12:20 PM says "The lost
-  lead stays lost" and offers Recreate lead. Q2.
+  lead stays lost" and offers Recreate lead. **Answered: Q2 A.**
 - **F3 Service case shape.** design_decisions and crm_pm_design.md 4.2 make a case a `project` of kind 'Service
   case' with warranty cost "charged to the case, never to the closed job"; S 11-18 2:14 AM and the 11-18 inbox
   message make it its own record that creates service jobs, with warranty costs reported against the original job's
-  warranty line. This draft follows 11-18 (and area 8's approved `warranty_for_job_id`). Q13, Q14 touch it.
+  warranty line. This draft follows 11-18 (and area 8's approved `warranty_for_job_id`).
+  **Answered: Q13 B, Q14 A.**
 - **F4 Invites to attendees and contacts.** A 11-17 5:51 PM item 3 and the task text ("invited contacts") send
   invites to the customer and attendees; S 11-18 11:45 AM replaces that: only the company calendar address gets
-  invites. This draft stores the contacts taking part and sends nothing to them. Q9.
+  invites. This draft stores the contacts taking part and sends nothing to them. **Answered: Q9 A.**
 - **F5 Defaults that act on records.** Section 0 asks that configurable behaviour be OFF or permissive by default;
   the owner set auto-lost to 14 days and case auto-close to 7 days, both on. They change no money and are not
-  controls that refuse anything, but they do move records automatically. Q15.
+  controls that refuse anything, but they do move records automatically. **Answered: Q15 A.**
 - **F6 One Reasons list vs area 8's tables.** S 11-19 9:48 PM: every reason dropdown reads one Reasons page with a
   tab per kind. Area 8 (approved) defines `job_cancel_reason` and `delay_reason` as separate tables. Folding them in
-  changes an approved area. Q16.
+  changes an approved area. **Settled: Q16 A (owner 11:20 PM).** One `reason_option` table with a kind per use;
+  area 8's `job_cancel_reason`, `delay_reason` and the `change_order.reason` CHECK list fold in as kinds, by the
+  dated amendment lines in area 8 sections 2.3, 4.3 and 5.3.
 - **F7 Superseded CRM schema proposals.** C10 and C12 propose `pipeline`, `pipeline_stage`, `pipeline_draft`,
   `stage_requirement`, stored probability, `project.is_blocked`, `probability_override`, `payment_method`,
   `assignment_territory`, `saved_list_view`, `alert_setting` and a business-hours calendar. RP4, area 8 Q3 A (no
@@ -715,15 +736,16 @@ transaction (rule 10); every date and time comes from the context (H2).
   `proposal_expires_on` and `next_step_activity_id`; S 11-18 2:02 AM and S 11-17 5:55 PM replace them (no proposal
   fields; next activity derived). Not built.
 - **F9 `case_job` and `project.source_case_id` say the same thing twice** when a job can only come from one case
-  (A 11-18 names both). Q13.
+  (A 11-18 names both). **Settled: Q13 B.** `case_job` is dropped; only `project.source_case_id` (FK, indexed)
+  links a job to its case, and a case's jobs are read by it. The double link and its schema test are removed.
 - **F10 C9 "Require the signed contract file before signing" is listed as a PROPOSED control OFF**, while A 11-14
   and A 11-15 item 2 make the signed copy required. Area 6's to settle; noted because the lead's Won depends on it.
 - **F11 Case owner "user or team".** A 11-15 item 4 says owner (user or team); there is no team table, and R25
-  pickers list users. Q12.
+  pickers list users. **Answered: Q12 B** (always a user; open item 13 for a default that gives no user).
 - **F12 Status updates.** C31 makes Status update an activity type with health fields; S 11-17 5:55 PM makes
-  activity types company-defined and generic, with no health fields. Q8.
+  activity types company-defined and generic, with no health fields. **Answered: Q8 A.**
 - **F13 Activities on jobs.** A 11-17 5:55 PM names links to lead, customer and case; C31 and C103 give the job page
-  an Activity tab with the full button row. Q7.
+  an Activity tab with the full button row. **Answered: Q7 A.**
 - **F14 Field name for the sales rep.** The reports contract uses field id `lead.sales_rep`; this draft's column is
   `sales_rep_user_id`. Not a conflict (the owner allowed any column name; the field registry maps it).
 - **F15 "Record owner" in mention notifications** (A 11-15 2:41 PM) is read as the sales rep (lead, estimate), PM
@@ -735,88 +757,123 @@ transaction (rule 10); every date and time comes from the context (H2).
 
 ---
 
-## 10. Questions for the owner
+## 10. Questions for the owner: answers recorded (2026-11-19)
 
-Multiple choice; the recommended option is first and the design above follows it.
+The owner answered on 2026-11-19 at 11:40 PM: A to Q1-Q11, Q14-Q17 and Q19-Q23; B to Q12 and Q13; for Q18 the
+owner's own choice, which replaces A and B; Q16 A and the two required fixes (section 7.3 "Stored reasons" and
+section 6, the sales rep on the job) were given at 11:20 PM. Each question is shown as asked, with the answer under
+it. The design in sections 0-8 follows the answers.
 
 Q1. **Lead record (F1).** A (recommended): a separate `lead` table; signing creates the job and links it
 (`lead.project_id`); the job page shows the lead's sales history. B: a lead is a `project` row from day one (the
 older decision), which needs `project_number`, customer and PM made nullable until signing and one history table for
 both.
+**Answer: A.**
 
 Q2. **Lost (F2).** A (recommended): Lost is final; a mistaken Lost is undone only by a correction row with a reason;
 a later return is a win-back lead. B: Lost can be reopened by a Back move with a "Moving a lead back" reason.
+**Answer: A.**
 
 Q3. **Won.** A (recommended): Won only through signing (the Closed dialog's Won opens Sign contract), so every Won
 lead has a job. B: Won can be marked by hand without a signed contract (no job, no customer).
+**Answer: A.**
 
 Q4. **Lead history beyond stages.** A (recommended): the lead's History tab reads `lead_stage_history` plus the
 audit log's before/after rows for the lead (expected value from a sent revision, sales rep, contacts), like settings
 history (area 18 Q16 A). B: a separate append-only `lead_change_history` table.
+**Answer: A.**
 
 Q5. **Expected value.** A (recommended): stored on the lead; the estimate send writes the value and the revision id
 in its transaction; direct edits refused while a revision id is set. B: never stored after a send; every read looks
 up the latest sent revision.
+**Answer: A.**
 
 Q6. **Lead contacts.** A (recommended): `lead_contact` (Primary, Second) on the lead, handed to area 5 at signing.
 B: write them straight into area 5's contact-person table, linked to the lead.
+**Answer: A.**
 
 Q7. **Activities on jobs (F13).** A (recommended): `activity.project_id` too, so jobs log calls, notes and status
 updates. B: lead, customer and case only; the job page shows only its lead's and cases' activities.
+**Answer: A.**
 
 Q8. **Status updates (F12).** A (recommended): health columns on `activity`, used only by a shipped, non-removable
 "Status update" type the company can rename. B: no status updates in the CRM; area 7/8 decides them for jobs.
 C: no health fields; status update is plain text.
+**Answer: A.**
 
 Q9. **Contacts on an appointment (F4).** A (recommended): stored and written into the event details; no invite to
 any person, only the company calendar address (11-18 11:45 AM). B: also email each invited contact an .ics.
+**Answer: A.**
 
 Q10. **Crew busy check.** A (recommended): a crew on a schedule task is busy all day on each of the task's work days,
 plus timed calendar items and appointments. B: only timed calendar items and appointments.
+**Answer: A.**
 
 Q11. **Reminders.** A (recommended): an optional `remind_minutes_before` per activity, delivered as decided
 (desktop at next sign-in and while open; hosted on time). B: no per-activity reminder; only overdue lists and CRM
 alerts.
+**Answer: A.**
 
 Q12. **Case owner (F11).** A (recommended): a user or a role queue (for example "Accountant" for billing questions),
 exactly one. B: always a user; the type's default picks a user.
+**Answer: B.** A case owner is always a user (`owner_user_id` NOT NULL); the case type's default picks a user; no
+role queue (section 3.3; open item 13).
 
 Q13. **Case and job link (F9).** A (recommended): both, as the owner wrote: `case_job` lists a case's jobs and
 `project.source_case_id` is the job's back link, written together and checked by a test. B: only
 `project.source_case_id`; a case's jobs are found by it.
+**Answer: B.** `case_job` is dropped; only `project.source_case_id` (FK, indexed); a case's jobs are read by it. F9's
+double link and its test are removed.
 
 Q14. **Service job's type.** A (recommended): the Create service job form picks a service type, defaulting to a
 company setting seeded with a shipped "Service" type. B: always one fixed shipped "Service" type.
+**Answer: A.**
 
 Q15. **Automatic defaults (F5).** A (recommended): keep the owner's defaults, auto-lost 14 days and case auto-close
 7 days, each 0 = off, changes logged with a reason. B: ship both at 0 (off) under section 0.
+**Answer: A.**
 
 Q16. **Reasons list (F6).** A (recommended): one `reason_option` table with a kind per tab; an amendment line folds
 area 8's `job_cancel_reason` and `delay_reason` in as kinds. B: one table for the new kinds only; area 8's two
 tables stay. C: a table per kind.
+**Answer: A** (owner 11:20 PM). One `reason_option` table with a kind per use; area 8's `job_cancel_reason`,
+`delay_reason` and the `change_order.reason` CHECK list fold in as kinds (amendment lines in area 8). Every stored
+`reason_id` has a `reason_label` beside it; a used reason is hidden, never deleted (FK RESTRICT).
 
 Q17. **Editing comments.** A (recommended): the author edits (shown "Edited", old text in the audit log) and removes
 with a reason (row kept, hidden). B: comments are append-only; a correction is a new comment.
+**Answer: A.**
 
 Q18. **Who sees which leads.** A (recommended): `lead.view` sees own, unassigned and leads one takes part in;
 `lead.view_all` (Sales rep · Manager) sees all; companies widen it with a template. B: every holder of a lead code
 sees all leads.
+**Answer: the owner's choice, replacing A and B.** Lead visibility uses area 18's scope mechanism: `lead_scope` CHECK
+('All', 'Own') DEFAULT 'All' on `role_level` and `access_template`. Own = leads where the user is the sales rep,
+Unassigned leads, and leads the user takes part in. Resolved like MR3: Own only when every source granting
+`lead.view` says Own. `lead.view_all` is dropped everywhere (section 7.2).
 
 Q19. **Permission codes.** A (recommended): the eleven new codes of section 7.3, `project.create` renamed "Create
 jobs", and the three view codes added to `AGENT_ALLOWED`. B: reuse `project.create`, `project.manage` and
 `project.view` for leads and add only the case codes. C: as A, but no CRM code in `AGENT_ALLOWED` yet.
+**Answer: A, with Q18.** Ten codes (`lead.view`, `lead.create`, `lead.edit`, `lead.own`, `lead.assign`,
+`activity.log_for_others`, `crm.settings`, `case.view`, `case.create`, `case.work`); `project.create` described
+"Create jobs"; `AGENT_ALLOWED` adds `lead.view` and `case.view` only (section 7.3).
 
 Q20. **Numbers.** A (recommended): `L-0001` for leads and `CS-0001` for cases, from sequence tables, unique, gaps
 allowed. B: other formats (say which).
+**Answer: A.**
 
 Q21. **Away users in round-robin.** A (recommended): a `user_away` table (dates and note) set by the user or an
 Admin, read by round-robin and pickers. B: skip only inactive users now; away comes later.
+**Answer: A.**
 
 Q22. **Blocked leads (R33 "Mark blocked").** A (recommended): `lead.is_blocked` and a reason, each block and unblock
 a history row, so blocked days are counted apart. B: not now.
+**Answer: A.**
 
 Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'Case'` to
 `custom_field_def.record_type` now, refused by the service until the record services exist. B: `'Lead'` only.
+**Answer: A.**
 
 ---
 
@@ -850,3 +907,6 @@ Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'C
 11. Saved views on Activities and Leads use area 17's `saved_view`/list prefs; nothing new here.
 12. The job page's single timeline (C31) is a read across `activity` (job, its lead, its cases) and the two stage
     histories; built in Phase 3 from the services above.
+13. From Q12 B (for the owner): the case owner is always a user, but a shipped case type cannot name a user, and the
+    Job PM or Sales rep default gives none when the case has no job or no rep. Until the owner picks a fallback, the
+    person logging the case chooses the owner in those cases (section 3.3).

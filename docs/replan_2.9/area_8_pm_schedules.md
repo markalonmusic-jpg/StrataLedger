@@ -222,6 +222,13 @@ clears all of them on a reopen (Q5).
 `is_shipped` (hide yes, delete no, as area 18's templates), `row_version`. Seeds: Customer backed out, Financing,
 Permit denied, Other. A reason that was used is never deleted (FK RESTRICT).
 
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): `job_cancel_reason` is not built; it becomes the kind 'Job
+cancel' of area 15's one `reason_option` table (area 15 Q16 A), seeded with the same four reasons.
+`project.cancel_reason_id` and the closing history row's `cancel_reason_id` reference `reason_option` (ON DELETE
+RESTRICT: a used reason is hidden, never deleted), each with a `cancel_reason_label` TEXT beside it, the label at the
+time of use, written by the service (area 15 section 7.3, "Stored reasons")
+(docs/replan_2.9/area_15_crm.md sections 7.3 and 10).
+
 **Closing writes a `project_stage_history` row** into the Closed stage carrying `close_outcome` and
 `cancel_reason_id`, plus `reason` when the job closes with open checklist items. So `src_jobs_cancelled` reads
 history and never loses an earlier cancellation of a job that was reopened and later closed again; the `project`
@@ -384,6 +391,11 @@ ordinary audited `company_settings` change (not a control).
 - `delay_reason(reason_id PK, name UNIQUE NOT NULL, is_shipped, is_active, sort_order, requires_note, row_version)`,
   seeded with the eight owner reasons, Other requiring a note (Q10).
 
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): `delay_reason` is not built; it becomes the kind 'Delay' of area
+15's `reason_option` table (area 15 Q16 A), seeded with the same eight reasons (Other `requires_note`).
+`schedule_update_line.delay_reason_id` references `reason_option` (ON DELETE RESTRICT), with a `delay_reason_label`
+TEXT beside it, the label at the time of use, written by the service (docs/replan_2.9/area_15_crm.md section 7.3).
+
 **Calendar items** (renamed from schedule items):
 `calendar_item(item_id PK, project_id NOT NULL FK, phase_id NOT NULL FK job_schedule_phase, task_id FK NULL,
 stage_id FK NULL, item_date NOT NULL, start_time TEXT (HH:MM), length_minutes INTEGER, description NOT NULL,
@@ -499,6 +511,25 @@ single mechanism, default OFF):
 3. Nothing posts to the ledger.
 Void and Reject write the reason; Reject needs `rejection_reason`.
 
+Amendment 2026-11-19 (owner 11:20 PM, from area 15):
+- `change_order.reason` and its CHECK list are replaced by `reason_id` (FK `reason_option`, kind 'Change order', ON
+  DELETE RESTRICT) and `reason_label` TEXT (the label at the time of use, written by the service). The four reasons
+  are seeded as that kind, and the kind's rows carry the `billable_to_customer` flag
+  (docs/replan_2.9/area_15_crm.md section 7.3).
+- `field_event` gets cost lines: `field_event_line`, kind Material (with `material_code_id`) or Other (with
+  `cost_code_id`). The summary by cost code is derived, never stored. A field event can still close with a reason
+  without a CO.
+- PCO and CO are one `change_order` record. `change_order.status` CHECK IN ('PCO pending', 'PCO rejected', 'Draft'
+  (priced), 'With sales rep', 'Submitted' (label "Sent to customer"), 'Approved', 'Rejected', 'Void'); Void is
+  allowed from any open state. New insert-only `change_order_status_history` (from status, to status, who, when,
+  `reason_id`, `reason_label`) with no-update and no-delete triggers.
+- Internal PCO approval is the "Change order approval" control, OFF by default (area 14). When off, the PM approves
+  with one click (logged). When on, the approver approves or rejects with a reason.
+- Moving to PCO pending writes a `job_forecast_revision` of kind 'PCO' and `job_forecast_line` rows tagged
+  `change_order_id`, so pending PCO cost is its own line by cost code (section 6.3 amendment). PCO rejected or Void
+  writes a revision that removes them. Customer approval writes the budget and contract rows as already approved
+  and leaves the ETC unchanged. The revised budget never moves before customer approval.
+
 ### 5.4 How it lands, effects, tests
 
 - Lands in `001_company.sql`: the new columns, `field_event`, the lock triggers, audit triggers for the three tables,
@@ -579,6 +610,16 @@ the cost code, as recognized (area 10: a deferred line counts only as recognized
   period's stored result. Area 13's `wip_current` compares the WIP entry's date with the newest revision's
   `changed_at`; `estimates_to_complete_updated` checks that every open job has a revision in the period (or a
   recorded "no change", open item 7).
+
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): `job_forecast_revision.kind` CHECK adds 'PCO'.
+`job_forecast_line` gains `change_order_id` INTEGER NULL (FK `change_order`), so a pending PCO's cost is its own line
+by cost code. Moving a change order to PCO pending writes a revision of kind 'PCO' and the tagged lines; PCO rejected
+or Void writes a revision that removes them; customer approval leaves the ETC unchanged, and the revised budget never
+moves before customer approval (section 5.3 amendment). **Not settled by the answer:** the primary key
+(`project_id`, `cost_code_id`) cannot hold a second line for the same cost code, so it has to change (for example a
+surrogate key with a unique index on (`project_id`, `cost_code_id`, `change_order_id`) that treats NULL as one
+value), and `job_forecast_revision_line` (key `revision_id`, `cost_code_id`) needs the same decision; left for the
+owner.
 
 ### 6.4 How it lands, effects, tests
 

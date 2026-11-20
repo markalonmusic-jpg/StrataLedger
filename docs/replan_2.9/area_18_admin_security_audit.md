@@ -204,6 +204,14 @@ default), and changing any of the new controls. No table of area 8 is added to t
 history and snapshot tables are insert-only and audited, `pm_prompt` and `calendar_item_notify` are audited
 (docs/replan_2.9/area_8_pm_schedules.md section 8).
 
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): area 15 reasons added to this table: a Back lead move ("Moving a
+lead back"), marking a lead Lost ("Lost lead"; `lead.lost_reason_id` and `lost_reason_label`), continuing past a lead
+stage gate warning ("Continue anyway"), a lead stage correction, blocking a lead (`lead.blocked_reason`), reopening a
+case, resolving a case (`service_case.resolution_note`), cancelling an appointment (`activity.cancel_reason`),
+removing a comment (`comment.removed_reason`), and changing any area 15 CRM setting (`auto_lost_days`,
+`auto_lost_warn_days`, `case_auto_close_days`, `service_job_type_id`). A reason picked from the Reasons list is
+stored as `reason_id` with its `reason_label` beside it (docs/replan_2.9/area_15_crm.md section 7.3).
+
 Where a record already has its own reason column, the service writes the same text to both in one transaction.
 
 **Rollback guarantee.** An audit row is written by a trigger in the same transaction as the change it records. A
@@ -455,6 +463,13 @@ Proposed new codes, to be confirmed in areas 8 and 15 and not seeded here: `lead
   `access_template_permission(permission_code)`, `role_level_permission(permission_code)`,
   `user_job_title(job_title_id)`.
 
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): Q18: `role_level` and `access_template` each gain `lead_scope`
+TEXT NOT NULL CHECK (`lead_scope` IN ('All', 'Own')) DEFAULT 'All', beside `project_scope`. Own limits `lead.view` to
+leads where the user is the sales rep, Unassigned leads, and leads the user takes part in. It resolves like MR3:
+`lead.view` is limited to Own only when every source that grants it (level row or template) has `lead_scope =
+'Own'`. Every seeded level row and shipped template keeps the default All. There is no `lead.view_all` code
+(docs/replan_2.9/area_15_crm.md section 7.2).
+
 ### 2.4 Seed tables (O1)
 
 Checked by a scratch script, not project code:
@@ -550,6 +565,24 @@ inside the union of its roles' caps (the Controller template's three new codes a
 manager template's four in the Operations cap; the two union templates inside the union of their roles' caps);
 `job.stage.backdate` is sensitive and is in no level and no template but the Controller's
 (docs/replan_2.9/area_8_pm_schedules.md section 8).
+
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): Q19 A with Q18: ten new codes, module Projects / CRM, none
+sensitive: `lead.view`, `lead.create`, `lead.edit`, `lead.own`, `lead.assign`, `activity.log_for_others`,
+`crm.settings`, `case.view`, `case.create`, `case.work`. No `lead.view_all`. `project.create` keeps its code with the
+description "Create jobs". Caps (2.4.1): the Sales rep cap gains all ten (17 to 27 codes); the Operations cap gains
+`lead.view`, `activity.log_for_others`, `case.view`, `case.create` and `case.work` (37 to 42); the Accountant cap gains
+`lead.view`, `case.view`, `case.create` and `case.work` (71 to 75). Level defaults (2.4.2, cumulative): Sales rep ·
+View only adds `lead.view` and `case.view`; Sales rep · Standard adds `lead.create`, `lead.edit`, `lead.own` and
+`case.create`; Sales rep · Manager adds `lead.assign`, `activity.log_for_others` and `crm.settings`; Operations · View
+only adds `case.view`; Operations · Standard adds `case.create` and `case.work`; Operations · Manager adds
+`activity.log_for_others`; Accountant · View only adds `case.view`; Accountant · Standard adds `case.create` and
+`case.work`. Operations and Accountant get `lead.view` only through a template or an Add override (their caps allow
+it, their levels do not give it). Shipped templates (2.4.3): unchanged (area 15 section 7.3 places none). Admin and
+the Master hold all ten. `AGENT_ALLOWED` adds `lead.view` and `case.view` only. Placement check re-run in words: every
+new code is in the Sales rep cap, so all 102 seeded codes are placed (92 with areas 12, 10, 17 and 8); every level
+default sits inside its role's cap and holds no sensitive code; View only gains only `lead.view` and `case.view`,
+both read codes; every template is unchanged and so still inside its roles' caps
+(docs/replan_2.9/area_15_crm.md section 7.3).
 
 #### 2.4.3 Shipped access templates (`access_template`, `is_shipped = 1`; spec section 6)
 
