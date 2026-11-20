@@ -1,10 +1,11 @@
 # Step 2.9 schema replan, area 10: prepaid, deferrals, reclass, period balance summary
 
-Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, 3f79eb3; owner answers Q1-Q19 2026-11-19,
-all A, Q2 and Q10 with the owner's detail, folded in below; section 9). Docs only: nothing here changes code, a
-baseline, a migration or a test. Nothing is built until the owner marks area 10 owner-approved in
-`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
-questions are open. The amendments to areas 13 and 18 are dated lines in those docs (section 10).
+Status: **Owner-approved 2026-11-19** (first draft 2026-11-19, 3f79eb3; owner answers Q1-Q19 2026-11-19, all A, Q2 and
+Q10 with the owner's detail, folded in below, 77938bc; `je.reclass` added to the Controller and Staff accountant
+templates, a46501a; section 9). Docs only: nothing here changes code, a baseline, a migration or a test. Planning has
+marked area 10 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below
+is built only in the 2.9 baseline pass. No questions are open. The amendments to areas 13 and 18 are dated lines in
+those docs (section 10).
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 10 and the source keys.

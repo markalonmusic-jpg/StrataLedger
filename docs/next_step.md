@@ -1,123 +1,84 @@
-# Next step: Phase 2.9, the schema replan
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12 and 10 approved; next is area 17)
 
-Written 2026-11-18 at the end of Phase 2.7 STOP C. Overwritten at each STOP (CLAUDE.md section 8). Start a fresh
-session (MR1) and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
-Status: **STOP C approved by the owner (2026-11-18)**; the Codex batch 2 posting fixes ran first and were
-approved by the owner (2026-11-18; f629f2f, 0137b34; section below). 2.9 starts in a new session.
+Overwritten 2026-11-19 (CLAUDE.md section 8) after the owner approved areas 13, 12 and 10. Start a fresh session (MR1)
+and read .claude/rules/workflow-standards.md: done, the review gate, fix mode.
 
-## Done before 2.9 (2026-11-18): Codex batch 2 posting fixes
+## Where 2.9 stands (owner decision 2026-11-17; docs only so far)
 
-Source: `Strata_Teams\codex_reports\posting_batch2_2026-11-18.md` (review of d7a8073).
-- **R21 (Low), fixed test first:** `ledger.update_entry` cancels a Pending or Approved request only when the
-  entry's R15 digest (`_entry_digest`, the one `ledger_chain.entry_digest` path) differs before and after the save,
-  both read inside the write transaction. A no-change save (no fields, or every field and line as it is) keeps
-  the request; a change to the date, a line, a line's account, an amount, a dimension, the description or the
-  reference cancels it (tests/test_ledger_approvals.py). `delete_entry` still always cancels.
-- **C4/L2 (Medium), not built:** the baseline has `deferral` and `deferral_schedule_line`, but no service makes,
-  schedules or posts them, so the close check waits for the deferral work (Deferred below; owner rule for this step).
-- **B14:** no change (Deferred below).
-- **Step review** (approve with changes): the R21 decision text now matches the code (digest change or delete
-  cancels). Its "flaky" test was one parallel run that started before the test's source fix; 65/65 in parallel
-  since. Not changed (note 8): the digest now runs on every save, so a draft whose stored values cannot be
-  sealed (only a write outside ledger.py could make one) fails the save, as submit and post already do.
-- **Mutation test of f629f2f** (update_entry only): 20 mutants, 19 killed, 0 equivalent; the survivor (the
-  header UPDATE keeping the old source) is killed by tests/test_mutation_codex_batch2_extra.py.
+- Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
+  never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
+- **Owner-approved: 4 of 21 areas, plus the report contracts.**
 
-## Step 2.9 plan: the schema replan (owner decision 2026-11-17)
+  | Area | Doc | Commits |
+  |------|-----|---------|
+  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12 and 10 |
+  | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ two amendment lines) |
+  | 12 Bank and reconciliation | docs/replan_2.9/area_12_bank_and_reconciliation.md | d9032ea, a837bc1, d239f32 |
+  | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a |
+  | Report builder service contracts (input to area 17) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf |
 
-- Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (the planning chat's list of 21 areas, each todo /
-  drafted / owner-approved). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- All held schema changes land in the two baselines in one pass, tests first. Before any baseline edit, list the
-  development databases the edit blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
-- Build only the areas the owner has marked owner-approved in the working doc. An area still todo or drafted is
-  not built; PROPOSED items are not built as final.
-- Open before drafting (working doc): the design chat confirms the mockups are nearly final and renumbers
-  CODE_CHANGES 16-30 (second set).
+- **Todo (16):** areas 1-9, 11, 14, 15, 16, 19, 20, 21, and area 17 (next). Only owner-approved areas are built; an area
+  still todo or drafted is not, and PROPOSED items are not built as final.
+- All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
+  baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
+  Nothing in the baselines or code has changed for 2.9 yet.
 
-### Inputs that STOP C adds to the replan (also in the working doc as P items)
+## Next: area 17, field registry, list layouts, report builder
 
-1. **Custom field columns (area 16):** `help_text`, on board card, shown from stage, and which job types use a
-   field (CODE_CHANGES 27). Section 27's warnings (more than 2 fields on board cards, more than 20 active per job
-   type) come with the CRM screens. Lead support and display metadata (Codex X 4, X 8).
-2. **Estimate (area 6):** no estimate service and no read code exist (`estimate.create` and `estimate.approve`
-   only), and `estimate` has no `project_id` (the link is `project.source_estimate_id`). `custom_fields` refuses
-   every call on Estimate with one sentence until an estimate service and its read code exist.
-3. **Access model (area 18):** `contacts.update_contact` (and deactivate, find_duplicates) accept either
-   `customer.manage` or `vendor.manage` for every contact kind, so a vendor manager edits a customer-only contact
-   and the reverse. Custom field values on contacts use the same check today. Not changed in STOP C.
-4. **Area locks (area 13):** custom-field edits on posted invoices and bills must honour `fiscal_period_lock`
-   (Sales / Purchases) when the rule 8 editable-documents work lands. Today they check only the closed period
-   and `Lock documents after posting`.
-5. **AX4 (area 18):** audit_log before/after detail and a reason. The custom field audit triggers already store
-   the old and new values as JSON.
-6. **RI1** (decided, not built): the replan inputs in docs/decisions_2026-11-11.md.
+Draft `docs/replan_2.9/area_17_report_builder.md` in the layout of the area 13 doc (0 Summary table; per topic current
+state with file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests,
+tests to write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended
+option first; open items). Sources: the area 17 row of the working doc (A 11-15 field registry, list layout preferences,
+report builder and consolidation; C 92, 100, 156; S 11-18 3:19 and 3:22 PM; `money.view` for Records money fields).
 
-## Done in STOP C (2026-11-18): the custom fields service
+What the approved areas already hand to area 17 (do not redesign; reference them):
+- docs/contracts/reports.md section 12 lists the schema needs: layouts and items, formula tokens, charts, Records
+  parts, saved reports and packs, **KPIs (`kpi`, `kpi_value`, frozen in the close transaction)**, schedules and
+  deliveries, non-financial measures, the operating plan (area 7), combined runs (no new table), Records source
+  tables from areas 6, 8 and 15, and the cash flow category and company Accrual/Cash default (item 18).
+- Area 13 section 4.5: the close inserts `kpi_value` rows in the same transaction as the snapshot; typed measures are
+  refused in a closed period and derived ones skipped (area 13 Q19 A). Area 13 section 4.4 defines ending cash (area 12
+  Q12 A: every `bank_account` kind except Credit card, plus undeposited funds), the cash set the cash flow report uses.
+- Area 10 section 4: `ledger_period_balance`, `dimension_set`, `dimension_set_member`, written only in
+  `ledger._seal_and_post` (`ledger.py:927`); area 17 only reads them. Area 10 section 2: `reclass_line` for "As
+  reclassed" (contracts 4.4).
+- Area 18 amendments: the Q8 report codes and `money.view` placement, derived-table exempt list.
 
-- `modules/services/custom_fields.py` (tests/test_custom_fields.py, 220 tests): `list_fields`, `define_field`,
-  `update_field`, `deactivate_field`, `reactivate_field`, `set_value`, `get_values`. FR1 as amended by
-  CODE_CHANGES 27: no field packs, no `pack` or `is_builtin` columns, no seeded fields, no cap.
-- **Schema:** one seed row, `('fields.manage', 'Company', 'Define custom fields', 1)` in 001_company.sql (owner
-  2026-11-18), and the same entry in `permissions.py`. Sensitive, so no starter role template holds it: Admin
-  (seeded with every code) and the Master only; not in AGENT_ALLOWED. docs/role_templates.md: 77 codes and a
-  section 3 row. No other schema change. The dry-run rebuild found no development company files (the data
-  folder is empty; the repo-root master's baseline did not change), so nothing was rebuilt.
-- **Definitions:** labels are unique per record type ignoring case (`casefold`, inactive fields included), checked
-  inside the write transaction (two writers: one wins). `field_key` is an ASCII slug of the label (`field` when
-  none, `f_` before a digit, `_2`, `_3` on a clash) and never changes. "Remove" is `is_active = 0`; nothing in the
-  module removes a definition or a value. The type changes only while no non-empty value is stored. Choices are
-  `choices_json` `[{"value", "active"}]`; a used choice that is left out stays inactive, an unused one goes, and
-  a re-listed one becomes active with its stored spelling. `is_required` is stored only (the record services
-  enforce it later).
-- **Values:** Text (at most 2000 characters; blank clears), Number (finite, not yes/no), Money (an `int` only:
-  floats, text and yes/no refused), Date (`YYYY-MM-DD`, a real date), Yes/No (`bool` only), Choice (an active
-  choice, matched without case). `None` clears every column (the row stays). The record must exist (an
-  invoice id is not a bill). An inactive field refuses new values; its old values still read.
-- **Contact bank-number names** (deferred check 2): routing, IBAN, SWIFT, BIC, ABA, BSB, IFSC, CLABE, account or
-  acct number/no/#, bank account, sort code, and their joined forms are refused on Contact fields, with one
-  sentence naming Melara and the bank payee (RP1).
-- **Permissions (owner answers 2026-11-18):**
-  - Defining: `fields.manage`; the Agent is refused, Admin included.
-  - Reading values: Invoice `ar.view`; Bill `ap.view`; Project `project.view` with project scope. Contact by kind:
-    a customer `ar.view` or either manager; a vendor `ap.view` or either manager; both or neither either view
-    code or either manager. The Agent reads only through view codes.
-  - Listing definitions: the type's read codes or `fields.manage`. Project fields under Assigned scope need
-    `project_id=`.
-  - Setting values: Contact either manager (as contacts.py); Invoice `invoice.create`; Bill `bill.create`; Project
-    `project.manage` with scope. The Agent never sets values (a logged denial).
-  - Estimate: every call refused with one sentence.
-- **Posted invoices and bills:** values may change. They are in no ledger seal or chain (the chain hashes
-  journal_entry, journal_line and journal_line_dimension only; audit_log has no chain). Refused while
-  `company_settings.lock_documents_after_posting` is on (OFF by default), and with `PeriodClosedError` when the
-  posting entry's period is closed. A draft is not posted, so its date's period does not matter.
-- **Audit:** the baseline triggers write old_value and new_value for both tables, with the user; a rolled-back
-  write leaves no value and no audit row (tested). No second row from the service (owner).
+## Handed to later areas by the approved ones (open items, not decisions)
 
-- **Step review of e61dec2 (approve with changes, nothing must-fix), fixed test first:** integers beyond 64 bits
-  (record id, Money, Number, order) are refused with a sentence instead of an OverflowError; the closed-period and
-  lock refusals are checked to write nothing; the inactive filter no longer passes an integer as a boolean (H5);
-  one view code cannot tell a missing contact from one it may not read (only a reader of every kind is told it
-  is missing), and `set_value` authorizes before it looks the record up; the Agent reads only through
-  `ar.view`, `ap.view` and `project.view`, whatever AGENT_ALLOWED holds; an update or (de)activation that changes
-  nothing writes no audit row. Not built (finding 7): a test proving the label check sits inside the write
-  transaction (only the two-writer test covers it). Bank-number names are checked on Contact fields only, as planned.
+- **Area 1/2:** payment record and receipt destination (area 12 Q20 A keeps deposits and transfers in 12); pay run
+  posting shape (one bank line per payment assumed); `payment.method` values for ACH, wire and card.
+- **Area 3/5:** a job per bill and invoice line (area 10 F8); the bill void calls `deferrals.void_for_bill`.
+- **Area 7/8:** job cost reads GL lines carrying a job (deferred cost as recognized); `project.manual_*` columns for the
+  manual % complete close check; WIP recalculation; area 8 reuses area 13's work week and holidays (area 13 Q14 A).
+- **Area 9:** an item table for `reclass_line.original_item_ref`; the warehouse close checks (area 13 section 2.3).
+- **Area 11:** reuses the prepaid schedule grid; depreciation and loan lock areas.
+- **Area 14:** `pending_approvals` beyond journal entries; the approvals the new codes need.
+- **Area 21:** `row_version` on `company_settings` and the stale-save refusal; the open payments limits (30 and 180
+  days) as policy records (area 12 Q16 A).
+- **Areas 12, 13, 10 build items for later phases:** `bank_feed.py`, `reconciliation.py`, `banking.py`,
+  `period_locks.py`, `close_tasks.py`, `deferrals.py`, `reclass.py`; the static test that every journal-writing service
+  calls `period_locks.check_open`.
+- **Still open from STOP C:** custom field columns `help_text`, on board card, shown from stage, job types (area 16, with
+  CODE_CHANGES 27); custom fields refuse Estimate until an estimate service exists (area 6); RI1 (decided, not built).
+  Item 4 of the STOP C list (area locks on custom-field edits) is answered by area 13 Q6 A.
+- Open question 7 (System context and Import-origin entries in `post_journal_entry`): area 10 Q7 A decides it for the
+  deferral runner (origin System, no approval, no date warnings, needs `deferral.manage`); the posting work builds it.
 
-- **Mutation test of e61dec2 and 67e9f56:** 151 mutants (custom_fields.py, the fields.manage registry entry and
-  seed row). 124 killed by tests/test_custom_fields.py, 20 by tests/test_mutation_stop_c_extra.py (each re-checked),
-  7 equivalent:
-  - `_pick` without the AGENT_ALLOWED filter: `is_allowed` applies it again.
-  - `_AGENT_READ` without `project.view`: it is the only Project reader, so the fallback gives the same code.
-  - The missing-contact Agent skip, `group[-1]` for `group[0]`, and the group without `customer.manage`: the
-    fallback is `customer.manage`, or every code in the group is held.
-  - `_store_value` writing None into the type's column, and Yes/No stored as a bool: the same stored values.
-  - The existing no-op update test compared only after a later deactivation; the new file checks the no-op alone.
+## Commit hook (owner 2026-11-19; changed in 887da07)
 
-## Commit hook
-
-`.claude/settings.json` runs `.claude/hooks/pre_commit_pytest.py` before any `git commit`. It runs
-`python -m pytest -q -n auto` (pytest-xdist, **without** `--dist loadgroup`: the clipboard tests use a file lock
-instead), blocks the commit on failure or when xdist is missing, and writes the suite's last line to
-`strataledger-commit-hook-last-run.txt` in the system temp folder. Timeout 1500 s (raised from 900 s as a stopgap after an 862 s run, owner 2026-11-19).
+`.claude/settings.json` runs `.claude/hooks/pre_commit_pytest.py` before any `git commit` (timeout 1500 s).
+- **Docs only:** when every staged file is under `docs/`, the hook skips the suite, prints one line, `docs only: suite
+  skipped (N files)`, and writes it to `strataledger-commit-hook-last-run.txt` in the system temp folder (the same file
+  that holds the suite's last line).
+- **Anything else runs the full suite exactly as before** (`python -m pytest -q -n auto`, pytest-xdist, without `--dist
+  loadgroup`; blocks on failure or when xdist is missing): a staged file outside `docs/` (code, tests, migrations,
+  `.claude`, the hook itself), a rename into or out of `docs/` (read as delete plus add), nothing staged, a git error.
+- **The hook looks before the command runs.** A commit whose own command changes the staged set (`git add ... &&
+  git commit`, `-a`, `-am`, `--amend`, `--include`, `--only`, a pathspec after `--`, `git -C`) runs the suite, since the
+  staged files it sees are not final. **Stage in one call and commit in the next to get the skip.** A commit message
+  that mentions `git add` also runs the suite (a false alarm costs one run, never a missed one).
+- Tests: tests/test_commit_hook.py (both paths, the renames in a real temp repo, the staging-command guard).
 
 ## Left for the packaging step (U1)
 
@@ -146,10 +107,10 @@ instead), blocks the commit on failure or when xdist is missing, and writes the 
   is not complete; only the database-only safety copies (`pre-upgrade`, `addon-<key>`, `pre-restore`, AX2) are
   exempt. Each run is recorded in the master `backup_run` (docs/replan_2.9/area_18_admin_security_audit.md
   section 4).
-- Open question 7 (System context and Import-origin entries in `post_journal_entry`); undeposited funds vs
-  matching (Phase 4).
+- Undeposited funds vs matching (Phase 4): area 12 Q11 A decides it for deposits (clearing groups on the undeposited
+  funds account).
 
-## Deferred (unchanged)
+## Deferred (unchanged except where an approved area now designs it)
 
 - **Phase 4 posting services:** `clearing_lines`, `NEW_CLEARING`; `next_invoice_number`, `next_voucher_number`;
   the voids call `void_document_entry` and `release_allocations`; AR and AP in the chart CSVs. Deferral targets
@@ -160,11 +121,13 @@ instead), blocks the commit on failure or when xdist is missing, and writes the 
   like any service error; the import review's rounding note; the AQ2 bridge follows RP6, the token rules in
   docs/design.md section 1, and AX5-AX10; MR8's "This removes: ..."; Company Settings > Add-ons; the custom
   fields screen (crm-fields.html) on this service.
-- **C4 as amended by L2, with the deferral work (Codex batch 2, finding 1):** a period-close check for unposted
-  deferral lines (`deferral_schedule_line.status` 'Scheduled', `amort_date` on or before the period's end) and the
-  deferral subledger-to-GL tie-out. Warning by default, block when set through `period_close_check`; needs a new
-  `check_code` in the baseline CHECK list and its seed row in warn mode.
+- **C4 as amended by L2:** the deferral close checks are now designed (area 13 section 2.3 and area 10 section 3:
+  `deferral_entries_posted`, `deferral_tie_out`, warn by default); they ship with the prepaid schedule service, not
+  before. The baseline `period_close_check` CHECK list gets their codes in the 2.9 pass.
 - **B14 (Codex batch 2):** a received-payment void service (reopening the invoices it paid, NSF handling, using
   `payments.release_allocations`) is not built.
 - **Backlog 21** (R42). **KS18:** retired installation keys' recovery copies.
 - `auth._now()` remains the one allowed clock read in services (H2).
+
+History of what was done before 2.9 (STOP C custom fields service, Codex batch 2 posting fixes, their reviews and
+mutation tests) is in docs/status_log.md (2026-11-18 entries) and the module docstrings.

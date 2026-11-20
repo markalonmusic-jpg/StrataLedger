@@ -1,10 +1,10 @@
 # Step 2.9 schema replan, area 13: close and locks
 
-Status: **Answers recorded, owner approval pending** (first draft 2026-11-19, dfb26b6; owner answers Q1-Q24, the
-F13 approval and the KS15 fix 2026-11-19, folded in below; section 9). Docs only: nothing here changes code, a
-baseline, a migration or a test. Nothing is built until the owner marks area 13 owner-approved in
-`Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is PROPOSED until then. No
-questions are open.
+Status: **Owner-approved 2026-11-19** (first draft 2026-11-19, dfb26b6; owner answers Q1-Q24, the F13 approval and the
+KS15 fix 2026-11-19, folded in below, dac81ec; amendment line from area 12 Q12 A, a837bc1, and from area 10 F11,
+77938bc; section 9). Docs only: nothing here changes code, a baseline, a migration or a test. Planning has marked
+area 13 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every table, column, code and check below is
+built only in the 2.9 baseline pass. No questions are open.
 
 Sources read (only these, searched by date, title or code):
 - `Strata_Teams\schema_replan_2026-11-17.md`, row 13 and the source keys.
