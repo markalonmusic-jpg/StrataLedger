@@ -845,6 +845,11 @@ for uploaded files.
   period, and when `lock_documents_after_posting` is ON. The refusal is one sentence that says what to do next,
   for example "This bill's period is closed, so its attachments can't be removed. Reopen the period first."
   Whether area 13's area locks (Sales or Purchases) also block removal is open item O6.
+
+Corrected 2026-11-21 (access audit): the posted document's area lock applies together with the period close and
+`lock_documents_after_posting`; account-level locks do not apply to attachment removal. The close check uses the
+document's posting period and area, with no account checks because removing an attachment changes no accounts
+(area 13 close/lock model).
 - The Agent has no attachment reads or writes in v1; Phase 6 decides.
 
 Amendment 2026-11-20 (owner, from area 6): `attachment.record_type` CHECK gains 'Contract' (files added to a signed
@@ -877,8 +882,9 @@ service that reads the period and `lock_documents_after_posting` the way `ledger
 - `attachment`: DELETE is refused; a change to any column but the removal ones is refused; removal is set once;
   removal without a reason is refused; over 20 MB is refused; a bad `sha256` is refused.
 - A posted record accepts a new attachment, and its journal and chain are unchanged.
-- Removing from a posted document is refused in a closed period and when `lock_documents_after_posting` is ON, and
-  allowed otherwise with a reason. A removed file is still in storage.
+- Removing from a posted document is refused when its area is locked, its posting period is closed, or
+  `lock_documents_after_posting` is ON, and allowed otherwise with a reason. Account-level locks do not apply. A
+  removed file is still in storage.
 - An attachment on a missing record is refused; a user without the record's right is refused (R27).
 - Audit rows carry metadata only. `storage_key` is relative (no drive letter, no `..`; `storage._safe_join`).
 
@@ -1024,9 +1030,9 @@ Master: `backup_run` with its triggers and indexes. Company: section 1 plus
 - **O4** "Export all data" (persona audit 14): `company.backup` and `report.export` exist; area 21 decides whether
   a new code is needed.
 - **O5** Lead assignment rules (11-17 item 5) belong to area 15.
-- **O6** Whether area 13's area locks (Sales, Purchases) also block attachment removal on posted documents, as the
-  owner's rule does for closed periods and `lock_documents_after_posting`. For area 13. next_step.md input 4 makes
-  the same point for custom-field edits.
+- **O6 closed (2026-11-21, access audit):** the posted document's area lock applies together with period close
+  and `lock_documents_after_posting`; account-level locks do not apply to attachment removal. Area 13's
+  `next_step.md` input 4 makes the same no-account-lock distinction for custom-field edits.
 
 ---
 
