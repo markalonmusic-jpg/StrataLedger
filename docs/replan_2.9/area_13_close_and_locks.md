@@ -90,6 +90,16 @@ Credit card, plus `company_settings.undeposited_funds_acct_id`; this replaces "B
 - No posting override: an Admin or the Master unlocks first, with a reason, logged; posts; locks again.
 - Full close still locks everything. Partial close is a tool on the Close screen, always available. Completing
   a checklist step may offer to lock its areas; it never locks automatically.
+
+Amendment 2026-11-21 (owner 2:05 AM, close audit): Ordinary books close by whole fiscal months. Refuse an
+entered mid-month date in the ordinary close flow with "Pick a month end". Use the fiscal month-end date in
+the UI and History.
+A user must choose **Special cutoff** explicitly to close through a custom date. As confirmed at 2:08 AM, the
+cutoff uses the exact user-entered event date, including any day of the fiscal month. Require a selection from
+the Reasons list with kind "Special cutoff" (for example, "Sale of business") and a note. The cutoff locks every
+posting dated on or before that day. The remainder of the fiscal month stays open until its normal month-end close.
+Show `Closed through <date> (special cutoff)` in the Close screen and History.
+
 - Bank is a lock area, and a bank account can be locked (S 11-18 9:18 PM): unmatch is refused when the
   payment's period is locked for Bank or for that bank account, with no override; 9:20 PM extends this to every
   record type the bank feed can match.
@@ -144,6 +154,14 @@ only, not on the Controls page (Q1 A). Which document or action belongs to which
 **`fiscal_period`, `fiscal_year`:** add `row_version` (the close and reopen buttons send it, g4). No other column
 (reviewed-by is section 3).
 
+Amendment 2026-11-21 (owner 2:05 AM, close audit): Proposed record for the rebuild. Add `Special cutoff` to
+`action` and `via` in the append-only `period_status_history`. Link the event to the fiscal period that
+contains the event date. Store the exact
+`cutoff_date`, the selected reason ID and its label at the time of the event, the note, and the existing
+actor and timestamp. Require the date, reason and note for this event kind. A Special cutoff leaves the
+containing month's full-close flag to the ordinary month-end close. Retain the cutoff event in History after
+that month closes.
+
 **Permissions** (Q3 A): locking uses `period.close`; unlocking uses `period.reopen` (sensitive; Admin, the Master and
 the Controller template per area 18). Code checks permissions, never role names (L7).
 
@@ -160,6 +178,12 @@ New module `modules/services/period_locks.py` (H1-H5 clean):
   The message is C56's one sentence: "October is partly closed: Bills and vendor credits is locked. Ask an Admin
   to unlock it, or date this in November." For a Void or Correction dated in a locked period 13 or 14 it keeps
   R48's wording: refused, never moved.
+
+Amendment 2026-11-21 (owner 2:05 AM, close audit): Check the effective posting date of every new entry
+against the Special cutoff inside the write transaction as part of the closed-date checks. Refuse dates on or before the cutoff,
+regardless of area or account. Extend the closed-period posting integrity backstop to cover the cutoff.
+Dates after the cutoff follow the existing full-period, area and account rules.
+
 - `set_locks(context, period_id, *, areas, account_ids, reason, row_versions)` and
   `unlock(context, lock_ids, *, reason, row_versions)`: authorize first, then one write transaction. Locking a
   closed period is refused (it is already locked). `preview_locks` returns close.html's summary ("Locks 8 of 11
@@ -201,9 +225,17 @@ record and fails if it does not call `period_locks.check_open` (Q7 A).
 ### 1.5 Reopen (L7) and locks
 
 - `reopen_period` keeps what it does today (permission, confirm, reason, history row, `books_closed_through`
-  moved back) and, in the same transaction, clears every close task's done record (section 3, Q15 B). The dialog
-  lists what reopens (close.html): entries; the period's reconciliations back to In progress (area 12
-  owns that state; conflict F12); close checks run again; reports back to Preliminary (derived from `is_closed`).
+  moved back) and, in the same transaction, clears every close task's done record (section 3, Q15 B). The
+  Close dialog lists the effect on entries, reconciliations, and close checks. Reports return to Preliminary
+  (derived from `is_closed`).
+
+Corrected 2026-11-21 (close audit): Call Area 12's `reconciliation.reopen_for_period` in the period reopen transaction.
+Affected Finished or Changed after finish reconciliations become **Reopened**. They keep their cleared lines
+and prior report, and they fail the bank reconciliation close check until finished again. Use this wording in the Close dialog.
+"Affected reconciliations move to Reopened. Cleared lines and the prior report are kept. Finish them
+again to pass the bank reconciliation close check."
+  [Area 12 §§3.3–3.4](area_12_bank_and_reconciliation.md#33-proposed-schema)
+
 - Partial locks set before the full close (Q8 A): stay as they were; the reopened period shows Partly closed, and
   the reopen dialog lists them with an "Unlock these too" option (an unlock with the same reason).
 - Reopen clears the period's reviewed-by, which is `fiscal_period.closed_by`/`closed_at` (Q9 A; it already does,
@@ -242,6 +274,19 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 - Locking a closed period is refused; `PeriodLockedError` is caught by `except PeriodClosedError`.
 - Static: every journal-writing or posted-record-changing service calls the check.
 - Agent context: locking and unlocking refused (not in AGENT_ALLOWED).
+
+Amendment 2026-11-21 (owner 2:05 AM, close audit): Rebuild tests for close dates and the Special cutoff record.
+
+- Replace `tests/test_period_close.py:189`, `test_moving_books_closed_through_forward_closes_whole_periods`.
+  Its March 15 case currently accepts and stores a mid-month ordinary cutoff. Test that an ordinary March 15
+  close returns "Pick a month end" without writing a period flag, settings change or history row. Test that an
+  ordinary March 31 close closes whole months and records a month-end date.
+- Test an explicit Special cutoff on an exact event date, including first-day, mid-month and month-end
+  examples. Require a valid "Special cutoff" reason and a nonblank note. Verify the saved date, actor, time,
+  reason, note and audit history, and the label `Closed through <date> (special cutoff)`.
+- For a Special cutoff on March 15, refuse new posting on March 14 and March 15, including a reversal or
+  correction dated on the cutoff. Allow March 16 in the still-open month when the other checks pass. Verify
+  that an ordinary March 31 close retains the cutoff event and closes the rest of March.
 
 ---
 
@@ -288,6 +333,11 @@ database is blocked and rebuilt (CLAUDE.md section 5.2; list them and ask first,
 - close.html close dialog: lists warnings, then open tasks, then what is still dated in the period; closing with
   warnings asks for a reason. Q23 A: the reason is required when any warning is acknowledged and is stored on the
   Close row of `period_status_history` (its CHECK allows a reason on Close; required only on Reopen as today).
+
+Corrected 2026-11-21 (close audit): The current service accepts warning acknowledgement and stores a `NULL` reason.
+In the rebuild, validate and store the trimmed reason on the applicable Close history rows in the same transaction as the close.
+The dialog must use each check's configured Warn or Block mode. Use the existing per-check controls and retain
+the KS15 treatment of ledger-integrity warnings.
 
 ### 2.3 Every check: exists today and asked for
 
@@ -426,6 +476,13 @@ development database (section 5.2).
 - `tasks_wait_for_dependencies` off: done out of order warns; on: refused with one sentence; Close blocked while a
   task waits.
 - Each check in 2.3 when built: passing, failing, warn vs block.
+
+Corrected 2026-11-21 (close audit): Add a rebuild regression for acknowledged warnings. Missing or blank reasons
+leave period state and history untouched when warnings are present. A valid acknowledgement records the trimmed reason on the
+Close history row. Cover period close, Books closed through, and year close when they close periods with
+warnings. A clean close needs no warning reason. A failing Block check refuses the close even when the user
+supplies a reason. Verify the dialog respects both modes when two checks have different modes.
+
 - The prepaid check lists Blocked and caught-up entries and passes once due entries are posted.
 - A stale `row_version` on any task save is refused (g4).
 
@@ -716,9 +773,10 @@ and insert-only rows only (`period_lock`, `period_close_snapshot`); no trigger e
 - **F11 Account numbers.** 11-14's reconciliation list numbers do not match the construction chart (S 11-19:
   account numbers follow the repo construction chart). **Resolved as drafted (no question):** checks find accounts
   by role (`company_settings.*_acct_id`), never by number.
-- **F12 Reopen and reconciliations.** close.html's reopen sends reconciliations back to In progress; area 12 owns
-  reconciliation states. **Resolved as drafted (no question):** area 12 adds the state; area 13 only calls it
-  (section 10).
+- **F12 Reopen and reconciliations.** Area 12 owns the transition. Area 13 calls it when the period reopens.
+
+  Corrected 2026-11-21 (close audit): The approved Area 12 transition is **Reopened**. Use the Close dialog wording
+  and state behavior in §1.5.
 - **F13 Area 18 exempt list.** Area 18's derived-table exempt list did not name `ledger_period_balance`.
   **Resolved (owner 2026-11-19):** the owner approved adding it; a dated amendment line is in
   docs/replan_2.9/area_18_admin_security_audit.md section 1.2. Nothing else in area 18 changes.
