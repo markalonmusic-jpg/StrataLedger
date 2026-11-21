@@ -1038,6 +1038,27 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-20 area 7 jobs, budgets, cost codes, dimensions owner-approved (7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd,
   this commit); amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager
   template.
+- 2026-11-20 Git hook repair: confirmed Python 3.11.9, pytest 9.2.0 and pytest-xdist under the non-admin `marka`
+  identity. Replaced the obsolete Claude PreToolUse settings test with coverage for the tracked `.githooks/pre-commit`
+  wrapper; `tests/test_commit_hook.py`: 68 passed. Full suite before that replacement: 4,208 passed, 2 skipped,
+  2 failed in 327.98 s. The commit-hook settings failure is addressed; the remaining failure,
+  `test_the_real_reader_gives_the_owner_and_exact_masks`, is caused by inherited `Modify` ACEs on pytest's `%TEMP%`
+  directory for `CodexSandboxUsers` and SID `S-1-5-21-3876112204-1666981215-754291341-1030728988`. The ACL test was
+  not changed or skipped; `tests/test_platform_folder_acl.py` passed 177 tests. **Commit: none; push: none.**
+  Staged hook/settings/CLAUDE changes remain staged; `tests/test_commit_hook.py` is unstaged. Planning handoff open.
+- 2026-11-20 Git hook repair rerun: focused `test_the_real_reader_gives_the_owner_and_exact_masks` failed in 0.18 s;
+  full suite after the hook-test replacement: 4,209 passed, 2 skipped, 1 failed in 315.94 s. The sole failure is the
+  same ACL assertion. The failing pytest temp folder is owned by `MARKALENOVOLAP\marka` and inherits `Modify,
+  Synchronize` ACEs for `markalenovolap\CodexSandboxUsers` and SID
+  `S-1-5-21-3876112204-1666981215-754291341-1030728988`; SYSTEM, Administrators and `marka` have FullControl.
+  The ACL test remains unchanged. **Commit: none; push: none.** Stop for planning review of a non-weakening test
+  environment resolution.
+- 2026-11-20 dedicated-basetemp attempt: `PYTEST_ADDOPTS` was unset. The focused ACL test was run with
+  `--basetemp=C:\Users\marka\.pytest-strataledger-acl`; pytest interpreted the backslashes as escapes and instead
+  created `C:\Users\marka\StrataLedger-clean\Usersmarka.pytest-strataledger-acl`. The focused test failed its exact
+  mask assertion there (1 failed in 0.15 s). That misplaced test temp was removed; no ACL inspection or full-suite run
+  followed because the focused run failed. Next attempt must pass the same absolute basetemp using forward slashes in
+  `PYTEST_ADDOPTS` and verify pytest actually used it before continuing. No commit or push.
 - 2026-11-20 service-quote planning reconciliation: updated area 6 sections 1.3, 2.3, 3.3, 3.5, 5.3, 9.3 and 10.2;
   area 7 section 1.3; area 8 sections 1.3 and 3.1; and area 15 section 3.5 with the confirmed service-quote rules.
   Area 17 section 4.4 already states Warranty/goodwill reporting by `cost_destination`. Updated
