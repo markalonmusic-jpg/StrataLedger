@@ -240,6 +240,8 @@ reconciliation flag. Nothing checks locks.
 
 **`bank_line_clearing`** (Q1 A; one row per bank or card journal line that has ever been cleared):
 
+Amendment 2026-11-21 (banking audit): Store bank clearing state and Date cleared in the dedicated `bank_line_clearing` record keyed by the bank or card journal line. Bank clearing must never reuse `journal_line.clearing_id`, which ties together open AR and AP items and other ledger clearing groups.
+
 | Column | Type and constraint |
 |--------|---------------------|
 | `journal_line_id` | INTEGER PRIMARY KEY REFERENCES journal_line (must be a posted line on a `bank_account` GL account: service check) |
