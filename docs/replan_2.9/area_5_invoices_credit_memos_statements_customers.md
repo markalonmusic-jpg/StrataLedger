@@ -142,6 +142,9 @@ existing locks and number constraints with immutable versions and keep purchase 
   match/reconciliation history, restore source availability only at reversal effectiveness, and record actual cash returns separately.
 - Require an active postable expense account. Partial write-offs respect the effective unpaid balance. Full linked
   reversal uses the original account and effective date rules. A replacement is a new write-off. Verify no automatic tax posting.
+  Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
+  Verify the AR control account and a bank account are refused, an allowance or expense account is accepted,
+  and reversal uses the saved account. Also verify a cash account is refused.
 - Enforce all four sensitive permissions independently, reasons and the 10-character “Other” minimum. Verify approvals
   default OFF and route when enabled under Area 14 policy.
 
@@ -209,6 +212,7 @@ F4. Baseline status mixes posting, delivery and settlement. First Issue/Post pos
 F5. Area 6's deposit draft applies only to billable signed schedules that call for a deposit. Warranty and goodwill generate no invoice. The 5:15 PM decision settles tax timing, claim lifecycle and rounding. Area 4 still supplies the event and balance inputs in §5.3.
 F6. The owner approved a per-write-off Expense account picker and the refund offsets in §8.5. Remaining tax
 and cross-area implementation dependencies are listed there.
+Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
 
 ## 7. Owner questions
 
@@ -224,6 +228,7 @@ and cross-area implementation dependencies are listed there.
 8. **Policy approved (§8.4).** Review retention duration where the company has no configured policy.
 9. **Closed (§8.5).** Refund sources, offsets and bank correction before failed-payout void are approved.
 10. **Closed (§8.5).** Per-write-off expense selection, partial posting, full reversal, permissions and approval defaults are approved.
+    Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
 
 ## 8. Owner corrections, 2026-11-20 at 4:58 PM
 
@@ -254,6 +259,7 @@ already records 1a and 8a at lines 1642–1648.
 - **10a (§§4–5).** Write-off, refund and credit reasons come from Settings › Lists › Reasons. “Other” requires text.
   Company › Approvers configures write-off and refund approvals, OFF by default. The Service goodwill account role
   remains separate from warranty and from the expense selected for a write-off. See §8.5 for approved posting and authority.
+  Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
 
 **Q5 default precedence closed (owner, 5:00 PM).** Shared decisions :1651 and planning inbox :595 confirm the
 sample defaults and configured schedule precedence.
@@ -369,6 +375,7 @@ adjustment. Area 4 retains the existing §5.3 handoff.
   account and credit AR against the invoice. Record invoice, amount, account, effective date, reason and posting
   entry. Reverse each write-off in full on an allowed date using its original account. For a different amount,
   post a new write-off against the remaining balance. The write-off creates no tax adjustment.
+  Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
 - **Authority.** Require distinct sensitive permissions for refund posting, refund reversal, write-off posting
   and write-off reversal. Bank correction authority is separate. Use Settings › Lists › Reasons and require at
   least 10 characters for “Other.” Optional refund and write-off approvals in Company › Approvers default OFF.
@@ -380,5 +387,6 @@ Remaining dependencies by owner:
 - **Area 1 / Payments and AR:** source balances, release/correction and allocation contracts for refund posting.
 - **Area 12 / Banking:** authorized correction and reconciliation history, plus linked actual bank returns.
 - **Area 18 / Security:** name and place the four sensitive permissions. The write-off supplies its own expense account.
+  Corrected 2026-11-21 (owner 1:35 AM): The picker is labeled **GL account** and allows any active, postable account except the AR control account and bank or cash accounts, which are refused as integrity checks. The reversal uses the account saved on the original posting.
 - **Area 14 / Approvers:** refund and write-off routing and reversal approval policy.
 - **Area 4 / Pay apps:** retain §5.3. **Areas 7/9, purchasing/costing, 19 and 6:** retain the T&M source and signed terms handoff in §8.3.
