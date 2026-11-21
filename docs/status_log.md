@@ -1102,3 +1102,15 @@ Rotation and key-lost text as it stood before the trim:
   Area 4, tax and source handoffs remain open. Planning only. No tests, staging, commit or push.
 - 2026-11-20 Mark approved Area 5 Q9–Q10. Section 8.5 records refund sources and reversals, per-write-off expense
   selection, authority and approval defaults. Planned tests and handoffs updated. No tests, staging, commit or push.
+- 2026-11-21 Area 4 draft ready for owner review. It records certified draft creation, deposit and retainage
+  inputs, proposed billed-to-date effects and draft cancellation options. Q1–Q5 await Mark. No tests, staging,
+  commit or push.
+- 2026-11-21 Mark approved Area 4 draft cancellation and billed-to-date timing. Sections 4–7 record claim
+  disposition, effective posted effects, schema and planned tests. Q2–Q4, Q5 authority and invoice edits,
+  and decertification remain open. Planning only. No tests, staging, commit or push.
+- 2026-11-21 Mark approved Area 4 Q2 and Q3. Updated funded deposit and posted retainage rules, schema and
+  planned tests. Q4, Q5 invoice edits and authority, and decertification remain open. No tests, staging,
+  commit or push.
+- 2026-11-21 Mark approved Area 4 Q4: inclusive accounting-effective-date cut-off with revision-level source evidence; a late posting or correction that changes a sent application requires a new revision; missing/zero budget needs an authorized, reasoned manual amount or percentage; stored-material installation is a linked equal transfer with zero cumulative earned-value change. Updated schema notes, planned tests, shared decisions and handoff. Q5 authority and invoice-only edits, plus decertification, remain for review. Planning only; whitespace checked, no tests, staging, commit or push.
+
+- 2026-11-21 Mark sent Payments/AR triage (1:45 AM). Added must-fix source inputs and named proof tests for posted/as-of status, operation-ID retries, allocation release and stable invoice identity, deferral target consistency, close locks, service boundaries, authorities and account routing to the schema-replan Inbox inputs and `docs/next_step.md`. Recorded the mockup findings in the UX research inbox. Docs only; no tests or code changes.

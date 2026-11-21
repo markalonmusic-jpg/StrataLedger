@@ -131,6 +131,8 @@ implementation dependencies are the tax, payment, bank, approval, permission and
 and the Area 4 inputs in §5.3. Plan foreign keys, customer/date and source indexes, and audit history. Reconcile the
 existing locks and number constraints with immutable versions and keep purchase and registered series behavior.
 
+Build list: customer intake service accepts customer type, individual names, job sites, primary contact, payment terms and exemption evidence. The service owns the duplicate check using normalized name, tax ID and email, allocates the required `customer_code`, validates entity-type values against the baseline, and returns tax IDs masked for edit-screen reads. Keep customer persistence out of subscription tables.
+Billing sources need a durable source-to-invoice link with idempotent retry. Follow the 2026-11-20 5:15 PM shared decision: one active invoice claim per billing event is reserved with draft creation; retry reuses the active claim, a void preserves claim history, and replacement requires explicit linked reissue.
 ### 5.2 Tests to write later
 
 - Recording owner approval claims one linked invoice draft and locks the certified pay app. A retry reuses
@@ -194,6 +196,25 @@ existing locks and number constraints with immutable versions and keep purchase 
   As-of statements tie to AR.
 - Print and report permissions and job scopes, reason snapshots and redaction, archived/voided document visibility.
 
+**Billing/customer audit regressions (also carry these named cases into the single consolidated test plan when it is assembled):**
+- `test_invoice_preview_and_save_share_service_calculation_for_blank_quantity` — preview and save use the same service calculation for blank quantity input.
+- `test_invoice_preview_and_save_share_service_calculation_for_half_unit_lines` — preview and save produce the same result for half-unit lines.
+- `test_invoice_missing_account_is_refused` — refuse invoice lines without a required account.
+- `test_invoice_zero_price_is_refused` and `test_invoice_nonfinite_price_is_refused` — refuse zero and non-finite prices.
+- `test_invoice_tax_rounds_per_line` — round tax per line before totaling.
+- `test_invoice_invalid_calendar_date_is_rejected` — reject an impossible date such as 02/31.
+- `test_invoice_expired_exemption_evidence_does_not_zero_tax` — expired exemption evidence cannot silently produce $0 tax.
+- `test_customer_name_validation_runs_on_save` and `test_customer_exemption_expiry_validation_runs_on_save` — enforce both required customer-name and exemption-expiry rules.
+- `test_invoice_save_changes_runs_shared_validator` — Save changes uses the same validation path as the other save action.
+- `test_invoice_customer_change_revalidates_existing_lines` — changing customer cannot retain incompatible old lines without revalidation.
+- `test_sales_invoice_rejects_multiple_jobs_in_v1` — a sales invoice has one job; lines may inherit that job.
+- `test_payapp_approval_copy_says_invoice_draft_not_posted` — approval copy states that it creates a linked draft, not a posted invoice.
+- `test_posted_invoice_edit_guard_uses_paid_amount_floor` — allow a permitted edit when the replacement total remains at least the amount paid; reject a lower total.
+- `test_customer_save_never_touches_subscriptions` — customer saves do not read or write subscription records.
+- `test_customer_service_allocates_required_customer_code` — service creation allocates the schema-required code.
+- `test_customer_entity_type_matches_schema_values` — service values and persisted entity types match the baseline constraints.
+- `test_customer_edit_reads_tax_id_masked_through_service` — edit reads only the service-masked tax ID.
+- `test_customer_save_database_error_shows_error_without_navigation` — a database failure shows an error and keeps the user on the form.
 ### 5.3 Explicit handoff to Area 4 (pay apps and retainage)
 
 | Area 4 decision | Area 5 needs |

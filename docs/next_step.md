@@ -1,6 +1,14 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
 
-## Current planning stop (2026-11-20): area 5 drafted for Mark
+## Current planning stop (2026-11-21): Area 4 Q5 authority review
+
+Q1 draft cancellation, Q2 funded deposit application, Q3 releases of posted held retainage, Q4 calculation and cut-off rules, and billed-to-date timing are approved. Review `docs/replan_2.9/area_4_owner_pay_applications_billing_cycles.md` Q5 and resolve: (1) whether a certified revision ever needs a separate decertification action; (2) which invoice-only fields may change while certified billing facts stay frozen; and (3) who may adjust, release retainage, unlock, or create a replacement draft. Area 18 owns exact permission codes, sensitivity, scope, caps, and template placement for those actions; its current registry already includes `payapp.create`, sensitive `payapp.approve`, `retainage.release`, `invoice.create`, `invoice.send`, and `invoice.void`.
+
+Decision brief for Mark (proposal, not yet approved): avoid routine decertification; if customer approval is rescinded before posting, consider a reasoned rescind action only after canceling the linked draft, with the certified revision and history preserved. After posting, require invoice reversal and a new certified revision. Allow only nonfinancial invoice presentation fields such as customer message, PO/reference, and recipient/contact to change on the linked draft; keep customer/job, terms and dates, tax, SOV/source mapping, deposit, retainage, quantities, rates, and certified amounts frozen. Choose the business roles allowed to adjust, release retainage, unlock, and create an explicit replacement draft. Area 18 maps those decisions to existing or new permissions and role templates. Existing seeds include `payapp.create` and sensitive `payapp.approve`; the Controller template has `retainage.release`. Exact adjust/unlock/replacement permissions, sensitivity and project scope belong to Area 18.
+
+The Area 5 handoff below still applies.
+
+## Earlier planning stop (2026-11-20): area 5 drafted for Mark
 
 Review `docs/replan_2.9/area_5_invoices_credit_memos_statements_customers.md` §§0–7.
 Nine areas are approved. Area 5 is a draft with open questions in §7 as narrowed by §8, including dependencies on
@@ -113,6 +121,14 @@ beside them, never deleted (area 7 fix 3).
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
+- **Area 1 (Payments, deposits, undeposited funds; not yet drafted; Mark triage 2026-11-21 1:45 AM — must-fix inputs):**
+  - Invoice status counts only posted applications effective on or before the as-of date. Draft receipts, draft credit memos and future-dated applications never make an invoice Paid. Add `test_invoice_status_uses_only_posted_applications_as_of_date`, covering each case. `tests/test_payments.py::test_releasing_a_draft_source_allocation_posts_no_entry` (around line 381) currently expects Paid after allocating a draft source; flag that expectation as wrong and replace it in the rebuild with the non-Paid status assertion.
+  - Require an operation ID on each application call; retrying the same ID returns the original result without another allocation, following the 2026-11-20 5:15 PM billing-claim retry principle. Test `test_allocation_same_operation_id_retry_returns_original_result`.
+  - Store allocation release-effective date and the replacement invoice version link. Voiding a paid invoice releases its applications back to the original receipt, which stays posted. Reposting under the same number uses one stable invoice identity because `invoice_sales_number_unique` reserves a sales number on one row today. Test `test_allocation_release_records_effective_date_and_replacement_invoice_version`, `test_paid_invoice_void_releases_allocations_to_posted_receipt`, and `test_same_number_repost_uses_stable_invoice_identity_after_number_reserved`.
+  - Either support the allocation deferral target end to end or remove it from the schema. Test `test_allocation_schema_targets_match_supported_allocator_targets` against the selected design.
+  - Use the approved close model: Payments received or Bill payments area lock plus the affected AR or AP account locks, never the legacy Sales or Purchases areas. Test `test_payment_locks_use_payments_received_or_bill_payments_area_and_ar_ap_accounts`.
+  - Build service-owned receipts, deposits and deposit lines; preserve date paid separately from date cleared; include card fees; and provide refund, write-off and statement send/posting services. Test `test_receipt_posting_runs_through_service`, `test_deposit_and_deposit_line_posting_runs_through_service`, `test_date_paid_and_date_cleared_are_distinct`, `test_card_fee_posts_through_payment_service`, `test_refund_posting_runs_through_service`, `test_writeoff_posting_runs_through_service`, and `test_statement_send_and_retention_run_through_service`. Keep the four refund/write-off authorities separate and sensitive, with refund/write-off approvals OFF by default; test `test_refund_writeoff_authorities_are_four_separate_sensitive_permissions` and `test_refund_writeoff_approval_defaults_are_off`.
+  - Policy to confirm with Mark while drafting: ordinary overpayments remain unapplied credits on customer AR; only an explicitly chosen job deposit posts to Customer Deposits by account role. Test `test_ordinary_overpayment_stays_unapplied_on_customer_ar` and `test_explicit_job_deposit_uses_customer_deposits_role`.
 - **Area 1/2:** payment record and receipt destination (area 12 Q20 A keeps deposits and transfers in 12); pay run
   posting shape (one bank line per payment assumed); `payment.method` values for ACH, wire and card.
 - **Area 3/5:** a job per bill and invoice line (area 10 F8); the bill void calls `deferrals.void_for_bill`.
