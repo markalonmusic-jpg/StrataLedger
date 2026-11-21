@@ -115,6 +115,13 @@ Amendment 2026-11-20 (owner 2:10 PM, service quote rules): the service type also
 the PM, payment terms using the existing payment-term model, and quote-validity days. Copy these defaults onto the
 estimate revision.
 
+Amendment 2026-11-20 (service-quote decision reconciliation): define these service-type defaults explicitly as
+`default_cost_enterer_user_id`, `default_pm_user_id`, `default_payment_term_id` (FK to the existing `payment_term`),
+and `default_quote_validity_days` (> 0), alongside its existing `pricing_template_id`. Estimate creation copies
+them to the revision (`costs_by_user_id`, `assigned_pm_id`, payment-term id and frozen term fields, and
+`quote_validity_days`); when there is one Solo user or separation controls are not set up, PM defaults to cost
+enterer. No duplicate payment-term model is introduced.
+
 **`service_stage`** (existing): replace `is_closed_stage` by `stage_role` TEXT NOT NULL DEFAULT 'Normal' CHECK IN
 ('Normal', 'Contract signed', 'Complete', 'Closed'); add `target_days` INTEGER CHECK (NULL or >= 0), `can_skip`
 INTEGER NOT NULL DEFAULT 0, `guidance` TEXT CHECK (NULL or length <= 500), `row_version`. A job's stage must be a
@@ -291,6 +298,11 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 Corrected 2026-11-20 (consistency scan F4): The case link is `project.source_case_id` (FK to area 15's `service_case`); there is no `case_job` table. Job-cancel and delay reasons use area 15's `reason_option`, kinds 'Job cancel' and 'Delay'; `job_cancel_reason` and `delay_reason` are not built.
 
+Withdrawn 2026-11-20 (service-quote decision reconciliation): the proposed `project.billing_type` field in this row
+is superseded by area 7's separate `billing_method` and `cost_destination` columns and their CHECK-valid combinations.
+The Warranty-line and service-overhead destinations, original-job requirement, and reporting split are defined by
+area 7 section 1.3 and area 17 section 4.4.
+
 **`project_hold_history`** (new, insert-only; owner Q6 C): `hold_history_id` PK, `project_id` NOT NULL FK,
 `from_on_hold` INTEGER NOT NULL, `to_on_hold` INTEGER NOT NULL (both 0/1; CHECK `from_on_hold <> to_on_hold`),
 `reason` TEXT NOT NULL CHECK (length 1-1000), `changed_by` INTEGER NOT NULL, `changed_at` TEXT NOT NULL (UTC ISO 8601
@@ -318,8 +330,7 @@ linked jobs complete, flag the case for Resolve" prompt (A 11-18 item 4) is a ca
 
 Lands in `001_company.sql` with the `project` columns (area 7 writes the DDL) and `pm_prompt`. No existing service
 or test uses these. Tests to write later: a held job shows the flag, creates no `pm_prompt` and raises no schedule alert, and a cost, PO or
-invoice on it is allowed with a warning that names the hold (nothing refused); a Warranty job refuses an invoice; billing_type edit refused after the
-first posted cost; manual % outside 0-100 refused and listed by the area 13 check with who and why; one prompt per
+invoice on it is allowed with a warning that names the hold (nothing refused); a Warranty job refuses an invoice; edits to `billing_method` and `cost_destination` are refused after the first posted cost. Warranty requires an original job. Goodwill uses the configurable `service_goodwill` System account mapping; manual % outside 0-100 refused and listed by the area 13 check with who and why; one prompt per
 job and stage even when the first actual start is applied twice; snooze hides for 3 days using `context.today`.
 
 ---
@@ -709,15 +720,17 @@ INTEGER NULL (FK `change_order`), and its key (`revision_id`, `cost_code_id`) is
 
 Asked of area 7 (listed so nothing is lost): `project_budget.revision_id` (nullable FK, Q18); `project.status`
 dropped and `project.on_hold` added (Q6 C); cached `revised_budget_cents` (F12); the project's `row_version` (rule g); the seven close columns,
-four site columns, two target dates, manual % columns, `billing_type`, `warranty_for_job_id`, `source_case_id`.
+four site columns, two target dates, manual % columns, `billing_method`, `cost_destination`, `warranty_for_job_id`,
+`source_case_id`.
 
 Amendment 2026-11-20 (owner 2:25 AM, from area 7): area 7 section 1.3 writes the full `project` DDL with every column
 asked above. Confirmed: `project.status` is dropped and `project.on_hold` added (Q6 C); `original_budget_cents` and
 `revised_budget_cents` are dropped and every reader sums `project_budget` (area 7 Q5 A; F12 here);
 `project_budget.revision_id` is a nullable FK (Q18). There is no draft flag: no draft jobs exist (area 7 Q1). A
-Warranty job (`billing_type` 'Warranty') is the warranty service job: its costs post on the Warranty cost code to the
-`warranty_expense` account (5080) in the open period, with no reserve, and roll up to the Warranty line of the
-`warranty_for_job_id` job (area 7 Q16, Q17 A).
+Warranty uses `billing_method = 'Not billed'` and `cost_destination = 'Warranty line'`. It requires
+`warranty_for_job_id` to name the original job. Costs post to the account mapped to `warranty_expense` in the open
+period with no reserve and roll up to the original job's Warranty line. Goodwill uses 'Not billed' and 'Service
+overhead', has no original job and resolves its account through `service_goodwill` (areas 7 §1.3 and 18 §4.2).
 
 ---
 

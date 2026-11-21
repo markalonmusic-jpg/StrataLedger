@@ -1,6 +1,30 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
 
-## Current stop (2026-11-20): Git hook repair awaiting planning review
+## Planning handoff (2026-11-20): service-quote decision reconciliation
+
+- State: planning-only reconciliation of the confirmed 2:10 PM, 2:20 PM and 2:30 PM service-quote rules into areas
+  6, 7, 8, 15 and the existing area 17 report rule. Areas 5 and 14 have no Phase 2.9 plan document yet; their
+  ownership boundaries and required inputs are handed off below. The internal `contract` row remains derived from
+  the signed quote revision. No code, migration, baseline or test file was changed; no test, stage, commit or push was
+  run. Existing unrelated working-tree changes and untracked paths remain preserved.
+- Rules reconciled: one estimate links to exactly one lead or case; case problem edits sync during drafting and quote
+  content freezes when printed; service type defaults the cost enterer/pricer, PM, reusable payment term and quote
+  validity; cost enterer and PM stay separate with Solo/unset-controls PM defaulting to cost enterer; send-backs
+  return to the estimate submitter with append-only history; signing freezes billing kind, price, terms, tax details
+  and the customer-signed tax-inclusive total; signed upload records optional repair groups as Accepted or Declined
+  and only required plus Accepted lines determine the signed amount; jobs and contract rows are created only on
+  signed-quote upload, while a case enters In progress when cost work starts; Warranty and goodwill use separate cost
+  destinations, with the `service_goodwill` System account role and separate reports; unrelated upsells are a human
+  new-estimate rule with no schema enforcement.
+- Blockers/open questions: later-area implementation details remain for area 5 invoice line/tax carry-forward and
+  area 14 approval routing to `approval_request`'s submitter. Area 18 now defines the configurable
+  `service_goodwill` System account mapping. The four review findings are corrected in areas 6, 7, 8 and 15:
+  accepted work drives the signed totals and original budget, warranty and goodwill use distinct destinations,
+  and estimate cost work starts the case transition.
+- Next action: planning review of the amended sections and later-area handoffs; then select the next area with the
+  owner. Do not start baseline or code work until the whole replan is approved.
+
+## Historical stop (2026-11-20): Git hook repair planning snapshot
 
 - State: on `main`; local `core.hooksPath` is `.githooks`. The hook, settings and `CLAUDE.md` changes were already
   staged. `tests/test_commit_hook.py` now covers the tracked Git hook instead of the removed Claude PreToolUse entry;
@@ -27,6 +51,11 @@
   pass applies only to the dedicated basetemp and does not repair `%TEMP%`'s inherited ACEs. Blocker: investigate the
   dedicated directory's inherited ACE without changing the test or ACL. Next: planning review of the service-quote
   amendments in this step, then resume ACL diagnosis before any later commit.
+- Historical service-quote amendment review (2026-11-20, before follow-up `2b98b15`): commit `1e912fa` was pushed. The step reviewer found that
+  the tax-to-invoice sentence belongs only in the later-area handoff and that the estimate schema needed an explicit
+  PM field. Those points are corrected locally; the report rule is also placed under area 17 section 4.4. Blocker:
+  the requested single commit is already pushed, so a follow-up commit would exceed that limit and amending it would
+  require a force-push. The stop applied at that review. See the current planning handoff above.
 
 Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. Start a fresh session (MR1) and read
 .claude/rules/workflow-standards.md: done, the review gate, fix mode.
@@ -139,12 +168,14 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
   amendment line in area 6 section 3.3).
 - **Area 5:** the create-customer service and contacts at Mark signed; the draft (unposted) deposit invoice, credit side
   by role `customer_deposits`; `contract_milestone.invoice_id`; T&M monthly drafts at the contract's frozen rates and
-  the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role. Carry the
-  estimate revision's frozen tax rate, taxable-line detail, pre-tax, tax and tax-inclusive total onto the invoice.
+  the near-not-to-exceed warning (with area 19); whether the T&M revenue account needs a system role. Carry only the
+  required and Accepted optional quote lines, their frozen tax-rate identity/name/rate, taxable base and tax cents,
+  and the signed revision's pre-tax, tax and tax-inclusive total onto the invoice. The internal contract row and
+  amount stay derived from that signed quote.
 - **Area 9:** `material_code`; until it exists `estimate_cost_line.material_code_id` is a plain integer.
 - **Area 14:** the Estimate policy, `sales_authority_limit` routing, the Contract policies (wording changes and contract
-  cancellation approval), all OFF by default. Define service-quote send-back routing to whoever submitted it (PM or
-  rep), with insert-only from, to, status and reason history.
+  cancellation approval), all OFF by default. Define service-quote send-back routing to `approval_request`'s submitter
+  (PM or rep); pass that target to area 6 and retain append-only from/to status, from/to holder and reason history.
 - **Area 19:** payroll import hours (employee, job, cost code) as the T&M time source, billed at the frozen rates.
 - **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
 - **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with
@@ -174,6 +205,9 @@ Area 7's amendment lines are already in areas 6, 8, 10, 13, 15, 17 and 18; these
 - **Area 16:** job custom fields per stage and service type.
 - **Area 21:** entities inside one company file (which entity a job belongs to is not designed in area 7);
   `row_version` on the new `company_settings` columns; the notification for "Enter budget".
+- **Area 18 (done in section 4.2):** `service_goodwill` is a configurable System account role used by area 7's
+  Service overhead destination; each company maps it to an account, with no account number hard-coded. Warranty and
+  goodwill remain separate report destinations even if both map to the same account.
 - **Imports (backlog 4):** cost code and dimension paste lists use the Import service; dimension tables for
   `time_entry` and `staged_line` (JD1).
 - **Raised in the area 7 fix reports, not yet decided by the owner:** a case quote's service type and sales rep

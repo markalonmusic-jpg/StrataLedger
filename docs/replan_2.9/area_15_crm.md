@@ -39,7 +39,7 @@ Sources read (only these, searched by date, title or code):
 - `Strata_Teams\codex_reports\schema_gaps_vs_mockups_2026-11-18.md` item 4 (X 4).
 - docs/next_step.md, "Handed to later areas by area 8" (the area 15 items) and "by the approved ones".
 - Approved areas: 8 (`service_type`, `service_stage.stage_role`, `project_stage_history` rules, `crew` and the crew
-  label, `calendar_item`, `project.source_case_id`, `billing_type`, `warranty_for_job_id`, Q2, Q5, Q21), 13 (work
+  label, `calendar_item`, `project.source_case_id`, `billing_method`, `cost_destination`, `warranty_for_job_id`, Q2, Q5, Q21), 13 (work
   week, holidays, the calendar query inputs, section 3), 17 and docs/contracts/reports.md (`src_leads`,
   `src_leads_estimates`, `src_activities`, `src_cases`, `src_lead_job_invoices`, `src_rep_contract_payments`; section
   5.4 row limits; section 12 items 16-17), 18 (access model, caps, level defaults, the "which actions require a
@@ -62,7 +62,7 @@ Sources read (only these, searched by date, title or code):
 | 4 | Auto-lost and win-back | A System run closes a lead as Lost N days after its latest sent estimate with no signed contract (`auto_lost_days`, default 14, 0 = off; conflict F5), warns at N−3, and asks area 6 to mark the estimate Expired. "Recreate lead" makes a new lead linked both ways, source Win-back | company |
 | 5 | Activities | One `activity` record for planned and done work: type, due date and optional time, length, owner, attendees (users), contacts taking part, location, crew, links to lead, customer, case (and job, Q7), done_at/done_by, cancelled. A lead's next activity is its earliest open one (derived). Company `activity_type` list, seeded generic. Busy check is a warning across activities, calendar items and crews | company |
 | 6 | Service cases | `service_case` with type, channel, priority, owner (always a user, Q12 B), due, statuses Open, In progress, Waiting on customer, Resolved, Closed; milestone dates never overwritten; append-only `case_status_history`; allowed transitions in the service; auto-close after `case_auto_close_days` (default 7); follow-up cases by `parent_case_id`. `case_type` list with a default owner user and due days | company |
-| 7 | Service jobs from cases | Only `project.source_case_id` (area 8 column; FK and index added here; Q13 B, no `case_job`); a case's jobs are read by it; creating one moves an Open case to In progress; all of a case's jobs complete shows a Resolve prompt (derived, never automatic) | company |
+| 7 | Service jobs from cases | A case moves to In progress when estimate cost work starts. Signed-quote upload creates the service job and contract row without triggering the initial case transition. Declined or expired quotes leave the case open. Read jobs by `project.source_case_id` (FK and index here, Q13 B). When all linked jobs complete, show a Resolve prompt (derived, never automatic). | company |
 | 8 | Comments | `comment` on leads, jobs, estimates and cases, internal only, never printed; `comment_mention`; notifications to the people mentioned plus the record's owner (area 21 feed) | company |
 | 9 | Routing and assignment | `lead_assignment_rule` per service type (Round-robin with a stored next-up pointer, Fixed user, Unassigned) and its members; skip inactive users and users without `lead.own`; a hand pick wins; logged | company |
 | 10 | Boundaries | Area 5 creates the customer at signing; area 6 owns estimates, revisions, sending, signing and expiry; areas 7/8 own the job; area 16 custom-field scoping; area 17 report sources; area 20 sends .ics; area 21 the calendar query and notification feed (section 6) | n/a |
@@ -172,8 +172,7 @@ Service rules (`leads.py`, H4; none of these is a trigger):
 - Billing address: when `billing_same_as_site = 1` every reader returns the site address as the billing address;
   the copy into the customer at signing is area 5's.
 
-Amendment 2026-11-20 (owner, from area 6 Q4): `estimate.lead_id` is NOT NULL, and the estimate wizard's first step
-picks an existing lead or creates one in the same transaction: `leads.create` is called inside the estimate service's
+Amendment 2026-11-20 (owner, from area 6 Q4): each estimate links to exactly one of `lead_id` or `case_id`. The lead estimate wizard picks an existing lead or creates one in the same transaction: `leads.create` is called inside the estimate service's
 write transaction (one `authorize` for `lead.create`, then the estimate's own check), so a repeat customer's lead is
 made inside the wizard and no separate lead form comes first. A lead made there gets the service type chosen at
 wizard step 2 (Job), in the same transaction (S 11-19 8:42 PM: service type required on every lead), with its
@@ -438,7 +437,7 @@ reads `service_case` and its status history.
 | Auto-close Resolved cases after the company setting (default 7 days), `changed_by` = System | A 11-18 item 4; S 11-18 2:08 AM |
 | Days to resolve = calendar days opened → last resolved, waiting included | A 11-18 item 5 |
 | Cases show the R33 path, display only | S 11-18 2:14 AM |
-| `case_jobs(case_id, job_id)`, many jobs per case; `jobs.source_case_id` back link (Q13 B: only the back link is built; a case's jobs are read by it); billing type Billable or Warranty (area 8 columns); creating a linked job moves an Open case to In progress through the case status service; when all linked jobs are complete, a Resolve prompt; never resolve automatically | A 11-18 "service jobs"; S 11-18 2:14 AM |
+| Service quotes from cases | Estimate cost work moves an Open case to In progress. Signed-quote upload creates the job and contract. Decline or expiry leaves the case open. Read linked jobs by `project.source_case_id` (Q13 B). When all linked jobs complete, show a Resolve prompt. | Owner 2026-11-20, 2:10 PM |
 | "Create service job" makes a job of type Service for the same customer and site | S 11-18 2:14 AM |
 | Cases tab on customer and job; job header "2 open cases"; homes show "Cases due today" (overdue included) | C104 |
 | Contract cancellation: reason, date received, case link; never auto-posts; approval OFF by default | A 11-15 items 5 and 2:41 PM; C105 (area 6) |
@@ -491,7 +490,7 @@ CHECKs describe a row's shape only. "Resolved and Closed need `last_resolved_at`
 **`case_status_history`** (new, insert-only): `(history_id PK, case_id NOT NULL FK, from_status TEXT (NULL on the
 first row), to_status TEXT NOT NULL, changed_at TEXT NOT NULL, changed_by INTEGER, origin TEXT NOT NULL CHECK IN
 ('User', 'System'), note TEXT CHECK NULL or length 1-4000, via TEXT NOT NULL CHECK IN ('Opened', 'Action',
-'Service job created', 'Auto-close'))`; both status columns CHECK IN the five statuses; CHECK `(origin = 'System') =
+'Estimate cost work started', 'Auto-close'))`; both status columns CHECK IN the five statuses; CHECK `(origin = 'System') =
 (changed_by IS NULL)`. Triggers `case_status_history_no_update` and `_no_delete`. Index (`case_id`, `history_id`).
 
 **Case to job link (Q13 B):** no `case_job` table. `project.source_case_id` (area 8's column) gets its FK to
@@ -518,11 +517,7 @@ seeded to a shipped "Service" type with its own short delivery stages).
 - `cases.run_auto_close(context)`: origin System; Resolved cases whose `last_resolved_at` is more than
   `case_auto_close_days` before `context.now` go to Closed (`via` Auto-close). Idempotent. Same schedule as
   auto-lost.
-- `case_jobs.create_service_job(context, case_id, service_type_id, billing_type)`: needs `case.work` and
-  `project.create`; calls area 7's job-creation service (customer and site from the case or its job; `billing_type`;
-  `warranty_for_job_id` = the case's job when Warranty; `source_case_id` = the case, the only link, Q13 B), and, if
-  the case is Open, moves it to In progress through `change_status` (`via` 'Service job created', `changed_by` the
-  user) in the same transaction.
+- Starting estimate cost work moves an Open case to In progress through `cases.change_status`. Signed-quote upload creates the service job and derived contract row. Decline or expiry leaves the case open.
 
   **Withdrawn 2026-11-20 (owner 3:15 AM)** (see the 3:15 AM line below): Amendment 2026-11-20 (owner 2:45 AM, from area 7): "Create service job" makes a 'Case warranty' job (Warranty, Not
   billed, value 0) or a 'Case T&M' job (billable repairs under the quote limit, at company rates frozen onto the
@@ -571,6 +566,11 @@ Corrected 2026-11-20 (consistency scan F5): Tests to write later: two cases crea
 
 Withdrawn 2026-11-20 (owner 2:10 PM): the section 3.5 test requiring service-job creation to move the case to In
 progress in the same transaction is superseded; tests must instead cover the case transition when cost work starts.
+
+Amendment 2026-11-20 (service-quote decision reconciliation): cases become In progress when cost work starts, not
+when a job or quote is created. Signed-quote upload creates the service job and its internal contract row; a
+declined or expired quote leaves the case open (Waiting on customer, or Resolve with a note). Tests to write later
+must verify each transition separately, including that job/contract creation happens only on signed-quote upload.
 
 ---
 
@@ -645,7 +645,7 @@ OFF (S 11-15 8:36 PM; C120). Leads import uses the rule when Sales rep is blank 
 |------|------|--------------------------|
 | 5 Customers | The customer create service and validation, the contact-person table, structured customer addresses | Signing (area 6) passes the lead's site and billing address, Primary contact and signer to area 5's service; on success `lead.customer_contact_id` is set. A Repeat customer lead links an existing customer at creation. Leads never create customers |
 | 6 Estimates and contracts | `estimate` replan, revisions, sending, approval, signing, Expired, cancellation, the sales rep on the estimate and contract | Adds `estimate.lead_id` and makes `estimate.contact_id` nullable before signing (today NOT NULL, `:217`); the send calls `leads.take_expected_value`; `mark_expired` is called by auto-lost; signing moves the lead to Contract signed (`via` Signed), sets `close_outcome` Won and `lead.project_id`; the estimate copies `lead.sales_rep_user_id` (for `src_rep_contract_payments`). The lead-side gate reads "has a sent revision" and "is approved, unexpired" from area 6. **Hand-off (fix b, owner 11:20 PM):** area 6 adds `contract.sales_rep_user_id` INTEGER, written once by the signing service from `lead.sales_rep_user_id` and kept as the rep at signing (not changed when the job's rep changes); in the same signing transaction it copies the same value to `project.sales_rep_user_id` (area 7's column) |
-| 7/8 Jobs | The job record, its stages, `billing_type`, `warranty_for_job_id`, `source_case_id` column, `crew`, `calendar_item` | Area 15 adds the FK and index on `source_case_id` (no `case_job`, Q13 B), the stage role 'Lost', reuses `crew` and `calendar_item` times for the busy check. The job page timeline shows the job's activities and, through `lead.project_id`, the lead's sales history (C31's "one continuous record" as a view, F1). **Hand-off (fix b, owner 11:20 PM):** area 7 adds `project.sales_rep_user_id` INTEGER (NULL when the lead had no sales rep), copied from `lead.sales_rep_user_id` at signing and editable afterwards with history (the audit log's before and after rows, no new table); area 8's change order "Forward to sales rep" ('With sales rep') reads `project.sales_rep_user_id` |
+| 7/8 Jobs | The job record, its stages, `billing_method`, `cost_destination`, `warranty_for_job_id`, `source_case_id` column, `crew`, `calendar_item` | Area 15 adds the FK and index on `source_case_id` (no `case_job`, Q13 B), the stage role 'Lost', reuses `crew` and `calendar_item` times for the busy check. The job page timeline shows the job's activities and, through `lead.project_id`, the lead's sales history (C31's "one continuous record" as a view, F1). **Hand-off (fix b, owner 11:20 PM):** area 7 adds `project.sales_rep_user_id` INTEGER (NULL when the lead had no sales rep), copied from `lead.sales_rep_user_id` at signing and editable afterwards with history (the audit log's before and after rows, no new table); area 8's change order "Forward to sales rep" ('With sales rep') reads `project.sales_rep_user_id` |
 | 14 Approvals | `pending_approvals`, approval chains | C13.5 sales approvals (`deal_stage_move`) are not designed here (open item 7) |
 | 16 Custom fields | Scoping by service type and stage, board-card, help text | Area 15 adds `'Lead'` and `'Case'` to `record_type` (Q23 A) |
 | 17 Reports | Records sources | Supplies the base tables of `src_leads`, `src_leads_estimates` (with area 6), `src_activities`, `src_cases`, `src_lead_job_invoices`; field ids `lead.sales_rep`, `lead.status` (derived), `lead.days_in_stage`, `lead.source`, `lead.created_on`. Row limits of section 7.2 are what report section 5.4 applies |

@@ -1038,3 +1038,20 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-20 area 7 jobs, budgets, cost codes, dimensions owner-approved (7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd,
   this commit); amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager
   template.
+- 2026-11-20 service-quote planning reconciliation: updated area 6 sections 1.3, 2.3, 3.3, 3.5, 5.3, 9.3 and 10.2;
+  area 7 section 1.3; area 8 sections 1.3 and 3.1; and area 15 section 3.5 with the confirmed service-quote rules.
+  Area 17 section 4.4 already states Warranty/goodwill reporting by `cost_destination`. Updated
+  `docs/next_step.md` with the current planning state and area 5, 14 and 18 handoffs. Area 5 invoice tax/accepted-line
+  carry-forward and area 14 send-back routing remain for their owners; area 18 owns the `service_goodwill` role.
+  Planning only: no tests run; no code, migrations or baselines changed. **Commit: none; push: none.** Existing
+  unrelated tracked and untracked worktree paths are preserved. Next: planning review, then owner selects the next
+  area; do not begin baseline/code work before full replan approval.
+- 2026-11-20 service-quote reconciliation follow-up: area 18 sections 4.2, 4.3 and 4.5 now define the configurable
+  `service_goodwill` System account mapping, its company-baseline landing and later tests. A company may map it to the
+  Warranty Expense GL account, while the role and area 7 `cost_destination` remain distinct for area 17 reporting.
+  Read-only cross-area consistency review completed for areas 6, 7, 8, 15, 17 and 18; findings are held for planning
+  review. `git diff --check` is the verification; no tests, staging, commit or push. Existing unrelated changes and
+  untracked paths remain preserved.
+- 2026-11-20 service-quote consistency corrections: area 6 §§9.3–9.4 align signed totals and budget with accepted
+  work, area 7 §§1.3 and 1.6 and area 8 §7 distinguish warranty from goodwill, and area 15 §0 ties In progress
+  to the start of estimate cost work. Docs review only. Commit and push pending owner review.

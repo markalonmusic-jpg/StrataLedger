@@ -127,7 +127,9 @@ template); there is no quote limit.
 Amendment 2026-11-20 (owner 2:10 PM, service quote rules): one estimate model links to exactly one lead or case, as
 the preceding amendment specifies. Customer details remain on the customer record. The case problem description
 syncs to the estimate while it is a draft; quote content freezes when printed. The estimate stores the cost enterer
-and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), both copied to the job at signing.
+and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), both copied to the job at signing. The
+service type defaults both; for a Solo user or when separation controls are not set up, the PM defaults to the cost
+enterer.
 
 **`estimate_revision`** (new; Rev 1, 2, ...):
 
@@ -142,14 +144,17 @@ and the job PM as separate values (`costs_by_user_id` and `assigned_pm_id`), bot
 | `assigned_pm_id` | INTEGER NULL (the job PM; default from the service type, distinct from `costs_by_user_id`) |
 | `costs_due_on` | TEXT NULL CHECK date (the PM's due date) |
 | `valid_until` | TEXT NULL CHECK date; required to send (service) |
+| `quote_validity_days` | INTEGER NOT NULL CHECK (> 0); copied from the service type and frozen on this revision |
 | `pricing_template_id` | INTEGER NULL REFERENCES pricing_template (the template applied) |
 | `rep_markup_pct`, `rep_discount_pct` | REAL NULL CHECK (0-100) (the rep's adjustment, section 3; Q7 A) |
 | `rep_discount_cents` | INTEGER NULL CHECK (>= 0) (a typed lump-sum contract total is stored as this discount; Q7 A) |
 | `schedule_type`, deposit, retainage, `not_to_exceed_cents` | section 5 |
+| `payment_term_id`, `payment_term_name`, `payment_term_days_due`, `payment_term_discount_percent`, `payment_term_discount_days` | selected `payment_term` FK plus frozen values copied from that model; signing never rereads a mutable payment-term row |
 | `contract_template_version_id` | INTEGER NULL REFERENCES contract_template_version (section 7) |
 | `show_line_detail` | INTEGER NOT NULL DEFAULT 0 CHECK IN (0, 1) (C76: totals only by default) |
 | Customer block | `customer_legal_name`, `billing_line1`, `billing_line2`, `billing_city`, `billing_region`, `billing_postal`, `billing_country`, and the same seven for `site_`; TEXT NULL; filled from the lead or linked customer at creation, editable until sent (Q8 below covers wording, not these) |
 | `cost_total_cents`, `contract_total_cents` | INTEGER NULL; written by the service only at send (frozen figures the lead, reports and signing read); NULL while working (the page shows computed figures) |
+| `pre_tax_cents`, `tax_cents`, `total_cents` | INTEGER NULL; final accepted-line amounts recorded at signed-quote upload; `total_cents = pre_tax_cents + tax_cents` |
 | `sent_at`, `sent_by`, `sent_method`, `sent_to` | NULL until sent; `sent_method` CHECK IN ('Email', 'Download', 'Print', 'Marked sent'); `sent_to` TEXT (addresses) |
 | `sent_attachment_id` | INTEGER NULL REFERENCES attachment (the rendered PDF kept unchanged, contract editor item 3) |
 | `decided_at`, `decided_by`, `decision_reason_id`, `decision_reason_label` | Declined, Expired or Cancelled facts; `decision_reason_id` FK reason_option ON DELETE RESTRICT |
@@ -244,6 +249,11 @@ the same kind of lock as area 8's approved change order lines; workflow (who may
 Integrity triggers: no UPDATE, no DELETE (append-only history, like `lead_stage_history`). The Approval and history
 tab reads this table plus area 14's approval actions and the audit rows for wording and rate changes.
 
+Withdrawn 2026-11-20 (owner 2:10 PM): the fixed rep target for every `Sent back` transition in the table above. Area
+14 routes an approval send-back to the estimate submitter and passes that target to this area; the history stores the
+actual from/to status, from/to holder and reason in its append-only row. Area 14 owns the routing rule; its schema
+handoff is in `docs/next_step.md` because area 14 is not drafted.
+
 ### 2.4 Tests to write later
 
 - Every allowed move writes exactly one history row; a move not in the table is refused with one sentence.
@@ -295,6 +305,9 @@ tab reads this table plus area 14's approval actions and the audit rows for word
 | `markup_pct` | REAL NOT NULL DEFAULT 0 CHECK (>= -100) |
 | `price_override_cents` | INTEGER NULL (a typed price; NULL = from markup) |
 | `price_cents` | INTEGER NOT NULL (written by the service) |
+| `line_group_id` | INTEGER NULL FK `estimate_line_group`; NULL means required work |
+| `tax_rate_id`, `tax_rate_name_snapshot`, `tax_rate_pct_snapshot` | nullable tax-rate reference and immutable rate/name used on this printed revision |
+| `taxable_amount_cents`, `tax_cents` | INTEGER NOT NULL DEFAULT 0; taxable base and calculated tax for this line, frozen when printed |
 | `sort_order` | INTEGER NOT NULL |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 |
 
@@ -326,6 +339,23 @@ Amendment 2026-11-20 (owner 2:20 PM, service quote rules): optional line groups 
 upload the rep records which groups the customer accepted; that selection is stored separately from the frozen
 printed lines and is frozen on the revision.
 
+Amendment 2026-11-20 (owner 2:20 PM, service quote rules): `estimate_line_group` stores each optional repair group
+(`group_id` PK, `revision_id` FK, `label`, `sort_order`); `estimate_cost_line.line_group_id` associates its frozen
+printed lines with that group. `estimate_line_group_choice` stores one row per optional group at signed-quote upload:
+(`revision_id`, `group_id`, `choice` CHECK IN ('Accepted', 'Declined'), `recorded_by`, `recorded_at`), with a unique
+revision/group key and no UPDATE or DELETE. Estimate-level alternatives remain separate estimates. The signed
+pre-tax, tax and total use required lines plus Accepted groups only. Unrelated upsells use a new estimate as a human
+workflow rule; no upsell flag, allowed-code constraint or approval rule is added.
+
+Amendment 2026-11-20 (owner 2:10 PM, service quote rules): each printed taxable line freezes its tax-rate identity,
+rate/name snapshot, taxable base and tax cents in `estimate_cost_line`; revision totals store the final accepted
+pre-tax, tax and tax-inclusive total. Invoicing carries those frozen line details and totals forward in area 5; that
+invoice schema is handed off in `docs/next_step.md`, not designed here.
+
+Withdrawn 2026-11-20 (service-quote decision reconciliation): the invoice carry-forward sentence above is not an
+area 6 amendment; area 5 owns that schema. Keep only the quote's frozen tax snapshots and signed totals in this
+section. The invoice handoff remains under `docs/next_step.md`, "Handed to later areas by area 6".
+
 Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q7 A): `estimate_cost_line.cost_code_id` must be an active leaf code
 (not a division, not a code with active sub-codes), as postings are (RP5); the service refuses any other code with one
 sentence naming it, so the budget rows from the summary land where costs post.
@@ -346,6 +376,8 @@ be offered (the column stays a plain integer, open item 5).
 - A fixed-markup line refuses a markup change and a price override; Markup on every line skips it and reports it.
 - A Material line without a material code, or an Other line with one, is refused (CHECK).
 - The summary groups by cost code and sums to the revision's cost and price totals exactly.
+- Optional repair groups record Accepted or Declined once at signed-quote upload; only required and Accepted lines
+  contribute to the signed pre-tax amount, tax and total. A repeated or missing group choice is refused.
 - Inserting a cost template appends lines; editing the template later does not change the estimate.
 
 ---
@@ -436,6 +468,11 @@ send (a price change spreads in proportion, remainder on the last line, C125).
 `co_terms_template_id`, and `service_type_milestone` (rows as `estimate_milestone` with `service_type_id`); no
 cancellation period (Q12 B: it is on the template version, section 7.3). `service_type.rate_card_id` (area 8)
 becomes a nullable FK to `rate_card`; NULL falls back to the company card.
+
+Amendment 2026-11-20 (service-quote decision reconciliation): service type also supplies who prices, the PM,
+payment terms and quote-validity days. Reuse `payment_term`; copy its selected id and display/terms fields onto the
+revision together with `quote_validity_days`. At signing the contract row remains derived from that signed revision,
+and its lines and amount use required work plus only optional groups recorded Accepted.
 
 **At signing** (section 9) the contract gets copies: `contract.schedule_type` (replacing `contract_type`, Q20 A),
 deposit, retainage, not-to-exceed; `contract_milestone` (new: `contract_milestone_id` PK, `contract_id` FK,
@@ -669,10 +706,12 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
   1. The signed document attachment exists on this estimate (required, Q10 A).
   2. Customer: `estimate.customer_contact_id` set → that customer; NULL → area 5's create-customer service with the
      revision's customer block and the lead's contacts (code assigned there).
-  3. Job: area 7's job service (number, service type, PM = `costs_by_user_id` unless changed,
+  3. Job: area 7's job service (number, service type, cost enterer from `costs_by_user_id`, PM from `assigned_pm_id`,
      `project.sales_rep_user_id` from the estimate's rep, `source_revision_id`, first Delivery stage, default
      schedule template, area 8).
-  4. Budget: one row per cost code of the summary by cost code, through area 7's budget service.
+  4. Original job budget: through area 7's budget service, sum required estimate lines and optional groups recorded
+     as Accepted at signed-quote upload by cost code. Excluded or undecided optional groups contribute nothing to
+     the contract value, tax total or original job budget. Missing group choices block signing (§3.5).
   5. `contract` row (section 10) with `contract_number` from the CT- series (Q21 B), `sales_rep_user_id` (the same
      rep, kept as the rep at signing), copies of the schedule, `contract_line` + cost codes, `contract_milestone`,
      `contract_rate_line`.
@@ -706,7 +745,7 @@ tax-inclusive total, tax rate and taxable-line detail; the customer signs the ta
 
 Amendment 2026-11-20 (owner 2:30 PM, service quote rules): Mark signed is refused when the signed total does not
 equal the accepted line groups plus tax; it shows the difference so the rep can correct the accepted groups or print
-a new revision for signing. The contract always equals the amount the customer signed.
+a new revision for signing. The contract original amount is the pre-tax customer price (`pre_tax_cents`). The frozen `tax_cents` is separate. The customer signs `total_cents`, their sum. Price and tax use required lines plus Accepted optional groups. Undecided groups block signing.
 
 ### 9.4 Tests to write later
 
@@ -715,7 +754,8 @@ a new revision for signing. The contract always equals the amount the customer s
   reason it succeeds when the stage gate is off and is refused when it is on.
 - The job's and the contract's `sales_rep_user_id` both equal the estimate's rep after Mark signed.
 - Signing a prospect creates exactly one customer with a code and one job; a linked customer gets no new contact.
-- Budget rows equal the summary by cost code; the contract's original amount equals the revision's frozen total.
+- The original budget sums required and Accepted lines by cost code. Declined groups affect neither budget nor
+  contract value or tax. An undecided group blocks signing and leaves all three unwritten.
 - The deposit invoice is a draft with no `journal_entry`; its amount follows the schedule (NTE base for T&M).
 - A failure in any step (for example the customer validation) leaves no job, contract, budget or lead change.
 - Signing one option marks the lead's other options Superseded.
@@ -750,6 +790,11 @@ attachment replaces it).
   section 5.3 item 1). CO pricing reads the same pricing template rules (section 3.3).
 - `Completed` is set by area 8's job close (outcome Completed); `Cancelled` by section 11.
 - The Contracts list is a read over sent revisions and contracts (no separate list table).
+
+Amendment 2026-11-20 (service-quote decision reconciliation): the internal `contract` row for a service quote is
+created only with signed-quote upload and is derived from that signed `estimate_revision`, including its accepted
+lines and frozen billing and terms. Its original amount is the pre-tax customer price. The signed revision
+retains the frozen tax and tax-inclusive signed total separately.
 
 Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q2 A): New job (a direct job: migration, paper contract) writes its
 `contract` row through this service, called by area 7's `jobs.create_job` in its transaction, with source 'Direct', no
@@ -851,6 +896,8 @@ the approval request and stops; otherwise in one transaction: contract Cancelled
 | `estimate`, `estimate_revision` (working), `estimate_cost_line`, `estimate_milestone`, `estimate_sov_line`, `estimate_rate_line`, `estimate_section_choice`, `estimate_signer` | yes (until sent) | yes |
 | `pricing_template`, `pricing_template_line`, `cost_template`, `cost_template_line`, `rate_card`, `rate_card_line`, `contract_template`, `contract_template_version` (Draft), `contract_clause`, `company_branding`, `sales_authority_limit` | yes | yes |
 | `contract`, `contract_milestone` | a few columns (cancellation, completion, invoice link, memo) | yes |
+| `estimate_line_group` | saved with its revision; locked when the quote is printed | no (revision row version; history protects accepted choice separately) |
+| `estimate_line_group_choice` | insert once at signed-quote upload | no |
 | `estimate_sov_line_cost_code`, `contract_line_cost_code` | insert and delete only | no (a delete names both ids) |
 | `contract_line` | insert by signing and CO approval only | no |
 | `estimate_revision_history`, `contract_rate_line` | insert-only | no |
@@ -1092,7 +1139,7 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
 1. **Area 7:** `cost_type` (company list, five shipped) and `cost_code.cost_type_id` NOT NULL replacing
    `cost_type_label` (`:38`); `project.sales_rep_user_id`; `project.source_estimate_id` becomes `source_revision_id`
    (FK estimate_revision); `project_budget.estimate_line_id` (`:290`) is dropped or replaced by a revision link
-   (budget rows come from the summary by cost code, not per line); whether estimate lines must use leaf codes.
+   (budget rows sum required and Accepted lines by cost code, per §9.3); whether estimate lines must use leaf codes.
 2. **Area 5:** the create-customer service called by signing (with the revision's customer block and the lead's
    contacts); the draft deposit invoice (credit by role `customer_deposits`); T&M monthly drafts from the frozen
    rates and the near-NTE warning; `contract_milestone.invoice_id`; the T&M revenue account (4040 has no system role

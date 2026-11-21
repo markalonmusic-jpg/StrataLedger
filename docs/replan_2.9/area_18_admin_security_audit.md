@@ -960,6 +960,13 @@ Amendment 2026-11-20 (owner 2:25 AM, from area 7): the settings registry marks `
 `company_settings.require_budget_before_costs` and each `dimension_type.required_mode` as high-impact (preview and
 apply); each change needs `company.settings` and a reason and is audit-logged (area 7 section 9.3).
 
+Amendment 2026-11-20 (owner 2:20 PM, service quote rules): add the configurable System account role
+`service_goodwill`, stored as `company_settings.service_goodwill_acct_id` INTEGER NULL REFERENCES account. A company
+may map it to the same GL account as `warranty_expense` (for example 5080), but the role remains distinct and area
+7's `cost_destination` remains 'Service overhead' rather than 'Warranty line'. Services resolve goodwill costs by
+the role, never by an account number; area 17 reports Warranty and goodwill separately by `cost_destination` even
+when both roles resolve to the same account.
+
 **Withdrawn 2026-11-20 (owner 3:15 AM)**: the quote limit is dropped, so the setting and its high-impact mark are
 withdrawn (section 2.4.2, the 3:15 AM line): Amendment 2026-11-20 (owner 2:45 AM, from area 7): `company_settings.service_quote_limit_cents` (Settings › Service,
 area 15) is changed with `company.settings` and a reason and is audit-logged; the registry marks it high-impact,
@@ -975,7 +982,9 @@ opening any file. The Users page reads last sign-in from `auth_event` and "Must 
 
 ### 4.3 How it lands in the baselines
 
-Master: `backup_run` with its triggers and indexes. Company: section 1 only. The 2.8 services write the table.
+Master: `backup_run` with its triggers and indexes. Company: section 1 plus
+`company_settings.service_goodwill_acct_id` REFERENCES account for the `service_goodwill` System account role. The
+2.8 services write the backup table; the System Accounts settings service configures the account mapping.
 
 ### 4.4 Effect on existing services and tests
 
@@ -989,6 +998,10 @@ Master: `backup_run` with its triggers and indexes. Company: section 1 only. The
 - Settings history: one line per changed setting with before, after, who, when and reason; nothing for a no-change
   update; no SQLite JSON functions in service SQL (H5).
 - A control change without a reason is refused; a preference change without one is accepted.
+- System Accounts offers `service_goodwill`; saving a company-selected account and reading the role returns that
+  account. Mapping `service_goodwill` and `warranty_expense` to the same account is allowed, while a Warranty job and
+  a goodwill job retain distinct `cost_destination` values and remain separate in area 17's reports. No service
+  resolves goodwill by a hard-coded account number.
 - `backup_run`:
   - DELETE is refused, and a finished row cannot change.
   - `Running` moves to `OK` or `Failed` only once, and prune is set once.

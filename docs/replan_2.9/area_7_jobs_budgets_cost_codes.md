@@ -149,8 +149,20 @@ progress billing, milestones, time and materials, or not billed) is separate fro
 CHECK IN ('Job', 'Warranty line', 'Service overhead'); CHECK constraints enforce valid combinations. Billable
 methods use 'Job'; 'Warranty line' requires not billed and an original job; not billed without an original job uses
 'Service overhead'. `warranty_for_job_id` is required for 'Warranty line' and NULL for 'Service overhead'. Warranty
-costs go to the original job's Warranty line. Without an original job the job is `No charge (goodwill)` and costs go
-to a service overhead account.
+costs go to the original job's Warranty line. Not billed work without an original job is `No charge (goodwill)`. Its Service overhead classification resolves the GL account through the configurable `service_goodwill` System account role.
+
+Amendment 2026-11-20 (service-quote decision reconciliation): CHECK-valid pairs are billable `billing_method` values
+with `cost_destination = 'Job'`; `billing_method = 'Not billed'` with `cost_destination = 'Warranty line'` only when
+`warranty_for_job_id` names the original job; and `Not billed` with `cost_destination = 'Service overhead'` only when
+there is no original job (goodwill). Warranty costs roll up to that original job's Warranty line; goodwill costs use
+the company-mapped System account role `service_goodwill` (area 18), without hard-coding an account. The job stores
+the estimate's separate cost-enterer and PM fields; Solo or unset separation controls default the PM to the cost
+enterer.
+
+Withdrawn 2026-11-20 (service-quote decision reconciliation): the older proposed `billing_type` and Warranty-only
+classification in the project column table above is superseded by the `billing_method`/`cost_destination` pair and
+CHECK-valid combinations above. `warranty_for_job_id` remains the original-job reference required for the
+Warranty-line destination; area 8 retains the warranty-invoice refusal while consuming these area 7 fields.
 
 Contract value, retainage %, terms, T&M markup and not-to-exceed for a direct job are not `project` columns: they
 live on the contract record (Q2 A), so pay apps and invoices read one place for every job. Dropped by Q1: `is_draft`,
@@ -196,9 +208,11 @@ terms; there is no quote limit and no job is created from the case directly. The
 `jobs.create_from_signing`, the same action as projects (signed PDF, signer name, the real signed date), with the
 contract source 'Estimate'. For a quote with a case: `source_case_id` is the case; when the case has a job, the number
 is the root job's number + '-S' + the next `service_seq` (S100 after S99) and otherwise the customer's next number;
-a Not billed (warranty or no-charge) quote gives `billing_type` 'Warranty', `billing_method` 'Not billed', contract
-value 0 allowed, `warranty_for_job_id` the case's job, and its costs roll up to that job's Warranty line (Q16, Q17
-A); a T&M quote's company rates and optional `not_to_exceed_cents` are frozen onto the contract as for projects;
+a Not billed quote may have contract value 0. Store billing method separately from cost destination. Warranty
+requires `warranty_for_job_id` to name the original job and uses 'Warranty line' to roll costs up to that job.
+No charge (goodwill) has no original job, uses 'Service overhead' and resolves costs through the company's
+`service_goodwill` System account mapping (§4.3 and area 18 §4.2). A T&M quote's company rates and optional
+`not_to_exceed_cents` are frozen onto the contract as for projects;
 otherwise `billing_method` copies the quote's schedule type.
 - No draft rule (Q1): no service checks a draft job, since none exists.
 - The "same site" note and the Jobs list figures (days vs target, forecast margin) are reads, not columns.
@@ -229,9 +243,9 @@ audit triggers rewritten for the new column list, `project_number_seq`, `project
   unchanged) and an optional not-to-exceed.
 - (3:15 AM) a case has no "create job" path: Create service job starts a quote with `case_id` and no lead; Mark
   signed on it without the signed PDF, the signer name or the signed date is refused; signing creates the service job
-  numbered from the root job, with `source_case_id`; a Not billed quote at value 0 signs and its job's costs show on
-  the original job's Warranty line; a T&M quote's contract keeps the company rates as of signing and the optional
-  not-to-exceed.
+  numbered from the root job, with `source_case_id`. A zero-value Warranty quote requires an original job and rolls
+  costs up to its Warranty line. A zero-value goodwill quote without an original job uses Service overhead and the
+  configured `service_goodwill` account. A T&M quote keeps the company rates at signing and the optional not-to-exceed.
 - (Q2 A) New job without the signed file, contract value, retainage or terms is refused; a created direct job has one
   `contract` row with source 'Direct', no revision and no lead.
 - `create_job` without `project.create` is refused before the write transaction (rule 10).
@@ -285,7 +299,7 @@ audit triggers rewritten for the new column list, `project_number_seq`, `project
 | `entered_by`, `entered_at` | INTEGER NOT NULL, TEXT NOT NULL (UTC) |
 
 Indexes: (`project_id`, `cost_code_id`), (`co_line_id`), (`revision_id`). Dropped: `estimate_line_id` (budget rows
-come from the summary by cost code, area 6).
+sum required and Accepted estimate lines by cost code, per area 6 §9.3).
 
 Figures (reads, never stored; Q5 A): original = SUM of 'Original'; approved CO = SUM of 'Change order'; revised =
 SUM of all kinds; per code and rolled up the tree (a parent shows the sum of its branch).
@@ -434,7 +448,7 @@ trigger, updated audit triggers); the RP5 triggers kept.
 ### 4.2 Decided
 
 - A Warranty service job is Warranty / no charge (not invoiced); its costs are reported against the original job's
-  warranty line (S 11-18 2:14 AM; area 8 section 3.1 `billing_type`, `warranty_for_job_id`).
+  warranty line (S 11-18 2:14 AM; see §1.3 for the current destination and original-job rules).
 - Account numbers follow the repo construction chart (S 11-19 12:52 PM).
 - Until the owner answers, the mockup leaves the default account blank for these two codes (inbox 1:15 AM).
   Answered 2026-11-20 2:25 AM (below).
