@@ -469,6 +469,9 @@ send (a price change spreads in proportion, remainder on the last line, C125).
 cancellation period (Q12 B: it is on the template version, section 7.3). `service_type.rate_card_id` (area 8)
 becomes a nullable FK to `rate_card`; NULL falls back to the company card.
 
+Amendment 2026-11-20 (owner 5:00 PM): sample service types ship with Due on completion and no deposit. For a
+service quote, copy the service type's configured payment schedule onto the estimate revision (area 8 §1.3).
+
 Amendment 2026-11-20 (service-quote decision reconciliation): service type also supplies who prices, the PM,
 payment terms and quote-validity days. Reuse `payment_term`; copy its selected id and display/terms fields onto the
 revision together with `quote_validity_days`. At signing the contract row remains derived from that signed revision,

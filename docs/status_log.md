@@ -1076,3 +1076,29 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-20 service-quote consistency corrections: area 6 §§9.3–9.4 align signed totals and budget with accepted
   work, area 7 §§1.3 and 1.6 and area 8 §7 distinguish warranty from goodwill, and area 15 §0 ties In progress
   to the start of estimate cost work. Docs review only. Commit and push pending owner review.
+- 2026-11-20 Phase 2.9 area 5 drafted for review. Sections 0–7 cover customer intake, signed quote billing and
+  tax, sales documents, receivables, controls and cross-area boundaries. Q1–Q10 await Mark. Docs only.
+  Tests, staging, commit and push: none.
+- 2026-11-20 5:00 PM owner decision: closed area 5 Q5 default precedence in §8 and aligned area 6 §5.3 and
+  area 8 §1.3. Sample service types ship with Due on completion and no deposit. The revision copies its
+  service type's configured schedule. Planning only. Tests, staging, commit and push: none.
+- 2026-11-20 area 5 review: applied the 5:15 PM Q5 decisions to billing rules, conflicts and later tests.
+  Area 5 §5.3 lists four Area 4 dependencies. Refreshed §7, including the remaining paid multi-job edit and
+  cleared-refund void questions. Planning only. Tests, staging, commit and push: none.
+- 2026-11-20 owner approved Area 5 Q2–Q4. Section 8.2 records identity and issue, one-job sales invoices,
+  same-number allocations and paid voids. Updated planned tests and flagged the owner pay app issue boundary.
+  Q5 remains closed. Planning only. Tests, staging, commit and push: none.
+- 2026-11-20 Area 4/5 boundary confirmed against the 8:30 PM owner entry. Owner approval claims one linked
+  invoice draft and locks the certified pay app. Area 5 issues or sends through normal posting. Area 4 retains
+  billed-to-date timing and void/reissue rules. Q6–Q7 remain for review. Tests, staging, commit and push: none.
+- 2026-11-20 Mark approved Area 5 Q6–Q7 product rules. Area 5 records source quantity claims, the pre-tax NTE
+  block, frozen issue tax and linked credit/refund treatment, plus planned tests and source/tax handoffs.
+  Q1 and Q8–Q10 and the stated dependencies remain for review. Tests, staging, commit and push: none.
+- 2026-11-20 Mark approved Area 5 Q1 and Q8 product rules. Sections 1.3, 4.2, 5.2, 7 and 8.4 record contact
+  people, historical statement cutoffs, exact sent copies and planned tests. Primary replacement and retention
+  duration remain open alongside Q9–Q10 and the tax and source handoffs. No tests, staging, commit or push.
+- 2026-11-20 Area 5 follow-ups: signing preserves an existing customer's primary and saves the signer on the
+  revision. Sent statement retention follows company policy, with retain-and-review when absent. Q9–Q10 and the
+  Area 4, tax and source handoffs remain open. Planning only. No tests, staging, commit or push.
+- 2026-11-20 Mark approved Area 5 Q9–Q10. Section 8.5 records refund sources and reversals, per-write-off expense
+  selection, authority and approval defaults. Planned tests and handoffs updated. No tests, staging, commit or push.

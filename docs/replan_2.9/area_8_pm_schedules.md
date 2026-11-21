@@ -115,6 +115,10 @@ Amendment 2026-11-20 (owner 2:10 PM, service quote rules): the service type also
 the PM, payment terms using the existing payment-term model, and quote-validity days. Copy these defaults onto the
 estimate revision.
 
+Amendment 2026-11-20 (owner 5:00 PM): Due on completion with no deposit is the shipped setting on the sample
+service types. The configured service-type payment schedule takes precedence and is copied onto the estimate
+revision for a service quote (area 6 §5.3).
+
 Amendment 2026-11-20 (service-quote decision reconciliation): define these service-type defaults explicitly as
 `default_cost_enterer_user_id`, `default_pm_user_id`, `default_payment_term_id` (FK to the existing `payment_term`),
 and `default_quote_validity_days` (> 0), alongside its existing `pricing_template_id`. Estimate creation copies

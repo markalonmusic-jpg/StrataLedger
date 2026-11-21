@@ -1,6 +1,20 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
 
-## Planning handoff (2026-11-20): service-quote decision reconciliation
+## Current planning stop (2026-11-20): area 5 drafted for Mark
+
+Review `docs/replan_2.9/area_5_invoices_credit_memos_statements_customers.md` §§0–7.
+Nine areas are approved. Area 5 is a draft with open questions in §7 as narrowed by §8, including dependencies on
+areas 1, 4, 14 and 19. The 5:00 and 5:15 PM decisions close Q5. Area 5 §5.3 lists the four inputs still needed
+from Area 4. Q2–Q4 are also closed (§8.2). Owner approval creates and claims one linked invoice draft and locks
+the certified pay app. Issue/Post remains in Area 5 (§5.3). Q6–Q7 product rules are approved in §8.3.
+Q1 and Q8 product rules and follow-ups are approved in §8.4. Q9 and Q10 are closed in §8.5. Review retention
+duration for companies without a policy and the tax, Payments/AR, Banking, Security, Approvers and source
+dependencies listed in §8.5. Area 4 retains its
+§5.3 handoff, including billed-to-date timing and void/reissue effects.
+Next action: Mark reviews the Area 5 plan for full plan approval. Q1–Q10 product decisions are approved.
+Baseline work waits for approval of the full replan.
+
+## Earlier planning handoff (2026-11-20): service-quote decision reconciliation
 
 - State: planning-only reconciliation of the confirmed 2:10 PM, 2:20 PM and 2:30 PM service-quote rules into areas
   6, 7, 8, 15 and the existing area 17 report rule. Areas 5 and 14 have no Phase 2.9 plan document yet; their
