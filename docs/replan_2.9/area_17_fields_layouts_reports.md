@@ -409,6 +409,13 @@ partial write-off is the invoice version's frozen tax times the written-off shar
 invoice. It reads the Area 5 write-off records and frozen invoice tax; no new table. Filters: date range by write-off
 date, tax code and agency. Test: `test_written_off_sales_tax_report_lists_tax_inside_each_write_off`.
 
+Amendment 2026-11-22 (owner answer, after round 2): decided. For a partial write-off the report shows the
+proportional share: the invoice version's frozen tax times the share of the invoice written off (amount written
+off divided by the invoice total), rounded to the cent per write-off. Example: $82.50 tax on a $1,082.50 invoice
+with $541.25 (50%) written off shows $41.25. This replaces "Proposed, for owner confirmation at build" above.
+Test: `test_written_off_sales_tax_report_shows_proportional_tax_for_partial_write_off` ($82.50 x 50% = $41.25;
+a full write-off shows the whole $82.50).
+
 ### 4.4 Services, effects, tests
 
 - `saved_reports.py` and `packs.py`: list, get, save (version), delete, `mark_run`. Read needs the run permission of
