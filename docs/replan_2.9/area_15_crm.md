@@ -511,12 +511,16 @@ seeded to a shipped "Service" type with its own short delivery stages).
   above; Resolve sets `last_resolved_at` and, the first time, `first_resolved_at`; Reopen (Resolved → In progress)
   needs a reason and adds 1 to `reopen_count`; Close sets `closed_at`; Closed refuses every action. Each call writes
   one history row and the case row in one transaction, after `authorize(context, 'case.work', ...)`.
+- On both create and edit, the case save service verifies that any selected job belongs to the selected customer
+  (`project.contact_id` matches `service_case.customer_contact_id`). It validates due dates as real calendar dates and
+  requires the selected owner to be an active eligible user holding `case.work`. Run these checks inside the create
+  or edit transaction before any `service_case` or `case_status_history` write.
 - Opening writes the first row (NULL → Open, `via` Opened). Owner and due default from the type: Job PM gives the
   job's PM, Sales rep the job's or lead's sales rep, User the type's user; the owner is always a user (Q12 B); when
   the default gives none or an inactive user, the person logging the case picks the owner (open item 13, closed).
-- `cases.run_auto_close(context)`: origin System; Resolved cases whose `last_resolved_at` is more than
-  `case_auto_close_days` before `context.now` go to Closed (`via` Auto-close). Idempotent. Same schedule as
-  auto-lost.
+- `cases.run_auto_close(context)`: origin System; measure the configured elapsed calendar days from the latest
+  `last_resolved_at`. At the first scheduled check at or after the threshold, close a Resolved case (`via`
+  Auto-close); zero means off. The run is idempotent and uses the same schedule as auto-lost.
 - Starting estimate cost work moves an Open case to In progress through `cases.change_status`. Signed-quote upload creates the service job and derived contract row. Decline or expiry leaves the case open.
 
   **Withdrawn 2026-11-20 (owner 3:15 AM)** (see the 3:15 AM line below): Amendment 2026-11-20 (owner 2:45 AM, from area 7): "Create service job" makes a 'Case warranty' job (Warranty, Not
@@ -547,6 +551,12 @@ declined or expired quote leaves the case open (Waiting on customer, or Resolve 
 - Days to resolve and the open-case counts are computed in the service and the reports layer, never in a page, and
   without SQLite-only date functions (H5).
 
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 15 CRM intake audit follow-up"): case create and edit check that
+the job belongs to the case's customer, that due dates are real calendar dates and that the owner is active and holds
+`case.work`, before any write. Amendment 2026-11-22 (shared_decisions 2026-11-22 2:25 AM "service case auto-close can
+be turned off", owner confirmed): auto-close counts from the latest Resolve, default 7 days (Case settings); 0 turns
+it off and those cases are closed by hand.
+
 ### 3.5 Lands, effects, tests
 
 - Lands in `001_company.sql`: `case_type` (seeded), `service_case`, `case_status_history`, `case_number_seq`, their
@@ -556,12 +566,26 @@ declined or expired quote leaves the case open (Waiting on customer, or Resolve 
 - Tests: every allowed transition passes and every other one is refused with one sentence; Resolve without a note
   and Reopen without a reason refused; `first_resolved_at` set once across Resolve, Reopen, Resolve; `reopen_count`
   counts; nothing is cleared; history update and delete refused; a Closed case refuses every action and offers only a
-  follow-up with `parent_case_id`; auto-close at day 7 and not day 6, with origin System and `changed_by` NULL, and
-  `case_auto_close_days = 0` never closes; creating a service job writes `source_case_id` and the In progress row in
-  one transaction and rolls both back on a job validation error; a second job on the same case works and the case's
-  job list (read by `source_case_id`) shows both; a case with no owner is refused (NOT NULL and the service
+  follow-up with `parent_case_id`. The first scheduled auto-close check at or after the configured elapsed time
+  from the latest Resolve closes the case (day 7, not day 6 at the default), with origin System and `changed_by`
+  NULL. `case_auto_close_days = 0` never closes. Creating a service job writes `source_case_id` and the In progress
+  row in one transaction and rolls both back on a job validation error. A second job on the same case works and the
+  case's job list (read by `source_case_id`) shows both; a case with no owner is refused (NOT NULL and the service
   sentence); the Resolve prompt appears only when every job of the case is complete; days to resolve includes
   waiting time.
+- `test_case_due_date_rejects_impossible_calendar_dates`: case create and edit reject dates that are not real
+  calendar dates, such as February 31.
+- `test_case_owner_must_be_active_and_eligible`: create and edit require a selected owner who is active and holds
+  `case.work`; refuse an inactive or ineligible owner.
+- `test_case_job_customer_mismatch_writes_no_case_or_history`: on both create and edit, reject a selected job whose
+  customer differs from the selected case customer. Create writes no case or history; edit leaves the case and its
+  history unchanged.
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 15 CRM intake audit follow-up"): the due-date, eligible-owner and
+customer/job mismatch tests above. Amendment 2026-11-22 (shared_decisions 2026-11-22 2:25 AM "service case auto-close
+can be turned off", owner confirmed): the auto-close test counts from the latest Resolve, closes at day 7 and not day
+6 at the default, and 0 never closes.
+
 Corrected 2026-11-20 (consistency scan F5): Tests to write later: two cases created in a row receive consecutive numbers; deleting a `case_number_seq` row is refused.
 
 Withdrawn 2026-11-20 (owner 2:10 PM): the section 3.5 test requiring service-job creation to move the case to In
@@ -891,7 +915,13 @@ company setting seeded with a shipped "Service" type. B: always one fixed shippe
 
 Q15. **Automatic defaults (F5).** A (recommended): keep the owner's defaults, auto-lost 14 days and case auto-close
 7 days, each 0 = off, changes logged with a reason. B: ship both at 0 (off) under section 0.
-**Answer: A.**
+**Answer: A.** Case auto-close is measured from the latest Resolve and runs at the first scheduled check at or after
+the configured elapsed time; zero disables auto-close. At the default, the day-seven-not-day-six test checks the
+threshold behavior.
+
+Amendment 2026-11-22 (shared_decisions 2026-11-22 2:25 AM "service case auto-close can be turned off", owner
+confirmed): the Q15 answer text above is extended in place: default 7 days counted from the latest Resolve; 0 turns
+auto-close off and those cases are closed by hand.
 
 Q16. **Reasons list (F6).** A (recommended): one `reason_option` table with a kind per tab; an amendment line folds
 area 8's `job_cancel_reason` and `delay_reason` in as kinds. B: one table for the new kinds only; area 8's two
@@ -947,8 +977,8 @@ Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'C
    service's calls into `leads.py`, and contract cancellation (C105) with the Cancellation case type.
 3. Not built (design proposals): lead source category, monthly cost and partner (C12.5); competitors, payment
    method, `decision_makers_confirmed`, probability per stage and overrides (C9, C10, C12.2); pipeline snapshots;
-   duplicate check on quick-add (C9; area 5's `find_duplicates` may serve it); consent, retention and data-subject
-   requests (C9, hosted only); "Do not contact" (C9).
+   duplicate check on quick-add (C9 / CRM-02) remains pending Mark's confirmation; area 5's `find_duplicates` may
+   serve it. Also open: consent, retention and data-subject requests (C9, hosted only); "Do not contact" (C9).
 4. Area 5's contact-person table: `activity_contact.contact_id` and the signer as primary contact point at it when it
    exists.
 5. Area 20: the .ics UID form per activity, SEQUENCE from `row_version`, the email log id, and the "Download .ics"
@@ -971,3 +1001,6 @@ Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'C
     in CRM settings (`crm.settings`); creating a case fills the owner from it; when it is empty or the user is
     inactive, the person logging the case picks the owner; the service refuses a case with no owner (section 3.3;
     recorded under Q12 in section 10).
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 15 CRM intake audit follow-up"): item 3's quick-add duplicate check
+(CRM-02) stays pending Mark's confirmation; cover an email match with a different phone and the inverse phone match.
