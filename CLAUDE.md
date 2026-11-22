@@ -9,7 +9,7 @@ History: docs/status_log.md; plans: docs/roadmap.md; decisions: docs/design_deci
 docs/decisions_2026-11-11.md. Code comments and tests cite the section and rule numbers, so keep the numbering.
 
 Commands (from the repo root):
-- Full test suite: `python -m pytest -q`; in parallel, as the Git pre-commit hook in `.githooks/` runs it: `python -m pytest -q -n auto`; configure once per checkout: `git config core.hooksPath .githooks`
+- Full test suite: `python -m pytest -q`; in parallel, as the Git pre-commit hook in `.githooks/` runs it: `python -m pytest -q -n auto`; configure once per checkout: `git config core.hooksPath .githooks`; on this machine set `PYTEST_ADDOPTS=--basetemp=C:/Users/marka/.pytest-strataledger-basetemp` for commits and suite runs (the default `%TEMP%` ACL fails the folder-ACL test)
 - Static rules only: `python -m pytest -q tests/test_static_rules.py tests/test_static_portability.py`
 - Run the app: `pythonw app_strata.pyw` (or `StrataLedger.bat`)
 - Rebuild development databases: `python scripts/create_fresh_databases.py` (dry run; `--apply` writes)

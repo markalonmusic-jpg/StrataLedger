@@ -64,8 +64,9 @@ def test_a_non_commit_call_exits_zero_without_running_tests():
     assert result.stderr == ""
 
 
-def test_a_failing_suite_blocks_the_commit_with_exit_code_2(monkeypatch):
+def test_a_failing_suite_blocks_the_commit_with_exit_code_2(monkeypatch, tmp_path):
     hook = load_hook()
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")  # never the real hook record
     monkeypatch.setattr(hook, "run_suite", lambda root: (1, "1 failed, 10 passed"))
     code, message = hook.decide({"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}, root=".")
     assert code == 2
@@ -73,8 +74,9 @@ def test_a_failing_suite_blocks_the_commit_with_exit_code_2(monkeypatch):
     assert "commit blocked" in message.lower()
 
 
-def test_a_passing_suite_lets_the_commit_through(monkeypatch):
+def test_a_passing_suite_lets_the_commit_through(monkeypatch, tmp_path):
     hook = load_hook()
+    monkeypatch.setattr(hook, "LAST_RUN", tmp_path / "last.txt")  # never the real hook record
     monkeypatch.setattr(hook, "run_suite", lambda root: (0, "10 passed"))
     assert hook.decide({"tool_name": "PowerShell", "tool_input": {"command": "git commit -m x"}}, root=".")[0] == 0
 
@@ -296,12 +298,15 @@ def test_the_docs_only_line_is_printed_to_stdout_with_exit_zero(tmp_path):
     """Run as the real hook, in a temp repo with only docs staged: exit 0 and the one line on stdout."""
     repo = make_repo(tmp_path)
     git(repo, "mv", "docs/a.md", "docs/b.md")
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(repo)}
+    temp = tmp_path / "temp"  # the hook records in the system temp folder; keep it off the real hook record
+    temp.mkdir()
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(repo), "TEMP": str(temp), "TMP": str(temp), "TMPDIR": str(temp)}
     result = subprocess.run([sys.executable, str(HOOK)], input=json.dumps(COMMIT), capture_output=True, text=True,
                             timeout=60, env=env)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "docs only: suite skipped (2 files)"      # a rename counts as old and new path
     assert result.stderr == ""
+    assert (temp / "strataledger-commit-hook-last-run.txt").read_text(encoding="utf-8") == result.stdout
 
 
 def test_staged_files_lists_what_git_has_staged(tmp_path):
