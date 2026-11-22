@@ -840,16 +840,12 @@ for uploaded files.
   `audit.view` see "Removed by ... : reason".
 - **Adding** is always allowed, also on a posted or locked record (11-15). It changes no accounting and needs the
   record's own create or manage code.
-- **Removing (Q13 A plus the owner's rule):** whoever may edit the record, always with a reason. On a posted
-  document, removal follows the posted-document rules. It is refused when the document's date is in a closed
-  period, and when `lock_documents_after_posting` is ON. The refusal is one sentence that says what to do next,
-  for example "This bill's period is closed, so its attachments can't be removed. Reopen the period first."
-  Whether area 13's area locks (Sales or Purchases) also block removal is open item O6.
-
-Corrected 2026-11-21 (access audit): the posted document's area lock applies together with the period close and
-`lock_documents_after_posting`; account-level locks do not apply to attachment removal. The close check uses the
-document's posting period and area, with no account checks because removing an attachment changes no accounts
-(area 13 close/lock model).
+- **Removing (Q13 A plus the owner's rule; corrected 2026-11-21, access audit):** only a user authorized to edit
+  the record may remove an attachment, and nonblank text is always required in `removed_reason`. On a posted
+  document, removal is refused if its posting period is closed, its document area is locked, or
+  `lock_documents_after_posting` is ON. Account-level locks do not apply because removal changes no accounts
+  (Area 13 Q6 A). Explain the blocking condition in one sentence, such as "This bill's period is closed, so its
+  attachments can't be removed. Reopen the period first."
 - The Agent has no attachment reads or writes in v1; Phase 6 decides.
 
 Amendment 2026-11-20 (owner, from area 6): `attachment.record_type` CHECK gains 'Contract' (files added to a signed
@@ -857,6 +853,10 @@ contract later). The sent PDF and the signed document of an estimate are 'Estima
 linked by FK from `estimate_revision.sent_attachment_id` and `contract.signed_attachment_id`; the signed document is
 required for Mark signed. The company logo is not an attachment (`company_branding.logo_storage_key`, through
 `storage.py`) (docs/replan_2.9/area_6_estimates_contracts.md sections 7.3 and 12).
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 18 attachment-removal lock wording"; Area 13 Q6 A): the removal
+rule above is rewritten in place: a reason is always required; a closed period, a locked document area or
+`lock_documents_after_posting` ON refuses removal from a posted document; account locks do not apply.
 
 ### 3.3 How it lands in the baselines
 
@@ -872,7 +872,14 @@ The record-type list grows with each area's new tables in the same pass.
 
 None today: no service writes `file_attachment` or those `memo` columns. `test_schema_replan.py:370-372` already
 expects `invoice.memo`. A later step adds `storage.put_file`, `open_file` and `exists` (H3), and an `attachments`
-service that reads the period and `lock_documents_after_posting` the way `ledger` does (`ledger.py:313-315`).
+service that calls the planned `period_locks.check_open` with `period_id` set to the document's posting period,
+`area_code` set to its area, and `account_ids=[]`. The service separately checks
+`lock_documents_after_posting`; the cited `ledger._open_period` helper (`ledger.py:313-315`) checks period closure
+only. Removal requires and preserves nonblank `attachment.removed_reason` text.
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 18 attachment-removal lock wording"; Area 13 Q6 A): the attachments
+service calls `period_locks.check_open` with `account_ids=[]` and checks `lock_documents_after_posting` separately, as
+rewritten in place above.
 
 ### 3.5 Tests to write later
 
@@ -882,11 +889,22 @@ service that reads the period and `lock_documents_after_posting` the way `ledger
 - `attachment`: DELETE is refused; a change to any column but the removal ones is refused; removal is set once;
   removal without a reason is refused; over 20 MB is refused; a bad `sha256` is refused.
 - A posted record accepts a new attachment, and its journal and chain are unchanged.
-- Removing from a posted document is refused when its area is locked, its posting period is closed, or
-  `lock_documents_after_posting` is ON, and allowed otherwise with a reason. Account-level locks do not apply. A
-  removed file is still in storage.
+- Test the three posted-document blockers independently, each with the other two clear: an active document area
+  lock refuses removal; a closed posting period refuses it; and `lock_documents_after_posting` ON refuses it.
+  A new company has open periods and area locks unset by default; each lock check applies when that lock is set.
+  The closed-period integrity check is always enforced. `lock_documents_after_posting` is a configurable control
+  and defaults OFF. The reason requirement is always on.
+- With only an account lock active and the period open, area unlocked and posted-document control OFF, an
+  authorized editor can remove the attachment with a reason; the account lock alone does not block it.
+- In a new company with default settings (open period, no area lock, posted-document control OFF), an authorized
+  editor can remove an attachment only with nonblank `removed_reason` text; refuse removal without it. A removed
+  file is still in storage.
 - An attachment on a missing record is refused; a user without the record's right is refused (R27).
 - Audit rows carry metadata only. `storage_key` is relative (no drive letter, no `..`; `storage._safe_join`).
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 18 attachment-removal lock wording"; Area 13 Q6 A): the removal
+tests above are rewritten in place: each blocker alone, the account-lock-only case, and new-company defaults with the
+reason required.
 
 ---
 
@@ -1119,8 +1137,12 @@ need both rights. C. Keep today's check.
 
 **Q13. Who may remove an attachment?** A. Whoever may edit the record, with a reason. B. Admin or the Master only.
 C. A new code.
-- **Answer: A**, plus: removing an attachment from a posted document follows the posted-document rules. It is
-  refused in a closed period, and when `lock_documents_after_posting` is ON.
+- **Answer: A**, plus: the reason is always required. For a posted document, Area 13 Q6 A applies verbatim:
+  "A. Closed period, `lock_documents_after_posting`, and the document's area lock; account locks do not apply."
+  Store the required nonblank text in `attachment.removed_reason`.
+
+Amendment 2026-11-21 (to_planning 2026-11-21 "Area 18 attachment-removal lock wording"; Area 13 Q6 A): the Q13 answer
+above is rewritten in place to quote Area 13 Q6 A and require the reason.
 
 **Q14. Attachments and backups?** A. Decide in 2.8. B. Each backup zips the attachments.
 - **Answer: A**, plus: 2.8 must include attachments; a backup without them is not complete. Added to
