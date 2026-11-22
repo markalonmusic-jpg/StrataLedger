@@ -401,6 +401,14 @@ user. Used only when `share_mode` = 'people'.
 'report', 'text'), `saved_report_id` REFERENCES saved_report (RESTRICT; required for 'report'), `title`, `body_text`
 (max 4000; cover and text pages) (Q9 A).
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM; Area 5 Q7e): a
+shipped report "Sales tax in written-off invoices" lists each write-off with its invoice, customer, invoice date,
+write-off date, amount written off and the sales tax inside the written-off amount, so the filer can claim the
+bad-debt deduction. Sales tax is accrual-only (Area 5). Proposed, for owner confirmation at build: the tax inside a
+partial write-off is the invoice version's frozen tax times the written-off share of the invoice total, rounded per
+invoice. It reads the Area 5 write-off records and frozen invoice tax; no new table. Filters: date range by write-off
+date, tax code and agency. Test: `test_written_off_sales_tax_report_lists_tax_inside_each_write_off`.
+
 ### 4.4 Services, effects, tests
 
 - `saved_reports.py` and `packs.py`: list, get, save (version), delete, `mark_run`. Read needs the run permission of

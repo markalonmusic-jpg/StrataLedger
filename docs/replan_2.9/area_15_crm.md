@@ -202,6 +202,11 @@ Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12; flagged dependency): the
 revision is its pre-tax price (`pre_tax_cents`), not a tax-inclusive total, so `take_expected_value` receives the
 pre-tax figure. Tests that read the value use the pre-tax amount.
 
+Corrected 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM): at send the pre-tax
+quoted price is the revision's `contract_total_cents` (Area 6 §8.2 passes it); `pre_tax_cents` and `total_cents` are
+written only at signing. `take_expected_value` therefore receives `contract_total_cents`, and the §1.3 rule above that
+names `total_cents` reads it that way.
+
 ### 1.4 Lead stages and `lead_stage_history`
 
 **Stage roles.** Area 8's `service_stage.stage_role` CHECK gains `'Lost'` (area 8 handed this over): each service

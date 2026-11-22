@@ -18,7 +18,8 @@ are folded into the owning areas, one owner each:
 | Design queue and later phases (section below; no 2.9 schema effect) | items 1–4 with OD-01; OD-05, OD-06, OD-12, OD-14 |
 
 - **Area 5** was approved in full at 2:15 AM (shared_decisions 2026-11-22). Its §9 holds the dated amendments and
-  its questions; Q11 and Q12 were decided at 12:47 PM, Q7c and Q7d close with Q12, and Q7a, Q7b, Q7e and Q8 stay open.
+  its questions, all decided (Q11 and Q12 at 12:47 PM; Q7a, Q7b, Q7e and Q8 in round 2 at 1:56 PM: accrual-only
+  sales tax, with the written-off tax report in Area 17 §4). The amended plan is ready for owner full-plan approval.
 - **Area 4** is ready for owner full-plan approval: Q1–Q7 are decided (Q6 and Q7 at 12:47 PM).
 - **Conflicts, now decided by the owner (12:47 PM follow-ups):** item 9 vs chart-of-accounts C3 (Area 18 Q25:
   normal balance follows the new Type); item 21 vs deferral C3 (Area 10 §6: auto-post confirmed); item 17 vs Area 4
@@ -28,7 +29,8 @@ are folded into the owning areas, one owner each:
 - **v1.1 field scope (owner 12:41 PM, amended 12:45 PM):** Inbox inputs in Area 8 §10 (daily log, delays,
   assignments, look-ahead, punch and inspection items, Schedule tab), Area 18 §8.5 (Field role, default tab) and
   Area 9 below (field material request).
-- Next action: Mark answers the remaining open questions and approves Area 4 and Area 5 §9. Baseline work waits for
+- Next action: Mark approves Area 4 and the amended Area 5. The v1.1 wireframe questions stay open inputs for
+  UX research and the owner's wireframe review. Baseline work waits for
   approval of the full replan. Log: `Strata_Teams\planning_replan_log_2026-11-22.md`.
 
 ## Owner decisions 2026-11-22 for areas not yet drafted (Decided 2026-11-22, owner)
@@ -211,7 +213,7 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. St
   | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; amendment lines from areas 6 and 7) |
   | 6 Estimates, contracts, pricing, T&M rates, contract templates | docs/replan_2.9/area_6_estimates_contracts.md | 2c82148, d297397, b0bea27 and the approval commit (+ amendment lines in areas 8, 15 and 18; amendment lines from area 7) |
   | 7 Jobs, budgets, cost codes and cost types, dimensions, operating plan, WIP | docs/replan_2.9/area_7_jobs_budgets_cost_codes.md | 7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd and the approval commit (+ amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager template) |
-  | 5 Invoices, credit memos, statements, customers | docs/replan_2.9/area_5_invoices_credit_memos_statements_customers.md | approved by the owner 2026-11-22 2:15 AM; §9 dated amendments 2026-11-22 |
+  | 5 Invoices, credit memos, statements, customers | docs/replan_2.9/area_5_invoices_credit_memos_statements_customers.md | approved by the owner 2026-11-22 2:15 AM; §9 dated amendments 2026-11-22, all questions decided; ready for full-plan approval |
   | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
 - **Todo (11):** areas 1-4, 9, 11, 14, 16, 19, 20, 21 (area 4 drafted, ready for approval); the owner chooses the next. Only owner-approved areas are built;

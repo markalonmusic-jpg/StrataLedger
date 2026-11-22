@@ -197,6 +197,12 @@ lines; a tax-rate change needs no change order. Superseded in §1.3, not deleted
 longer a signed figure (the PDF may print an estimated total). The lock trigger keeps the estimated tax as printed
 quote content.
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM): decided, not only
+proposed. The signed `tax_cents` is renamed `estimated_tax_cents` on the revision and on each line; `total_cents` is
+not a signed figure and leaves the signed set, with the CHECK `total_cents = pre_tax_cents + tax_cents`.
+`pre_tax_cents` alone is written once at Mark signed. `mark_signed`'s `signed_total_cents` input becomes
+`signed_pre_tax_cents`.
+
 ### 1.4 Effect on existing services and tests
 
 - No service exists. `estimates.py` (new): create from a lead, revise, read (`estimate.view`), save costs, apply a
@@ -750,6 +756,10 @@ total is superseded. The contract original amount was already pre-tax (unchanged
 regression figures ($22,749.40 sent v1, $33,333.33 v2) are pre-tax; if they were tax-inclusive, the test values
 change.
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM): the Hughes figures
+($22,749.40 sent v1, $33,333.33 unsent v2) are pre-tax test values, so the Hughes regression values stand; the flag
+above is closed.
+
 ### 9.3 Proposed rules (`contracts.py`)
 
 - `mark_signed(context, revision_id, signed_attachment_id, customer_input, job_input,`
@@ -878,6 +888,14 @@ no-deposit schedule, and self-approval with the separate-approver control OFF an
 Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): the signed-total test above compares the signed pre-tax price
 with no tax; add `test_signed_quote_pdf_shows_estimated_tax_line_not_signed` and
 `test_signed_quote_lines_keep_taxable_flag`.
+
+Amendment 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM): test names and
+inputs follow the rename. `test_signing_rejects_signed_total_mismatch_and_freezes_accepted_figures` becomes
+`test_signing_rejects_signed_pre_tax_mismatch_and_freezes_accepted_figures` (one cent away from the pre-tax price of
+the required and Accepted lines); `test_mark_signed_conflicting_retry_is_refused` varies `signed_pre_tax_cents`
+instead of a signed total; `test_mark_signed_exact_retry_returns_original_result_without_duplicates` and the
+lost-response retry compare `signed_pre_tax_cents`; `test_hughes_signing_uses_sent_v1_with_unsent_v2_draft` uses the
+pre-tax $22,749.40 and $33,333.33. Add `test_signed_revision_has_estimated_tax_not_signed_total`.
 
 ## 10. The contract record and change orders
 

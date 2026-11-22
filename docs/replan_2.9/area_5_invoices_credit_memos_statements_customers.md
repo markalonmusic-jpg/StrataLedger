@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 5: invoices, credit memos, statements and customers
 
-Status: **Approved in full by the owner, 2026-11-22 2:15 AM** (shared_decisions 2026-11-22 "invoicing plan approved"). Later findings are dated Amendment lines. The 2026-11-22 owner decisions are folded in §9, which is ready for owner confirmation with the open questions in §9.3. Drafted 2026-11-20 for the single approved 2.9 pass.
+Status: **Approved in full by the owner, 2026-11-22 2:15 AM** (shared_decisions 2026-11-22 "invoicing plan approved"). Later findings are dated Amendment lines. The 2026-11-22 owner decisions are folded in §9; every question is decided, and the amended plan is ready for owner full-plan approval. Drafted 2026-11-20 for the single approved 2.9 pass.
 
 Evidence: `docs/design.md:17` (AQ1/AQ2), `:62` (open items), `:83` (posted edits); `Strata_Teams/schema_replan_2026-11-17.md:26` and `:92`; `shared_decisions.md:76` (payments), `:180` and `:550` (posted edits), `:1174` (customers), `:1510` (reasons), `:1617`, `:1629`, `:1637` (owner 2:10, 2:20 and 2:30 PM); `inbox/to_planning.md:503` (quote handoff). Mockup references below are to the shared run 1 v3 review snapshot under `Strata_Teams/outputs/shared_run1_retest_2026-11-20_v3/current`.
 
@@ -441,12 +441,16 @@ Remaining dependencies by owner:
 - **Area 14 / Approvers:** refund and write-off routing and reversal approval policy.
 - **Area 4 / Pay apps:** retain §5.3. **Areas 7/9, purchasing/costing, 19 and 6:** retain the T&M source and signed terms handoff in §8.3.
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 "Planning-session questions, round 2", 1:56 PM): the tax review
+dependencies above and §7 items 7 and 8 are decided in §9.3 (Q7a, Q7b, Q7e and Q8; Q7c and Q7d closed by Q12). Sales
+tax is accrual-only.
+
 ## 9. Owner decisions, 2026-11-22 (dated amendments)
 
 Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` (items 7 and 22; OD-07, OD-09, OD-10, OD-11, OD-15 and
 OD-18). The plan was approved in full at 2:15 AM (shared_decisions 2026-11-22 "invoicing plan approved"). As that
 decision requires, later findings are recorded here as dated Amendment lines; none replaces approved text without a
-flag. This section is ready for the owner to confirm, together with the questions in §9.3.
+flag. Every §9.3 question is decided (2026-11-22), so the amended plan is ready for owner full-plan approval.
 
 ### 9.1 Decided 2026-11-22 (owner)
 
@@ -506,26 +510,33 @@ flag. This section is ready for the owner to confirm, together with the question
 
 ### 9.3 Questions (recommended option first; decided ones marked)
 
-Questions 7 and 8 restate §7 items 7 and 8. Q11 and Q12 were decided by the owner on 2026-11-22 (12:47 PM); Q7c and Q7d close with Q12. Still open: Q7a, Q7b, Q7e and Q8.
+Questions 7 and 8 restate §7 items 7 and 8. All are decided: Q11 and Q12 at 12:47 PM (Q7c and Q7d close with Q12), and Q7a, Q7b, Q7e and Q8 in round 2 (1:56 PM). Nothing in this plan is open.
 
-- **Q7a. Tax rate for a date with no rate on file.** Example: an invoice dated 2026-01-05 when the code's first
-  rate starts 2026-02-01. **A (recommended):** refuse the issue with "No tax rate is set for this date; add one
-  in Sales tax setup". B: use the earliest later rate and flag the invoice for tax review. C: post with no tax and
-  flag it.
-- **Q7b. Standalone credit or refund without a linked invoice.** Example: a $500.00 goodwill credit on a taxable
-  customer. **A (recommended):** no tax adjustment by default; the user may link it to an original invoice line to
-  reverse that line's tax. B: always apply the customer's current rate. C: always require a tax review before issue.
+- **Q7a. Tax rate for a date with no rate on file. Decided 2026-11-22 (owner; owner_decisions_2026-11-22
+  "Planning-session questions, round 2", 1:56 PM): option A.** Issue is refused with "No tax rate is set for this
+  date; add one in Sales tax setup". Example: an invoice dated 2026-01-05 when the code's first rate starts
+  2026-02-01. Test: `test_invoice_issue_refused_when_no_tax_rate_for_date`.
+- **Q7b. Standalone credit or refund. Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+  questions, round 2", 1:56 PM): option A.** A standalone credit or refund makes no tax adjustment by default; linking
+  it to an original invoice line reverses that line's tax (capped as §8.3 linked credits are). Tests:
+  `test_standalone_credit_or_refund_makes_no_tax_adjustment`,
+  `test_credit_linked_to_invoice_line_reverses_that_line_tax`.
 - **Q7c. Signed-tax correction. Closed 2026-11-22 by Q12:** signed quotes carry a pre-tax price, so there is
   no signed tax to correct; a job-site rate change is handled on the invoice (rate at invoicing, or the
   item-22 override).
 - **Q7d. T&M tax on actual quantities. Closed 2026-11-22 by Q12:** tax is calculated on each invoice at the
   job-site rate in effect at invoicing, on the actual taxable amount.
-- **Q7e. Tax recovery on a write-off.** Example: writing off a $1,082.50 invoice that holds $82.50 sales tax. **A
-  (recommended):** none in v1 (§8.5 Q10 stands), with a report of written-off tax for the tax filer. B: an optional
-  tax-recovery line on the write-off.
-- **Q8. Sent statement retention with no company policy.** Example: a statement sent 2026-03-31. **A
-  (recommended):** keep for 7 years, then flag for review (never auto-delete). B: keep forever. C: keep until the
-  owner sets a policy and show a reminder.
+- **Q7e. Sales tax basis and write-offs. Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+  questions, round 2", 1:56 PM):** sales tax is reported on an accrual basis only, owed on the invoice date; there is
+  no Cash/Accrual setting. A write-off posts its full amount to the write-off account selected under §8.5 Q10 (bad
+  debt), with no automatic tax split (§8.5 Q10 stands). A report lists the sales tax inside written-off invoices so
+  the filer can claim the bad-debt deduction; Area 17 owns it (Area 17 §4 amendment). Schema: no tax-basis setting;
+  the report reads the write-off records and the invoice versions' frozen tax. Tests:
+  `test_sales_tax_owed_on_invoice_date_accrual_only`, `test_write_off_posts_full_amount_without_tax_split`.
+- **Q8. Sent statement retention with no company policy. Decided 2026-11-22 (owner; owner_decisions_2026-11-22
+  "Planning-session questions, round 2", 1:56 PM): option A.** Keep sent statements 7 years, then flag them for
+  review; never auto-delete. Schema: the sent-statement copy stores `retention_review_on` (sent date plus 7 years)
+  when the company has no policy. Test: `test_sent_statement_kept_seven_years_then_flagged_never_deleted`.
 - **Q11. Changing the job (OD-09 vs §8.2 Q3). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session follow-ups", 12:47 PM):** an unpaid invoice can
   move to another job through Edit (same-number reverse and repost), with all lines moving together. Once a
   payment is applied, a later job change is made with a reclass entry (Area 10 §2), not an invoice edit.
