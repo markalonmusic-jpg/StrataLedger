@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 5: invoices, credit memos, statements and customers
 
-Status: **Draft for owner review, 2026-11-20.** Nine areas remain approved. This draft proposes company-baseline work for the single approved 2.9 pass.
+Status: **Approved in full by the owner, 2026-11-22 2:15 AM** (shared_decisions 2026-11-22 "invoicing plan approved"). Later findings are dated Amendment lines. The 2026-11-22 owner decisions are folded in §9, which is ready for owner confirmation with the open questions in §9.3. Drafted 2026-11-20 for the single approved 2.9 pass.
 
 Evidence: `docs/design.md:17` (AQ1/AQ2), `:62` (open items), `:83` (posted edits); `Strata_Teams/schema_replan_2026-11-17.md:26` and `:92`; `shared_decisions.md:76` (payments), `:180` and `:550` (posted edits), `:1174` (customers), `:1510` (reasons), `:1617`, `:1629`, `:1637` (owner 2:10, 2:20 and 2:30 PM); `inbox/to_planning.md:503` (quote handoff). Mockup references below are to the shared run 1 v3 review snapshot under `Strata_Teams/outputs/shared_run1_retest_2026-11-20_v3/current`.
 
@@ -83,6 +83,19 @@ A billed pre-tax or tax mismatch warns and requires a reason to continue. Once t
 For independent invoices, apply §8.3 for per-line rounding, frozen issue tax and exemption validation. Keep VAT,
 withholding and EIS separate from U.S. sales tax. Tax review still owns uncovered effective dates, standalone
 credits, refunds without a linked adjustment, signed-tax correction and mapping frozen tax to actual T&M quantities.
+
+Amendment 2026-11-22 (tax on signed quotes). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+follow-ups", 12:47 PM; Area 5 Q12), replacing the 2026-11-20 2:10 PM rule that signing freezes tax details and a
+tax-included signed total: signed quotes and estimates carry a pre-tax price, and the PDF shows an "Estimated tax"
+line; each line keeps its taxable/exempt flag; actual tax is calculated on each invoice at the job-site rate in effect
+at invoicing; the item-22 tax override (Accountant+, with a reason) applies to all lines, including signed-quote
+lines; a tax-rate change needs no change order. Superseded in §3.2, not deleted: the signed revision's frozen tax and
+tax-inclusive signed total; copying tax-rate identity, label, rate, taxable base and frozen tax from the signed
+revision; and the separate cumulative tax check against the signed quote with its warn-and-reason path. Now
+quote-derived invoice lines carry the signed pre-tax price and each line's taxable/exempt flag; tax is calculated per
+line at the job-site rate in effect on the invoice date and frozen on the issued invoice version (frozen issue tax,
+§8.3, still applies to every invoice). The cumulative check compares pre-tax only. Deposit and tax-on-the-advance
+rules are unchanged: the advance tax is the tax charged on the deposit invoice.
 
 ## 4. Statements, allocations, refunds and write-offs
 
@@ -216,6 +229,12 @@ Billing sources need a durable source-to-invoice link with idempotent retry. Fol
 - `test_customer_entity_type_matches_schema_values` — service values and persisted entity types match the baseline constraints.
 - `test_customer_edit_reads_tax_id_masked_through_service` — edit reads only the service-masked tax ID.
 - `test_customer_save_database_error_shows_error_without_navigation` — a database failure shows an error and keeps the user on the form.
+
+Amendment 2026-11-22 (tax on signed quotes; §9.3 Q12): the §5.2 cases that say a milestone or progress bill charges
+frozen tax now charge tax calculated at invoicing; add
+`test_quote_derived_invoice_tax_uses_job_site_rate_at_invoice_date` and
+`test_tax_override_applies_to_signed_quote_lines`.
+
 ### 5.3 Explicit handoff to Area 4 (pay apps and retainage)
 
 | Area 4 decision | Area 5 needs |
@@ -284,6 +303,9 @@ already records 1a and 8a at lines 1642–1648.
 **Q5 default precedence closed (owner, 5:00 PM).** Shared decisions :1651 and planning inbox :595 confirm the
 sample defaults and configured schedule precedence.
 
+Amendment 2026-11-22 (tax on signed quotes; §9.3 Q12): correction 7a above is superseded. Quote-derived invoices no
+longer use tax frozen on the signed revision; the customer signs a pre-tax price.
+
 ### 8.1 Q5 billing answers (owner, 5:15 PM)
 
 Checked against: shared_decisions 2026-11-20 5:15 PM
@@ -307,6 +329,9 @@ These answers settle the Q5 choices in §§3 and 7.
    A billed pre-tax or tax mismatch warns and requires a reason to continue. Once the reason is recorded, the mismatch alone does not block an otherwise valid posting.
 
 Area 4 dependencies are listed in §5.3.
+
+Amendment 2026-11-22 (tax on signed quotes; §9.3 Q12): in §8.1 above, milestone and progress bills charge tax
+calculated at invoicing, not frozen signed tax detail.
 
 ### 8.2 Owner-approved Q2–Q4 (2026-11-20)
 
@@ -368,6 +393,9 @@ revision and ceiling identity. Tax versions retain line basis, rate, amount and 
 Linked credits point to original issued lines and refunds settling them point to the credit to preserve one tax
 adjustment. Area 4 retains the existing §5.3 handoff.
 
+Amendment 2026-11-22 (tax on signed quotes; §9.3 Q12): the §8.3 rule to preserve frozen signed tax for quote-derived
+invoices is superseded; frozen issue tax on each issued invoice version stays.
+
 ### 8.4 Owner-approved Q1 and Q8 (2026-11-20)
 
 - **Q1.** Reusable contact people with one designated primary per complete customer. Customer billing details
@@ -412,3 +440,104 @@ Remaining dependencies by owner:
   selected under Q10.
 - **Area 14 / Approvers:** refund and write-off routing and reversal approval policy.
 - **Area 4 / Pay apps:** retain §5.3. **Areas 7/9, purchasing/costing, 19 and 6:** retain the T&M source and signed terms handoff in §8.3.
+
+## 9. Owner decisions, 2026-11-22 (dated amendments)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` (items 7 and 22; OD-07, OD-09, OD-10, OD-11, OD-15 and
+OD-18). The plan was approved in full at 2:15 AM (shared_decisions 2026-11-22 "invoicing plan approved"). As that
+decision requires, later findings are recorded here as dated Amendment lines; none replaces approved text without a
+flag. This section is ready for the owner to confirm, together with the questions in §9.3.
+
+### 9.1 Decided 2026-11-22 (owner)
+
+- **Amendment 2026-11-22: posted invoice edit (OD-18, G2; amends §2.2 and 8 2a without changing them).** A posted
+  invoice opens view-only. It becomes editable only after the user presses **Edit**, and only then is **Add a line**
+  available. Edit shows a warning that saving will reverse the previous invoice and repost the new one. Save adds
+  the line and persists it through the approved same-number reversal and repost. Tax is recalculated and frozen
+  again on the new version, and the one-job refusal still applies. Edit is unavailable while the Company
+  `lock_documents_after_posting` control is ON or the period is locked. The approved paid floor, area lock and
+  submitted-pay-app refusals still apply. Schema: none new; the version history, reason and reversal links of §2.3
+  and 8.2 Q2 carry it. Tests: `test_posted_invoice_opens_view_only_until_edit`,
+  `test_posted_invoice_edit_add_line_reverses_and_reposts_same_number`,
+  `test_posted_invoice_edit_recalculates_and_refreezes_tax`,
+  `test_posted_invoice_edit_unavailable_when_document_lock_or_period_locked`.
+- **Amendment 2026-11-22: one job per invoice (OD-09, G2; narrows §8.2 Q3).** A saved invoice keeps its job.
+  Adding a line for another job is refused with "One job per invoice — start a new invoice". Fixture acceptance
+  for this guard is limited to RI0001-002. Test: `test_saved_invoice_refuses_line_for_another_job` (extends
+  `test_sales_invoice_rejects_multiple_jobs_in_v1`). Job changes follow §9.3 Q11 (decided).
+- **Amendment 2026-11-22: active tax code override (item 22; TAXSET-04 invoice tax authorization branch).**
+  Accountant, Admin or Master, or a user whose job title grants it, can override the rate on one invoice with a
+  reason. The override is logged and frozen with that invoice version. The tax code and its rate history are
+  unchanged. Schema: on the invoice version, `tax_override_rate` (REAL percent, NULL when not overridden),
+  `tax_override_reason` (TEXT, nonblank when the rate is set), `tax_override_by` and `tax_override_at` (all set or
+  all NULL; CHECK). Each affected line keeps its tax-code identity and freezes the overridden rate and amount.
+  Permission: new code `invoice.tax_override` in the Accountant cap, held by Admin and the Master, grantable by job
+  title and template (Area 18 §8.2, which amends §2.4); not in `AGENT_ALLOWED`. No Company control. Tests:
+  `test_invoice_tax_override_requires_permission_and_reason`, `test_invoice_tax_override_frozen_with_version`,
+  `test_invoice_tax_override_leaves_tax_code_unchanged`. Under §9.3 Q12 (decided) the override and the OD-18
+  recalculation apply to all lines, including signed-quote lines.
+- **Amendment 2026-11-22: document numbering (item 7; DOCNUM-02).** Company settings shows the journal entry
+  sequence read-only (for example "Next: 2026-00432"); `ledger.py` keeps sole ownership of journal numbers. Add the
+  credit memo series in the format `CM-###` (the separate gapless credit series of §8.2 Q2) and keep the existing
+  Settings wording. Schema: the credit memo series row and its `CM-` prefix in the shared sequence pattern; no new
+  table. Test: `test_credit_memo_series_assigns_cm_numbers_gapless`,
+  `test_company_settings_shows_next_journal_number_read_only`.
+- **Amendment 2026-11-22: customer intake and refund reason (OD-07; ARREF-04).** A valid preselected default
+  (Net 30) counts as a complete terms section at customer intake. Refund reasons live in Settings › Lists › Reasons
+  under the refund category; "Other" requires a free-text reason (the approved §8.5 reasons rule already sets 10 characters for "Other"). Test:
+  `test_customer_intake_default_terms_count_as_complete`, `test_refund_reason_other_requires_text`.
+- **Amendment 2026-11-22: refund customer change (OD-10).** Clearing the customer on a refund blanks the amount and
+  clears the applied lines. Test:
+  `test_refund_clearing_customer_blanks_amount_and_applied_lines`.
+- **Amendment 2026-11-22: write-off amount (OD-15, H, S7; option B; consistent with §8.5 Q10).** Picking or
+  re-picking an invoice fills the amount with that invoice's open balance; the user can edit it down. A fixed
+  $7,700.00 is not an approved value. Test: `test_write_off_amount_defaults_to_selected_invoice_open_balance`.
+- **Amendment 2026-11-22: unapplied payment (OD-11).** A cleared payment with no matched documents shows a visible
+  "Unapplied" badge. Its drawer says "No invoices or bills applied" and has an **Apply** button, and the payment
+  also lists in the open-payments module. Unapplied status is derived from allocations; no stored flag. Test:
+  `test_cleared_payment_without_allocations_shows_unapplied_and_lists_in_open_payments`.
+
+### 9.2 Handoffs
+
+- **Area 18:** place `invoice.tax_override`; Company settings shows the journal sequence read-only.
+- **Areas 1 and 12:** the OD-11 badge reads Area 1 allocations; the open-payments module is Area 12's (Q16 A limits).
+- **Area 4:** `payapp.adjust` on the linked pay app draft (Area 4 §5 amendment); certified amounts follow Area 4 Q7.
+- **Area 3:** the OD-11 wording covers bills ("No invoices or bills applied") for AP payments.
+
+### 9.3 Questions (recommended option first; decided ones marked)
+
+Questions 7 and 8 restate §7 items 7 and 8. Q11 and Q12 were decided by the owner on 2026-11-22 (12:47 PM); Q7c and Q7d close with Q12. Still open: Q7a, Q7b, Q7e and Q8.
+
+- **Q7a. Tax rate for a date with no rate on file.** Example: an invoice dated 2026-01-05 when the code's first
+  rate starts 2026-02-01. **A (recommended):** refuse the issue with "No tax rate is set for this date; add one
+  in Sales tax setup". B: use the earliest later rate and flag the invoice for tax review. C: post with no tax and
+  flag it.
+- **Q7b. Standalone credit or refund without a linked invoice.** Example: a $500.00 goodwill credit on a taxable
+  customer. **A (recommended):** no tax adjustment by default; the user may link it to an original invoice line to
+  reverse that line's tax. B: always apply the customer's current rate. C: always require a tax review before issue.
+- **Q7c. Signed-tax correction. Closed 2026-11-22 by Q12:** signed quotes carry a pre-tax price, so there is
+  no signed tax to correct; a job-site rate change is handled on the invoice (rate at invoicing, or the
+  item-22 override).
+- **Q7d. T&M tax on actual quantities. Closed 2026-11-22 by Q12:** tax is calculated on each invoice at the
+  job-site rate in effect at invoicing, on the actual taxable amount.
+- **Q7e. Tax recovery on a write-off.** Example: writing off a $1,082.50 invoice that holds $82.50 sales tax. **A
+  (recommended):** none in v1 (§8.5 Q10 stands), with a report of written-off tax for the tax filer. B: an optional
+  tax-recovery line on the write-off.
+- **Q8. Sent statement retention with no company policy.** Example: a statement sent 2026-03-31. **A
+  (recommended):** keep for 7 years, then flag for review (never auto-delete). B: keep forever. C: keep until the
+  owner sets a policy and show a reminder.
+- **Q11. Changing the job (OD-09 vs §8.2 Q3). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session follow-ups", 12:47 PM):** an unpaid invoice can
+  move to another job through Edit (same-number reverse and repost), with all lines moving together. Once a
+  payment is applied, a later job change is made with a reclass entry (Area 10 §2), not an invoice edit.
+  OD-09 still refuses mixing jobs on one invoice. Tests: `test_unpaid_invoice_job_change_moves_all_lines_via_repost`,
+  `test_paid_invoice_job_change_refused_and_offers_reclass`.
+- **Q12. Tax on signed quotes. Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session follow-ups", 12:47 PM); a change to approved text:** signed quotes
+  and estimates carry a pre-tax price, and the PDF shows an "Estimated tax" line. Each line keeps its
+  taxable/exempt flag. Actual tax is calculated on each invoice at the job-site rate in effect at invoicing.
+  The item-22 override (Accountant+, with a reason) applies to all lines, including signed-quote lines; no
+  change order is needed for a tax-rate change. This replaces the 2026-11-20 rule that signing freezes tax
+  details and a tax-included signed total; dated amendments mark each superseded statement in §§3.2, 5.2,
+  8 (7a), 8.1 and 8.3 here and in Areas 6, 7, 8 and 15 and the next_step service-quote reconciliation.
+  Dependencies flagged: the signed amount (pre-tax), lead expected value (Area 15), WIP over/under billing
+  (Area 7) and the Hughes regression figures (Area 6 §9.2). The original budget comes from cost and is
+  unaffected.

@@ -1,10 +1,115 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6 and 7 approved; next area chosen by the owner)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-21): Area 4 plan review
+## Current planning stop (2026-11-22): owner decisions folded; Areas 4 and 5 ready for the owner
+
+The owner's 2026-11-22 answers (`Strata_Teams\docs\owner_decisions_2026-11-22.md`: items 1–26, OD-01 to OD-18)
+are folded into the owning areas, one owner each:
+
+| Owner | Decisions |
+|---|---|
+| Area 4 §5, §7 | item 17 (Q5 roles; `payapp.adjust`) |
+| Area 5 §9 | items 7 and 22; OD-07, OD-09, OD-10, OD-11, OD-15, OD-18 |
+| Area 7 §1.2, §2.2 | item 25 with OD-03; item 26 with OD-02 |
+| Area 10 §6 | item 21 |
+| Area 17 §3.2 | OD-13 |
+| Area 18 §8 | items 8, 9, 10, 11; places the four new codes |
+| Areas 2, 3, 9, 20, 21 (not drafted; section below) | items 5, 6, 12–16, 18, 23; OD-04, OD-08, OD-16, OD-17 |
+| Area 9 and 11 entries, Area 20 entry (below, "Handed to later areas") | items 19, 20, 24 |
+| Design queue and later phases (section below; no 2.9 schema effect) | items 1–4 with OD-01; OD-05, OD-06, OD-12, OD-14 |
+
+- **Area 5** was approved in full at 2:15 AM (shared_decisions 2026-11-22). Its §9 holds the dated amendments and
+  its questions; Q11 and Q12 were decided at 12:47 PM, Q7c and Q7d close with Q12, and Q7a, Q7b, Q7e and Q8 stay open.
+- **Area 4** is ready for owner full-plan approval: Q1–Q7 are decided (Q6 and Q7 at 12:47 PM).
+- **Conflicts, now decided by the owner (12:47 PM follow-ups):** item 9 vs chart-of-accounts C3 (Area 18 Q25:
+  normal balance follows the new Type); item 21 vs deferral C3 (Area 10 §6: auto-post confirmed); item 17 vs Area 4
+  Q5 (Q7: adjust never edits certified amounts); OD-09 vs Area 5 §8.2 Q3 (Q11: unpaid job change by Edit, paid by
+  reclass); Area 5 Q12 replaces the 11/20 tax-freeze rule (signed price is pre-tax; tax at invoicing), recorded as
+  dated amendments in Areas 5, 6, 7, 8 and 15 and in the service-quote reconciliation below.
+- **v1.1 field scope (owner 12:41 PM, amended 12:45 PM):** Inbox inputs in Area 8 §10 (daily log, delays,
+  assignments, look-ahead, punch and inspection items, Schedule tab), Area 18 §8.5 (Field role, default tab) and
+  Area 9 below (field material request).
+- Next action: Mark answers the remaining open questions and approves Area 4 and Area 5 §9. Baseline work waits for
+  approval of the full replan. Log: `Strata_Teams\planning_replan_log_2026-11-22.md`.
+
+## Owner decisions 2026-11-22 for areas not yet drafted (Decided 2026-11-22, owner)
+
+Each line is the rule the drafting session must carry; audit IDs in brackets.
+
+- **Area 21, Company setup and conversion:**
+  - Item 5 (CSVIMP-04, OPENBAL-03, COSETUP-02, OPENBAL-04; the GLDETAIL-01/REPORT-03 conversion-date cases): the
+    conversion posts on the day before the first live date, for both month-end and mid-month go-lives (Jan 1 →
+    Dec 31; Mar 15 → Mar 14). Schema: `company_settings.first_live_date`; the conversion date is derived, never
+    typed. Area 17 handoff recorded in Area 17 §3.2.
+  - Item 6 (OPENBAL-02/03/04): a separate entry per item. There is no single summary conversion journal entry.
+    Every opening balance and every open invoice or bill gets its own linked posting (source 'Conversion', linked
+    to its source row). Tests: `test_conversion_posts_day_before_first_live_date`,
+    `test_conversion_creates_one_linked_entry_per_item`.
+- **Area 3, Bills, vendor credits, terms and subcontracts:**
+  - Item 12 (APBILL-04, APBILL-01 over-limit branch, SUBPAY-04 draw-to-bill limit): Save bill and Save and new
+    both warn and require a reason when a subcontract bill exceeds the remaining approved value, including approved
+    change orders. Company control `subcontract_overlimit_block` (OFF by default; Area 18 §8.3) makes both refuse.
+  - Item 13 (APBILL-05): a same-gross correction that moves account, job or line allocation is a reclass through
+    journal entry approval, or the approval route already set for reclasses (Area 10 §2). No separate bill
+    re-verification route.
+  - Item 14 (VCR-01, VCR-03, PAYRUN-04, VCR-04 balance and close): a saved refund request holds its outstanding
+    amount against that exact vendor credit. The hold is released on cancel and reduced as refund cash is received.
+    Bills and pay runs see only the unheld remainder. Schema: a hold row per refund request (credit ID, held
+    cents, released cents, status). Area 2 handoff: pay runs read the unheld remainder.
+  - Item 15 (VCR-04): a vendor-credit remainder can be written off to any active expense or other-income account by
+    Accountant, Admin or Master with a reason (new sensitive code `vendor_credit.write_off`, Area 18 §8.2).
+    Approval is needed only above a Company threshold, `vendor_credit_writeoff_approval_threshold_cents` (NULL =
+    off; Area 14 routes it). Period locks apply.
+  - Item 16 (TERM-04, PAYRUN-01/02/04 discount branches): the early-payment discount applies through the deadline
+    date inclusive, calculated on the bill total. If it expires before the payment is recorded, the line returns
+    for review at the full amount. It posts to a new `purchase_discounts` account role, or back to the job cost
+    line when the bill is job-coded. On the payment line the discount is an editable amount that defaults to the
+    calculated amount (pro rata for a partial payment) and can be changed, for example to $0. Area 2 handoff: pay
+    run lines carry the same editable discount. Area 18 handoff: add the `purchase_discounts` role.
+  - Item 17 branches (SUBPAY-01, APBILL-05): the Area 4 §5 `payapp.adjust` rule applies.
+  - OD-08 (VENDOR-05): drop the posting-preview vendor-name claim. Design fix (no schema): New bill must open as a
+    blank form at every entry point; it currently opens filled from an existing bill.
+  - OD-16 (G1): the New bill vendor dropdown and the Vendors page read one shared vendor source (no hard-coded
+    list), so every vendor, including the nine codes, preselects from "Enter bill"; the rest of the bill stays
+    blank. This is a database binding point (CODE_CHANGES_NEEDED.md, in the mockups folder).
+  - OD-17 (G1): reload keeps what the user typed as an unsaved session draft; a fresh + New bill still opens blank.
+    Screen behaviour; no stored draft row.
+- **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above.
+- **Area 9, Materials, POs and inventory:**
+  - Item 18 (PORDER-01, PORDER-04): job and cost-code commitment starts only on a successful send (or Mark as sent
+    or Print). Drafts, approved-but-unsent POs and failed sends stay uncommitted. Close remainder releases the
+    unreceived commitment. Area 7 handoff: commitments read only sent POs.
+  - OD-04 (SR2-04): the authoritative units list is the UOM column of the Material codes table on the Inventory
+    tab; unit pickers and labels use that list. Schema: `material_code.unit_of_measure` is the source; other
+    `unit_of_measure` columns (for example `estimate_cost_line`) take values from it.
+  - Inbox input 2026-11-22 (v1.1 field scope; owner 12:41 PM): a field material request from the job feeds the
+    pull-ticket queue; stock is reserved only when the pull ticket is created. Who can create a request is open
+    for the wireframe review.
+- **Area 20, Capture inbox:** item 23 (CAP-04): Allow sender covers that sender for that capture address only. An
+  already rejected message needs a one-click Reprocess to enter review. Rejected and deleted messages are kept
+  30 days, then purged (company setting `capture_rejected_retention_days`, default 30).
+
+## Owner decisions 2026-11-22 for the design queue and later phases (no Phase 2.9 schema effect)
+
+- Items 1 and 2: Materials round 2 and the Whole-app decisions brief build stages 2–4, stopping after each stage for
+  independent QA only.
+- Item 3: Playbook stage 3 waits for Phase 5. Phase 5 note: "propose page edits from evidence" and "Playbook text is
+  sent to the AI provider" conflict with the 11/17 AI privacy rule; resolve them then.
+- Item 4 and OD-01: one more Shared Run 1 release-gate round, run after the open Shared Run 1 fixes pass.
+- OD-05 (SR2-01): a calendar click selects the row and opens its details; the selection clears on reload.
+- OD-06: 1280 px stays the supported minimum width; the normal header and Assistant offsets count as full-window for
+  Bank rules.
+- OD-12: Settings Jump to scrolls, then shows the accent focus ring on the target card for about 2 seconds, above
+  the card shadow.
+- OD-14 (F): the Team company menu is accepted with the layout as shown: company switcher under the logo, user
+  menu (My profile / Edit layout / Sign out) at the bottom. Fix: at 1280 px with the Assistant open, page header
+  buttons wrap or collapse into a ... menu. Correct the F description: the switcher stays at the top and did not
+  move into the user card.
+
+## Earlier planning stop (2026-11-21): Area 4 plan review
 
 Mark's 2:50 AM answers close Area 4 Q1 and Q5. Read `docs/replan_2.9/area_4_owner_pay_applications_billing_cycles.md` with Q2–Q4 and billed-to-date timing. The owner-approved workflow has no separate customer-approval withdrawal action: Reject before invoice posting cancels the linked invoice draft, preserves the approved pay app version and starts the next version; after posting, use a linked reversal and a new version. The approved invoice draft carries immutable certified amounts, while all other invoice-draft fields stay editable until posting. Billing creates; the PM reviews, sends and records the customer's answer; retainage release stays with the Controller or delegated accounting approver.
 
-Decision brief for Mark and Area 18: Mark's policy choices still needed are the business roles allowed to adjust a draft pay app, unlock a locked pay app, and create an explicit replacement invoice draft. Area 18 owns mapping the chosen roles to permission codes, sensitivity, project scope, caps and templates. Existing seeds include `payapp.create`, sensitive `payapp.approve`, `retainage.release`, `invoice.create`, `invoice.send`, and `invoice.void`; the Controller template has `retainage.release`. The 2:50 AM decision assigns the PM to review, send and record the customer answer and keeps retainage release with the Controller/delegate.
+(Answered 2026-11-22 by owner_decisions item 17; see Area 4 §5 and §7.) Decision brief for Mark and Area 18: Mark's policy choices still needed are the business roles allowed to adjust a draft pay app, unlock a locked pay app, and create an explicit replacement invoice draft. Area 18 owns mapping the chosen roles to permission codes, sensitivity, project scope, caps and templates. Existing seeds include `payapp.create`, sensitive `payapp.approve`, `retainage.release`, `invoice.create`, `invoice.send`, and `invoice.void`; the Controller template has `retainage.release`. The 2:50 AM decision assigns the PM to review, send and record the customer answer and keeps retainage release with the Controller/delegate.
 
 The Area 5 handoff below still applies.
 
@@ -38,6 +143,13 @@ Baseline work waits for approval of the full replan.
   signed-quote upload, while a case enters In progress when cost work starts; Warranty and goodwill use separate cost
   destinations, with the `service_goodwill` System account role and separate reports; unrelated upsells are a human
   new-estimate rule with no schema enforcement.
+- Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): Decided 2026-11-22 (owner; owner_decisions_2026-11-22
+  "Planning-session follow-ups", 12:47 PM; Area 5 Q12), replacing the 2026-11-20 2:10 PM rule that signing freezes tax
+  details and a tax-included signed total: signed quotes and estimates carry a pre-tax price, and the PDF shows an
+  "Estimated tax" line; each line keeps its taxable/exempt flag; actual tax is calculated on each invoice at the
+  job-site rate in effect at invoicing; the item-22 tax override (Accountant+, with a reason) applies to all lines,
+  including signed-quote lines; a tax-rate change needs no change order. The customer-signed tax-inclusive total above
+  is superseded; the customer signs a pre-tax price.
 - Blockers/open questions: later-area implementation details remain for area 5 invoice line/tax carry-forward and
   area 14 approval routing to `approval_request`'s submitter. Area 18 now defines the configurable
   `service_goodwill` System account mapping. The four review findings are corrected in areas 6, 7, 8 and 15:
@@ -86,11 +198,11 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. St
 
 - Working doc: `Strata_Teams\schema_replan_2026-11-17.md` (21 areas; planning keeps its status column, so this repo
   never edits it). Owner rule 2026-11-18: the mockups define the features; the schema follows them.
-- **Owner-approved: 9 of 21 areas, plus the report contracts.**
+- **Owner-approved: 10 of 21 areas, plus the report contracts** (area 5 added 2026-11-22 2:15 AM; area 4 is ready for approval).
 
   | Area | Doc | Commits |
   |------|-----|---------|
-  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12, 10, 17, 8, 15, 6 and 7 (seeded codes 111) |
+  | 18 Admin, security, audit, attachments | docs/replan_2.9/area_18_admin_security_audit.md | 6e9cdf8, 2a3b497, d38e11e; dated amendment lines from areas 13, 12, 10, 17, 8, 15, 6 and 7 (seeded codes 111; 115 with the 2026-11-22 §8 amendment) |
   | 13 Close and locks | docs/replan_2.9/area_13_close_and_locks.md | dfb26b6, dac81ec (+ amendment lines from areas 12, 10, 17 and 7) |
   | 12 Bank and reconciliation | docs/replan_2.9/area_12_bank_and_reconciliation.md | d9032ea, a837bc1, d239f32 |
   | 10 Prepaid, deferrals, reclass, period balance summary | docs/replan_2.9/area_10_prepaid_deferrals_reclass.md | 3f79eb3, 77938bc, a46501a (+ amendment line from area 7) |
@@ -99,9 +211,10 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. St
   | 15 CRM: leads, activities, cases, comments, routing | docs/replan_2.9/area_15_crm.md | 2237b63, 03477c0, 3b8108b and the approval commit (+ amendment lines in areas 8 and 18; amendment lines from areas 6 and 7) |
   | 6 Estimates, contracts, pricing, T&M rates, contract templates | docs/replan_2.9/area_6_estimates_contracts.md | 2c82148, d297397, b0bea27 and the approval commit (+ amendment lines in areas 8, 15 and 18; amendment lines from area 7) |
   | 7 Jobs, budgets, cost codes and cost types, dimensions, operating plan, WIP | docs/replan_2.9/area_7_jobs_budgets_cost_codes.md | 7bab6f0, 7ebcd4f, 8b68381, d582c7e, 64519fd and the approval commit (+ amendment lines in areas 6, 8, 10, 13, 15, 17 and 18; seeded codes 111; shipped Service manager template) |
+  | 5 Invoices, credit memos, statements, customers | docs/replan_2.9/area_5_invoices_credit_memos_statements_customers.md | approved by the owner 2026-11-22 2:15 AM; §9 dated amendments 2026-11-22 |
   | Report builder service contracts (input to area 17; amended by it) | docs/contracts/reports.md | 3d237d3, 221b996, e869ecf, fded8c4 |
 
-- **Todo (12):** areas 1-5, 9, 11, 14, 16, 19, 20, 21; the owner chooses the next. Only owner-approved areas are built;
+- **Todo (11):** areas 1-4, 9, 11, 14, 16, 19, 20, 21 (area 4 drafted, ready for approval); the owner chooses the next. Only owner-approved areas are built;
   an area still todo or drafted is not, and PROPOSED items are not built as final.
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
@@ -154,9 +267,10 @@ beside them, never deleted (area 7 fix 3).
     warehouse pull. Test `test_direct_to_site_receipt_posts_linked_job_cost_without_warehouse_pull`.
   - Direct job receipts and pull-ticket issues/returns resolve the job-materials account by role, never by number.
     Test `test_materials_postings_resolve_job_materials_role_not_number`.
-  - STOCK-03 policy pending Mark's confirmation: when the materials account mapping changes before a return,
-    recommend that the return reverse the account used by the original issue to offset its job cost. After
-    confirmation, test `test_stock03_return_after_mapping_change_uses_original_issue_account`.
+  - STOCK-03 Decided 2026-11-22 (owner; owner_decisions_2026-11-22 item 19): a return credits job cost on the
+    account the original issue used, even if the mapping has changed since. Schema: each issue line stores the
+    account it posted to, and the return reads that stored account. Test
+    `test_stock03_return_after_mapping_change_uses_original_issue_account`.
   - Also add an item table for `reclass_line.original_item_ref` and the warehouse close checks (area 13 section 2.3).
 - **Area 11 (Fixed assets and loans; not yet drafted):** build an asset register and depreciation service that
   hold each asset, its schedule and its disposal entry; asset-disposal approval type already exists in
@@ -178,10 +292,12 @@ beside them, never deleted (area 7 fix 3).
   `test_disposal_respects_period_area_and_account_locks`.
   Use Area 14's configured asset-disposal approval dependency only when approval is enabled (controls OFF by
   default); test `test_disposal_approval_uses_area14_only_when_configured`.
-  Proceeds recommendations pending Mark's confirmation: (1) allow $0 proceeds for a scrapped asset;
-  (2) refuse negative proceeds for every disposal method; (3) for a positive lump-sum sale with zero total book
-  value across all selected assets, require per-asset proceeds allocations whose sum equals the sale proceeds (for
-  example, allocate a $500 sale across two fully depreciated assets). After confirmation, test
+  Proceeds Decided 2026-11-22 (owner; owner_decisions_2026-11-22 item 20; ASSET-02/03/04): (1) a scrap disposal
+  can have $0 proceeds; (2) negative proceeds are always refused, and removal costs are a separate expense; (3) a
+  lump-sum sale is split per asset, and when total book value is zero the split defaults by original cost, is
+  editable and must sum to the proceeds (for example, a $500 sale across two fully depreciated assets). Schema:
+  one proceeds row per disposed asset (asset ID, proceeds cents >= 0, allocation basis Book value/Original
+  cost/Edited). Test
   `test_disposal_accepts_zero_proceeds_for_scrapped_asset`, `test_disposal_rejects_negative_proceeds` and
   `test_disposal_positive_lump_sum_with_zero_total_book_value_requires_per_asset_allocation`.
   Reuse the prepaid schedule grid and design depreciation and loan lock areas.
@@ -261,7 +377,11 @@ beside them, never deleted (area 7 fix 3).
   reconnect and disconnect outcomes with the actual sending identity:
   `test_mailbox_test_reports_actual_sending_identity`, `test_mailbox_reconnect_records_connection_outcome`,
   `test_mailbox_disconnect_records_state_and_keeps_ics_fallback`. One-way invitations go only to the configured
-  company calendar address. Open decision for Mark: whether changing that address affects events already sent.
+  company calendar address. Decided 2026-11-22 (owner; owner_decisions_2026-11-22 item 24; CONN-03 and the
+  PMSCHED-04 notification branch): events already sent keep their original destination for updates and
+  cancellations; only new events use the new address. Schema: each sent event stores its destination address with
+  its UID and sequence. Test `test_calendar_address_change_keeps_sent_event_destination_for_updates_and_cancels`.
+  Area 8 handoff: PMSCHED-04 schedule notifications follow the same rule.
   Keep backend work behind Phase 2.9 approval.
 - **Area 21:** the notification feed; `last_seen_at`; the CRM alerts.
 
@@ -311,6 +431,10 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
   company backup and restore, like attachments, and recorded in `backup_run`.
 - **Build items for later phases (area 6):** `estimates.py`, `contracts.py`, `pricing.py`, `rate_cards.py`,
   `contract_templates.py`, and one PDF renderer service (the library choice is for the build step).
+
+  Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): invoicing carries the signed pre-tax price and each line's
+  taxable/exempt flag, not frozen tax-rate identity or a tax-inclusive total; tax is calculated at the job-site rate
+  in effect at invoicing.
 
 ## Handed to later areas by area 7 (open items, not decisions)
 

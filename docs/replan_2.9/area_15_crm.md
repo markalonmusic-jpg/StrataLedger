@@ -198,6 +198,10 @@ the existing sequence-table pattern. Unique, gaps allowed (Q20).
 
 Corrected 2026-11-20 (consistency scan F5): This is a per-lead counter advanced by `sequences.py` inside the lead-creation transaction; no other code updates it, `lead_number_seq_no_delete` refuses deletion, and it has no `row_version`.
 
+Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12; flagged dependency): the expected value taken from a sent
+revision is its pre-tax price (`pre_tax_cents`), not a tax-inclusive total, so `take_expected_value` receives the
+pre-tax figure. Tests that read the value use the pre-tax amount.
+
 ### 1.4 Lead stages and `lead_stage_history`
 
 **Stage roles.** Area 8's `service_stage.stage_role` CHECK gains `'Lost'` (area 8 handed this over): each service

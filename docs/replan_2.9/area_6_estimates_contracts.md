@@ -186,6 +186,17 @@ Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and i
 the sent and signed columns, CHECKs, working-revision index and lock trigger above are rewritten in place. Signing
 writes the final signed figures and group choices once on the signed revision; send history is kept as it happened.
 
+Amendment 2026-11-22 (tax on signed quotes). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+follow-ups", 12:47 PM; Area 5 Q12), replacing the 2026-11-20 2:10 PM rule that signing freezes tax details and a
+tax-included signed total: signed quotes and estimates carry a pre-tax price, and the PDF shows an "Estimated tax"
+line; each line keeps its taxable/exempt flag; actual tax is calculated on each invoice at the job-site rate in effect
+at invoicing; the item-22 tax override (Accountant+, with a reason) applies to all lines, including signed-quote
+lines; a tax-rate change needs no change order. Superseded in §1.3, not deleted: the signed `tax_cents` and
+`total_cents` and the CHECK `total_cents = pre_tax_cents + tax_cents`. Proposed: `pre_tax_cents` is the signed price;
+`tax_cents` becomes `estimated_tax_cents` (the printed estimate, informational, never billed); `total_cents` is no
+longer a signed figure (the PDF may print an estimated total). The lock trigger keeps the estimated tax as printed
+quote content.
+
 ### 1.4 Effect on existing services and tests
 
 - No service exists. `estimates.py` (new): create from a lead, revise, read (`estimate.view`), save costs, apply a
@@ -374,6 +385,17 @@ section. The invoice handoff remains under `docs/next_step.md`, "Handed to later
 Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q7 A): `estimate_cost_line.cost_code_id` must be an active leaf code
 (not a division, not a code with active sub-codes), as postings are (RP5); the service refuses any other code with one
 sentence naming it, so the budget rows from the summary land where costs post.
+
+Amendment 2026-11-22 (tax on signed quotes). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+follow-ups", 12:47 PM; Area 5 Q12), replacing the 2026-11-20 2:10 PM rule that signing freezes tax details and a
+tax-included signed total: signed quotes and estimates carry a pre-tax price, and the PDF shows an "Estimated tax"
+line; each line keeps its taxable/exempt flag; actual tax is calculated on each invoice at the job-site rate in effect
+at invoicing; the item-22 tax override (Accountant+, with a reason) applies to all lines, including signed-quote
+lines; a tax-rate change needs no change order. Supersedes the 2026-11-20 2:10 PM amendment above that each printed
+taxable line freezes its tax-rate identity, name, rate, taxable base and tax and that invoicing carries them forward.
+Each line keeps its taxable/exempt flag (`is_taxable` INTEGER 0/1, added if absent); `taxable_amount_cents` and
+`tax_cents` become the printed estimate only (`estimated_tax_cents`); no tax-rate identity is frozen; Area 5
+calculates actual tax on each invoice.
 
 ### 3.4 Boundary with area 7 and area 9
 
@@ -715,6 +737,19 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
 | One "Mark signed" action plus the uploaded signed document; no digital signature field, no per-signer record, no partial signing; the job is created at Mark signed; the 8:50 PM checks stay (warning plus reason; blocks only with the stage gate on); the summary by cost code becomes the job budget; the rep is copied to `project.sales_rep_user_id` and `contract.sales_rep_user_id` (replaces the contract editor's "1 of 2 signed") | owner 2026-11-20, Q11 |
 | Automation never posts (rule 0) | CLAUDE.md section 0 |
 
+Amendment 2026-11-22 (tax on signed quotes). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session
+follow-ups", 12:47 PM; Area 5 Q12), replacing the 2026-11-20 2:10 PM rule that signing freezes tax details and a
+tax-included signed total: signed quotes and estimates carry a pre-tax price, and the PDF shows an "Estimated tax"
+line; each line keeps its taxable/exempt flag; actual tax is calculated on each invoice at the job-site rate in effect
+at invoicing; the item-22 tax override (Accountant+, with a reason) applies to all lines, including signed-quote
+lines; a tax-rate change needs no change order. Signing records the pre-tax signed price. The 2026-11-21 Q11 rule
+"Refuse signing when the signed total differs from the required and Accepted lines plus frozen tax" now reads: refuse
+when the signed price differs from the pre-tax price of the required and Accepted lines. `mark_signed` step 1 no
+longer freezes tax detail for an unsent revision, and the 9.2 statement that the customer signs the tax-inclusive
+total is superseded. The contract original amount was already pre-tax (unchanged). Flagged: confirm whether the Hughes
+regression figures ($22,749.40 sent v1, $33,333.33 v2) are pre-tax; if they were tax-inclusive, the test values
+change.
+
 ### 9.3 Proposed rules (`contracts.py`)
 
 - `mark_signed(context, revision_id, signed_attachment_id, customer_input, job_input,`
@@ -840,6 +875,10 @@ no-deposit schedule, and self-approval with the separate-approver control OFF an
 
 ---
 
+Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): the signed-total test above compares the signed pre-tax price
+with no tax; add `test_signed_quote_pdf_shows_estimated_tax_line_not_signed` and
+`test_signed_quote_lines_keep_taxable_flag`.
+
 ## 10. The contract record and change orders
 
 ### 10.1 Current state
@@ -873,6 +912,9 @@ Amendment 2026-11-20 (service-quote decision reconciliation): the internal `cont
 created only with signed-quote upload and is derived from that signed `estimate_revision`, including its accepted
 lines and frozen billing and terms. Its original amount is the pre-tax customer price. The signed revision
 retains the frozen tax and tax-inclusive signed total separately.
+
+Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): the signed revision keeps the pre-tax signed price and an
+estimated tax for the PDF only; it no longer holds a frozen tax or a tax-inclusive signed total.
 
 Amendment 2026-11-20 (owner 2:25 AM, from area 7 Q2 A): New job (a direct job: migration, paper contract) writes its
 `contract` row through this service, called by area 7's `jobs.create_job` in its transaction, with source 'Direct', no

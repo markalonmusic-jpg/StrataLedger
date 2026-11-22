@@ -193,6 +193,12 @@ service. The `ledger_checkpoint` kind 'Report export' exists (`:535`).
   Q4 A); formats Number, Currency, Percent, Ratio; conditional summaries on Records columns (contracts Q11 A); up to 3
   group-bys with date buckets; no KPI flag on items (contracts Q5).
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 OD-13; GLDETAIL-01): in General ledger detail the opening
+balance row stays first and the closing row stays last, whatever the sort; sorting reorders only the movement rows
+between them (new build). Handoff from Area 21 (item 5): the conversion posts on the day before the first live
+date, so a GLDETAIL-01 or REPORT-03 range starting on the go-live date opens with the conversion balance in its
+opening row. No schema change. Test: `test_gl_detail_opening_first_closing_last_under_any_sort`.
+
 ### 3.3 Proposed schema
 
 **`report_layout`**

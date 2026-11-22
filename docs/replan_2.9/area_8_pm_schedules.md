@@ -603,6 +603,9 @@ Amendment 2026-11-20 (owner 11-19 10:10 PM, decision audit; answered 1:50 AM, Q2
 created with `field_event_id` NULL and enters PCO pending once its costs are entered. From there it follows the same
 statuses, forecast revision (kind 'PCO') and "Change order approval" step as the field-event path.
 
+Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): change order prices are pre-tax, and a tax-rate change needs
+no change order because tax is calculated on each invoice.
+
 ### 5.4 How it lands, effects, tests
 
 - Lands in `001_company.sql`: the new columns, `field_event`, the lock triggers, audit triggers for the three tables,
@@ -965,6 +968,23 @@ means the company rate card). The `rate_card` tables belong to area 6; until it 
 integer (section 1.3).
 
 ---
+
+Inbox inputs 2026-11-22 (v1.1 field scope; owner 12:41 PM, amended 12:45 PM; to_planning 2026-11-22 "v1.1 field
+records approved"; to_ux_research same date). Inputs for the v1.1 pass, not decided schema; wireframes first. Keep
+everything generic: crew types, weather, delay causes and punch/inspection categories are company lists. (1) Daily
+log: one per job per day with crew and sub entries and hours, weather (company list), work done, linked photos
+(attached as files on the desktop) and delays. (2) Delay log: cause (company list), days, source (weather, owner,
+vendor, other), linked to the daily log and to the change order that grants a time extension (§5). (3) Assignments:
+crew and subs on schedule phases and calendar items, with a cross-job "who's where tomorrow" board. (4) Look-ahead: a
+2–3 week view of existing phases only; baseline and slip unchanged; no new baseline. (5) Punch and inspection items:
+job, type (company list), assignee, status, pass/fail and photo; a Company control
+`block_final_billing_with_open_punch_items` (OFF by default) blocks Final billing while items are open (Area 5 and
+Area 4 handoff). (6) Field material request: Area 9 (next_step). Job page (12:45 PM): operations roles (PM, field,
+operations) open the job on the existing Schedule tab; finance roles keep the overview; default tab by role comes from
+the Area 18 access model. Nothing phone-related until the cloud version (phone capture, photo location, offline sync,
+phone app, voice-to-text). Open for the wireframe review: whether the daily log replaces or feeds the status update;
+who can create a material request; which inspections are standard; whether a delay suggests a time-extension change
+order.
 
 ## 11. Open items (not decisions)
 

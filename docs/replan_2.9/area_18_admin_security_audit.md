@@ -1198,3 +1198,82 @@ above is rewritten in place to quote Area 13 Q6 A and require the reason.
   listed by name in the same schema test.
 - B. Audit them too, except the KS9 secret tables (they would log wrapped keys).
 - **Answer: A** (owner 2026-11-19). C8 closed.
+
+## 8. Owner decisions, 2026-11-22 (dated amendments)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` items 8–11 (COA-01, COA-02, COA-04; SYSACCT-04 with the
+SYSACCT-01/03 branches), plus the permission placements that items 15, 17, 21 and 22 need. This area is approved;
+nothing above is rewritten, and conflicts are flagged here.
+
+### 8.1 Chart of accounts and system accounts (Decided 2026-11-22, owner)
+
+- **Amendment 2026-11-22: drawer Save (item 8, COA-01).** One refused field fails the whole Save and nothing
+  saves. The account service validates every field before its write transaction and raises one typed error naming
+  each refused field. The drawer stays open, names the refused field and keeps the user's other edits typed in.
+  Test: `test_account_save_one_refused_field_saves_nothing_and_names_field`.
+- **Amendment 2026-11-22: Account Type changes (item 9, COA-02).** QuickBooks-style. Type can change with a warning,
+  even after postings. The change is refused for system-role accounts; for accounts whose postings require their
+  current type (bank or cash used on checks, deposits or payments, and AR or AP); and where the new type mismatches
+  the parent's or a child's. Every change is audit-logged. Company control `lock_account_type_after_posting`
+  (`company_settings`, INTEGER 0/1, DEFAULT 0, OFF) locks Type after the first posting; it is listed on the
+  Controls page, and each change is audit-logged. Existing code `account.manage`; no new permission. Area 13
+  already expects a type change to show as a close-snapshot difference (Area 13 §6 tests). **Conflict flagged:**
+  chart-of-accounts decision C3 (docs/decisions_2026-11-11.md section C) says "Type and normal balance locked after
+  posting". Item 9 and Q25 (decided 2026-11-22) replace that lock for Type and normal balance; the decisions
+  file is not edited here. Tests: `test_account_type_change_after_posting_warns_and_logs`,
+  `test_account_type_change_refused_for_system_role_bank_ar_ap_and_parent_mismatch`,
+  `test_lock_account_type_after_posting_control_refuses_when_on`.
+- **Amendment 2026-11-22: deactivation with a balance (item 10, COA-04).** Allowed with a warning that shows the
+  balance. New postings to the inactive account are refused, and it stays on reports until its balance is zero.
+  Company control `require_zero_balance_to_deactivate` (`company_settings`, INTEGER 0/1, DEFAULT 0, OFF) requires a
+  zero balance first; it is listed on the Controls page and logged. A system-role account stays refused at any
+  balance (COA-04 retest). Schema: existing `account.is_active`; report queries include an inactive account while
+  its balance is nonzero. Tests: `test_deactivate_account_with_balance_warns_and_blocks_new_postings`,
+  `test_inactive_account_with_balance_stays_on_reports_until_zero`,
+  `test_require_zero_balance_control_refuses_deactivation_when_on`.
+- **Amendment 2026-11-22: system account role reassignment (item 11; SYSACCT-04, SYSACCT-01/03 branches).**
+  Prospective only. An Admin (`company.settings`, Admin-only) can reassign a role with a reason, and the change is
+  audit-logged through §4 settings history. New postings use the new account. Open items, payments, settlements and
+  reversals keep using the original account until settled. Schema effect: every posted document version and open
+  item stores the control account it posted to (for example the AR account on an invoice version and the AP
+  account on a bill version), and settlement and reversal read that stored account, never the current role.
+  Handoffs: Area 5 (invoice versions), Area 3 (bills, vendor credits), Area 1 (receipts and payments), Area 2 (pay
+  runs). Tests: `test_role_reassignment_requires_admin_and_reason`,
+  `test_new_postings_use_reassigned_account`, `test_open_items_settle_and_reverse_on_original_account`.
+
+### 8.2 New permission codes (amends §2.4)
+
+| Code | Owner | Placement |
+|------|-------|-----------|
+| `payapp.adjust` | Area 4 §5 (item 17) | Sensitive; Accountant cap; Admin and the Master |
+| `invoice.tax_override` | Area 5 §9 (item 22) | Sensitive; Accountant cap; Admin and the Master |
+| `je.recurring_autopost` | Area 10 §6 (item 21) | Sensitive; Accountant cap; Admin and the Master |
+| `vendor_credit.write_off` | Area 3, next_step (item 15) | Sensitive; Accountant cap; Admin and the Master |
+
+All four are sensitive, so they sit in no level default (2.4.2). Job-title templates and per-user tweaks grant them.
+The shipped Controller template adds all four in its sensitive column; no other shipped template gains them until
+the owner says so. None is in `AGENT_ALLOWED`. The seeded code count goes from 111 to 115; the scratch check in 2.4
+re-runs on the new counts when built.
+
+### 8.3 New Company controls from 2026-11-22 (all OFF by default, Controls page, every change logged)
+
+`lock_account_type_after_posting` and `require_zero_balance_to_deactivate` (§8.1); `subcontract_overlimit_block`
+and `vendor_credit_writeoff_approval_threshold_cents` (NULL = off) for Area 3 (next_step). Area 20's
+`capture_rejected_retention_days` (default 30) is a company setting, not a control.
+
+### 8.4 Owner answer
+
+**Q25. Normal balance when Type changes after posting (item 9 vs C3). Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session follow-ups", 12:47 PM):** the
+normal balance follows the new Type, with a warning and an audit-log entry. This replaces C3's lock (chart of
+accounts, docs/decisions_2026-11-11.md section C). `lock_account_type_after_posting` can still lock Type after the
+first posting. Posted lines are unchanged; reports read the account's current normal balance. Test:
+`test_type_change_after_posting_moves_normal_balance_with_warning_and_audit`.
+
+### 8.5 Inbox inputs 2026-11-22 (v1.1 field scope; owner 12:41 PM and 12:45 PM)
+
+Not decided schema. A Field role with a nav of about five items (proposal: Today, My jobs, Deliveries, Pull
+tickets, Capture), set through the 11/17 access model (roles, levels, job titles); it follows field planning in
+build order. Default job tab by role: operations roles (PM, field, operations) open the job on the Schedule
+tab, finance roles keep the overview. Area 8's proposed `block_final_billing_with_open_punch_items` control
+(OFF) joins §8.3 when that area's v1.1 pass is approved. Permission codes for daily logs, delays, punch items
+and field material requests are placed here once the wireframes are approved.

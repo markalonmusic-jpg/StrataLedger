@@ -468,6 +468,18 @@ Refused means refused, never moved (R48), except the runner's documented catch-u
 
 These are planned UI and service integration checks; keep the existing queue and phase ordering unchanged.
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 item 21; RECURJE-04 with the RECURJE-01/02 branches): Repeat
+monthly creates drafts by default. Accountant, Admin or Master, holding the new sensitive code
+`je.recurring_autopost` (Area 18 §8.2), can switch a template to auto-post with a reason, and the switch is logged.
+Auto-post still obeys period locks, approvals and required fields; a blocked run stays a draft and raises an alert
+(the Area 21 notification feed). Schema for the recurring work (§6 note above; not this pass's tables):
+`recurring_template.posting_mode` CHECK IN ('Draft', 'Auto-post') DEFAULT 'Draft', with `posting_mode_reason`,
+`posting_mode_changed_by` and `posting_mode_changed_at` set together; each run records its outcome ('Draft
+created', 'Posted', 'Blocked'), `blocked_reason` and the linked entry. No Company control. Confirmed by the owner 2026-11-22 (12:47 PM follow-ups): this extends decision C3 (docs/decisions_2026-11-11.md, "Deferrals, subscriptions, recurring") says the template
+"generates drafts"; drafts stay the default and auto-post is opt-in. Tests:
+`test_recurring_journal_defaults_to_draft`, `test_recurring_autopost_requires_permission_and_reason`,
+`test_recurring_autopost_blocked_by_lock_or_approval_stays_draft_and_alerts`.
+
 ---
 
 ## 7. Row version (rule g4) and audit

@@ -108,6 +108,10 @@ Master file: only the new permission codes (registry rows). Entities inside one 
 | Status columns: `project.status` dropped; Open, Complete and Closed derive from the stage and outcome; `on_hold` with insert-only history | area 8 Q6 C |
 | Every change is audit-logged | C62; AX4 |
 
+Amendment 2026-11-22 (owner_decisions_2026-11-22 item 25 and OD-03; R21 Jobs launcher): like Bills and Invoices,
+clicking a Jobs row opens the 480 px drawer. The row menu keeps View (full page), and the drawer has Open full page.
+Screen behaviour only: no schema or permission effect; the drawer reads the same job service as the full page.
+
 ### 1.3 Proposed schema
 
 **`project`** (the full DDL; columns from other areas marked with their area):
@@ -317,6 +321,11 @@ place as named tests for prerequisites, amount and date checks, numbering and ro
 | Budgets at any level of the cost code tree; a code with sub-codes budgets their sum | A 11-15 3:52 PM item 2; C111 |
 | The estimate's summary by cost code becomes the job budget at signing | S 11-19 9:28 PM item 1; S 11-19 11:20 PM |
 | "Budget" means only a job's cost budget (by job and cost code); the company plan is never called a budget | S 11-18 3:16 PM |
+
+Amendment 2026-11-22 (owner_decisions_2026-11-22 item 26 and OD-02; Forecast Item 7, JOB-06 and the JOB-05 budget
+transfer branch): wait for the canonical Stages 5–6 forecast and budget APIs and permissions. There is no temporary
+adapter. The `job.forecast.edit` and budget transfer codes above stay as approved; the forecast and transfer
+retests run against those canonical APIs once they exist. No schema change.
 
 ### 2.3 Proposed schema
 
@@ -727,6 +736,11 @@ or service name contains "budget" (the inbox's "Done when").
 - The WIP schedule is a Records source `src_wip` (area 17 amendment): every open job, grouped by service type, with
   the snapshot figures.
 - The WIP service itself (`wip.py`) is a build item with the v1.1 construction work (Q18 A).
+
+Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12; flagged dependency): WIP contract value, earned revenue,
+billed to date and over/under billing are pre-tax, and invoice tax is never part of billed to date. A direct job's
+contract value is pre-tax. The original budget comes from estimate cost and is unchanged by Q12. Test:
+`test_wip_over_under_billing_excludes_invoice_tax`.
 
 ### 8.4 Tests to write later
 
