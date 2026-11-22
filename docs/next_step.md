@@ -140,13 +140,70 @@ beside them, never deleted (area 7 fix 3).
 - **Areas 6, 8, 15, 16 (from area 17):** the Records source tables (`lead`, stage and status history, `activity`,
   `service_case`, the lead-to-job link, the sales rep on the contract) and `custom_field_def.record_type` 'Lead'; until
   they exist those sources are not offered (Estimates and Jobs can ship first).
-- **Area 9:** an item table for `reclass_line.original_item_ref`; the warehouse close checks (area 13 section 2.3).
-- **Area 11:** reuses the prepaid schedule grid; depreciation and loan lock areas.
+- **Area 9 (Materials, POs, inventory, warehouse; not yet drafted; must-fix inputs):** keep warehouse and
+  direct-to-site receipt flows distinct. Receipt detail reads the saved receipt and its original posting; preview
+  stays read-only and never marks a receipt or posting posted. Test
+  `test_receipt_detail_reads_saved_receipt_and_original_posting`.
+  - Warehouse: a pull-ticket issue reduces on-hand stock, releases the reservation and posts its own linked job-cost
+    entry exactly once; a retry with the same operation ID returns the first result. Test
+    `test_pull_ticket_issue_posts_stock_reservation_and_cost_once` and
+    `test_pull_ticket_issue_retry_same_operation_id_no_double_post`. A matched bill posts its own ledger entry to
+    clear the original receipt accrual. Test
+    `test_matched_bill_posts_own_entry_clearing_original_receipt_accrual`.
+  - Direct to site: a receipt posts job cost directly and links that posting to the saved receipt, without a
+    warehouse pull. Test `test_direct_to_site_receipt_posts_linked_job_cost_without_warehouse_pull`.
+  - Direct job receipts and pull-ticket issues/returns resolve the job-materials account by role, never by number.
+    Test `test_materials_postings_resolve_job_materials_role_not_number`.
+  - STOCK-03 policy pending Mark's confirmation: when the materials account mapping changes before a return,
+    recommend that the return reverse the account used by the original issue to offset its job cost. After
+    confirmation, test `test_stock03_return_after_mapping_change_uses_original_issue_account`.
+  - Also add an item table for `reclass_line.original_item_ref` and the warehouse close checks (area 13 section 2.3).
+- **Area 11 (Fixed assets and loans; not yet drafted):** build an asset register and depreciation service that
+  hold each asset, its schedule and its disposal entry; asset-disposal approval type already exists in
+  `migrations/001_company.sql` near line 1126 but has no service workflow. Test
+  `test_asset_disposal_reads_saved_asset_schedule_and_entry`. Refuse unknown asset IDs without fallback and test a
+  mixed valid/unknown selection: show the exact missing ID and block the whole disposal, leaving every selected
+  asset undisposed (`test_asset_disposal_unknown_id_refused`,
+  `test_asset_disposal_mixed_valid_unknown_ids_refuses_without_substitution`). Run catch-up depreciation through
+  the chosen disposal date before calculating book value and gain or loss:
+  `test_disposal_catch_up_depreciation_through_disposal_date`.
+  Persist one durable disposal result linked to its exact disposal posting and any separate catch-up entry. Register,
+  asset detail, schedule and GL use those same saved IDs; exact retry creates no duplicate disposal or posting:
+  `test_disposal_exact_retry_adds_no_duplicate_posting`.
+  Carry ASSET-04 into the regression queue: List and Schedule share filters and selected dates; monthly totals tie to
+  posted depreciation; every posted cell opens its exact entry; include a disposal during the range and verify any
+  separate catch-up entry link. Test `test_asset_schedule_monthly_totals_tie_to_gl_with_exact_entry_links_and_disposal`.
+  Refuse impossible dates before posting as always-on integrity. Use Area 13's period close, the `Fixed assets and
+  depreciation` posting area, and account locks for the affected entry accounts. Test
+  `test_disposal_respects_period_area_and_account_locks`.
+  Use Area 14's configured asset-disposal approval dependency only when approval is enabled (controls OFF by
+  default); test `test_disposal_approval_uses_area14_only_when_configured`.
+  Proceeds recommendations pending Mark's confirmation: (1) allow $0 proceeds for a scrapped asset;
+  (2) refuse negative proceeds for every disposal method; (3) for a positive lump-sum sale with zero total book
+  value across all selected assets, require per-asset proceeds allocations whose sum equals the sale proceeds (for
+  example, allocate a $500 sale across two fully depreciated assets). After confirmation, test
+  `test_disposal_accepts_zero_proceeds_for_scrapped_asset`, `test_disposal_rejects_negative_proceeds` and
+  `test_disposal_positive_lump_sum_with_zero_total_book_value_requires_per_asset_allocation`.
+  Reuse the prepaid schedule grid and design depreciation and loan lock areas.
 - **Area 14:** `pending_approvals` beyond journal entries; the approvals the new codes need.
-- **Area 21:** `row_version` on `company_settings` and the stale-save refusal; the open payments limits (30 and 180
-  days) as policy records (area 12 Q16 A).
-  Also from area 17: a general notification feed (a delivered report is unread while `report_delivery.read_at` is
-  empty) and whether saved views can be shared.
+- **Area 21 (COMPANY-01 through COMPANY-03; planning-only):** test the round trip Westline Solar & Build →
+  Westline Arizona LLC → Westline Solar & Build, including reload. Use distinct settings and report data in both
+  companies; verify selected company, dashboard, Area 20 calendar settings, Area 17 report data and export header
+  all follow the active `company_id`. Test `test_company_switch_roundtrip_uses_active_company_id_after_reload`.
+  Failed access denial and destination preparation each leave the current company usable and write no successful-open
+  event for the target: `test_company_switch_access_denial_keeps_current_company_and_logs_no_target_open`,
+  `test_company_switch_destination_prepare_failure_keeps_current_company_and_logs_no_target_open`. Carry Area 18's
+  rule that every user's successful open writes master `auth_event` type `Company opened` with the actual company ID:
+  `test_successful_company_open_logs_actual_company_id_for_every_user`.
+  When a successful switch actually closes the outgoing company, run its existing
+  `ledger_verify.checkpoint_on_close` behavior; failed opens leave that company open. Test
+  `test_company_switch_checkpoints_outgoing_company_only_on_actual_close`.
+  Decided (owner, shared_decisions 2026-11-21 10:20 AM): when the destination company is ready, the switch continues
+  if the outgoing company's checkpoint fails or is skipped; that outcome is recorded and reported separately against
+  the outgoing company, and Signed is shown only when the service confirms it was saved. A failed destination open
+  keeps the original company selected and usable. Also retain the open payments limits (30 and 180 days) as policy records (area 12 Q16 A),
+  `row_version` and stale-save refusal on `company_settings`, area 17's general notification feed and whether saved
+  views can be shared.
 - **Areas 12, 13 and 10 and 17 build items for later phases:** (area 17: `field_registry`, `list_prefs`,
   `report_layouts`, `report_formulas`, `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`,
   `report_combined`, `kpis`, `measures`, `report_schedules`, `report_output`, and the `perf` test.)
@@ -187,7 +244,25 @@ beside them, never deleted (area 7 fix 3).
 - **Area 5:** the `lead_contact` hand-off at signing; the contact-person table.
 - **Area 14:** approvals on sales stage moves (default OFF).
 - **Area 16:** Lead and Case custom fields; per-service-type fields.
-- **Area 20:** the `.ics` invite details; the company calendar address.
+- **Area 20 (Connections; planning-only CONN-01 through CONN-03):** verify an address-only calendar setting edit
+  reaches Review changes, requires a reason, Cancel discards it, Apply saves it, reload retains it and the next
+  event uses that destination; validate it differs from the company's actual sending mailbox. Test
+  `test_calendar_address_only_review_reason_cancel_apply_reload_and_next_event_destination` and
+  `test_calendar_address_must_differ_from_actual_sending_mailbox`.
+  Create, update, cancel and retry invitations with one stable event UID and the correct iCalendar sequence: create
+  starts at SEQUENCE 0; each successful update or cancellation increments once; a retry does not duplicate or
+  increment twice. Tests: `test_calendar_invite_create_uses_stable_uid_sequence_zero`,
+  `test_calendar_invite_update_keeps_uid_and_increments_sequence`,
+  `test_calendar_invite_cancel_keeps_uid_and_increments_sequence`,
+  `test_calendar_invite_retry_does_not_duplicate_or_increment_sequence_twice`.
+  Delivery status comes from the recorded send result, never from a saved setting alone:
+  `test_calendar_delivery_status_comes_from_recorded_send_result`. Keep Download .ics available without a
+  connected mailbox: `test_ics_download_fallback_available_without_connected_mailbox`. Test real mailbox test,
+  reconnect and disconnect outcomes with the actual sending identity:
+  `test_mailbox_test_reports_actual_sending_identity`, `test_mailbox_reconnect_records_connection_outcome`,
+  `test_mailbox_disconnect_records_state_and_keeps_ics_fallback`. One-way invitations go only to the configured
+  company calendar address. Open decision for Mark: whether changing that address affects events already sent.
+  Keep backend work behind Phase 2.9 approval.
 - **Area 21:** the notification feed; `last_seen_at`; the CRM alerts.
 
 ## Handed to later areas by area 6 (open items, not decisions)
@@ -206,7 +281,27 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
 - **Area 14:** the Estimate policy, `sales_authority_limit` routing, the Contract policies (wording changes and contract
   cancellation approval), all OFF by default. Define service-quote send-back routing to `approval_request`'s submitter
   (PM or rep); pass that target to area 6 and retain append-only from/to status, from/to holder and reason history.
-- **Area 19:** payroll import hours (employee, job, cost code) as the T&M time source, billed at the frozen rates.
+- **Area 19 (Payroll import; not yet drafted, planning only):** Payroll and Approvals open the exact same saved
+  batch ID, and required human review covers the exact mapped rows and source-row links that posting will consume.
+  Mandatory human review stays in force whether Area 14's configured payroll approval is OFF or ON; when ON, that
+  approval is an additional gate. Tests: `test_payroll_and_approvals_open_exact_saved_batch`,
+  `test_human_review_covers_exact_mapped_rows_that_post`, `test_payroll_post_requires_review_with_area14_approval_off`,
+  `test_payroll_post_requires_review_and_area14_approval_when_configured`.
+  Any row, mapping or batch change after review invalidates that review (and any approval) and blocks posting until
+  the current rows are reviewed again: `test_changed_payroll_batch_after_review_requires_new_review`.
+  A retry after lost confirmation with the same operation ID returns the original result and creates no duplicate
+  labor rows or ledger effects, including any applicable accrual and reversal:
+  `test_payroll_retry_after_lost_confirmation_no_duplicate_rows_or_entries`.
+  Use a synthetic provider file to reject invalid dates, hours, amounts and unresolved employee, job or cost-code
+  references; reconcile provider control totals; preserve original source-row links; and verify job cost lands on
+  the mapped job and cost code. Tests: `test_payroll_import_rejects_invalid_dates_hours_amounts_and_unresolved_references`,
+  `test_payroll_provider_control_totals_reconcile_to_mapped_rows`,
+  `test_payroll_labor_rows_link_original_source_rows`, `test_payroll_job_cost_uses_mapped_job_and_cost_code`.
+  Only posted import hours reach v1 T&M billing at the frozen rates:
+  `test_tm_billing_uses_only_posted_payroll_import_hours`.
+  Download source returns the actual file for the selected batch and writes the authorized audit event:
+  `test_payroll_download_returns_selected_batch_source_and_audits`. Source-file access and retention policy remain
+  unresolved for Mark. Keep backend work behind Phase 2.9 approval.
 - **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
 - **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with
   `estimates.py`. **Area 17:** `src_leads_estimates` field ids and the rep on the contract. **Area 20:** the proposal
@@ -289,6 +384,18 @@ Area 7's amendment lines are already in areas 6, 8, 10, 13, 15, 17 and 18; these
   is not complete; only the database-only safety copies (`pre-upgrade`, `addon-<key>`, `pre-restore`, AX2) are
   exempt. Each run is recorded in the master `backup_run` (docs/replan_2.9/area_18_admin_security_audit.md
   section 4).
+  Backup retest inputs (mockup audit tracker rows BACKUP-01 to BACKUP-04):
+  - **BACKUP-01:** Run a manual backup and verify the activity row and attachment coverage reflect the completed run
+    after reload. Change the schedule and backup folder, then verify the saved settings after reload.
+  - **BACKUP-02:** Select two backup dates and verify the source and proposed copy name follow the selected backup.
+    Verify the replace confirmation identifies the real destination company.
+  - **BACKUP-03:** Require a restore reason. Verify copy and replace results use the actual operation outcome, record
+    the exact source backup and safety backup where applicable, and retain history after reload. Exercise a failed
+    verification without modifying the target. Test restore itself remains tracked under ADMIN-11.
+    Proposed, pending owner: keep the Audit-ready flag set until the replacement's sensitive audit event is reviewed,
+    and a durable link from the destination operation to its safety-copy run.
+  - **BACKUP-04:** Export two different sets of data groups and verify each ZIP, filename and reported count reflect
+    the chosen groups.
 - Undeposited funds vs matching (Phase 4): area 12 Q11 A decides it for deposits (clearing groups on the undeposited
   funds account).
 
