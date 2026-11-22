@@ -153,8 +153,8 @@ enterer.
 | `contract_template_version_id` | INTEGER NULL REFERENCES contract_template_version (section 7) |
 | `show_line_detail` | INTEGER NOT NULL DEFAULT 0 CHECK IN (0, 1) (C76: totals only by default) |
 | Customer block | `customer_legal_name`, `billing_line1`, `billing_line2`, `billing_city`, `billing_region`, `billing_postal`, `billing_country`, and the same seven for `site_`; TEXT NULL; filled from the lead or linked customer at creation, editable until sent (Q8 below covers wording, not these) |
-| `cost_total_cents`, `contract_total_cents` | INTEGER NULL; written by the service only at send (frozen figures the lead, reports and signing read); NULL while working (the page shows computed figures) |
-| `pre_tax_cents`, `tax_cents`, `total_cents` | INTEGER NULL; final accepted-line amounts recorded at signed-quote upload; `total_cents = pre_tax_cents + tax_cents` |
+| `cost_total_cents`, `contract_total_cents` | INTEGER NULL. Send records the frozen quoted figures for this revision. They remain NULL if the revision was never sent. |
+| `pre_tax_cents`, `tax_cents`, `total_cents` | INTEGER NULL. Record the final signed figures for required and Accepted lines once on this revision at Mark signed. All three are NULL until signing and stay set after any later cancellation. `total_cents = pre_tax_cents + tax_cents`. |
 | `sent_at`, `sent_by`, `sent_method`, `sent_to` | NULL until sent; `sent_method` CHECK IN ('Email', 'Download', 'Print', 'Marked sent'); `sent_to` TEXT (addresses) |
 | `sent_attachment_id` | INTEGER NULL REFERENCES attachment (the rendered PDF kept unchanged, contract editor item 3) |
 | `decided_at`, `decided_by`, `decision_reason_id`, `decision_reason_label` | Declined, Expired or Cancelled facts; `decision_reason_id` FK reason_option ON DELETE RESTRICT |
@@ -165,16 +165,26 @@ Withdrawn 2026-11-20 (owner 2:10 PM): the `costs_by_user_id` default of job PM a
 independent service-type defaults for cost enterer and PM in the amendment above.
 
 CHECKs: the six working states ('With rep', 'With PM', 'In approval', 'Sent back', 'Approved', 'Ready to send')
-need `sent_at` NULL; 'Sent', 'Declined', 'Expired', 'Signed' and 'Superseded' need it set; 'Cancelled' allows either
-(an abandoned draft or a cancelled signed contract); the sent columns all set or all NULL; `contract_total_cents` and `cost_total_cents` set exactly when sent.
+require `sent_at` NULL. Sent, Declined and Expired require `sent_at` to be set. Signed, Superseded and Cancelled
+retain the revision's actual send history, if any. The sent columns are set together or all NULL, and
+`contract_total_cents` and `cost_total_cents` are set exactly when sent. Only the send flow creates those facts.
 
-Partial unique index: one open (unsent) revision per estimate, UNIQUE (`estimate_id`) WHERE `sent_at` IS NULL AND
-`status` NOT IN ('Superseded', 'Cancelled').
+Partial unique index: one working revision per estimate, UNIQUE (`estimate_id`) WHERE `status` is one of the six
+working states above.
 
-**Integrity trigger (H4, rule "sent revisions are immutable", A 11-14):** once `sent_at` is set, an UPDATE may change
-only `status`, `holder_user_id` (to NULL), the decision columns, `memo` and `row_version`; the child rows of a sent
-revision (cost lines, milestones, SOV lines, rate lines, section choices) refuse INSERT, UPDATE and DELETE. This is
-the same kind of lock as area 8's approved change order lines; workflow (who may send, when) stays in the service.
+**Integrity trigger (H4, rule "sent revisions are immutable", A 11-14):** once `sent_at` is set, keep the sent
+PDF link, send metadata, quoted figures and quote content immutable. The child rows that make up the quote
+(cost lines, milestones, SOV lines, rate lines, section choices) refuse INSERT, UPDATE and DELETE. Allow only
+`status`, `holder_user_id` (to NULL), the decision columns, `memo` and `row_version` to change, plus a one-time
+write of all three final signed figures when the revision becomes Signed. Store optional group decisions once in
+`estimate_line_group_choice` in that signing transaction (§3.3). The final figures and choices stay immutable if
+the contract is later cancelled. For an authorized unsent signing, finalization also freezes that revision's
+quote facts and child rows even though `sent_at` stays NULL. Keep the original PDF bytes under §8.1. Workflow
+checks stay in the service.
+
+Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and immutable revision", owner confirmed):
+the sent and signed columns, CHECKs, working-revision index and lock trigger above are rewritten in place. Signing
+writes the final signed figures and group choices once on the signed revision; send history is kept as it happened.
 
 ### 1.4 Effect on existing services and tests
 
@@ -191,10 +201,15 @@ the same kind of lock as area 8's approved change order lines; workflow (who may
   failure in either leaves neither.
 - Two open revisions on one estimate are refused (partial unique index).
 - After send, an UPDATE of a sent revision's price columns and any change to its child rows is refused by the
-  trigger; status, decision columns and memo still change.
-- Revise copies every child row to Rev n+1 and marks Rev n Superseded only when Rev n+1 is sent (Rev n stays the
-  signable sent copy until then; section 8).
+  trigger. Signing records the final accepted figures and choices once without changing the sent price or PDF.
+- Revise copies every child row to Rev n+1. While Rev n+1 is an unsent draft, Rev n remains the signable sent copy.
+  Sending Rev n+1 supersedes Rev n. Signing Rev n supersedes the open draft under Q18 A without a send record for
+  that draft.
 - `estimate_number` comes from the series; two estimates in two transactions never share a number.
+
+Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and immutable revision", owner confirmed):
+the send, revise and supersede tests above are rewritten in place; signing records final figures once without changing
+the sent price or PDF, and a superseded unsent draft has no send record.
 
 ---
 
@@ -702,11 +717,22 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
 
 ### 9.3 Proposed rules (`contracts.py`)
 
-- `mark_signed(context, revision_id, signed_attachment_id, customer_input, job_input, continue_reason, row_version)`
-  (Q11): `authorize(context, 'contract.sign', ...)` first. Allowed on a Sent revision; an Expired, unsent or
-  unapproved one returns the S 11-19 8:50 PM warning and needs a "Continue anyway" reason (`reason_option`), and is
-  refused only when `stage_requirements_block` is on (area 8). Then, in one write transaction:
-  1. The signed document attachment exists on this estimate (required, Q10 A).
+- `mark_signed(context, revision_id, signed_attachment_id, customer_input, job_input,`
+  `continue_reason, row_version, signer_name, signed_on, accepted_group_choices, signed_total_cents)`
+  (Q11): `authorize(context, 'contract.sign', ...)` first. Use the exact requested revision for preview and signing.
+  Inside the write transaction, check whether this revision already has a recorded signing result before
+  applying the stage-gate and row-version checks for a first signing. Compare the request with the inputs
+  recorded at signing: signed file, signer and date, customer and job inputs, any Continue anyway reason,
+  accepted group choices, and signed total. An exact retry returns the original job and contract IDs and the
+  original linked deposit draft ID if one was created, including when the first response was lost and the
+  retry carries the original row version. Refuse a repeat with conflicting signed inputs before making any
+  further writes. For a first signing, apply the row-version check and refuse an Expired, unsent or unapproved
+  revision when the Company stage gate (`stage_requirements_block`, area 8) is on. When it is off, warn and
+  require a "Continue anyway" reason (`reason_option`) before signing. Then, in the same transaction:
+  1. Require the uploaded signed document (Q10 A) and bind it to the revision being signed. Use that revision's
+     own quote facts and frozen tax. For an authorized unsent revision, freeze its quote and tax detail in this
+     transaction. Refuse a recorded signed total that differs from the required and Accepted lines plus frozen
+     tax. The send record and retained sent PDF, where present, stay immutable.
   2. Customer: `estimate.customer_contact_id` set → that customer; NULL → area 5's create-customer service with the
      revision's customer block and the lead's contacts (code assigned there).
   3. Job: area 7's job service (number, service type, cost enterer from `costs_by_user_id`, PM from `assigned_pm_id`,
@@ -718,10 +744,15 @@ original budget. D9: `sign_contract()` locks the revision and creates budget and
   5. `contract` row (section 10) with `contract_number` from the CT- series (Q21 B), `sales_rep_user_id` (the same
      rep, kept as the rep at signing), copies of the schedule, `contract_line` + cost codes, `contract_milestone`,
      `contract_rate_line`.
-  6. Draft deposit invoice through area 5's invoice service (not posted; credit side by role `customer_deposits`,
-     never by account number).
-  7. Revision status Signed (one history row); other open or sent revisions and the lead's other options become
-     Superseded (Q18 A); `estimate.customer_contact_id` set.
+  6. Only when the signed billable payment schedule calls for a deposit, have Area 5's invoice service create one
+     linked, unposted deposit invoice draft (credit side by role `customer_deposits`, never by account number). If
+     there is no deposit in the signed schedule, create no deposit draft. Area 6 does not post invoices; Area 5 owns
+     invoice posting.
+  7. Set the selected revision to Signed and record its accepted scope and final signed figures once. Record
+     the signing inputs and result with the signing history in the same transaction, including any Continue
+     anyway reason. Supersede other open or sent revisions and the lead's other options (Q18 A), and set
+     `estimate.customer_contact_id`. Signing and superseding leave any
+     previously unsent revision without a send record or retained sent PDF.
   8. `leads.mark_signed(context, lead_id, project_id)` (area 15: stage Contract signed, Won, `project_id`).
   Any refusal rolls everything back. Nothing posts. Signer names print on the contract only; nothing is recorded per
   signer.
@@ -750,18 +781,62 @@ Amendment 2026-11-20 (owner 2:30 PM, service quote rules): Mark signed is refuse
 equal the accepted line groups plus tax; it shows the difference so the rep can correct the accepted groups or print
 a new revision for signing. The contract original amount is the pre-tax customer price (`pre_tax_cents`). The frozen `tax_cents` is separate. The customer signs `total_cents`, their sum. Price and tax use required lines plus Accepted optional groups. Undecided groups block signing.
 
+Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and immutable revision", owner confirmed;
+to_planning 2026-11-21 "Area 6 exact quote and contract revision handoff"): `mark_signed` above is rewritten in place:
+exact-revision signing, exact retry returns the original IDs and a conflicting retry is refused, the stage gate
+refuses when ON and needs a Continue anyway reason when OFF, the signed total must match, and a deposit draft is
+created only when the signed schedule has a deposit.
+
 ### 9.4 Tests to write later
 
 - Mark signed without the signed document is refused.
-- Mark signed on an Expired, unsent or unapproved revision without a Continue anyway reason is refused; with the
-  reason it succeeds when the stage gate is off and is refused when it is on.
+- `test_sign_unsent_estimate_stage_gate_on_refuses`: with Company blocking on, refuse a valid unsent revision
+  even if a Continue anyway reason is supplied. Verify no contract, job, accepted scope, final figures or send
+  record is written.
+- `test_sign_unsent_estimate_stage_gate_off_requires_reason_without_send`: with blocking off, show the warning
+  and refuse to proceed without a reason. After a valid Continue anyway reason, sign the selected revision and
+  retain the reason in signing history. Verify send metadata and the sent PDF link stay NULL and no send event is
+  written.
+- Expired and unapproved revisions follow the same stage-gate and reason rule.
+- `test_hughes_signing_uses_sent_v1_with_unsent_v2_draft`: start with Hughes v1 sent at **$22,749.40** and v2
+  still an unsent **$33,333.33** draft. With the full v1 scope accepted, verify that preview and signing use
+  **$22,749.40** from v1 and its own tax, schedule and cost-code inputs. The contract and job link to v1. Preserve
+  v1's sent price and PDF. On success v2 is Superseded under Q18 A, retains its $33,333.33 draft figures and has
+  no send event, send metadata or retained sent PDF link.
+- `test_signing_rejects_signed_total_mismatch_and_freezes_accepted_figures`: submit a signed total one cent away
+  from required and Accepted lines plus frozen tax. Refuse signing even with the stage gate off. Leave the
+  revision, sent PDF, accepted scope, final figures and downstream records unchanged. With the correct total,
+  save the accepted scope and final figures on that revision once. Later attempts to change either are refused
+  and the sent quote stays intact.
+- `test_mark_signed_exact_retry_returns_original_result_without_duplicates`: sign a billable schedule that calls
+  for a deposit. Repeat with the same inputs and verify the same job, contract and unposted deposit draft IDs.
+  Assert one of each record, one signing history entry and zero journal entries.
+- `test_mark_signed_retry_after_lost_response_returns_original_result`: let the first signing commit, discard
+  its response, and replay the same request with its original row version. Verify the returned IDs match the
+  committed job, contract and deposit draft. Verify record counts and history stay the same.
+- `test_mark_signed_conflicting_retry_is_refused`: after a successful signing, repeat for the same revision with
+  a changed signed file, signer, date, accepted group choice or signed total, one input at a time. Verify refusal,
+  unchanged original records and history, and no additional job, contract, deposit draft or journal entry.
+- `test_mark_signed_without_deposit_schedule_creates_no_invoice`: sign a billable due-on-completion schedule
+  with no deposit. Verify the job and contract are created, the result has no deposit draft ID, and no invoice
+  or journal entry is created. An exact retry returns the same job and contract IDs and still creates no invoice.
+- `test_estimate_self_approval_allowed_when_separate_approver_control_off`: the estimator may approve their own
+  estimate when the control is OFF, and the result is marked Self-approved.
+- `test_estimate_self_approval_refused_when_separate_approver_control_on`: refuse the estimator's own approval
+  when the control is ON; the estimate remains unapproved.
 - The job's and the contract's `sales_rep_user_id` both equal the estimate's rep after Mark signed.
 - Signing a prospect creates exactly one customer with a code and one job; a linked customer gets no new contact.
 - The original budget sums required and Accepted lines by cost code. Declined groups affect neither budget nor
   contract value or tax. An undecided group blocks signing and leaves all three unwritten.
-- The deposit invoice is a draft with no `journal_entry`; its amount follows the schedule (NTE base for T&M).
+- When the signed billable schedule calls for a deposit, the draft amount follows that schedule (NTE base for
+  T&M when present). The draft has no `journal_entry`. Area 5 owns invoice posting.
 - A failure in any step (for example the customer validation) leaves no job, contract, budget or lead change.
 - Signing one option marks the lead's other options Superseded.
+
+Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and immutable revision", owner confirmed;
+to_planning 2026-11-21 "Area 6 exact quote and contract revision handoff"): the signing tests above are rewritten in
+place: stage gate on and off, the Hughes v1/v2 regression, signed-total mismatch, exact and conflicting retries,
+no-deposit schedule, and self-approval with the separate-approver control OFF and ON (Q3 A).
 
 ---
 
@@ -896,7 +971,7 @@ the approval request and stops; otherwise in one transaction: contract Cancelled
 
 | Table | Editable? | `row_version` |
 |-------|-----------|---------------|
-| `estimate`, `estimate_revision` (working), `estimate_cost_line`, `estimate_milestone`, `estimate_sov_line`, `estimate_rate_line`, `estimate_section_choice`, `estimate_signer` | yes (until sent) | yes |
+| `estimate`, `estimate_revision` (working), `estimate_cost_line`, `estimate_milestone`, `estimate_sov_line`, `estimate_rate_line`, `estimate_section_choice`, `estimate_signer` | yes (quote content until sent or signed) | yes |
 | `pricing_template`, `pricing_template_line`, `cost_template`, `cost_template_line`, `rate_card`, `rate_card_line`, `contract_template`, `contract_template_version` (Draft), `contract_clause`, `company_branding`, `sales_authority_limit` | yes | yes |
 | `contract`, `contract_milestone` | a few columns (cancellation, completion, invoice link, memo) | yes |
 | `estimate_line_group` | saved with its revision; locked when the quote is printed | no (revision row version; history protects accepted choice separately) |
@@ -907,12 +982,15 @@ the approval request and stops; otherwise in one transaction: contract Cancelled
 | `company_settings` (new columns) | yes | area 21 adds it to the row |
 
 Every new table gets audit triggers (area 18). Integrity triggers in this area guard only what must never change:
-sent revisions and their children (section 1.3), published template versions (section 7.3), the history and the
-frozen contract rates (insert-only). No trigger enforces a workflow rule (H4). Reasons required (area 18's table,
+sent or signed quote content and final signed figures (section 1.3), published template versions (section 7.3),
+the history and the frozen contract rates (insert-only). No trigger enforces a workflow rule (H4). Reasons required (area 18's table,
 amendment in its section 1.2): send back (kind Send back), decline (Lost lead), cancel a contract (Job cancel), a
 T&M rate change (Rate change, Q13 B), a wording change (Contract wording, Q13 B), Mark signed on an expired, unsent or
 unapproved revision (Continue anyway), abandoning an unsent estimate (a note of at least 10 characters in the history
 row), and changing an area 6 control or setting.
+
+Amendment 2026-11-21 (shared_decisions 2026-11-21 "Area 6 Q11 signing gate and immutable revision", owner confirmed):
+the integrity lock covers sent or signed quote content and the final signed figures, as rewritten in place above.
 
 ---
 
