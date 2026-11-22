@@ -131,8 +131,8 @@ Master file: no change.
 | `period_id` | the period it posted in (NULL until posted); UNIQUE (`deferral_id`, `period_id`) is dropped, because a catch-up puts several planned months in one period |
 | `amount_cents` | CHECK > 0 and integer |
 | `status` | CHECK IN ('Scheduled', 'Posted', 'Caught up', 'Blocked', 'Replaced', 'Reversed') |
-| `entry_id` | kept UNIQUE; set for Posted and Caught up |
-| `reversal_entry_id` | INTEGER UNIQUE REFERENCES journal_entry (set when a void reverses it) |
+| `entry_id` | FK to journal_entry, set on posting and retained on reversal. Recognize the rest may share one entry across lines of the same schedule. |
+| `reversal_entry_id` | FK to journal_entry, set on void. Lines sharing a recognition entry share its reversal. |
 | `blocked_reason` | TEXT (the lock sentence, while Blocked) |
 | `sequence` | INTEGER NOT NULL (1..N); UNIQUE (`deferral_id`, `sequence`) WHERE `status` <> 'Replaced' |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 |
@@ -143,6 +143,10 @@ Master file: no change.
   (integrity: a posted schedule line is part of the ledger trail; H4 allows integrity backstops).
 - The one-document-per-entry triggers stay; the prepaid entry is the schedule's own document (a deferral row), so
   `deferral.prepaid_entry_id` joins that trigger set.
+
+Amendment 2026-11-21 (Area 10 audit, DEF-01): remove per-line uniqueness on both entry links. Enforce one owning
+schedule per recognition entry and one reversal per original recognition entry. The one-document-per-entry
+checks treat linked schedule lines as one document and still refuse reuse by another schedule or document.
 
 **`journal_entry.source`**: 'Deferral' (kept) for recognition and catch-up; 'Deferral' also for the prepaid entry,
 told apart by `deferral.prepaid_entry_id`.
@@ -168,16 +172,22 @@ told apart by `deferral.prepaid_entry_id`.
     sentence, retried on the next run; once that period closes it is caught up like any closed one (Q6 A).
   Origin System, posted through `ledger.py` with no approval (Q7 A; open question 7 in next_step.md).
 - **Recognize the rest now:** posts the remaining Scheduled lines as one entry dated `context.today` (lines become
-  Posted with that date; the schedule Finished).
+  Posted with that date and share its entry ID; the schedule becomes Finished). The entry amount is the sum
+  of the linked lines. Save the entry and the line updates in one transaction.
 - **Stop:** no entry; Scheduled lines become Replaced; the remainder stays in prepaid; reason required (Q19 A: a
   refund is a vendor credit through its own service).
 - **Void the bill (1:21 AM):** one transaction: void the bill's entry (void rules), void every Posted or Caught up
-  recognition entry and the prepaid entry (`ledger.void_document_entry`, R41: never before the original; an open
-  period; R48: refused, never moved), mark those lines Reversed, the Scheduled ones Replaced, the schedule Stopped
+  recognition entry once by distinct entry ID, and void the prepaid entry (`ledger.void_document_entry`, R41:
+  never before the original; an open period; R48: refused, never moved). Mark all lines linked to each reversed
+  recognition entry Reversed together with the same reversal ID, the Scheduled ones Replaced, and the schedule Stopped
   with the void's reason. Any refusal refuses the whole void.
 - **Rule 8 edit of a posted bill** with an Active schedule: refused with one sentence until the schedule is Stopped
   or Finished (Q9 A).
 - **Job cost** reads GL lines carrying a job, so a deferred line counts only as recognized (1:21 AM).
+
+Planned DEF-01 test: Recognize the rest for several remaining lines and verify their shared posting carries
+the sum of their amounts. Void the bill and verify one reversal for that shared posting, all linked lines
+Reversed with the same reversal ID, and all changes rolled back if any required reversal is refused.
 
 ### 1.5 Change schedule
 
@@ -301,6 +311,13 @@ the Controls page, audited with a reason (Q15 A).
 
 ---
 
+QA handoff, DEF-03 (2026-11-21): use the source-linked reclass flow. Verify one exact Out/In pair per posted
+source line, with the amount unchanged, the Out line mirroring the source and the In line changing only
+the selected coding. Exercise account eligibility on both sides. Under Q16, verify the manual-entry approval
+rules hold posting until required approval is satisfied. Under Q13–Q14, verify an open but locked source
+period refuses the reclass and a closed source period uses the first day of the approved open period in §2.4.
+These checks are planned for implementation after the Phase 2.9 gate.
+
 ## 3. Deferral close checks (area 13 section 2.3)
 
 Both ship with `deferrals.py` (C4 as amended by L2 and S 12:45 AM); warn by default; can block (L2).
@@ -311,13 +328,20 @@ Both ship with `deferrals.py` (C4 as amended by L2 and S 12:45 AM); warn by defa
   information, lines Caught up into this period from earlier months (S 11-18 11:55 PM: caught-up entries show).
 - **`deferral_tie_out`** (step Reconciliations): at the period end, for each deferral account (`is_deferral_account
   = 1`; the prepaid and unearned revenue roles in the construction chart), the GL balance equals the subledger's
-  open balance: the sum over its Active and Stopped schedules of the deferred amount less the Posted and Caught up
-  lines dated on or before the period end, with Reversed lines and voided schedules netted out. A difference names
-  the account and the amount. Accounts are found by `is_deferral_account` and roles, never by number (area 13 F11).
+  open balance. Include deferred additions, recognition and reversals only when their effective posting dates
+  are on or before that period end, regardless of the schedule's current status. Use the bill's prepaid posting
+  for a deferral set up before bill posting, or the separate prepaid entry for a posted bill. Count a shared
+  recognition or reversal once at its full posted amount. A difference names the account and the amount.
+  Accounts are found by `is_deferral_account` and roles, never by number (area 13 F11).
 - Both read only; neither posts. "Run due entries now" on the checklist calls `deferrals.post_due`.
 
 Tests to write later: each check passes, fails and warns vs blocks; a manual JE to the prepaid account (allowed by
 `allow_manual_control_je`) makes the tie-out fail; a caught-up line is listed as information only.
+
+Amendment 2026-11-21 (Area 10 audit, DEF-02): start with $1,000 prepaid at January 31. In separate cases,
+finish the schedule by recognizing the remainder in February or void the bill with February-effective
+reversals. Rerun January and verify the subledger and GL still show $1,000. Verify February reflects its
+own recognition or reversal events.
 
 ---
 
@@ -401,6 +425,48 @@ Refused means refused, never moved (R48), except the runner's documented catch-u
   changes no balance, audited, removable with a reason (Q18 A).
 - **Not decided, not built:** C8's recurring templates, renamed pages and exports are PROPOSED in the mockup notes;
   C3 decides one `recurring_template`; that belongs to the recurring work, not this pass.
+
+### Planned JE-01–JE-05 UI and service integration retests
+
+- **JE-01 — Draft, post and sealed entry:** Save, reload and edit the same balanced draft. Post it once, then verify
+  the list and detail resolve to the same saved entry, service-assigned number, actual actors and sealed posting.
+  A refused post leaves the draft available to edit. Tests: `test_je01_draft_save_reload_edit_and_post_once`,
+  `test_je01_list_and_detail_show_same_saved_entry_and_actual_actors`,
+  `test_je01_refused_post_keeps_editable_draft`.
+- **JE-02 — Money and counterparty:** Reject `12abc` and amounts with more than two decimal places before conversion
+  to cents. Verify a selected counterparty remains on the existing line-level `contact_id` through draft, post and
+  reload, alongside the original memo. Tests: `test_je02_rejects_malformed_or_overprecision_amount_before_cents`,
+  `test_je02_contact_id_and_original_memo_survive_draft_post_reload`.
+- **JE-03 — Exact entry identity:** Open two known entries by exact identity, then try an unknown entry number. The
+  unknown route shows a missing-record message and offers no actions. Tests:
+  `test_je03_known_entries_open_by_exact_identity`, `test_je03_unknown_entry_number_has_no_record_or_actions`.
+- **JE-04 — Posting gates and accrual reversal:** Cover required approval, the separate-approver setting,
+  control-account rules and date-warning acknowledgement where applicable. Verify a successful accrual and its linked
+  automatic reversal after reload. If the reversal period is closed or missing, both postings fail atomically and no
+  entry number is assigned. Tests: `test_je04_required_approval_and_separate_approver_gate`,
+  `test_je04_control_account_rules_and_date_warning_acknowledgement`,
+  `test_je04_accrual_and_linked_reversal_survive_reload`,
+  `test_je04_closed_or_missing_reversal_period_refuses_pair_without_entry_number`.
+- **JE-05 — Reverse, Void and Correct:** From both list and detail, retest **Reverse → Void / Correct** through the
+  existing ledger services. Verify the saved reason, links in both directions, distinct Void and Correct effects,
+  and refusal of a second reversal. For an eligible standalone entry, **Correct** leaves the original posted, posts
+  its linked correction reversal and opens the exact new editable draft. Verify that draft reopens after reload and
+  has no ledger effect before posting. The existing Python correction service returns the reversal only; leave
+  workflow draft creation and failure handling for implementation design. **Void** posts the linked reversal, marks
+  the original void and creates no replacement draft. Cover a standalone Void dated into an eligible later period
+  and an all-or-nothing accrual pair on its original dates. Apply Area 13's planned area and account lock checks to
+  the dates on which the new lines post. Tests: `test_je05_reverse_void_correct_from_list_and_detail`,
+  `test_je05_reversal_reason_and_bidirectional_links_persist`,
+  `test_je05_void_and_correct_have_distinct_effects`, `test_je05_second_reversal_is_refused`,
+  `test_je05_correct_from_list_opens_linked_editable_draft`,
+  `test_je05_correct_from_detail_opens_linked_editable_draft`,
+  `test_je05_correct_draft_reopens_after_reload_without_ledger_effect`,
+  `test_je05_void_from_list_and_detail_creates_no_replacement_draft`,
+  `test_je05_standalone_void_posts_in_eligible_later_period`,
+  `test_je05_accrual_pair_void_is_all_or_nothing_on_original_dates`,
+  `test_je05_new_lines_respect_area13_area_and_account_locks_on_posting_dates`.
+
+These are planned UI and service integration checks; keep the existing queue and phase ordering unchanged.
 
 ---
 
