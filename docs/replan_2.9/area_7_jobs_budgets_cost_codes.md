@@ -176,11 +176,17 @@ the sequence pattern (`sequences.py`), bumped inside the job's write transaction
 
 **Job service (`jobs.py`)**:
 - `create_job(context, input, row_version=None)` (New job, a direct job: migration or paper contract):
-  `authorize(context, 'project.create')`; customer must exist and be active; PM required (an R25 pick: active user
-  with access to the company and `project.view`); number assigned; contract value, retainage, terms and the signed
-  file required (Q2 A; area 6 Q10); in the same transaction it writes the `contract` row through area 6's contract
-  service with source 'Direct', no estimate revision and no lead; the budget lines, if given, go through section 2's
-  service in the same transaction and lock it; one sentence per refused field. No "Save draft" (Q1).
+  `authorize(context, 'project.create')`; validate before writing that the selected customer exists and is active,
+  the required PM is active and has access to the company and `project.view` (R25), and a contract amount, retainage,
+  terms and the signed file are supplied (Q2 A; area 6 Q10). A contract amount of $0 is valid for warranty,
+  goodwill or internal jobs; a negative amount is refused (owner, shared_decisions 2026-11-21 4:25 AM). Validate
+  supplied `target_start_on` and `target_finish_on` as real calendar dates (for example, refuse 2026-02-31); refuse
+  a finish earlier than the start, while allowing equal dates. These amount and date checks are always-on integrity
+  rules and apply with controls OFF. Raise a field-specific error before job number allocation for each refusal.
+  In one write transaction, assign the next customer job number, create the project and its Direct contract through
+  area 6's contract service (no estimate revision and no lead), and, when supplied, save and lock the original
+  budget through section 2's service. If any later step fails, roll back every write, including the project,
+  contract, budget rows and sequence update. No "Save draft" (Q1).
 - `update_job` (`project.manage`, project scope; R29 lookups stay read-only; `row_version`), `set_sales_rep` (logged,
   `project.manage`).
 - `jobs.create_from_signing(context, ...)`: called by area 6's `contracts.mark_signed` in its transaction (area 6
@@ -217,6 +223,11 @@ otherwise `billing_method` copies the quote's schedule type.
 - No draft rule (Q1): no service checks a draft job, since none exists.
 - The "same site" note and the Jobs list figures (days vs target, forecast margin) are reads, not columns.
 
+Amendment 2026-11-21 (shared_decisions 2026-11-21 4:25 AM "new job amount and date checks", owner confirmed):
+`create_job` above is rewritten in place: a $0 contract amount is valid, a negative one is refused, impossible dates
+and a finish before the start are refused, all as always-on checks before a job number is allocated, with full
+rollback.
+
 ### 1.4 How it lands in the baselines
 
 `001_company.sql`: the `project` table rebuilt in the baseline (no released file yet, CLAUDE.md section 5.1), its
@@ -232,8 +243,30 @@ audit triggers rewritten for the new column list, `project_number_seq`, `project
 
 ### 1.6 Tests to write later
 
-- The number is the customer code plus the next sequence; two jobs for one customer get -001 and -002; a typed
-  number is ignored; a failed create leaves the sequence unchanged (rollback).
+- `test_direct_job_validates_customer_pm_and_required_contract_inputs`: inactive or missing customer, inactive or
+  unauthorized PM, and each missing Q2 A contract requirement (value, retainage, terms, signed file) are refused
+  with a field-specific explanation before any project, contract or sequence write; a user without
+  `project.create` is refused before the write transaction.
+- `test_direct_job_rejects_negative_contract_amount_with_controls_off`: refuse a negative amount with a
+  field-specific error before number allocation; verify no job, Direct contract or budget rows and no sequence
+  change, even with controls OFF.
+- `test_direct_job_accepts_zero_contract_amount_with_controls_off`: save a $0 contract amount and create the job
+  and Direct contract successfully with controls OFF.
+- `test_direct_job_rejects_impossible_target_date_with_controls_off`: refuse an impossible date such as
+  `2026-02-31` with a field-specific error before number allocation; verify no job, Direct contract or budget rows
+  and no sequence change, even with controls OFF.
+- `test_direct_job_rejects_finish_before_start_with_controls_off`: refuse a finish date earlier than the start
+  with a field-specific error before number allocation; verify no job, Direct contract or budget rows and no
+  sequence change, even with controls OFF.
+- `test_direct_job_accepts_finish_equal_to_start_with_controls_off`: accept equal valid start and finish dates
+  with controls OFF.
+- `test_direct_job_assigns_distinct_saved_numbers_and_ignores_typed_number`: two successfully saved jobs for one
+  customer receive its code plus -001 and -002, regardless of a typed number.
+- `test_direct_job_failure_rolls_back_project_contract_budget_and_sequence`: force failure after number allocation
+  and during contract or supplied-budget creation; verify no project, Direct contract or partial budget rows remain
+  and the customer's next sequence is unchanged.
+- (Q2 A) a created direct job has one `contract` row with source 'Direct', no revision and no lead; contract value,
+  retainage, terms and signed file are required.
 - (Q4 B) a service job from a case on AC0001-001 is AC0001-001-S01, the next is -S02; a service job from a case with
   no job takes the customer's next number; the case keeps its CS- number.
 - (2:45 AM) a case on AC0001-001-S01 numbers from AC0001-001 (the next free -S, never -S01-S01); after -S99 the next
@@ -251,6 +284,10 @@ audit triggers rewritten for the new column list, `project_number_seq`, `project
 - `create_job` without `project.create` is refused before the write transaction (rule 10).
 - `status` is gone; the derived state reads from the stage and outcome (area 8 tests).
 - A sales rep change writes one audit row with before and after; `contract.sales_rep_user_id` is unchanged.
+
+Amendment 2026-11-21 (shared_decisions 2026-11-21 4:25 AM "new job amount and date checks", owner confirmed;
+to_planning 2026-11-21 "Area 7 and 8 job identity and budget handoff"): the direct-job tests above are rewritten in
+place as named tests for prerequisites, amount and date checks, numbering and rollback.
 
 ---
 
