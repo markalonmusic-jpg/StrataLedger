@@ -9,7 +9,7 @@ History: docs/status_log.md; plans: docs/roadmap.md; decisions: docs/design_deci
 docs/decisions_2026-11-11.md. Code comments and tests cite the section and rule numbers, so keep the numbering.
 
 Commands (from the repo root):
-- Full test suite: `python -m pytest -q`; in parallel, as the commit hook runs it: `python -m pytest -q -n auto`
+- Full test suite: `python -m pytest -q`; in parallel, as the Git pre-commit hook in `.githooks/` runs it: `python -m pytest -q -n auto`; configure once per checkout: `git config core.hooksPath .githooks`
 - Static rules only: `python -m pytest -q tests/test_static_rules.py tests/test_static_portability.py`
 - Run the app: `pythonw app_strata.pyw` (or `StrataLedger.bat`)
 - Rebuild development databases: `python scripts/create_fresh_databases.py` (dry run; `--apply` writes)
@@ -178,8 +178,8 @@ where the two differ (subagents never commit or push), and Copilot follows .gith
 - This repo is StrataLedger-clean. C:\Users\marka\StrataLedger is an old archive: never edit, commit or push there.
 - Work only on the task named; plan mode first (files and why). Tests first; show diffs and the full-suite result.
 - Commit at the end of each step and push `main` to `origin`. Stage by explicit path, never `git add -A` or `git add .`
-  (the planning chat writes here); check `git status` and `git diff --cached` first. The hook runs the full suite before
-  every `git commit`, failure blocks; if all staged files are under docs/ it prints "docs only: suite skipped" (stage in
+  (the planning chat writes here); check `git status` and `git diff --cached` first. The Git pre-commit hook in `.githooks/`
+  runs before every `git commit`, failure blocks; if all staged files are under docs/ it prints "docs only: suite skipped" (stage in
   one call, commit in the next). Never commit `.db` files, credentials or tokens; never force-push without asking.
 - Only one tool edits this working folder at a time. Copilot and Codex work only in their own worktrees
   (`git worktree add ..\StrataLedger-copilot -b copilot/<task> origin/main`, likewise codex/<task>); copilot-reviewer

@@ -1,0 +1,96 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+unset CLAUDE_PROJECT_DIR
+
+default_python='/c/Users/marka/AppData/Local/Programs/Python/Python311/python.exe'
+python_cmd=''
+
+python_works() {
+    [ -n "$1" ] && "$1" -m pytest --version >/dev/null 2>&1 && "$1" -c 'import xdist' >/dev/null 2>&1
+}
+
+if [ -n "${STRATALEDGER_PYTHON:-}" ]; then
+    candidate=$STRATALEDGER_PYTHON
+    if command -v cygpath >/dev/null 2>&1; then
+        candidate=$(cygpath -u "$candidate" 2>/dev/null || printf '%s' "$candidate")
+    fi
+    if python_works "$candidate"; then
+        python_cmd=$candidate
+    fi
+fi
+
+if [ -z "$python_cmd" ] && python_works "$default_python"; then
+    python_cmd=$default_python
+fi
+
+if [ -z "$python_cmd" ]; then
+    temp_dir=${TMPDIR:-${TEMP:-${TMP:-/tmp}}}
+    if command -v cygpath >/dev/null 2>&1; then
+        temp_dir=$(cygpath -u "$temp_dir" 2>/dev/null || printf '%s' "$temp_dir")
+    fi
+    record_file=${temp_dir%/}/strataledger-commit-hook-last-run.txt
+    printf '%s\n' 'Commit blocked: no Python found' > "$record_file"
+    printf '%s\n' 'Commit blocked: no Python found' >&2
+    exit 1
+fi
+
+"$python_cmd" - "$repo_root" <<'PY'
+import json
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+root = Path(sys.argv[1])
+hook = root / ".claude" / "hooks" / "pre_commit_pytest.py"
+record = Path(tempfile.gettempdir()) / "strataledger-commit-hook-last-run.txt"
+started_ns = time.time_ns()
+payload = json.dumps({"tool_input": {"command": "git commit"}})
+
+def write_record(line):
+    record.write_text(line + "\n", encoding="utf-8")
+
+try:
+    result = subprocess.run(
+        [sys.executable, str(hook)],
+        cwd=root,
+        input=payload,
+        text=True,
+        capture_output=True,
+        timeout=1500,
+    )
+except subprocess.TimeoutExpired:
+    line = "Commit blocked: test hook timed out after 1500 seconds"
+    write_record(line)
+    print(line, file=sys.stderr)
+    sys.exit(1)
+except OSError as error:
+    line = f"Commit blocked: could not run test hook ({error})"
+    write_record(line)
+    print(line, file=sys.stderr)
+    sys.exit(1)
+
+if result.stdout:
+    sys.stdout.write(result.stdout)
+if result.stderr:
+    sys.stderr.write(result.stderr)
+
+if result.returncode != 0:
+    lines = (result.stdout + result.stderr).strip().splitlines()
+    line = lines[-1] if lines else "Commit blocked: pre-commit check failed"
+    write_record(line)
+    sys.exit(result.returncode)
+
+try:
+    recorded_ns = record.stat().st_mtime_ns
+except OSError:
+    print("Commit blocked: test hook did not update the record file", file=sys.stderr)
+    sys.exit(1)
+if recorded_ns <= started_ns:
+    print("Commit blocked: test hook record is not newer than the commit start", file=sys.stderr)
+    sys.exit(1)
+PY

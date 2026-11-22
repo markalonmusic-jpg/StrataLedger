@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 HOOK = Path(__file__).resolve().parent.parent / ".claude" / "hooks" / "pre_commit_pytest.py"
-SETTINGS = Path(__file__).resolve().parent.parent / ".claude" / "settings.json"
+GIT_HOOK = Path(__file__).resolve().parent.parent / ".githooks" / "pre-commit"
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_hook(staged=None, real_git=False):
@@ -110,15 +111,21 @@ def test_unreadable_input_never_blocks_silently():
     assert "could not read" in result.stderr.lower()
 
 
-def test_settings_wire_the_hook_for_bash_and_powershell():
-    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    entries = settings["hooks"]["PreToolUse"]
-    wired = [e for e in entries if any("pre_commit_pytest.py" in h["command"] for h in e["hooks"])]
-    assert len(wired) == 1
-    assert set(wired[0]["matcher"].split("|")) == {"Bash", "PowerShell"}
-    # with -n auto the full suite took about 5 minutes on 2026-11-18 (18 minutes in one process); one run took
-    # 862 s, so the owner raised the timeout to 1500 s as a stopgap (2026-11-19)
-    assert 600 <= wired[0]["hooks"][0]["timeout"] <= 1500
+def test_tracked_git_pre_commit_hook_wires_the_existing_check_and_fails_closed():
+    source = GIT_HOOK.read_text(encoding="utf-8")
+    assert source.startswith("#!/bin/sh\n")
+    assert "STRATALEDGER_PYTHON" in source
+    assert "default_python='/c/Users/marka/AppData/Local/Programs/Python/Python311/python.exe'" in source
+    assert "Commit blocked: no Python found" in source
+    assert 'hook = root / ".claude" / "hooks" / "pre_commit_pytest.py"' in source
+    assert 'payload = json.dumps({"tool_input": {"command": "git commit"}})' in source
+    assert "timeout=1500" in source
+    assert "if result.returncode != 0:" in source
+    assert "sys.exit(result.returncode)" in source
+    assert "test hook did not update the record file" in source
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "--", ".githooks/pre-commit"],
+                             cwd=ROOT, capture_output=True, text=True, timeout=60)
+    assert tracked.returncode == 0, tracked.stderr
 
 
 def test_the_suite_runs_in_parallel_workers():
