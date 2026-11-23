@@ -1,6 +1,6 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-23): evening and overnight owner messages folded
+## Current planning stop (2026-11-23): evening and overnight owner messages folded; Areas 2 and 3 drafted
 
 Folded from `Strata_Teams\inbox	o_planning.md` (2026-11-22 evening to 2026-11-23 2:20 AM), with
 `Strata_Teams\docs\planning_owner_features_2026-11-22.md` and OD-23 to OD-70 of `owner_decisions_2026-11-22.md`.
@@ -18,7 +18,9 @@ One owner each:
 The "v1.1 field records approved" message was checked: it is fully in Area 8 §10, Area 18 §8.5 and the Area 9
 entry below. Conflicts with approved text are flagged in place, not changed (Area 10 §11.2 AR refusal; Area 8 §12.1
 C30 and §12.2 baseline rule). Area 3 is drafted for owner approval
-(`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`, Q1–Q6). Questions for Mark are in each area and in the log
+(`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`, Q1–Q6), and so is Area 2
+(`docs/replan_2.9/area_2_pay_run.md`, Q1–Q3). Next action: Mark answers the questions and approves Areas 2, 3 and 4
+and the amended Area 5. Questions for Mark are in each area and in the log
 (`Strata_Teams\planning_replan_log_2026-11-22.md`, "Questions for Mark").
 
 ## Earlier planning stop (2026-11-22): owner decisions folded; Areas 4 and 5 ready for the owner
@@ -114,7 +116,8 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
     Open: waivers the contractor gives the owner were not checked (Area 4).
   - **Folded 2026-11-23 into the Area 3 draft** (`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`,
     for owner approval; questions Q1–Q6 there). The lines above stay as the record of what was handed over.
-- **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above.
+- **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above. **Folded 2026-11-23 into the Area 2
+  draft** (`docs/replan_2.9/area_2_pay_run.md`, for owner approval; questions Q1–Q3 there).
 - **Area 1, Payments and receipts (added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
   addition):** Reclass job on a part-paid invoice (Area 10 §11.2) undoes each payment application on it: the
   allocation is released (reason "Reclass job") and, in the same transaction, one entry posts on the payment's
