@@ -552,3 +552,34 @@ Questions 7 and 8 restate §7 items 7 and 8. All are decided: Q11 and Q12 at 12:
   Dependencies flagged: the signed amount (pre-tax), lead expected value (Area 15), WIP over/under billing
   (Area 7) and the Hughes regression figures (Area 6 §9.2). The original budget comes from cost and is
   unaffected.
+
+### 9.4 Owner decisions 2026-11-22 evening (dated amendments)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` OD-28, OD-69 and OD-70; OD-59 from the inbox 2026-11-22 evening
+message and `docs\planning_owner_features_2026-11-22.md` (its text is not in owner_decisions); inbox 2026-11-22 evening
+"two new owner features + rules" and 10:55 PM "correction to the reclass rule". Nothing above is rewritten.
+
+- **Amendment 2026-11-22: tax rates by effective date (OD-59).** A tax rate carries an effective-from date and the
+  invoice date picks the rate. Schema: the baseline `tax_rate` (`migrations/001_company.sql:132`: name, rate,
+  account only) gains a rate history, `tax_rate_version` (`tax_rate_id` FK, `rate` REAL percent, `effective_from`
+  TEXT date NOT NULL, `created_by`, `created_at`; UNIQUE (`tax_rate_id`, `effective_from`); insert-only, a later row
+  replaces an earlier one from its date). The invoice version freezes the rate it used (the §3.2 frozen tax), so a
+  later rate row never changes a posted invoice. (The owner's rule is the first sentence; the table shape is planning's proposal.) This is the rule Q7a relies on: no row on or before the invoice date
+  refuses issue. Area 17's written-off tax report reads the frozen tax. Tests:
+  `test_invoice_date_picks_tax_rate_in_effect`, `test_new_tax_rate_row_leaves_posted_invoice_tax_unchanged`.
+- **Amendment 2026-11-22: Reclass job on a posted invoice (OD-28, OD-69, OD-70; amends Q11's "a later job change is
+  made with a reclass entry").** The invoice's ... menu offers Reclass job (new job and a reason of at least 10
+  characters). It moves the whole invoice (revenue, receivable and retainage) in one RECLASS entry (Area 10 §11.2),
+  and undoes every payment application on it: each payment becomes unapplied on its own date and deposit (OD-11
+  badge; OD-56 unapplied list on Receive payment) and the invoice shows its full open balance on the new job.
+  OD-28's "leaves the invoice and its payment untouched" is withdrawn for the payment part (owner 10:55 PM, OD-69).
+  Invoice number, version and posted lines are unchanged; the invoice's job reads the latest effective reclass. The
+  undo and re-apply postings (Dr AR / Cr Unapplied customer payments, and back) are Area 1's; the role is Area 18
+  §8.6. The receivable move depends on Area 10 Q18 (open; it conflicts with Area 10 §2.4 until answered), and Q19 (open)
+  decides the Reclassify page case. Tests:
+  `test_reclass_job_unapplies_payments_and_shows_full_open_balance_on_new_job`,
+  `test_reclassed_invoice_keeps_number_and_version`.
+- **Handoff to Area 1:** application undo by Reclass job writes an allocation release (the baseline release fields,
+  `payment_allocation.released_*`) with reason "Reclass job" and posts the OD-70 entry in the same transaction;
+  re-applying is a new allocation that reverses it. **Flagged:** baseline RP11 allows a release only after the
+  payment's entry is voided; Area 1 amends RP11 for the "Reclass job" release while the payment stays posted.

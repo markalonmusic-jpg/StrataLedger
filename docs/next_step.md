@@ -1,6 +1,26 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-22): owner decisions folded; Areas 4 and 5 ready for the owner
+## Current planning stop (2026-11-23): evening and overnight owner messages folded
+
+Folded from `Strata_Teams\inbox	o_planning.md` (2026-11-22 evening to 2026-11-23 2:20 AM), with
+`Strata_Teams\docs\planning_owner_features_2026-11-22.md` and OD-23 to OD-70 of `owner_decisions_2026-11-22.md`.
+One owner each:
+
+| Owner | Items |
+|---|---|
+| Area 10 §11 (approved; amendments) | Reclassify transactions page (OD-28 new item); Reclass job (OD-28, OD-69, OD-70; OD-68 withdrawn); Q18–Q19 |
+| Area 18 §8.5–§8.6 (approved; amendments) | 10-character reasons (OD-31, markers in Areas 10, 13 and 18); roles `purchase_discounts` and `unapplied_customer_payments`; Manager cannot override the final-billing block; Q26 |
+| Area 5 §9.4 (approved; amendments) | tax rates by effective date (OD-59); invoice state after Reclass job |
+| Area 8 §12 (approved; amendments) | Stage > Phase > Task and the milestone answer; 11/22 field decisions; Material forecast page; Q25–Q28 |
+| Area 15 §12, Area 7 §14 (approved; inputs) | lead import, lead alerts, stage probability (owner, pending), `lead.estimated_start_on` (Q24); job contact roles |
+| next_step (undrafted areas, below) | Area 1 (OD-69/OD-70 postings); Area 3 (OD-66, OD-67, vendor documents, vendor kind, waivers); Area 9 (OD-51 units list, PM creates requests, PO expected date); Area 16 (User field type, Lead scoping); Area 20 (weather connection) |
+
+The "v1.1 field records approved" message was checked: it is fully in Area 8 §10, Area 18 §8.5 and the Area 9
+entry below. Conflicts with approved text are flagged in place, not changed (Area 10 §11.2 AR refusal; Area 8 §12.1
+C30 and §12.2 baseline rule). Questions for Mark are in each area and in the log
+(`Strata_Teams\planning_replan_log_2026-11-22.md`, "Questions for Mark").
+
+## Earlier planning stop (2026-11-22): owner decisions folded; Areas 4 and 5 ready for the owner
 
 The owner's 2026-11-22 answers (`Strata_Teams\docs\owner_decisions_2026-11-22.md`: items 1–26, OD-01 to OD-18)
 are folded into the owning areas, one owner each:
@@ -75,7 +95,34 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
     blank. This is a database binding point (CODE_CHANGES_NEEDED.md, in the mockups folder).
   - OD-17 (G1): reload keeps what the user typed as an unsaved session draft; a fresh + New bill still opens blank.
     Screen behaviour; no stored draft row.
+  - Added 2026-11-23 (inbox 2026-11-22 evening "two new owner features + rules"; OD-66 B): an early-payment discount
+    on a job-coded bill credits that bill's job and cost code line; only bills with no job use the
+    `purchase_discounts` role (Area 18 §8.6).
+  - Added 2026-11-23 (same message; OD-67 B, correcting OD-26's sample numbers): a vendor-refund receipt also lowers
+    the credit's open balance; usable = open credit minus held. VC-031 after a $100.00 receipt on a $350.00 request:
+    open $250.00, held $250.00, usable $0.00. Second lead-default scenario: $200.00 requested and $50.00 received
+    gives open $300.00, held $150.00, usable $150.00.
+  - Added 2026-11-23 (design chat "CRM and Field gap list", items 6–8, with the 11/22 owner decision on item 7):
+    vendor documents as stored rows (type, number or policy, issued, expiry, status, file; proposed
+    `vendor_document`), required documents per vendor kind in `policy_rule`, and the decided payment hold
+    (`po_ap_matching_design.md` §6 and §10 item 9: blocks payment only, role-limited override). Vendor kind is a
+    `contact.vendor_kind` column (not `entity_type`, which is legal form) with the mockup values Supplier,
+    Subcontractor, Service provider, Utility, Government; no separate sub ID (decided 11/22). Lien waivers are
+    collected per sub pay app draw (conditional this draw, unconditional prior draw); a missing waiver warns and
+    "Paid without waiver" is logged; the control "Require lien waivers before paying subs" blocks the pay run only.
+    Open: waivers the contractor gives the owner were not checked (Area 4).
 - **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above.
+- **Area 1, Payments and receipts (added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
+  addition):** Reclass job on a part-paid invoice (Area 10 §11.2) undoes each payment application on it: the
+  allocation is released (reason "Reclass job") and, in the same transaction, one entry posts on the payment's
+  original job: Dr Accounts receivable / Cr Unapplied customer payments (Area 18 §8.6 role, current liability). Cash
+  stays in the bank; nothing moves to Undeposited funds. Re-applying the payment reverses it: Dr Unapplied customer
+  payments / Cr Accounts receivable on the invoice's job. The payment shows the OD-11 "Unapplied" badge and lists in
+  the OD-56 unapplied list. Flagged: baseline RP11 (`payment_allocation` release only after the source entry is
+  voided) must allow this "Reclass job" release on a still-posted payment. With reclass approval ON the undo waits
+  for the approval with the RECLASS entry (Area 10 §11.2). Tests:
+  `test_application_undo_posts_ar_to_unapplied_customer_payments_on_payment_job`,
+  `test_reapply_reverses_unapplied_customer_payments_entry`, `test_application_undo_leaves_cash_and_deposit_unchanged`.
 - **Area 9, Materials, POs and inventory:**
   - Item 18 (PORDER-01, PORDER-04): job and cost-code commitment starts only on a successful send (or Mark as sent
     or Print). Drafts, approved-but-unsent POs and failed sends stay uncommitted. Close remainder releases the
@@ -83,12 +130,27 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
   - OD-04 (SR2-04): the authoritative units list is the UOM column of the Material codes table on the Inventory
     tab; unit pickers and labels use that list. Schema: `material_code.unit_of_measure` is the source; other
     `unit_of_measure` columns (for example `estimate_cost_line`) take values from it.
+  - Amendment 2026-11-23 (OD-51, inbox 2026-11-22 evening "two new owner features + rules"; amends OD-04): the units
+    list (ea, box, kw, cnt, ft, kit) is company-editable, so companies add their own units; "kit" is added (PO 1042
+    racking kit). PO and estimate builder units pick from it. Proposed: a `unit_of_measure` list table (code, label,
+    active, sort order; inactive units stay on old documents) that `material_code`, PO lines and
+    `estimate_cost_line` reference. The owner named Area 9 or 21; placed in Area 9.
+  - Inbox input 2026-11-23 (Material forecast page, 2:20 AM; Area 8 §12.3): `purchase_order` has only `issue_date`
+    in `po_ap_matching_design.md` §3; the forecast needs `purchase_order.expected_on` with an optional per-line
+    override, read for open quantity not yet received. Otherwise the page is a view only.
   - Inbox input 2026-11-22 (v1.1 field scope; owner 12:41 PM): a field material request from the job feeds the
     pull-ticket queue; stock is reserved only when the pull ticket is created. Who can create a request is open
-    for the wireframe review.
+    for the wireframe review. **Decided 2026-11-22 (owner, design chat gap list): the PM creates material
+    requests.**
 - **Area 20, Capture inbox:** item 23 (CAP-04): Allow sender covers that sender for that capture address only. An
   already rejected message needs a one-click Reprocess to enter review. Rejected and deleted messages are kept
   30 days, then purged (company setting `capture_rejected_retention_days`, default 30).
+- **Area 20, Connections (added 2026-11-23; design chat gap list item 9; Area 8 §12.2):** the weather forecast
+  stays on (owner 11/22). It reads the job site address (`project.site_*`) and is fetched over the network
+  (twice a day, read-only, per the mockup); a company setting turns it on. Design the connection, its failure
+  message and what the desktop app does offline.
+- **Area 16, Custom fields (added 2026-11-23; design chat gap list item 4):** a custom field of type User, and Lead
+  scoping of custom fields (Lead is not yet a custom-field target).
 
 ## Owner decisions 2026-11-22 for the design queue and later phases (no Phase 2.9 schema effect)
 

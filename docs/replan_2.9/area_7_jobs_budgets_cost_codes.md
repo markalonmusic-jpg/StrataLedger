@@ -1063,3 +1063,13 @@ Handed to areas not yet drafted:
   `time_entry` and `staged_line` (JD1).
 - **Build items for later phases (area 7):** `jobs.py`, `job_budgets.py`, `cost_codes.py`, `dimensions.py` (with the
   resolver), `operating_plans.py`, `job_cost.py`, `wip.py` (v1.1), the cost code template loader.
+
+---
+
+## 14. Inbox input 2026-11-22 (dated; not decided schema)
+
+- **Contact roles on a job for outside parties** (design chat "CRM and Field gap list" item 5): architect, general
+  contractor, lender, inspector and similar parties linked to a job, beyond the lead's decision-makers (Area 15).
+  Not designed. A later pass proposes a job-contact link (job, contact, role from a company list, primary flag) that
+  reuses `contact` rows instead of a parallel table; the role list follows the Reasons and lists pattern (Area 18).
+  Generic, not solar-only.

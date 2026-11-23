@@ -134,8 +134,8 @@ only, not on the Controls page (Q1 A). Which document or action belongs to which
 | `account_id` | INTEGER REFERENCES account; CHECK (kind = 'Account') = (account_id IS NOT NULL) |
 | `locked_by` | INTEGER NOT NULL |
 | `locked_at` | TEXT NOT NULL (from `context.now`, UTC with offset) |
-| `lock_reason` | TEXT NOT NULL CHECK (length(trim(lock_reason)) BETWEEN 1 AND 1000) (Q4 B: a reason is required to lock, as area 18 says; close.html gains a reason field on the lock dialog) |
-| `unlocked_by`, `unlocked_at`, `unlock_reason` | NULL until unlocked; CHECK all three set or all NULL, and `length(trim(unlock_reason)) BETWEEN 1 AND 1000` (Q4 B: required to unlock) |
+| `lock_reason` | TEXT NOT NULL CHECK (length(trim(lock_reason)) BETWEEN 1 AND 1000) (Q4 B: a reason is required to lock, as area 18 says; close.html gains a reason field on the lock dialog) **Withdrawn 2026-11-22 (owner, OD-31): minimum of 1 replaced by at least 10 characters after trimming; Area 18 §8.6** |
+| `unlocked_by`, `unlocked_at`, `unlock_reason` | NULL until unlocked; CHECK all three set or all NULL, and `length(trim(unlock_reason)) BETWEEN 1 AND 1000` (Q4 B: required to unlock) **Withdrawn 2026-11-22 (owner, OD-31): minimum of 1 replaced by at least 10 characters after trimming; Area 18 §8.6** |
 | `row_version` | INTEGER NOT NULL DEFAULT 1 (rule g4; the unlock dialog sends it back) |
 
 - Partial unique indexes: `(period_id, area_code) WHERE kind = 'Area' AND unlocked_at IS NULL` and

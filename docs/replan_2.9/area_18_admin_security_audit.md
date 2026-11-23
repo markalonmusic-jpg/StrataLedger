@@ -462,7 +462,7 @@ Proposed new codes, to be confirmed in areas 8 and 15 and not seeded here: `lead
 - `user_job_title(user_id PK, job_title_id NOT NULL REFERENCES job_title, assigned_by, assigned_at)`: one title per
   user per company (Q5 A).
 - `user_permission_override(user_id, permission_code, effect CHECK IN ('Add', 'Remove'), reason TEXT NOT NULL CHECK
-  (length(trim(reason)) > 0), granted_by INTEGER NOT NULL, granted_at TEXT NOT NULL)`: PK `(user_id,
+  (length(trim(reason)) > 0) [**Withdrawn 2026-11-22 (owner, OD-31): at least 10 characters; §8.6**], granted_by INTEGER NOT NULL, granted_at TEXT NOT NULL)`: PK `(user_id,
   permission_code)` (Q7 A).
 - `approval_limit` re-keyed `(role_code, level, document_type)`, plus `access_template_approval_limit(template_id,
   document_type, max_amount_cents)` and `user_approval_limit(user_id, document_type, max_amount_cents, reason NOT
@@ -830,7 +830,7 @@ for uploaded files.
 | `added_by` | INTEGER NOT NULL |
 | `added_at` | TEXT NOT NULL (from `context.now`) |
 | `origin` | TEXT NOT NULL DEFAULT 'Human' CHECK (as section 1) |
-| `removed_at`, `removed_by`, `removed_reason` | NULL until removed. CHECK all three set or all NULL, and `length(trim(removed_reason)) > 0` |
+| `removed_at`, `removed_by`, `removed_reason` | NULL until removed. CHECK all three set or all NULL, and `length(trim(removed_reason)) > 0` **Withdrawn 2026-11-22 (owner, OD-31): minimum of 1 replaced by at least 10 characters after trimming; Area 18 §8.6** |
 
 - Integrity triggers (H4, append-only backstop): DELETE is refused. UPDATE is refused unless it only sets the three
   removal columns, once, from NULL.
@@ -1277,3 +1277,51 @@ build order. Default job tab by role: operations roles (PM, field, operations) o
 tab, finance roles keep the overview. Area 8's proposed `block_final_billing_with_open_punch_items` control
 (OFF) joins §8.3 when that area's v1.1 pass is approved. Permission codes for daily logs, delays, punch items
 and field material requests are placed here once the wireframes are approved.
+
+Amendment 2026-11-22 (owner, design chat "CRM and Field gap list", 11/22 owner decisions): a Manager cannot override
+the final-billing block of `block_final_billing_with_open_punch_items` (control OFF by default). When the control is
+ON, Final billing is refused while punch or inspection items are open, for every role; turning the control off is the
+only way past it (Controls page, Admin or Master, logged). The control's placement still waits for Area 8's v1.1 pass.
+
+### 8.6 Owner rules from 2026-11-22 evening (Decided 2026-11-22, owner)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` OD-31, OD-66 (with item 16) and OD-70; inbox 2026-11-22
+evening "two new owner features + rules" and its OD-70 addition (`docs/planning_owner_features_2026-11-22.md`).
+
+- **Amendment 2026-11-22: every required reason needs at least 10 characters after trimming spaces (OD-31).** One
+  app-wide rule, enforced by the service before its write transaction and by the table CHECK
+  (`length(trim(<reason>)) >= 10`) wherever a reason column is required. It replaces the 1-character minimums in the
+  approved plans, each marked "Withdrawn 2026-11-22 (owner, OD-31)" beside it: Area 10 §2.3 `reclass_line.reason`;
+  Area 13 §1.3 `lock_reason` and `unlock_reason`; this area's §2.3 grant `reason` and §3.2 `removed_reason`. Every
+  draft area (2, 3 and later) writes 10 from the start. The approved "Other needs at least 10 characters" rows (Area
+  6 §13, Area 15 §7, §2.4 here) already match. The refusal sentence is one line: "Enter a reason of at least 10
+  characters." Q26 below asks whether a reason picked from a Reasons list also needs typed text. Tests:
+  `test_required_reason_under_10_characters_after_trim_is_refused`,
+  `test_required_reason_of_10_characters_is_accepted`, and the baseline scratch check that every required reason
+  column carries the CHECK.
+- **Amendment 2026-11-22: System account role `purchase_discounts` (item 16 with OD-66 B).** New role
+  `company_settings.purchase_discounts_acct_id` INTEGER NULL REFERENCES account, on the System accounts page. An
+  early-payment discount posts to it **only for a bill with no job**; a discount on a job-coded bill credits that
+  bill's job and cost code line (Area 3 draft §5, Area 2 draft §3). Lead default: a new account 7030 Purchase
+  Discounts (Other income, credit balance) in the construction chart template and the general one, mapped to the
+  role (number per the repo construction chart rule, S 11-19). Reassignment follows §8.1 (item 11). Tests:
+  `test_purchase_discounts_role_maps_and_reassigns_prospectively`.
+- **Amendment 2026-11-22: System account role `unapplied_customer_payments` (OD-70 B).** New role
+  `company_settings.unapplied_customer_payments_acct_id` INTEGER NULL REFERENCES account, a current liability. It is
+  posted only when an applied customer payment is un-applied by Reclass job (Area 10 §11.2): Dr Accounts receivable
+  / Cr Unapplied customer payments on the payment's original job, reversed when the payment is re-applied. Lead
+  default: a new account 2325 Unapplied Customer Payments (Current liability, credit balance, controlled: posted only
+  by the receipts service) in both chart templates, mapped to the role. Reassignment follows §8.1. Area 1 owns the
+  postings (next_step). Tests: `test_unapplied_customer_payments_role_maps_to_current_liability`,
+  `test_manual_entry_to_unapplied_customer_payments_is_refused_when_controlled`.
+- **Permission for the Reclassify transactions page and Reclass job (OD-28):** the existing `je.reclass` (Area 10
+  §7.1); no new code. The seeded code count stays 115.
+- Mockup note: the OD-70 text names 1200 Accounts receivable and 2000 AP (mockup chart); the repo template has 1110
+  Accounts Receivable and 2010 Accounts Payable. The baseline follows the repo chart.
+
+**Q26. A reason picked from a Reasons list (OD-31).**
+A (recommended): picking a listed reason satisfies the rule; typed text is required (at least 10 characters) only
+for "Other" or where the action has no list. Example: a bill hold with reason "Dispute" saves; "Other" with "late" is
+refused.
+B: every required reason needs at least 10 typed characters, even after a list pick. Example: "Dispute" plus
+"Wrong qty on PO 1042" is required.

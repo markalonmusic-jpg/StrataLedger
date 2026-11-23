@@ -265,7 +265,7 @@ revenue deferrals come with billed-in-advance invoicing (C2).
 | `original_item_ref` | TEXT (the item until area 9 adds an item table; then a FK) |
 | `original_project_id` | INTEGER REFERENCES project |
 | `original_tax_rate_id` | INTEGER REFERENCES tax_rate (1099 and sales tax follow the original) |
-| `reason` | TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 1000) |
+| `reason` | TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 1000) — minimum of 1 **Withdrawn 2026-11-22 (owner, OD-31): at least 10 characters after trimming; Area 18 §8.6** |
 
 - UNIQUE (`journal_line_id`); UNIQUE (`original_journal_line_id`) WHERE `side` = 'Out' AND the reclass entry is not
   reversed (service rule): a line is moved once; a later reclass moves the latest In line.
@@ -689,3 +689,96 @@ All nineteen answered A, one by one; Q2 and Q10 with the owner's detail. The opt
   there (Q10 A, F13), including `je.reclass` in the Controller and Staff accountant templates (owner 2026-11-19).
 - Open question 7 (System origin in `post_journal_entry`) is decided by Q7 or in the posting work.
 - Area 11 reuses the schedule grid for fixed assets.
+
+---
+
+## 11. Owner decisions 2026-11-22 (dated amendments)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md` OD-28, OD-31, OD-68, OD-69 and OD-70, and the inbox
+messages of 2026-11-22 evening ("two new owner features + rules", re-added 10:50 PM) and 10:55 PM ("correction to the
+reclass rule"). This area is approved: nothing above is rewritten. Replaced text is marked beside it, and conflicts
+with approved text are flagged here for Mark, not changed.
+
+### 11.1 Reclassify transactions page (OD-28 new item; Decided 2026-11-22, owner)
+
+- **Amendment 2026-11-22.** A QuickBooks-style **Reclassify transactions** page: a list of posted transactions with
+  filters (date, account, job, type, vendor or customer), checkboxes and a mass reclass of account and/or job. Each
+  selected transaction gets **its own** RECLASS journal entry (source 'Reclass', §2.3), never one combined entry, and
+  each follows the JE/reclass approval route (§2.4, Q16 A). It is the §2 Reclassify tool with a multi-select list; it
+  adds no table. Every line still runs the §2.4 rules: whole lines only, refused accounts (Q12 A), same type unless
+  `allow_cross_type_reclass` is on, the date rule (Q13 A, Q14 A). A selected transaction whose lines are partly
+  refused moves only its eligible lines and the page names the refused ones in one sentence; a transaction with no
+  eligible line is refused and stays ticked with the reason. Permission `je.reclass` (§7.1); no new code. The design
+  of the page is queued as a new design item (OD-28); OD-28's single-invoice action does not wait for it.
+- Tests: `test_mass_reclass_posts_one_reclass_entry_per_selected_transaction`,
+  `test_mass_reclass_moves_only_eligible_lines_and_names_refused_ones`,
+  `test_mass_reclass_each_entry_follows_reclass_approval_route`, `test_mass_reclass_requires_je_reclass`.
+
+### 11.2 Reclass job on a posted invoice (OD-28, OD-69, OD-70; OD-68 withdrawn)
+
+- **Amendment 2026-11-22 (OD-28 A).** "Reclass job" in the posted invoice's ... menu opens a dialog with the new job
+  and a required reason (at least 10 characters, OD-31). It posts one RECLASS entry moving all the invoice's lines
+  and follows JE/reclass approval when that is on. OD-28's "leaves the invoice and its payment untouched" is
+  **Withdrawn 2026-11-22 (owner 10:55 PM, OD-69)** for the payment part: see the next bullet.
+- **OD-68 C (owner 8:15 PM: move only the unpaid receivable): Withdrawn 2026-11-22 (owner 10:55 PM, OD-69).** It was
+  never folded into this plan; recorded here for history. Its sample amounts did not balance (planning's error).
+- **Amendment 2026-11-22 (OD-69, replaces OD-68 C).** Reclass job on a part-paid invoice moves the **entire**
+  invoice (revenue, receivable and retainage) to the new job in one balanced RECLASS entry, one Out/In pair per
+  line (§2.3). The payment's application to that invoice is undone: the payment becomes unapplied again, on its
+  original date and deposit, shows the "Unapplied" badge (OD-11) and lists in the customer's unapplied list on
+  Receive payment (OD-56), ready to re-apply. The invoice shows its full open balance on the new job. Neither job is
+  left with a negative or orphan receivable.
+- **Amendment 2026-11-22 (OD-70 B).** Undoing the application also posts one balanced entry on the payment's
+  original job: Dr Accounts receivable / Cr **Unapplied customer payments** (new system role, current liability;
+  Area 18 §8.6). Cash stays in the bank and nothing moves to Undeposited funds. Re-applying the payment reverses it:
+  Dr Unapplied customer payments / Cr Accounts receivable on the invoice's (new) job. The application undo and
+  re-apply postings belong to Area 1 (receipts and allocations; next_step); the role to Area 18; the invoice's state
+  to Area 5 (§9 amendment there).
+- Worked example (OD-27 and OD-69 samples): INV-0388, RI0001-002, revenue $40,000.00, retainage receivable
+  $4,000.00, receivable $36,000.00, $10,000.00 applied. Reclass job to RI0001-003: (1) undo the application and post
+  Dr AR $10,000.00 (RI0001-002) / Cr Unapplied customer payments $10,000.00; (2) RECLASS pairs: AR $36,000.00,
+  retainage receivable $4,000.00 and revenue $40,000.00 out of RI0001-002 and into RI0001-003. RI0001-002's
+  receivable is $0.00; RI0001-003 shows $36,000.00 open; the liability holds $10,000.00 until the payment is
+  re-applied. Both entries post in one transaction or neither does. When JE/reclass approval is ON, Reclass job is
+  saved as one pending request: nothing posts, the application stays in place and the invoice shows "Reclass
+  pending approval"; on approval the undo, the OD-70 entry and the RECLASS entry post together; on rejection
+  nothing changes (lead default, owner may revise).
+- **Conflict flagged (baseline RP11, not changed):** the trigger comment and rule at `migrations/001_company.sql`
+  (RP11, `payment_allocation` release) allow a posted payment's allocation to be released only after the source
+  entry is voided. OD-69 releases it while the payment stays posted. Area 1 must amend RP11 for this one release
+  reason (next_step Area 1 entry).
+- §2.4's sentence "AR lines are corrected through the invoice or a credit memo." gains "or Reclass job" when Q18 is
+  answered; the approved sentence is not edited here.
+- **Conflict flagged (approved text, not changed):** §2.4 refuses reclass lines on every `track_clearing_id = 1`
+  account (AR, AP; Q12 A), following S 11-19 12:45 AM ("reclass is refused on clearing accounts"). OD-69 moves the
+  receivable and retainage receivable lines (both tracked accounts). Q18 below asks how far the exception reaches. Until it is answered,
+  §2.4 stands for every other reclass.
+- Tests: `test_reclass_job_moves_entire_part_paid_invoice_in_one_reclass_entry`,
+  `test_reclass_job_undoes_application_and_posts_unapplied_customer_payments_on_original_job`,
+  `test_reclass_job_leaves_no_negative_or_orphan_receivable_on_either_job`,
+  `test_reapplying_payment_reverses_unapplied_entry_on_invoice_job`,
+  `test_reclass_job_rolls_back_both_entries_when_either_fails`, `test_reclass_job_reason_needs_10_characters`.
+
+### 11.3 Other owner rules that touch this area
+
+- **Same-gross bill correction (item 13, APBILL-05):** posts through §2 as a reclass; Area 3 (draft, §4) owns the
+  bill side. AP lines stay refused under §2.4.
+- **Reasons need at least 10 characters (OD-31):** §2.3's `reclass_line.reason` CHECK is marked withdrawn beside it;
+  the rule and its placement are Area 18 §8.6.
+
+### 11.4 Questions for Mark (recommended option first)
+
+- **Q18. Which reclasses may move a receivable line (OD-69 vs §2.4)?**
+  A (recommended): only the invoice's own **Reclass job** action may move its receivable and retainage receivable
+  lines, job change only, same account and the invoice's own clearing group, always the whole invoice. The Reclassify transactions page and every other reclass keep
+  refusing AR, AP, bank, card and deferral lines. Example: INV-0388's receivable line moves from RI0001-002 to RI0001-003
+  through Reclass job; ticking the same receivable line on the Reclassify page is refused with "Receivable lines move with
+  the invoice: use Reclass job on INV-0388."
+  B: allow job-only reclass of AR and AP lines anywhere, including the page.
+  C: keep §2.4 as is; Reclass job instead posts a credit memo and a new invoice on the new job.
+- **Q19. A job change on the Reclassify page for an invoice that has a payment applied.**
+  A (recommended): the page refuses the job change for that invoice and points to its Reclass job (so OD-69 and
+  OD-70 always apply); an account-only change is allowed. Example: INV-0388 ticked with "Job → RI0001-003" is listed
+  as "Has a payment applied: use Reclass job on the invoice."
+  B: the page runs the full OD-69/OD-70 flow for each such invoice.
+  C: the page moves the revenue lines only and leaves the receivable on the old job.

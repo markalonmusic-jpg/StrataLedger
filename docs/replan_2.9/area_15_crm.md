@@ -1013,3 +1013,27 @@ Q23. **Custom fields on leads and cases.** A (recommended): add `'Lead'` and `'C
 
 Amendment 2026-11-21 (to_planning 2026-11-21 "Area 15 CRM intake audit follow-up"): item 3's quick-add duplicate check
 (CRM-02) stays pending Mark's confirmation; cover an email match with a different phone and the inverse phone match.
+
+---
+
+## 12. Inbox inputs 2026-11-22 and 2026-11-23 (dated; not decided schema)
+
+This area is approved: nothing above is rewritten. These are inputs for later passes and one question for Mark.
+
+- **Lead import** (design chat gap list item 1, 2026-11-22): still not designed (open item in §11). It must follow
+  the import-origin rule (one human review per batch, CLAUDE.md section 0) and the §3 duplicate checks. Owner: this
+  area's next pass.
+- **Lead alert design pass** (gap list item 2): speed to lead, proposal follow-up, the stale digest and business-hours
+  rules (open item 9 in §11) need a design pass before design batch F. No schema change until then.
+- **Stage probability for a weighted pipeline** (gap list item 3; F7 left it unbuilt): an **owner decision still
+  pending**, kept with the owner as the design chat asked. Not a planning question here.
+- **Lead estimated start date** (inbox 2026-11-23 2:20 AM, Material forecast page): leads have only
+  `expected_close_date` (§1.3). Proposed: `lead.estimated_start_on` (TEXT date, optional), shown on the lead and the
+  estimate; a sent estimate's materials count as tentative demand only when the forecast's "include sent
+  estimates" filter is on (Area 8 §12.3). Q24 below.
+
+**Q24. Lead estimated start date.**
+A (recommended): add the optional `lead.estimated_start_on`, shown on the lead and the estimate; at signing it fills
+`project.target_start_on` when the contract has no start date (Area 8 Q9 A copy still wins when it has one). Example:
+a lead expected to close 12/15 with an estimated start of 01/11 shows its materials on 01/11 when the filter is on.
+B: no lead column; sent estimates are placed on the forecast by `expected_close_date` instead.

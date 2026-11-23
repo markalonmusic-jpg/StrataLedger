@@ -351,9 +351,9 @@ The only fragments are `contract.start_date` and `completion_date` (`:885-886`) 
 
 | Decision | Source |
 |----------|--------|
-| Hierarchy Phase > Task; a milestone is a single-date item in a phase; a calendar item links to a task or straight to a phase (`phase_id` required, `task_id` optional) | A 11-17 (hierarchy), S 11-17 5:13 PM |
+| Hierarchy Phase > Task; a milestone is a single-date item in a phase; a calendar item links to a task or straight to a phase (`phase_id` required, `task_id` optional) **Withdrawn 2026-11-23 (owner 1:54 AM): the hierarchy is Stage > Phase > Task; the stage comes from the phase; §12.1** | A 11-17 (hierarchy), S 11-17 5:13 PM |
 | Terms: phase, task, milestone, predecessor (type FS or SS, lag in work days), baseline (`set_at`, `set_by`), calendar item (was schedule item), lookahead (1-6 weeks, a view only), delay reason | A 11-17 5:58 PM |
-| Template > version > phases (ordered) > items (task or milestone, ordered): work days (tasks), an optional predecessor, an optional delivery stage tag, an optional default assignee type; loop check on save; templates are independent of service type; a service type may name a default | A 5:35 PM; S 11-17 5:35 PM; C30 (supersedes C29) |
+| Template > version > phases (ordered) > items (task or milestone, ordered): work days (tasks), an optional predecessor, an optional delivery stage tag, an optional default assignee type; loop check on save; templates are independent of service type; a service type may name a default **"Templates are independent of service type" and the optional delivery stage tag: Withdrawn 2026-11-23 (owner 1:54 AM): a template belongs to a service type and each phase to one of its stages; §12.1** | A 5:35 PM; S 11-17 5:35 PM; C30 (supersedes C29) |
 | A saved template makes a new version; jobs already scheduled keep theirs ("Applies to new jobs only") | flow A1; to_design R36 note |
 | Job schedule: a copy of one template version, plus planned (baseline), forecast and actual start and finish, % complete, assignee (crew, or vendor or subcontract), notes | A 5:35 PM item 2 |
 | Baselines are versioned; each new version references the change order that created it | A 5:35 PM |
@@ -853,7 +853,7 @@ a workflow rule (H4).
   history, while area 15 will need a lead history. This draft makes a job-only table; Q21. **Resolved: Q21 A: `project_stage_history` is for jobs; area 15 builds its own twin.**
 
 - **F16 Calendar items carry both a phase and a stage.** A 11-17 requires `phase_id`; A 11-18 adds an optional
-  `stage_id`. Both are kept; the stage field is a tag, the phase is the parent. **Resolved: Q14 A: both kept, the phase is the parent and the stage a tag.**
+  `stage_id`. Both are kept; the stage field is a tag, the phase is the parent. **Resolved: Q14 A: both kept, the phase is the parent and the stage a tag.** **Withdrawn 2026-11-23 (owner 1:54 AM): the stage is the parent of the phase; the calendar item's own stage tag is Q26 in §12.1.**
 
 ---
 
@@ -982,7 +982,7 @@ job, type (company list), assignee, status, pass/fail and photo; a Company contr
 Area 4 handoff). (6) Field material request: Area 9 (next_step). Job page (12:45 PM): operations roles (PM, field,
 operations) open the job on the existing Schedule tab; finance roles keep the overview; default tab by role comes from
 the Area 18 access model. Nothing phone-related until the cloud version (phone capture, photo location, offline sync,
-phone app, voice-to-text). Open for the wireframe review: whether the daily log replaces or feeds the status update;
+phone app, voice-to-text). (Decided 2026-11-22 by the owner except "which inspections are standard": §12.2.) Open for the wireframe review: whether the daily log replaces or feeds the status update;
 who can create a material request; which inspections are standard; whether a delay suggests a time-extension change
 order.
 
@@ -1015,3 +1015,98 @@ order.
 13. `rate_card` and its tables (area 6) and the foreign key from `service_type.rate_card_id`.
 14. The warning on costs, POs and billing for a held job is built by the services of areas 3, 4, 5 and 9 (they read
     `project.on_hold`); the wording names the hold and its reason. Tests belong to those services.
+
+---
+
+## 12. Owner decisions 2026-11-22 and 2026-11-23 (dated amendments)
+
+This area is approved: nothing above is rewritten; replaced text is marked "Withdrawn" beside it, and conflicts are
+flagged here.
+
+### 12.1 Schedule hierarchy is Stage > Phase > Task (Decided 2026-11-23, owner 1:54 AM and 1:58 AM)
+
+Source: inbox 2026-11-23 1:54 AM "schedule hierarchy is Stage > Phase > Task (owner)", with the owner's 1:58 AM answer.
+
+- **Amendment 2026-11-23.** A job's work is organised as **Stage > Phase > Task**. Stage = the job type's stages
+  (`service_stage`, §1), from contract signed through closeout, including the administrative stages before and after
+  construction. A **milestone is a special task that marks the completion of a phase or a stage.** This replaces §4.2
+  "Hierarchy Phase > Task" and F16 / Q14 A ("the phase is the parent and the stage a tag"), both marked withdrawn.
+- **Amendment 2026-11-23 (1:58 AM answer).** Reaching a stage-completion milestone does **not** move the stage. It
+  prompts the PM to click "Mark <stage> complete", and the current stage on the stage path turns gold to show its
+  milestone is reached. No new column: the state is read from the stage's completion milestone (`actual_finish` set)
+  while the job is still in that stage. The stage moves only through §1's stage-history service, as approved.
+- **Schema effects (consequences of the decision, built in the 2.9 pass):**
+  1. `job_schedule_phase` and `schedule_template_phase` gain `stage_id` INTEGER NOT NULL REFERENCES `service_stage`.
+  2. Milestones stay `kind = 'Milestone'` and record what they complete: `completes` TEXT CHECK IN ('Phase',
+     'Stage'), NULL for an ordinary task; a stage-completion milestone sits in a phase of that stage. At most one
+     stage-completion milestone per stage per job schedule (service rule).
+  3. Schedule templates belong to a service type: `schedule_template.service_type_id` NOT NULL, because their phases
+     point at that type's stages. **Conflict flagged:** this reverses C30 ("templates are independent of service
+     type"; the §4.2 row is marked withdrawn). A service type still names its default template (§4.2), now one of its
+     own.
+  4. The optional `stage_id` tag on `job_schedule_task`, `schedule_template_item` and `calendar_item` is Q25 and Q26
+     below.
+  5. Sample data (design run, no schema): the mockup Gantt groups (Pre-construction / Installation / Closeout) hold
+     items named like stages (Site survey, Permitting); the mockups regroup them under stages.
+- Tests: `test_phase_requires_stage_of_jobs_service_type`,
+  `test_template_belongs_to_service_type_and_phases_to_its_stages`,
+  `test_stage_completion_milestone_prompts_pm_and_does_not_move_stage`,
+  `test_stage_milestone_reached_state_reads_actual_finish_while_in_stage`,
+  `test_one_stage_completion_milestone_per_stage`.
+
+### 12.2 v1.1 field records: owner decisions of 2026-11-22 (design chat gap list)
+
+Source: inbox 2026-11-22 "from design chat: CRM and Field gap list ... with 11/22 owner decisions". These settle the
+§10 inbox-input questions except one. The field records stay inputs (not decided schema) until the wireframes are
+approved.
+
+- **The daily log feeds the status update** (it does not replace it): submitted daily log lines are offered to the
+  next status update.
+- **The PM creates material requests** (Area 9 entry in next_step).
+- **A time extension does not need a change order, but may have one.** The delay log's change-order link stays
+  optional. **Conflict flagged:** §4.2 says baseline versions after the first come only from a change order
+  ("Baselines are versioned; each new version references the change order"). Q27 below asks what a time extension
+  without a change order moves.
+- **Delay log Action column** opens the field event / change order wizard ("File new event" is the existing
+  "+ Field event", §5). Screen only.
+- **The weather forecast stays on.** The daily log and look-ahead read the forecast for the job site address
+  (`project.site_*`, Q9 A). A company setting turns it on; fetching it is a network connection, handed to Area 20.
+- **Crew on site** is one searchable picker over crews (internal, no vendor code; §4 crews) and subcontractors
+  (vendors, shown with their vendor code). Crews are not held as vendors. When the field records are designed, a
+  daily-log crew line names either a `crew_id` or a vendor `contact_id` (exactly one).
+- **A Manager cannot override the final-billing block** (`block_final_billing_with_open_punch_items`, OFF by
+  default): Area 18 §8.5 amendment.
+- **Still open for the wireframe review:** which inspections are standard.
+- The Field role and its nav (about five items) from the 12:41 PM message are owned by Area 18 §8.5.
+
+### 12.3 Material forecast page (owner request, inbox 2026-11-23 2:20 AM)
+
+A view only, no new table (mockup `field-material-forecast.html`, Operations menu > All jobs). It reads the first
+task start of each job schedule (`job_schedule_task` forecast dates), `project.target_start_on` (Q9 A), the Material
+`estimate_cost_line` rows of the accepted revision (signed jobs) or the latest sent revision (leads, only with the
+"include sent estimates" filter; Area 6), stock available (on hand less reserved; Area 9) and open PO quantity by
+expected date (Area 9). Rule shown on the page: surplus or deficit = available now + open PO quantity expected by the
+start date - needed by earlier starts in the view - needed on the date. Gaps handed on: `lead.estimated_start_on`
+(Area 15 §12 input) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
+asks that every job carry an estimated start date: Q28.
+
+### 12.4 Questions for Mark (recommended option first)
+
+- **Q25. The stage tag on tasks and template items (hierarchy item 2).**
+  A (recommended): drop `job_schedule_task.stage_id` and `schedule_template_item.stage_id`; a task's stage is its
+  phase's stage. Example: task "Permitting" in phase "Permits" under stage "Pre-construction" reads Pre-construction.
+  B: keep the column, filled by the service from the phase and read-only.
+- **Q26. The stage on calendar items (hierarchy item 5).**
+  A (recommended): drop `calendar_item.stage_id`; the stage comes from the required phase. The drawer shows Stage,
+  then Phase filtered by stage. Example: an inspection item on phase "Electrical" shows stage "Installation".
+  B: keep an optional stage tag that may differ from the phase's stage.
+- **Q27. A time extension without a change order (11/22 decision vs §4.2).**
+  A (recommended): it moves the forecast finish and the job's `target_finish_on` (reason from the delay, logged); the
+  baseline still changes only through a change order, so schedule variance shows the slip. Example: 3 rain days
+  move the target finish from 12/04 to 12/09; the baseline finish stays 12/04.
+  B: it creates a new baseline version without a change order, with a reason and the delay link.
+- **Q28. Every job carries an estimated start date (material forecast).**
+  A (recommended): `project.target_start_on` becomes required when a job is created, copied from the contract's start
+  date (Q9 A) or typed on New job, editable and logged. Example: a New job without a lead must enter a start date.
+  Cross-area: the column is in Area 7's `project` DDL (approved, §1 table); A adds an amendment line there.
+  B: it stays optional; the forecast lists jobs with no start date under "No start date".
