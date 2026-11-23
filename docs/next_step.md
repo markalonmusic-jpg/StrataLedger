@@ -17,7 +17,8 @@ One owner each:
 
 The "v1.1 field records approved" message was checked: it is fully in Area 8 §10, Area 18 §8.5 and the Area 9
 entry below. Conflicts with approved text are flagged in place, not changed (Area 10 §11.2 AR refusal; Area 8 §12.1
-C30 and §12.2 baseline rule). Questions for Mark are in each area and in the log
+C30 and §12.2 baseline rule). Area 3 is drafted for owner approval
+(`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`, Q1–Q6). Questions for Mark are in each area and in the log
 (`Strata_Teams\planning_replan_log_2026-11-22.md`, "Questions for Mark").
 
 ## Earlier planning stop (2026-11-22): owner decisions folded; Areas 4 and 5 ready for the owner
@@ -111,6 +112,8 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
     collected per sub pay app draw (conditional this draw, unconditional prior draw); a missing waiver warns and
     "Paid without waiver" is logged; the control "Require lien waivers before paying subs" blocks the pay run only.
     Open: waivers the contractor gives the owner were not checked (Area 4).
+  - **Folded 2026-11-23 into the Area 3 draft** (`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`,
+    for owner approval; questions Q1–Q6 there). The lines above stay as the record of what was handed over.
 - **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above.
 - **Area 1, Payments and receipts (added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
   addition):** Reclass job on a part-paid invoice (Area 10 §11.2) undoes each payment application on it: the
