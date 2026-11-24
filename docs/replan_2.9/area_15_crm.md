@@ -1046,7 +1046,7 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
   the last bullet of this section.)** A lead gets an optional **Requested
   completion** date, `lead.requested_completion_on` TEXT (`IS date(...)` or NULL): the customer's deadline (for
   example "must be energized by 12/31"). There is no `lead.estimated_start_on`, and `expected_close_date` is not
-  used for the job start. At signing the PM enters the job start date (required, Area 8 Q28), and the lead's
+  used for the job start. At signing the PM enters the job start date (required, Area 8 Q28 **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)**), and the lead's
   Requested completion is copied to the job, which warns when the forecast finish is after it (Area 8 §12.6, the
   owner of the job side). Example: requested completion 12/31, forecast 1/9: the job shows a warning. Test:
   `test_lead_requested_completion_is_optional_date`. **Withdrawn 2026-11-23 (owner 8:30 PM): Requested completion
@@ -1082,3 +1082,6 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
     `test_lead_import_match_offers_link_create_or_skip_default_link`, `test_lead_import_file_over_1000_rows_refused_whole`,
     `test_lead_import_direct_approval_records_imported_by_when_control_off`,
     `test_lead_import_needs_separate_approver_with_permission_when_control_on`.
+- **Amendment 2026-11-24 (Area 8 Q28 revisited, owner 11:58 PM 11/23; job side: Area 8 §12.16).** The lead's
+  Estimated completion date pre-fills the job's **planned completion** at signing (required, the baseline finish;
+  changeable before signing). The job start date is optional.

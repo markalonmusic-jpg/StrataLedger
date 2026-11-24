@@ -297,7 +297,7 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 | Need | Source | Today | Proposal |
 |------|--------|-------|----------|
-| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) **(`target_finish_on` as an editable copy: Withdrawn 2026-11-23 (owner 7:20 PM): the target finish is derived, §12.6 (this withdrawal Withdrawn 2026-11-23, owner 8:30 PM: `target_finish_on` is editable again, with history, §12.10); `target_start_on` is required, Q28, §12.6)** |
+| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) **(`target_finish_on` as an editable copy: Withdrawn 2026-11-23 (owner 7:20 PM): the target finish is derived, §12.6 (this withdrawal Withdrawn 2026-11-23, owner 8:30 PM: `target_finish_on` is editable again, with history, §12.10); `target_start_on` is required, Q28, §12.6 **(start no longer required: Withdrawn 2026-11-24, Area 8 §12.16)**)** |
 | Manual % complete, with who and why | area 13 check `manual_pct_complete` | none | `project.manual_pct_complete` REAL CHECK (NULL or 0-100), `manual_pct_reason` TEXT, `manual_pct_by` INTEGER, `manual_pct_at` TEXT. NULL = cost-to-cost (rule: schedule % is never used for revenue, C28) |
 | Status | baseline | `project.status` | Q6 C: drop `project.status`. "Open", "Complete" (stage role Complete, not closed) and "Closed · Completed/Cancelled" derive from the stage and outcome. Add `project.on_hold` INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) (the current copy) and the append-only `project_hold_history` below |
 | Warranty and service jobs | A 11-18 | none | `project.billing_type` TEXT NOT NULL DEFAULT 'Billable' CHECK IN ('Billable', 'Warranty'); `warranty_for_job_id` INTEGER REFERENCES project; `source_case_id` INTEGER (FK added by area 15, which defines `service_case`; the link table `case_job(case_id, job_id)` is area 15's). Editable until the first cost posts (service rule); a Warranty job cannot be invoiced; its costs roll up to the original job's warranty line (area 7/10 job cost) |
@@ -991,7 +991,7 @@ job, type (company list), assignee, status, pass/fail and photo; a Company contr
 Area 4 handoff). (6) Field material request: Area 9 (next_step). Job page (12:45 PM): operations roles (PM, field,
 operations) open the job on the existing Schedule tab; finance roles keep the overview; default tab by role comes from
 the Area 18 access model. Nothing phone-related until the cloud version (phone capture, photo location, offline sync,
-phone app, voice-to-text). (Decided 2026-11-22 by the owner except "which inspections are standard": §12.2.) Open for the wireframe review: whether the daily log replaces or feeds the status update;
+phone app, voice-to-text). (Decided 2026-11-22 by the owner except "which inspections are standard": §12.2; answered 2026-11-24, §12.16.) Open for the wireframe review: whether the daily log replaces or feeds the status update;
 who can create a material request; which inspections are standard; whether a delay suggests a time-extension change
 order.
 
@@ -1087,7 +1087,8 @@ approved.
   daily-log crew line names either a `crew_id` or a vendor `contact_id` (exactly one).
 - **A Manager cannot override the final-billing block** (`block_final_billing_with_open_punch_items`, OFF by
   default): Area 18 §8.5 amendment. **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)**
-- **Still open for the wireframe review:** which inspections are standard.
+- **Still open for the wireframe review:** which inspections are standard. **(Answered 2026-11-24, owner 12:04 AM: a
+  company list per job type; §12.16.)**
 - The Field role and its nav (about five items) from the 12:41 PM message are owned by Area 18 §8.5.
 
 ### 12.3 Material forecast page (owner request, inbox 2026-11-23 2:20 AM)
@@ -1101,7 +1102,7 @@ start date - needed by earlier starts in the view - needed on the date. Gaps han
 (Area 15 §12 input; **Withdrawn 2026-11-23 (owner 7:28 PM, Area 15 Q24): leads get a Requested completion date, not
 a start; lead demand placement is Q30, §12.9; "Requested completion" Withdrawn 2026-11-23 (owner 8:30 PM):
 Estimated completion, §12.10**) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
-asks that every job carry an estimated start date: Q28.
+asks that every job carry an estimated start date: Q28. **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)**
 
 ### 12.4 Questions for Mark (recommended option first)
 
@@ -1122,7 +1123,8 @@ asks that every job carry an estimated start date: Q28.
   move the target finish from 12/04 to 12/09; the baseline finish stays 12/04. **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
   B: it creates a new baseline version without a change order, with a reason and the delay link.
 - **Q28. Every job carries an estimated start date (material forecast).** **Answered 2026-11-23 (owner 7:23 PM): A.
-  §12.6.**
+  §12.6.** **Revisited 2026-11-24 (owner 11:58 PM 11/23): A Withdrawn; planned completion required, start optional;
+  §12.16.**
   A (recommended): `project.target_start_on` becomes required when a job is created, copied from the contract's start
   date (Q9 A) or typed on New job, editable and logged. Example: a New job without a lead must enter a start date.
   Cross-area: the column is in Area 7's `project` DDL (approved, §1 table); A adds an amendment line there.
@@ -1256,7 +1258,7 @@ answer to Area 15 Q24" (7:28 PM).
 - **Status** **(Withdrawn 2026-11-23, owner 8:30 PM: Q33, §12.10)** compares the forecast finish with the target finish (Late, At risk, On track by the existing
   `schedule_at_risk_days` and `schedule_late_days`), and the target with the baseline shows the granted slip.
   `project.target_finish_on` as an editable copy is withdrawn (§3.1 row) and dropped (lead default, owner may revise). **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
-- **Amendment 2026-11-23 (Q28 A).** `project.target_start_on` is **required when the job is created** (at contract
+- **Amendment 2026-11-23 (Q28 A).** **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)** `project.target_start_on` is **required when the job is created** (at contract
   signing): no job without a start date (an owner decision, not a control), so the baseline and forecast can be built. "Start" means the first day of
   work on site, the first task of the Construction contract stage **("first task of the Construction contract stage"
   Withdrawn 2026-11-23, owner 8:15 PM, Q31: no stage is special; §12.11)** (owner 7:28 PM), not the signing date. Example:
@@ -1266,7 +1268,7 @@ answer to Area 15 Q24" (7:28 PM).
   is copied at signing to `project.requested_completion_on` (TEXT date, NULL allowed, editable, logged). The job
   shows a **warning** (never a block) when the forecast finish is after it. Example: requested completion 12/31,
   forecast 1/9: the job shows the warning. **Withdrawn 2026-11-23 (owner 8:30 PM): Estimated completion, §12.10.**
-- **Area 7 amendment lines (same pass):** `project.target_start_on` NOT NULL and the new
+- **Area 7 amendment lines (same pass):** **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)** `project.target_start_on` NOT NULL and the new
   `project.requested_completion_on` are recorded in Area 7 §14 (the `project` DDL). **(`requested_completion_on`
   Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.)**
 - Tests: `test_baseline_set_at_signing_from_contract_dates_and_never_versioned`,
@@ -1325,7 +1327,7 @@ answer to Area 15 Q24" (7:28 PM).
 
 Source: `owner_decisions_2026-11-22.md`, "OWNER REVISION 2026-11-23 8:30 PM ... schedule dates and lead timing". It
 replaces the 7:20 PM Q27 answer, the 7:28 PM Area 15 Q24 answer and the 8:15 PM Q30 placement, as folded in
-e949ba3 (§12.6, §12.9 and Area 15 §12.1; that text is marked withdrawn, not deleted). Q28 (start date required)
+e949ba3 (§12.6, §12.9 and Area 15 §12.1; that text is marked withdrawn, not deleted). Q28 (start date required **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)**)
 stands.
 
 - **Baseline:** the planned dates set at signing. It never moves (as §12.6: one row, never versioned).
@@ -1383,7 +1385,7 @@ days).
 - **Q31: no special stage scheduling.** Stages and tasks are a customizable parent/child tree ("Preconstruction is
   not a fixed thing"), so no stage gets its own scheduling rule. Each task is placed by its own Gantt dates and
   predecessors. The build keeps the approved rule (dates from the start date, work days, predecessors and the work
-  week). Lead default, owner may revise: the job start date (Q28, required) anchors the first task with no
+  week). Lead default, owner may revise: the job start date (Q28, required **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)**) anchors the first task with no
   predecessor, whatever its stage.
 - **Q32: PCO, then CO by a PM; no COR.** Whoever logs a Delay or Extra work activity may tag it as a PCO (potential
   change order; the live daily log's "Create PCO"), and a PM converts the PCO into a change order. There is no
@@ -1484,3 +1486,51 @@ B: no: the forecast shows nothing until the PM converts the PCO into a change or
 - Tests: `test_open_pco_cost_shows_as_forecast_line_tagged_with_field_event`,
   `test_open_pco_never_reaches_budget_revised_contract_or_co_lists`,
   `test_closed_pco_removes_its_forecast_line`.
+
+### 12.16 Owner answers 2026-11-23 11:58 PM and 2026-11-24 12:04 AM (Q28 revisited; inspections)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answer to Area 8 Q28, revisited" (replaces Q28 A, 7:23 PM) and
+"Owner answer to field review question 3, inspections". Appended; the earlier Q28 text is marked withdrawn where it
+says the start date is required.
+
+- **Amendment 2026-11-24 (Q28 revised: completion only).** When a job is created at signing, the **planned
+  completion date is required** and becomes the **baseline finish**: the date owed to the customer, so Late (Q33) =
+  forecast finish after that date plus approved change-order time. Proposed: the baseline row written at signing,
+  `job_schedule_baseline`, gains `finish_on` TEXT NOT NULL (the planned completion); its task lines come later
+  (STOP question below). `project.target_start_on` is **no longer required** (NULL allowed again); a job with no
+  start shows **"Not scheduled"** until the PM enters one. The planned completion is pre-filled from the lead's
+  Estimated completion date (Area 15) and can be changed before signing; after signing it never moves (the baseline
+  rule).
+- **Unchanged:** the three dates of §12.10 (baseline set at signing and never moves; forecast = baseline + approved
+  CO time + delays + reschedules; target = the PM's editable date with history) and Late (Q33 A, calendar days,
+  Q35 A).
+- Example: North field array signs 12/1. Planned completion 3/20 is required (pre-filled from the lead). Start is
+  left blank, so the job shows "Not scheduled" until the PM enters 1/5.
+- **Lead default, owner may revise:** a job with no start appears on the Material forecast (§12.3) in a "Not
+  scheduled" row, not netted by date.
+- **Mockup notes (design queue, no schema):** job-new.html's "Target finish" collides with the three-date naming
+  (Target is the PM's internal date); the signing field is named for the baseline, proposed "Planned completion"
+  (owner may revise). sign-contract.html has no date field, so where the required date is entered at signing needs a
+  mockup item.
+- **Inspections (field review question 3, owner 12:04 AM): a company list per job type.** Each job type has its own
+  editable list of standard inspections; a new job copies its job type's list, and the PM can add or remove
+  inspections on that job without changing the company list. No fixed built-in list. Proposed for the v1.1 field
+  pass (inputs, not decided schema): a per-job-type list (job type, name, order) and a per-job copy (job, name,
+  source item, added or removed by the PM); each inspection is recorded as an Inspection activity (§12.5) with pass
+  or fail. Example: Roofing starts with deck and nailing, final roofing and manufacturer warranty inspections; on
+  SU0004-004 the PM adds "Electrical inspection (RTU reconnect)" for that job only.
+- **Tracked only (Q34 A):** inspections and punch items never block final billing; the retainage release opens at
+  Complete. Nothing on the closeout checklist gates.
+- Tests: `test_job_creation_requires_planned_completion_as_baseline_finish`,
+  `test_job_without_start_date_shows_not_scheduled`,
+  `test_planned_completion_prefilled_from_lead_estimated_completion`,
+  `test_late_compares_forecast_with_planned_completion_plus_co_work_days`,
+  `test_new_job_copies_job_type_inspection_list_and_pm_edits_only_the_job`.
+
+**STOP question for Mark (not decided): when are task-level baseline dates fixed if the job has no start at
+signing?** Task baseline lines need a start date to compute. Proposed (not approved): they are fixed the first time
+the PM enters the start and the schedule is built. Until then the baseline holds only the planned completion.
+
+**Conflict flagged (not changed):** the 12:04 AM note says a failed inspection adds its corrections as punch items
+plus a re-inspection (live field-punch.html), while Q32 (8:15 PM) says a punch item is logged work done that day,
+not an open task (§12.11). Corrections waiting to be done are open work; how they are held is for Mark.

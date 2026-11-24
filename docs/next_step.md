@@ -1,6 +1,20 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24): Areas 2, 3, 4 and 5 approved; Area 8 Q37 folded
+## Current planning stop (2026-11-24, later): Q28 revisited and inspections folded
+
+From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer to Area 8 Q28, revisited", 11/23 11:58 PM;
+"Owner answer to field review question 3, inspections", 11/24 12:04 AM):
+- **Area 8 §12.16:** the planned completion date is required at job creation and is the baseline finish; the start
+  date is optional ("Not scheduled" until entered); the three dates and Late are unchanged. Inspections are a
+  company list per job type, copied to the job and editable there; tracked only (Q34 A).
+- **Area 15 §12.1 and Area 7 §14:** the lead's Estimated completion date pre-fills the planned completion;
+  `project.target_start_on` NULL allowed again. Earlier "start date required" lines are marked withdrawn.
+- **STOP question for Mark:** when task-level baseline dates are fixed if the job has no start at signing
+  (proposed, not approved: the first time the PM enters the start and the schedule is built).
+- **Conflict flagged:** a failed inspection "adds its corrections as punch items" vs Q32 (a punch item is logged
+  work, not an open task).
+
+## Earlier planning stop (2026-11-24): Areas 2, 3, 4 and 5 approved; Area 8 Q37 folded
 
 Owner approvals in `Strata_Teams\docs\owner_decisions_2026-11-22.md` (2026-11-23 11:25 PM to 2026-11-24 12:00 AM):
 
@@ -55,8 +69,8 @@ inbox message 2026-11-23 1:30 PM "schedule tree, tasks without %, and one activi
 |---|---|
 | Area 10 §11.5–§11.6 (approved; amendments) | Q18 (AR and revenue lines take the new job together, in Reclass job and on the Reclassify page; §2.4 exception); Q19 B (the page follows OD-69/OD-70); new Q20 (AP lines), Q21 (one date rule, OD-71) |
 | Area 18 §8.7 (approved; amendment) | Q26 A (a listed reason satisfies the rule; 10 typed characters only for Other or no list); the unapplied role also posted from the page |
-| Area 8 §12.5–§12.9 (approved; amendments) | work tree (`work_template_node`, `job_work_node`), tasks without %, task start and finish activities, one `activity` table (Q25, Q26 superseded); Q27 three dates (baseline locked at signing; a CO or a granted extension moves the target; `schedule_extension`); Q28 A (start date required); Requested completion warning; new Q29–Q32 **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
-| Area 15 §12.1, Area 7 §14 (approved; amendments) | Q24: optional `lead.requested_completion_on`; lead stages on the tree; `activity` gains the field columns; `project.target_start_on` NOT NULL, `requested_completion_on` added, `target_finish_on` dropped **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
+| Area 8 §12.5–§12.9 (approved; amendments) | work tree (`work_template_node`, `job_work_node`), tasks without %, task start and finish activities, one `activity` table (Q25, Q26 superseded); Q27 three dates (baseline locked at signing; a CO or a granted extension moves the target; `schedule_extension`); Q28 A (start date required **(start no longer required: Withdrawn 2026-11-24, Area 8 §12.16)**); Requested completion warning; new Q29–Q32 **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
+| Area 15 §12.1, Area 7 §14 (approved; amendments) | Q24: optional `lead.requested_completion_on`; lead stages on the tree; `activity` gains the field columns; `project.target_start_on` NOT NULL **(start no longer required: Withdrawn 2026-11-24, Area 8 §12.16)**, `requested_completion_on` added, `target_finish_on` dropped **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
 | Area 3 draft | Q1 A, Q2 A, Q3 (compliance hold is a control, OFF; warning by default; the draft no longer has it always on), Q4 (vendor or total only, only with approval ON), Q5 A (remainder on the last line), Q6 A |
 | Area 2 draft | Q1 A, Q2 A (void reversal date follows Area 10 §2.4), Q3 A (warn only) |
 
@@ -85,7 +99,7 @@ One owner each:
 | Owner | Items |
 |---|---|
 | Area 10 §11 (approved; amendments) | Reclassify transactions page (OD-28 new item); Reclass job (OD-28, OD-69, OD-70; OD-68 withdrawn); Q18–Q19 |
-| Area 18 §8.5–§8.6 (approved; amendments) | 10-character reasons (OD-31, markers in Areas 10, 13 and 18); roles `purchase_discounts` and `unapplied_customer_payments`; Manager cannot override the final-billing block; Q26 |
+| Area 18 §8.5–§8.6 (approved; amendments) | 10-character reasons (OD-31, markers in Areas 10, 13 and 18); roles `purchase_discounts` and `unapplied_customer_payments`; Manager cannot override the final-billing block **(control retired 2026-11-23, Area 8 Q34 A)**; Q26 |
 | Area 5 §9.4 (approved; amendments) | tax rates by effective date (OD-59); invoice state after Reclass job |
 | Area 8 §12 (approved; amendments) | Stage > Phase > Task and the milestone answer; 11/22 field decisions; Material forecast page; Q25–Q28 |
 | Area 15 §12, Area 7 §14 (approved; inputs) | lead import, lead alerts, stage probability (owner, pending), `lead.estimated_start_on` (Q24); job contact roles |
