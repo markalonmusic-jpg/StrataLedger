@@ -142,6 +142,35 @@ def test_post_numbers_stamps_and_seals_the_entry(env, ctx):
     assert env.rows("PARENT", "SELECT last_number FROM entry_number_sequence") == [{"last_number": 1}]
 
 
+def test_entry_numbers_continue_across_fiscal_years(env):
+    """L4: one gapless sequence per company, never reset by year; B1: the year close posts no entries."""
+    december = ctx_for(env, now="2026-12-31T10:00:00+00:00", today="2026-12-31")
+    first = draft(env, december, entry_date="2026-12-31")
+    ledger.post_journal_entry(december, first, confirm=True)
+
+    env.role("PARENT", "YEAR_CLOSER", ["period.close", "period.view", "ledger.view"])   # test-only role
+    closer_id = env.user("closer")
+    env.grant(closer_id, "PARENT", "YEAR_CLOSER")
+    closer = ctx_for(env, now="2027-01-01T09:00:00+00:00", today="2027-01-01", user=closer_id)
+    fy2026 = env.rows("PARENT", "SELECT year_id FROM fiscal_year WHERE name = 'FY2026'")[0]["year_id"]
+    with env._company("PARENT") as c:
+        c.execute("UPDATE fiscal_period SET is_closed = 1, closed_at = ?, closed_by = 1 WHERE fiscal_year_id = ? "
+                  "AND is_adjustment_period = 0", ("2027-01-01T09:00:00+00:00", fy2026))
+    periods.close_year(closer, fy2026, acknowledge_warnings=True)
+    assert env.rows("PARENT", "SELECT COUNT(*) AS n FROM journal_entry WHERE is_posted = 1") == [{"n": 1}]
+    assert env.rows("PARENT", "SELECT last_number FROM entry_number_sequence") == [{"last_number": 1}]
+
+    january = ctx_for(env, now="2027-01-02T10:00:00+00:00", today="2027-01-02")
+    second = draft(env, january, entry_date="2027-01-02")
+    ledger.post_journal_entry(january, second, confirm=True)
+
+    numbers = [entry_row(env, e)["entry_number"] for e in (first, second)]
+    assert numbers == [1, 2]
+    shown = [ledger._je(n) for n in numbers]
+    assert shown == ["JE-000001", "JE-000002"]
+    assert not any("2026" in s or "2027" in s for s in shown)
+
+
 def test_the_first_entry_chains_to_genesis_and_the_second_to_the_first(env, ctx):
     first, second = draft(env), draft(env)
     ledger.post_journal_entry(ctx, first, confirm=True)
