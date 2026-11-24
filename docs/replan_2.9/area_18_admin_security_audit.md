@@ -1319,9 +1319,26 @@ evening "two new owner features + rules" and its OD-70 addition (`docs/planning_
 - Mockup note: the OD-70 text names 1200 Accounts receivable and 2000 AP (mockup chart); the repo template has 1110
   Accounts Receivable and 2010 Accounts Payable. The baseline follows the repo chart.
 
-**Q26. A reason picked from a Reasons list (OD-31).**
+**Q26. A reason picked from a Reasons list (OD-31).** **Answered 2026-11-23 (owner 7:00 PM): A. §8.7.**
 A (recommended): picking a listed reason satisfies the rule; typed text is required (at least 10 characters) only
 for "Other" or where the action has no list. Example: a bill hold with reason "Dispute" saves; "Other" with "late" is
 refused.
 B: every required reason needs at least 10 typed characters, even after a list pick. Example: "Dispute" plus
 "Wrong qty on PO 1042" is required.
+
+### 8.7 Owner answer 2026-11-23 (Q26; Decided 2026-11-23, owner 7:00 PM)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area 18 Q26".
+
+- **Amendment 2026-11-23 (Q26 A).** Picking a listed reason satisfies the required-reason rule. The 10-character
+  minimum (after trimming spaces) applies only to **typed** text: when "Other" is picked, or where the action has
+  no pick list. Example: Close PO remaining with "Job cancelled" picked needs no typed text; "Other" needs at least
+  10 typed characters.
+- **Effect on the §8.6 CHECK.** Where an action has a pick list, its table CHECK is conditional: the typed text
+  column may be NULL unless the picked option is "Other" (for example Area 3's `bill_hold`: `reason_code <> 'Other'
+  OR length(trim(reason_text)) >= 10`, already written that way). Where there is no list, §8.6's unconditional CHECK
+  stands. The baseline scratch check in §8.6 tests both shapes.
+- **Amendment 2026-11-23 (Area 10 Q19 B).** The `unapplied_customer_payments` role (§8.6) is also posted when a job
+  change on the Reclassify transactions page un-applies a payment (Area 10 §11.5), not only by Reclass job.
+- Tests: `test_listed_reason_satisfies_required_reason_without_typed_text`,
+  `test_other_reason_needs_10_typed_characters_after_trim`.

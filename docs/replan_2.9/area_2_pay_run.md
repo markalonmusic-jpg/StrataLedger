@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 2: pay run
 
-Status: **Draft 2026-11-23, for owner approval.** Docs only: nothing here changes code, a baseline, a migration or a
+Status: **Draft 2026-11-23, for owner approval; owner answers to Q1–Q3 (2026-11-23 7:55 PM) folded the same day.** Docs only: nothing here changes code, a baseline, a migration or a
 test. Everything below is built only in the 2.9 baseline pass, after the whole replan is approved. Items marked
 PROPOSED are not decided. Bills, vendor credits, terms, holds, waivers and vendors are Area 3
 (`area_3_bills_vendor_credits_terms_subcontracts.md`); this area is how they are paid.
@@ -24,7 +24,8 @@ run: bank details on file, cash after the run, remittances), 11:15 PM (flat list
 11:44 PM (lifecycle: approval posts nothing; each line posts on Date paid; stuck runs; ACH not debited); 2026-11-15
 12:03 AM (reached from Bills); 2026-11-17 10:44 AM (holds and the waiver gate), 12:10 PM (who may hold); 2026-11-18
 9:18 PM and 9:20 PM (unmatch), 10:03 PM (the pay run is the only way to pay bills), 10:24 PM (OK to pay);
-2026-11-20 5:15 PM (single active claim and retry). Latest entry read: 2026-11-22 2:25 AM.**
+2026-11-20 5:15 PM (single active claim and retry). Latest entry read: 2026-11-22 2:25 AM. Owner answers in
+`owner_decisions_2026-11-22.md`: Area 2 Q1–Q3, 2026-11-23 7:55 PM; Area 3 Q3, 7:40 PM.**
 
 ---
 
@@ -35,8 +36,8 @@ run: bank details on file, cash after the run, remittances), 11:15 PM (flat list
 | 1 | Run and lifecycle | Draft → (Submitted, when approval is on) → Approved (bills "In pay run") → Completed, or Cancelled; return to draft with a reason; approval posts nothing | company |
 | 2 | Lines, credits and discounts | a line per bill with apply, editable discount and credit uses; vendor credits as their own linked rows; cash = apply − discount − credits; one open line per bill | company |
 | 3 | Recording | each line (or a batch) records Date paid and the method's reference; that is when the payment posts, Dr AP (the bill's stored AP account) / Cr the funding bank / Cr discount; retry-safe | company |
-| 4 | Checks at approval and recording | holds, approval, compliance, waivers, usable credit, already paid or in another run, locks; changed bills are removed and named | company |
-| 5 | After recording | remittance, Date cleared from the bank feed, void of a recorded payment, stuck-run and ACH-not-debited alerts | company |
+| 4 | Checks at approval and recording | holds, approval, compliance (a warning; a hold only with its control ON), waivers, usable credit, already paid or in another run, locks; changed bills are removed and named; a negative funding balance warns only (Q3) | company |
+| 5 | After recording | remittance, Date cleared from the bank feed, void of a recorded payment (bills payable again, Q2), stuck-run and ACH-not-debited alerts | company |
 
 ---
 
@@ -166,9 +167,10 @@ of cash (OD-25).
 
 ### 3.2 Proposed rules
 
-- **One payment per recording group (Q1).** Lines of the same vendor recorded together with the same Date paid,
-  method and reference make one `payment` row (one check, one bank debit) with one allocation per bill; lines
-  recorded separately make separate payments. `payment` gains `pay_run_id` INTEGER REFERENCES pay_run and `reference`
+- **One payment per recording group (Q1 A, Decided 2026-11-23, owner 7:55 PM).** Lines of the same vendor
+  recorded together with the same Date paid, method and reference make one `payment` row (one check stub listing
+  the bills, one bank line to match) with one allocation per bill; lines recorded separately make separate payments.
+  Example: 3 bills paid 11/28 by check #1042 are one $9,600.00 payment. `payment` gains `pay_run_id` INTEGER REFERENCES pay_run and `reference`
   TEXT; Date cleared is not a `payment` column: it is read from Area 12's `bank_line_clearing` on the payment's bank
   journal line (Area 12 Q1 A). `method` CHECK extends to ('Check', 'ACH', 'Wire', 'Card',
   'Paid outside', 'Cash', 'Bank Transfer', 'GCash', 'Maya') (the last three kept for the PH add-on).
@@ -216,7 +218,9 @@ locks (PAYRUN-04).
 One function, `pay_runs.check_lines(conn, run, as_of)`, runs at approval and again inside each recording
 transaction. A line fails when its bill:
 - is not Approved (OK to pay = approved and not held, S 11-18 10:24 PM), or is held (`bill_hold` open, Area 3 §3.3);
-- has a compliance block with no override for that bill (Area 3 §2.3);
+- has a compliance hold with no override for that bill, **only while `vendor_compliance_hold` is ON** (Area 3 §2.2,
+  §2.3; Q3 there, Decided 2026-11-23, owner 7:40 PM). With it OFF (the default) a missing or expired document shows
+  "Missing documents: <list>" on the line and the line pays;
 - fails the waiver gate when `require_lien_waivers_before_paying` is ON (Area 3 §4.3; also checked when the line is
   added, so the bill cannot be ticked); with it OFF a missing waiver warns and an audit event "Paid without waiver"
   is written on recording (no reason asked);
@@ -229,9 +233,15 @@ At approval a failed line is taken out (status 'Removed', reason written by the 
 recording a failed line is refused with the one-sentence reason and the other lines of a batch are not posted with
 it (the group is all or nothing, §3.2). An expired discount at recording sets 'Needs review' (item 16) instead.
 
+**Funding balance (Q3 A, Decided 2026-11-23, owner 7:55 PM):** a run that would take the funding account below
+zero shows a warning only and can still be approved and recorded; there is no refuse control. Example: Operating
+holds $20,000.00 and the run is $26,500.00: "This run leaves Operating at -$6,500.00." Test:
+`test_payrun_negative_funding_balance_warns_and_still_approves`.
+
 Tests: `test_payrun_recording_rechecks_bill_eligibility_and_area13_locks`,
 `test_payrun_approval_rereads_bills_and_removes_changed_ones_with_who_what_when`,
-`test_payrun_held_or_unapproved_bill_is_refused`, `test_payrun_compliance_block_refused_without_override`,
+`test_payrun_held_or_unapproved_bill_is_refused`, `test_payrun_compliance_hold_refused_without_override_when_control_on`,
+`test_payrun_missing_documents_warn_and_pay_when_control_off`,
 `test_payrun_waiver_gate_only_when_control_on_and_logs_paid_without_waiver`,
 `test_payrun_discount_expired_at_recording_returns_line_for_review_full_amount` (deadline day passes; one day later
 returns).
@@ -247,13 +257,24 @@ returns).
   payments (S 11-14 11:44 PM; Area 12's module).
 - **Taking a line out before recording:** "Take selected out of the run" with a reason; the bill returns to
   Approved (C71).
-- **Voiding a recorded payment** (bank rejection, lost check): Q2.
+- **Voiding a recorded payment** (bank rejection, lost check; Q2 A, Decided 2026-11-23, owner 7:55 PM): with a
+  reason (at least 10 typed characters, or a listed reason, Area 18 §8.7), the payment's entry is reversed (Dr bank /
+  Cr AP, and the discount credit reversed with it), its allocations and credit uses are released, and its bills
+  return to unpaid: Approved, or Open when 'Bill' approval is off, ready for a later pay run. They do **not** go
+  back into the original run, which keeps the voided line in its history. **Reversal date:** Area 10's reclass date
+  rule (§2.4), one rule for both: the original Date paid when its period is open and not locked; when it is closed,
+  the first day of the current open period; never into a locked period (refused with the lock sentence). The owner's
+  wording ("the void date, or the original date if that period is open") matches OD-71, not yet folded; Area 10 Q21
+  asks which rule both follow. A payment matched to a bank line is unmatched first in Area 12 (lead default, owner
+  may revise). Example: check #1042 lost in the mail and voided: its 3 bills are payable again.
 - **Bank file:** the bank's ACH or positive-pay upload cannot be a NACHA file, because no bank account numbers are
   stored (RP1; S 11-14 2:55 PM left the format to planning). Proposal: a CSV pay list keyed by each vendor's
   `bank_payee_id` for the bank's own payee-based upload, plus a positive-pay check list; files go through
   `storage.py` and are kept with their hash. The exact column layout waits for a bank's sample (O1).
 
 Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
+`test_void_recorded_payment_reverses_and_returns_bills_to_approved_not_to_run`,
+`test_void_reversal_date_follows_area10_date_rule_and_never_a_locked_period`,
 `test_payrun_bank_file_uses_payee_ids_and_stores_no_account_numbers`.
 
 ## 6. Locks, permissions, controls, row version and audit
@@ -264,7 +285,8 @@ Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
   (sensitive; approve a submitted run when approval is ON; with separation of duties on, not the submitter),
   `ap.view`. PROPOSED: `payment.void` (void a recorded payment; sensitive), placed by an Area 18 amendment when
   approved. None is in `AGENT_ALLOWED`: the agent never approves or records (CLAUDE.md section 0).
-- **Controls:** 'Pay run' approval (existing toggle, OFF); `require_lien_waivers_before_paying` (Area 3);
+- **Controls:** 'Pay run' approval (existing toggle, OFF); `require_lien_waivers_before_paying` and
+  `vendor_compliance_hold` (Area 3, both OFF); no funding-balance control (Q3);
   `pay_run_stuck_days` is a setting.
 - **Reasons:** at least 10 characters (OD-31).
 - **Row version:** `pay_run`, `pay_run_line`; stale saves refused.
@@ -282,17 +304,18 @@ Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
 
 ## 8. Questions for Mark (business rules only; recommended option first)
 
-- **Q1. How recorded lines become payments.**
+- **Q1. How recorded lines become payments.** **Answered 2026-11-23 (owner 7:55 PM): A (§3.2).**
   A (recommended): lines of one vendor recorded together with the same Date paid, method and reference are one
   payment (one check or bank debit) applied to each bill; lines recorded separately are separate payments. Example:
   three Pacific Coast Electric bills recorded with check 10452 on 11/20 make one $5,360.00 payment.
   B: every bill line is its own payment, even on one check.
-- **Q2. Voiding a recorded payment from a run.**
+- **Q2. Voiding a recorded payment from a run.** **Answered 2026-11-23 (owner 7:55 PM): A; reversal date aligned with
+  Area 10 §2.4 (§5).**
   A (recommended): void with a reason (at least 10 characters): a reversing entry on the void date (open period),
   its allocations are released, and its bills return to Approved, not into the run; the run keeps the voided line in
   its history. Example: check 10452 is lost; voiding it reopens the three bills for the next run.
   B: voiding puts the bills back into the same run as open lines.
-- **Q3. Funding account would go below zero.**
+- **Q3. Funding account would go below zero.** **Answered 2026-11-23 (owner 7:55 PM): A, warn only (§4).**
   A (recommended): warn only: "1010 after this run" shows the negative amount in red and approval asks to confirm;
   never blocked. Example: 1010 holds $4,200.00 and the run is $5,360.00.
   B: add a Company control (OFF) that refuses approval when the book balance after the run is below zero.

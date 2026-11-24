@@ -1,6 +1,7 @@
 # Step 2.9 schema replan, area 3: bills, vendor credits, payment terms, subcontract bills and vendors
 
-Status: **Draft 2026-11-23, for owner approval.** Docs only: nothing here changes code, a baseline, a migration or a
+Status: **Draft 2026-11-23, for owner approval; owner answers to Q1–Q6 (2026-11-23 7:32–7:48 PM) folded the same
+day.** Docs only: nothing here changes code, a baseline, a migration or a
 test. Every table, column, code and check below is built only in the 2.9 baseline pass, after the whole replan is
 approved. Items marked PROPOSED are not decided. The pay run itself is Area 2 (`area_2_pay_run.md`); this area owns
 what a bill, a vendor credit, a term and a vendor are, and what a pay run may read from them.
@@ -29,7 +30,8 @@ Sources read (searched by date, title or code):
 (holds, billing cycles, lien waivers), 12:10 PM (who may hold), 4:16 PM (locked pay apps), 5:13 PM (re-hold,
 pay-when-paid limit, sub retainage); 2026-11-18 10:50 AM (a locked pay app locks its bills), 10:03 PM (one way to pay
 bills), 10:24 PM (bill approval), 11:55 PM (prepaid bills); 2026-11-19 12:52 PM (account numbers follow the repo
-chart); 2026-11-20 5:15 PM (single active claim and retry). Latest entry read: 2026-11-22 2:25 AM.**
+chart); 2026-11-20 5:15 PM (single active claim and retry). Latest entry read: 2026-11-22 2:25 AM. Owner answers
+in `owner_decisions_2026-11-22.md`: Area 3 Q1–Q6, 2026-11-23 7:32 PM, 7:40 PM, 7:44 PM and 7:48 PM.**
 
 Decisions are cited as "Decided <date> (owner)" with their source. Lead defaults (prototype details) are marked
 "lead default, owner may revise"; they are not questions.
@@ -41,12 +43,12 @@ Decisions are cited as "Decided <date> (owner)" with their source. Lead defaults
 | # | Item | Proposal in one line | Baseline |
 |---|------|----------------------|----------|
 | 1 | Vendors and the shared vendor source | `contact` gains `vendor_kind`, vendor defaults (terms, account, method, job required, 1099) and `requires_lien_waivers`; one vendor list read by Vendors and New bill (OD-16); inactive vendors kept in history, not offered on new bills | company |
-| 2 | Vendor documents and the compliance hold | `vendor_document` rows (type, number, issued, expires, status, file) and `vendor_kind_document` (what each kind needs); a missing or expired required document holds payment only (decided) | company |
-| 3 | Bills | Purchase side of Area 5's stable document and version model; Voucher # at first save; job per line; duplicate warns with a reason; one approval record; holds with history; same-number edit, same-gross reclass (item 13) | company |
+| 2 | Vendor documents and the compliance hold | `vendor_document` rows (type, number, issued, expires, status, file) and `vendor_kind_document` (what each kind needs); a missing or expired required document **warns** on the vendor, the bill and the pay run; only with the compliance-hold control ON (OFF by default) does it hold payment (Q3, decided 2026-11-23) | company |
+| 3 | Bills | Purchase side of Area 5's stable document and version model; Voucher # at first save; job per line (Q1); duplicate warns with a reason; one approval record; re-approval only on a vendor or total change with approval ON (Q4); holds with history; same-number edit, same-gross reclass (item 13) | company |
 | 4 | Subcontract bills, retainage, draws and waivers | bill line links to the subcontract line; over-limit warns with a reason, control refuses (item 12); retainage withheld to Retainage payable; draw and waiver rows; release bill starts held; locked pay app locks its bills | company |
 | 5 | Payment terms and early-payment discounts | `payment_term` validated and frozen on each bill version; discount through the deadline inclusive on the bill total; posts to the bill's job cost line, or `purchase_discounts` with no job (item 16, OD-66) | company |
 | 6 | Vendor credits and refund requests | typed purchase credit with its own `VC-###` series at posting; refund request holds its outstanding amount against that credit; a receipt lowers the open balance (OD-67); write-off with a reason (item 15) | company |
-| 7 | Locks, permissions, controls, row version and audit | Area 13's "Bills and vendor credits" area; four PROPOSED codes; five controls (two already in Area 18 §8.3, three pending its amendment); every reason at least 10 characters (OD-31) | company and master |
+| 7 | Locks, permissions, controls, row version and audit | Area 13's "Bills and vendor credits" area; four PROPOSED codes; six controls, all OFF (two already in Area 18 §8.3, four pending its amendment); every typed reason at least 10 characters (OD-31; a listed reason needs none, Area 18 §8.7) | company and master |
 
 ---
 
@@ -72,6 +74,7 @@ Decisions are cited as "Decided <date> (owner)" with their source. Lead defaults
 | Subcontract vendors require lien waivers by default; suppliers don't | S 11-17 10:44 AM |
 | The vendor profile shows no bank account numbers, only "bank details on file with our bank" | S 11-14 3:10 PM; RP1 |
 | Vendor codes are service-assigned and unique; renaming keeps the code; duplicate creation needs explicit confirmation; inactive vendors stay in history and are excluded from new-bill selection | VENDOR-01, VENDOR-04 (inbox inputs) |
+| An inactive vendor's open bills stay payable, with a "Vendor inactive" note on the bill and the pay run line; no new bills or POs for an inactive vendor. Example: a supplier made inactive while owed $3,200.00 can still be paid the $3,200.00 | Q6 A, Decided 2026-11-23 (owner 7:48 PM) |
 
 ### 1.3 Proposed schema
 
@@ -131,8 +134,21 @@ payment hold, which blocks payment only, not approval; a person clears or overri
 
 ### 2.2 Decided
 
-- Compliance holds are in v1 and block **payment only** (`po_ap_matching_design.md` §10 items 3 and 9).
-- Which documents are required is set per vendor type (§10 item 9); the defaults are Q2 below.
+- Compliance holds are in v1 and block **payment only** (`po_ap_matching_design.md` §10 items 3 and 9). **"Always on"
+  reading Withdrawn 2026-11-23 (owner 7:40 PM, Q3): the hold applies only when its control is ON; next bullet.**
+- **Q3, Decided 2026-11-23 (owner 7:40 PM): warn by default; the compliance hold is an optional control**
+  (decisions_2026-11-11 section 0 lists compliance holds as a control, OFF by default; B8; the 11/23 field rule
+  "warn, don't block"). Default: a missing or expired required document shows a **warning** on the vendor, the bill
+  and the pay run, and the bill can still be paid. A company may turn on the Company control
+  `vendor_compliance_hold` (PROPOSED name; Admin or Master, Controls page, audit-logged, **OFF by default**); only
+  then is the bill held from payment (never from approval), and holders of `payment.release_hold` may override it
+  per bill with a typed reason (at least 10 characters), audit-logged. Example: a sub's workers' comp expired 11/1;
+  with the control off, the $18,500.00 draw in Friday's pay run shows the warning and pays.
+- Which documents are required is set per vendor type (§10 item 9), editable per company. **Q2 A, Decided
+  2026-11-23 (owner 7:32 PM):** Subcontractor: general liability, workers' comp, licence, W-9; Service provider:
+  general liability, W-9; Supplier: W-9; Utility and Government: none. Missing or expired means a warning, or a hold
+  with the Q3 control ON (owner 7:40 PM correction of the Q2 record). Example: a roofing sub whose workers' comp
+  expired 11/1 shows the warning on its bills.
 - The mockup's Required documents table (vendor-new, vendor-detail) and the 30-day "need attention" list are the
   screen (design chat gap list item 6; CODE_CHANGES 169).
 
@@ -161,20 +177,28 @@ logged): `vendor_kind` TEXT, `doc_type` TEXT, `is_required` INTEGER 0/1; PRIMARY
 The baseline seeds the Q2 defaults. (Lead default, owner may revise: a small table now; Area 21's scoped policy
 records (X 6) may absorb it later. The baseline has no `policy_rule` table.)
 
-**Compliance hold.** Derived at the moment of payment, not stored as a flag: a bill from a vendor with a Missing or
-Expired required document cannot be added to a pay run or recorded (Area 2 rechecks at approval and at recording).
+**Compliance warning and hold (Q3).** Derived at the moment of payment, not stored as a flag. A bill from a vendor
+with a Missing or Expired required document:
+- with `vendor_compliance_hold` **OFF** (default): shows "Missing documents: <list>" on the vendor, the bill and the
+  pay run line, and can be added to a pay run and recorded; recording writes an audit event "Paid with missing
+  documents" (no reason asked; lead default, owner may revise, like Area 2's "Paid without waiver");
+- with it **ON**: cannot be added to a pay run or recorded (Area 2 rechecks at approval and at recording) unless an
+  override row exists for that bill.
 An override is a stored row, **`bill_compliance_override`** (`invoice_id`, `vendor_document_type`, `reason` CHECK
-length(trim) >= 10, `overridden_by`, `overridden_at`), insert-only, by a holder of `payment.release_hold` (Q3). It
-covers that bill only.
+length(trim) >= 10, `overridden_by`, `overridden_at`), insert-only, by a holder of `payment.release_hold`, and is
+used only while the control is ON. It covers that bill only.
 
 ### 2.4 Lands, effects, tests
 
 - Company baseline: both tables, the override table, audit triggers, the seed rows.
 - Services: `vendors.py` writes documents (permission `vendor.manage`); the compliance check is one function the bill
-  and pay-run services call (`vendors.compliance_block(conn, contact_id, as_of)`).
+  and pay-run services call (`vendors.compliance_status(conn, contact_id, invoice_id, as_of)`, returning OK, Warn
+  or Hold from the control).
 - Tests: `test_vendor_document_status_derived_on_file_expiring_expired_missing`,
   `test_expiring_document_raises_attention_30_days_ahead`,
-  `test_missing_required_document_blocks_payment_not_approval`,
+  `test_missing_required_document_warns_and_pays_when_control_off`,
+  `test_missing_required_document_holds_payment_not_approval_when_control_on`,
+  `test_compliance_control_defaults_off_and_change_is_audit_logged`,
   `test_compliance_override_needs_permission_and_10_character_reason_and_covers_one_bill`,
   `test_renewal_adds_row_and_keeps_superseded_document`, `test_required_documents_follow_vendor_kind_setting`.
 
@@ -199,6 +223,8 @@ covers that bill only.
 | Every bill has a read-only Voucher # (VCH-1001...), assigned at first save, unique, gaps allowed | S 11-14 11:15 PM; decision 1.3 |
 | A duplicate vendor and bill number can't be saved without "This is a different bill" plus a reason; it then goes to Approvals flagged; never approved in one click or in bulk | S 11-14 2:40 PM, 2:30 PM; L (duplicate warns + control) |
 | Bill lines carry a cost code (required with a job) and a Billable flag with markup | S 11-14 2:40 PM |
+| A bill is job-coded per **line**. Example: one $12,000.00 panel bill: line 1 $8,000.00 RI0001-002, line 2 $4,000.00 RI0001-003 | Q1 A, Decided 2026-11-23 (owner 7:32 PM) |
+| An approved bill needs re-approval only when its **vendor or total** changes, and only while 'Bill' approval (the control) is ON; with it OFF the same change shows a warning and the bill stays approved. A due-date change never triggers re-approval. A job or GL change with the same total stays the same-gross reclass (item 13), no re-approval. Example: approval ON, $12,000.00 changed to $12,400.00 goes back to approval; approval OFF, a warning only | Q4, Decided 2026-11-23 (owner 7:44 PM; replaces option A, which included the due date) |
 | Approval is one word, **Approve**; after it the bill is **Approved** and payment **OK to pay**; a warning (PO/receipt difference, possible duplicate) needs "Approve anyway" with a reason; one approval record everywhere | S 11-18 10:24 PM |
 | Any bill can be held with a reason (Pay when paid, Waiting on cash, Dispute, Other); release any time, no reason needed; every hold and release recorded; the job's PM or anyone with bill-payment permission | S 11-17 10:44 AM, 12:10 PM |
 | Resubmitting a sent-back bill may change the vendor, with a warning, logged "Vendor A → B", back to Needs review | S 11-17 12:10 PM |
@@ -271,7 +297,9 @@ on the Controls page: a hold warns 7 days before and on the date; it never relea
   10 characters) and version history. Refused: closed or locked period or area (Area 13 on both posting dates),
   `lock_documents_after_posting` ON, the new total below the amount paid, the bill in a pay run (Area 2), or in a
   locked owner pay app ("Locked in pay app #<n>. An approver unlocks the pay app first.", S 11-18 10:50 AM). If
-  either posting fails, both roll back (APBILL-05). When 'Bill' approval is ON, the edit follows Q4.
+  either posting fails, both roll back (APBILL-05). Re-approval follows Q4 (§3.2): only a vendor or total change,
+  only with 'Bill' approval ON; otherwise the edit posts with the warning "This bill was approved at <amount>; the
+  change is logged."
 - **Same-gross correction (item 13).** When the total is unchanged and only account, job or line allocation moves,
   the bill service posts a reclass (Area 10 §2, one pair per moved line, the AP line untouched) instead of a
   reversal and repost, through the approval route set for reclasses. The bill keeps its version; it shows
@@ -307,7 +335,10 @@ on the Controls page: a hold warns 7 days before and on the date; it never relea
   `test_apbill05_rule8_reason_reversal_replacement_and_version_history`,
   `test_apbill05_area13_locks_apply_to_both_postings`, `test_apbill05_failure_of_either_posting_rolls_back_both`,
   `test_apbill05_locked_pay_app_pay_run_and_payment_guards_remain`, `test_bill_version_stores_ap_account_it_posted_to`,
-  `test_bill_line_with_job_requires_cost_code`, `test_vendor_job_required_refuses_line_without_job`.
+  `test_bill_line_with_job_requires_cost_code`, `test_vendor_job_required_refuses_line_without_job`,
+  `test_edit_changing_vendor_or_total_needs_reapproval_only_with_bill_approval_on`,
+  `test_edit_changing_vendor_or_total_with_approval_off_warns_and_stays_approved`,
+  `test_due_date_change_never_triggers_reapproval`, `test_inactive_vendor_open_bill_stays_payable_with_note`.
 - Screen behaviour only (no schema; tests in the screen phase): New bill blank at every entry point; the
   tab-session draft on Reload (OD-17, OD-37).
 
@@ -426,7 +457,10 @@ is separate (TERM-03). No row version, no audit detail of term edits.
   paid ÷ total), with the last payment taking the remainder (lead default, owner may revise). Area 2 stores the
   editable amount on the pay run line.
 - Posting of the discount: Dr AP (full applied amount) / Cr bank (net) / Cr the discount: for a job-coded bill, one
-  credit per job-coded line on that line's account, job and cost code (split as Q5 decides); otherwise Cr
+  credit per job-coded line on that line's account, job and cost code, split pro rata by line amount with the
+  rounding remainder on the last line (Q5 A, Decided 2026-11-23, owner 7:48 PM; example: 2% = $240.00 on a
+  $12,000.00 bill: the $8,000.00 RI0001-002 line's cost falls $160.00 and the $4,000.00 RI0001-003 line's
+  $80.00); otherwise Cr
   `purchase_discounts`.
 - Tests: `test_term_exact_id_create_view_edit_deactivate_and_audit_after_reload`,
   `test_term_usage_counts_and_new_document_picker_follow_active_state_after_reload`,
@@ -439,7 +473,8 @@ is separate (TERM-03). No row version, no audit detail of term edits.
   `test_discount_deadline_is_inclusive_across_bill_detail_pay_run_and_preview`,
   `test_discount_expired_one_day_later_matches_bill_detail_pay_run_and_preview`,
   `test_discount_on_job_coded_bill_credits_job_cost_line`, `test_discount_on_bill_without_job_uses_purchase_discounts`,
-  `test_partial_payment_discount_defaults_pro_rata_and_is_editable_to_zero`.
+  `test_partial_payment_discount_defaults_pro_rata_and_is_editable_to_zero`,
+  `test_job_coded_discount_split_pro_rata_by_line_remainder_on_last_line`.
 
 ---
 
@@ -518,12 +553,14 @@ no refund request, no hold.
   `payment.make` holder has it, S 11-17 12:10 PM), `bill.edit_posted` (same-number edit; not sensitive),
   `vendor_document.manage` and `vendor_refund.manage`. None is in `AGENT_ALLOWED`; the agent may draft a bill for
   human approval only (CLAUDE.md section 0).
-- **Controls (all OFF, Controls page, every change logged):** `subcontract_overlimit_block`,
+- **Controls (all OFF, Controls page, every change logged):** `vendor_compliance_hold` (PROPOSED name, Q3),
+  `subcontract_overlimit_block`,
   `require_lien_waivers_before_paying`, `pay_when_paid_limit_days` (NULL), `vendor_credit_writeoff_approval_threshold_cents`
   (NULL), the existing 'Bill' and 'Vendor credit' approval toggles, `lock_documents_after_posting`, and the
   duplicate-bill block (L, owner 2026-11-17 16:05: "warns, with a control to block"; PROPOSED name
   `block_duplicate_bills`, OFF: with it ON a same-vendor duplicate bill number is refused instead of warned).
-- **Reasons:** every required reason here is at least 10 characters after trimming (OD-31; Area 18 §8.6).
+- **Reasons:** every typed reason here is at least 10 characters after trimming (OD-31; Area 18 §8.6); a reason
+  picked from a list (a bill hold's Pay when paid, Waiting on cash or Dispute) needs no typed text (Area 18 §8.7).
 - **Row version (rule g4):** `contact`, `invoice` (bill rows), `bill_hold`, `vendor_document`, `vendor_refund_request`,
   `sub_draw`, `payment_term` carry `row_version`; services refuse stale saves.
 - **Audit:** every table above has insert/update audit triggers with before/after detail (Area 18 §1); holds,
@@ -547,31 +584,35 @@ no refund request, no hold.
 
 ## 9. Questions for Mark (business rules only; recommended option first)
 
-- **Q1. A job per bill line, or one job per bill?**
+- **Q1. A job per bill line, or one job per bill?** **Answered 2026-11-23 (owner 7:32 PM): A (§3.2).**
   A (recommended): each bill line carries its own job (the header job is the default for new lines), as Area 10 F8
   expects. Example: one supplier bill for wire used on RI0001-002 and SU0004-004 is entered once with two job lines.
   B: one job per bill, like invoices (OD-09); a two-job supplier bill is entered as two bills.
-- **Q2. Which documents each vendor kind needs by default (compliance hold).**
+- **Q2. Which documents each vendor kind needs by default (compliance hold).** **Answered 2026-11-23 (owner 7:32 PM):
+  A; "can be approved but not paid" applies only with the Q3 control ON (§2.2).**
   A (recommended): Subcontractor: GL insurance, workers' comp, licence, W-9; Service provider: GL insurance, W-9;
   Supplier: W-9; Utility and Government: none. Companies edit the list. Example: a new Subcontractor with no workers'
   comp certificate shows "Missing" and its bills can be approved but not paid.
   B: only GL insurance and the lien waiver, as `po_ap_matching_design.md` proposed.
-- **Q3. Who may override a compliance hold on one bill?**
+- **Q3. Who may override a compliance hold on one bill?** **Answered 2026-11-23 (owner 7:40 PM): warn by default; the
+  hold is a control, OFF; with it ON, `payment.release_hold` holders override per bill with a typed reason (§2.2).**
   A (recommended): holders of `payment.release_hold` (Admin and the Master by default; grantable by job title), per
   bill, with a reason of at least 10 characters, logged. Example: Dana Reyes (Admin) pays VCH-1022 while the renewed
   GL certificate is on its way.
   B: Admin and the Master only, never grantable.
-- **Q4. Editing a posted, approved bill when Bill approval is ON.**
+- **Q4. Editing a posted, approved bill when Bill approval is ON.** **Answered 2026-11-23 (owner 7:44 PM): vendor or
+  total only, only with approval ON, else a warning; option A's due date Withdrawn 2026-11-23 (§3.2).**
   A (recommended): the new version needs approval again when the total, vendor or due date changes; a same-gross
   allocation change follows item 13's reclass route instead. Example: raising VCH-1015 from $2,400.00 to $2,460.00
   sends it back to Approvals; moving a line from cost code 03-100 to 03-200 posts a reclass.
   B: every edit of an approved bill needs approval again.
-- **Q5. Discount on a job-coded bill with several lines (OD-66).**
+- **Q5. Discount on a job-coded bill with several lines (OD-66).** **Answered 2026-11-23 (owner 7:48 PM): A, with the
+  remainder on the last line ("largest line" below Withdrawn 2026-11-23) (§5.3).**
   A (recommended): the discount is split across the bill's job-coded lines in proportion to their amounts, the
   rounding remainder on the largest line. Example: a $368.40 discount on a bill with $10,000.00 on cost code 03-100
   and $8,420.00 on 03-200 credits $200.00 and $168.40.
   B: the whole discount credits the first job-coded line.
-- **Q6. Paying an inactive vendor's open bills.**
+- **Q6. Paying an inactive vendor's open bills.** **Answered 2026-11-23 (owner 7:48 PM): A (§1.2).**
   A (recommended): inactive only stops new bills and POs; open bills and credits stay payable and refundable.
   Example: Granite Ridge Scaffold is made inactive with one approved bill still open; the pay run still offers it.
   B: inactive also blocks payment until the vendor is reactivated.
@@ -586,7 +627,7 @@ no refund request, no hold.
   "approved without commitment" report, and the vendor-document attention list.
 - **O5 (Area 18):** placement of the four PROPOSED codes in §7; §8.3 already lists `subcontract_overlimit_block` and
   the write-off threshold, and an amendment adds `require_lien_waivers_before_paying`, `pay_when_paid_limit_days`
-  and the PROPOSED `block_duplicate_bills`; attachments as the document file.
+  and the PROPOSED `block_duplicate_bills` and `vendor_compliance_hold`; attachments as the document file.
 - **O6 (Area 20):** remittance email after payment and the vendor document request email.
 - **O7 (mockups, no schema):** the CODE_CHANGES 43 `vendor_bank_account` with encrypted numbers is superseded by RP1
   (no bank numbers stored); `bank_payee_id` stays.

@@ -1,8 +1,30 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-23): evening and overnight owner messages folded; Areas 2 and 3 drafted
+## Current planning stop (2026-11-23 evening): owner answers of 6:55–8:00 PM folded
 
-Folded from `Strata_Teams\inbox	o_planning.md` (2026-11-22 evening to 2026-11-23 2:20 AM), with
+Folded from `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer to Area 10 Q18" to the end) and the
+inbox message 2026-11-23 1:30 PM "schedule tree, tasks without %, and one activity table". One owner each:
+
+| Owner | Items |
+|---|---|
+| Area 10 §11.5–§11.6 (approved; amendments) | Q18 (AR and revenue lines take the new job together, in Reclass job and on the Reclassify page; §2.4 exception); Q19 B (the page follows OD-69/OD-70); new Q20 (AP lines), Q21 (one date rule, OD-71) |
+| Area 18 §8.7 (approved; amendment) | Q26 A (a listed reason satisfies the rule; 10 typed characters only for Other or no list); the unapplied role also posted from the page |
+| Area 8 §12.5–§12.9 (approved; amendments) | work tree (`work_template_node`, `job_work_node`), tasks without %, task start and finish activities, one `activity` table (Q25, Q26 superseded); Q27 three dates (baseline locked at signing; a CO or a granted extension moves the target; `schedule_extension`); Q28 A (start date required); Requested completion warning; new Q29–Q32 |
+| Area 15 §12.1, Area 7 §14 (approved; amendments) | Q24: optional `lead.requested_completion_on`; lead stages on the tree; `activity` gains the field columns; `project.target_start_on` NOT NULL, `requested_completion_on` added, `target_finish_on` dropped |
+| Area 3 draft | Q1 A, Q2 A, Q3 (compliance hold is a control, OFF; warning by default; the draft no longer has it always on), Q4 (vendor or total only, only with approval ON), Q5 A (remainder on the last line), Q6 A |
+| Area 2 draft | Q1 A, Q2 A (void reversal date follows Area 10 §2.4), Q3 A (warn only) |
+
+The 8:00 PM RI0001-003 contract value ($260,000.00) is sample data only (Area 8 §12.8). Controls stay OFF by default
+(new: `vendor_compliance_hold`, `require_note_on_task_start_finish`, both PROPOSED names) and the integrity rules are
+unchanged. **Not folded (outside this range): OD-71 to OD-78 (owner 3:20–4:50 PM)**, which touch Area 10 (OD-71
+date rule, OD-72 pay app follows, OD-77 no WIP entry), Area 15 (OD-73 to OD-76 lead import) and the design queue
+(OD-78); Area 10 Q21 asks about OD-71. Next action: fold OD-71 to OD-78; Mark answers the new questions and approves
+Areas 2, 3 and 4 and the amended Area 5. Questions for Mark: each area and the log
+(`Strata_Teams\planning_replan_log_2026-11-22.md`).
+
+## Earlier planning stop (2026-11-23 early): evening and overnight owner messages folded; Areas 2 and 3 drafted
+
+Folded from `Strata_Teams\inbox\to_planning.md` (2026-11-22 evening to 2026-11-23 2:20 AM), with
 `Strata_Teams\docs\planning_owner_features_2026-11-22.md` and OD-23 to OD-70 of `owner_decisions_2026-11-22.md`.
 One owner each:
 
@@ -117,7 +139,8 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
   - **Folded 2026-11-23 into the Area 3 draft** (`docs/replan_2.9/area_3_bills_vendor_credits_terms_subcontracts.md`,
     for owner approval; questions Q1–Q6 there). The lines above stay as the record of what was handed over.
 - **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above. **Folded 2026-11-23 into the Area 2
-  draft** (`docs/replan_2.9/area_2_pay_run.md`, for owner approval; questions Q1–Q3 there).
+  draft** (`docs/replan_2.9/area_2_pay_run.md`, for owner approval; questions Q1–Q3 there, answered 2026-11-23
+  7:55 PM and folded).
 - **Area 1, Payments and receipts (added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
   addition):** Reclass job on a part-paid invoice (Area 10 §11.2) undoes each payment application on it: the
   allocation is released (reason "Reclass job") and, in the same transaction, one entry posts on the payment's
@@ -129,6 +152,8 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
   for the approval with the RECLASS entry (Area 10 §11.2). Tests:
   `test_application_undo_posts_ar_to_unapplied_customer_payments_on_payment_job`,
   `test_reapply_reverses_unapplied_customer_payments_entry`, `test_application_undo_leaves_cash_and_deposit_unchanged`.
+  **Amendment 2026-11-23 (owner 6:58 PM, Area 10 Q19 B):** the same undo runs when a job change on the Reclassify
+  transactions page moves an invoice with a payment applied (Area 10 §11.5); one service function for both.
 - **Area 9, Materials, POs and inventory:**
   - Item 18 (PORDER-01, PORDER-04): job and cost-code commitment starts only on a successful send (or Mark as sent
     or Print). Drafts, approved-but-unsent POs and failed sends stay uncommitted. Close remainder releases the

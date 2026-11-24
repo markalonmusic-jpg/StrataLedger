@@ -1027,13 +1027,30 @@ This area is approved: nothing above is rewritten. These are inputs for later pa
   rules (open item 9 in §11) need a design pass before design batch F. No schema change until then.
 - **Stage probability for a weighted pipeline** (gap list item 3; F7 left it unbuilt): an **owner decision still
   pending**, kept with the owner as the design chat asked. Not a planning question here.
-- **Lead estimated start date** (inbox 2026-11-23 2:20 AM, Material forecast page): leads have only
+- **Lead estimated start date** (**Withdrawn 2026-11-23 (owner 7:28 PM): §12.1**) (inbox 2026-11-23 2:20 AM, Material forecast page): leads have only
   `expected_close_date` (§1.3). Proposed: `lead.estimated_start_on` (TEXT date, optional), shown on the lead and the
   estimate; a sent estimate's materials count as tentative demand only when the forecast's "include sent
   estimates" filter is on (Area 8 §12.3). Q24 below.
 
-**Q24. Lead estimated start date.**
+**Q24. Lead estimated start date.** **Answered 2026-11-23 (owner 7:28 PM): Requested completion, not estimated start;
+options A and B Withdrawn 2026-11-23. §12.1.**
 A (recommended): add the optional `lead.estimated_start_on`, shown on the lead and the estimate; at signing it fills
 `project.target_start_on` when the contract has no start date (Area 8 Q9 A copy still wins when it has one). Example:
 a lead expected to close 12/15 with an estimated start of 01/11 shows its materials on 01/11 when the filter is on.
 B: no lead column; sent estimates are placed on the forecast by `expected_close_date` instead.
+
+### 12.1 Owner answers and decisions 2026-11-23 (dated amendments; Decided 2026-11-23, owner)
+
+- **Amendment 2026-11-23 (Q24, owner 7:28 PM; replaces options A and B).** A lead gets an optional **Requested
+  completion** date, `lead.requested_completion_on` TEXT (`IS date(...)` or NULL): the customer's deadline (for
+  example "must be energized by 12/31"). There is no `lead.estimated_start_on`, and `expected_close_date` is not
+  used for the job start. At signing the PM enters the job start date (required, Area 8 Q28), and the lead's
+  Requested completion is copied to the job, which warns when the forecast finish is after it (Area 8 §12.6, the
+  owner of the job side). Example: requested completion 12/31, forecast 1/9: the job shows a warning. Test:
+  `test_lead_requested_completion_is_optional_date`.
+- **Amendment 2026-11-23 (owner 7:10 PM, work tree; owner of the design: Area 8 §12.5).** Two effects here, built
+  in the same pass: (1) a lead's stage and `lead_stage_history` point at the Sales level-2 nodes of the job type's
+  `work_template_node` tree instead of `service_stage` (§1.4; the stage role 'Lost' moves to the node with the other
+  roles); (2) `activity` (§2.3) becomes the one table for sales and field activities; its new columns, type flags
+  and field types are listed only in Area 8 §12.5. The busy check (§2.3) reads Calendar item activities
+  instead of `calendar_item`. Nothing else in this area changes.

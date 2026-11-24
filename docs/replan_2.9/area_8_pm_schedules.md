@@ -43,7 +43,7 @@ Sources read (only these, searched by date, title or code):
 | 2 | Job close | `Closed` is one stage with an outcome Completed or Cancelled (Q2). Cancel reasons are a company list. `project` gains `close_outcome`, `cancel_reason_id`, `cancel_note`, `cancelled_at_stage_id`, `completed_on`, `closed_on`, `closed_at`. The cancelled-at stage is set by the service. Close and cancel are history rows too, so reports never lose a reopened job's earlier outcome | company |
 | 3 | Other job columns | Job site and target dates (Q9), manual % complete with who and why (area 13 check), billing type and warranty link (area 15), final bill requests, PM prompts (stage move, bill next milestone). `project.status` is dropped; an on-hold flag with an append-only hold history replaces its "Suspended" (Q6 C) | company |
 | 4 | Schedules | Templates (version > phase > item), job schedule copied from a version, baselines (set_at/set_by, new versions only from a change order), updates with delay reasons, calendar items, crews. Status is computed, lookahead is a view. Work days use area 13's work week and holidays | company |
-| 5 | Change orders | Existing `change_order` and lines grow reason, send, reject and approval-proof fields, markup per line, and a `field_event` table. Approving writes the budget lines (`project_budget.co_line_id`) and, with days, a new baseline version. Approved lines are locked | company |
+| 5 | Change orders | Existing `change_order` and lines grow reason, send, reject and approval-proof fields, markup per line, and a `field_event` table. Approving writes the budget lines (`project_budget.co_line_id`) and, with days, a new baseline version. Approved lines are locked **("with days, a new baseline version": Withdrawn 2026-11-23 (owner 7:20 PM): a CO's days move the target finish, §12.6.)** | company |
 | 6 | Forecast | `job_forecast_line` holds the current estimate to complete (ETC) per cost code. Every forecast change or budget transfer first writes an insert-only revision (header, eight figures per cost code, totals). Codes `job.forecast.edit` and `job.budget.transfer` | company |
 | 7 | Boundary with area 7 | Area 7 owns the job record, budgets and cost codes; area 8 owns lifecycle, schedule, change orders, forecast. Table in section 7 | both |
 | 8 | Controls, labels and permissions | New controls and the crew label setting, all permissive by default; new codes `job.schedule.edit`, `schedule.template.manage`, `service_type.manage`, `job.stage.backdate`, and the two forecast codes (section 8) | company |
@@ -53,6 +53,9 @@ Master file: no change.
 ---
 
 ## 1. Service types, stages and stage history
+
+**Amendment 2026-11-23 (owner 7:10 PM):** `service_stage` as the stage list is replaced by the work tree's
+level-2 nodes; stage roles, history and triggers point at nodes (§12.5). The rules below stand; their tables move.
 
 ### 1.1 Current state
 
@@ -294,7 +297,7 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 | Need | Source | Today | Proposal |
 |------|--------|-------|----------|
-| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) |
+| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) **(`target_finish_on` as an editable copy: Withdrawn 2026-11-23 (owner 7:20 PM): the target finish is derived, §12.6; `target_start_on` is required, Q28, §12.6)** |
 | Manual % complete, with who and why | area 13 check `manual_pct_complete` | none | `project.manual_pct_complete` REAL CHECK (NULL or 0-100), `manual_pct_reason` TEXT, `manual_pct_by` INTEGER, `manual_pct_at` TEXT. NULL = cost-to-cost (rule: schedule % is never used for revenue, C28) |
 | Status | baseline | `project.status` | Q6 C: drop `project.status`. "Open", "Complete" (stage role Complete, not closed) and "Closed · Completed/Cancelled" derive from the stage and outcome. Add `project.on_hold` INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) (the current copy) and the append-only `project_hold_history` below |
 | Warranty and service jobs | A 11-18 | none | `project.billing_type` TEXT NOT NULL DEFAULT 'Billable' CHECK IN ('Billable', 'Warranty'); `warranty_for_job_id` INTEGER REFERENCES project; `source_case_id` INTEGER (FK added by area 15, which defines `service_case`; the link table `case_job(case_id, job_id)` is area 15's). Editable until the first cost posts (service rule); a Warranty job cannot be invoiced; its costs roll up to the original job's warranty line (area 7/10 job cost) |
@@ -355,9 +358,9 @@ The only fragments are `contract.start_date` and `completion_date` (`:885-886`) 
 | Terms: phase, task, milestone, predecessor (type FS or SS, lag in work days), baseline (`set_at`, `set_by`), calendar item (was schedule item), lookahead (1-6 weeks, a view only), delay reason | A 11-17 5:58 PM |
 | Template > version > phases (ordered) > items (task or milestone, ordered): work days (tasks), an optional predecessor, an optional delivery stage tag, an optional default assignee type; loop check on save; templates are independent of service type; a service type may name a default **"Templates are independent of service type" and the optional delivery stage tag: Withdrawn 2026-11-23 (owner 1:54 AM): a template belongs to a service type and each phase to one of its stages; §12.1** | A 5:35 PM; S 11-17 5:35 PM; C30 (supersedes C29) |
 | A saved template makes a new version; jobs already scheduled keep theirs ("Applies to new jobs only") | flow A1; to_design R36 note |
-| Job schedule: a copy of one template version, plus planned (baseline), forecast and actual start and finish, % complete, assignee (crew, or vendor or subcontract), notes | A 5:35 PM item 2 |
+| Job schedule: a copy of one template version, plus planned (baseline), forecast and actual start and finish, % complete, assignee (crew, or vendor or subcontract), notes **(% complete on a task: Withdrawn 2026-11-23 (owner 7:10 PM): tasks are Not started, In progress or Done, §12.5)** | A 5:35 PM item 2 |
 | Baselines are versioned; each new version references the change order that created it | A 5:35 PM |
-| No baseline until the PM clicks Set baseline or applies the first update, whichever is first; store `locked_at`/`locked_by` (now `set_at`/`set_by`); versions after that come only from a change order; a gold reminder after 14 days | A 5:46 PM item 1; flow section 9 |
+| No baseline until the PM clicks Set baseline or applies the first update, whichever is first; store `locked_at`/`locked_by` (now `set_at`/`set_by`); versions after that come only from a change order; a gold reminder after 14 days **(Withdrawn 2026-11-23 (owner 7:20 PM, Q27): the baseline is the signed contract's dates, set at signing, one version, never moved; §12.6)** | A 5:46 PM item 1; flow section 9 |
 | Calendar items: job, phase (required), task (optional), date, optional time, description, who, notify; they never change task dates; optional stage | A 5:35 PM item 3; A 11-18 |
 | Updates: one record per Apply (who, when, per-item old and new, reason); a reason is required when a forecast finish moves later; reasons Weather, Material late, Inspection or permit, Owner or customer, Subcontractor, Crew availability, Design change, Other plus note | A 5:35 PM item 4 |
 | Date math uses the work week and company holidays; linked moves are returned as a preview and saved only on Apply; stage prompts on the first actual start or finish of a tagged item; no automatic date or stage change | A 5:35 PM item 5 |
@@ -408,6 +411,9 @@ ordinary audited `company_settings` change (not a control).
   row_version)`. Same shape CHECKs as the template item; CHECK at most one of `crew_id`, `vendor_id` is set.
   Milestones use `forecast_finish` and `actual_finish` only. **No planned columns on the task:** planned dates are
   the lines of the newest baseline. Before the baseline is set, planned equals forecast.
+  **Withdrawn 2026-11-23 (owner 7:10 PM and 7:20 PM): `phase_id`, `stage_id`, `kind`, `name`, `sort_order` and
+  `pct_complete` move to or come from the work tree (§12.5); "before the baseline is set" no longer happens (the
+  baseline is set at signing, §12.6).**
 
   Amendment 2026-11-20 (owner, from area 6): `payment_milestone_id` is INTEGER NULL REFERENCES area 6's
   `contract_milestone` (the job's payment-schedule milestone copied at Mark signed;
@@ -417,13 +423,13 @@ ordinary audited `company_settings` change (not a control).
   type has no stage of that name).
 - `job_schedule_baseline(baseline_id PK, schedule_id FK, version_no INTEGER NOT NULL, set_at, set_by,
   change_order_id INTEGER REFERENCES change_order, days_added INTEGER NOT NULL DEFAULT 0, note, UNIQUE (schedule_id,
-  version_no))`; CHECK `(version_no = 1) = (change_order_id IS NULL)`.
+  version_no))`; CHECK `(version_no = 1) = (change_order_id IS NULL)`. **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
 - `job_schedule_baseline_task(baseline_id FK, task_id FK, planned_start, planned_finish, days_added INTEGER NOT NULL
   DEFAULT 0, PRIMARY KEY (baseline_id, task_id))`. A task with no line in the newest baseline is "Added after
   baseline". Baseline and baseline task rows are insert-only (integrity: a baseline is the record the schedule was
   held to).
 - `schedule_update(update_id PK, schedule_id FK, applied_at, applied_by, finish_before, finish_after, note)` and
-  `schedule_update_line(line_id PK, update_id FK, task_id FK, old/new for pct_complete, actual_start,
+  `schedule_update_line(line_id PK, update_id FK, task_id FK, old/new for pct_complete **(Withdrawn 2026-11-23 (owner 7:10 PM): §12.5)**, actual_start,
   actual_finish, forecast_start, forecast_finish, delay_reason_id FK NULL, delay_note TEXT, moved_by_link INTEGER
   NOT NULL DEFAULT 0)`. One update per Apply; insert-only. Structural edits of the planning pass (add or move a
   task, re-link, assign, change work days) are not updates; their history is the audit log, which the panel
@@ -437,6 +443,8 @@ Amendment 2026-11-19 (owner 11:20 PM, from area 15): `delay_reason` is not built
 TEXT beside it, the label at the time of use, written by the service (docs/replan_2.9/area_15_crm.md section 7.3).
 
 **Calendar items** (renamed from schedule items):
+**`calendar_item`: Withdrawn 2026-11-23 (owner 7:10 PM): a calendar item is an `activity` row of type Calendar
+item pointing to a work-tree node, §12.5.**
 `calendar_item(item_id PK, project_id NOT NULL FK, phase_id NOT NULL FK job_schedule_phase, task_id FK NULL,
 stage_id FK NULL, item_date NOT NULL, start_time TEXT (HH:MM), length_minutes INTEGER, description NOT NULL,
 user_id FK NULL, crew_id FK NULL, contact_id FK NULL, row_version)`; CHECK at most one of the three "who" columns;
@@ -445,7 +453,7 @@ items never write task dates. Busy checks for users and crews (area 15) read `st
 
 **Controls (new, permissive defaults):** `company_settings.schedule_at_risk_days` INTEGER NOT NULL DEFAULT 1,
 `schedule_late_days` INTEGER NOT NULL DEFAULT 5 (Late when more than this), `schedule_pct_behind_points` INTEGER NOT
-NULL DEFAULT 20, `baseline_reminder_days` INTEGER NOT NULL DEFAULT 14; CHECKs `>= 0`. Each change logged with a
+NULL DEFAULT 20, `baseline_reminder_days` INTEGER NOT NULL DEFAULT 14 **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**; CHECKs `>= 0`. Each change logged with a
 reason (area 18).
 
 **Services** (`schedule_templates.py`, `job_schedules.py`, `work_calendar.py`, `calendar_items.py`; no UI, no clock
@@ -458,11 +466,11 @@ reads):
   `contract.completion_date`.
 - `preview_update` returns old and new for every moved task including linked moves; `apply_update(schedule_id,
   changes, row_version)` saves, writes the `schedule_update` rows, and sets the baseline first when it is not set
-  (Q12), then creates `pm_prompt` rows for tagged tasks on a first actual start or finish. A forecast finish moving
+  (Q12) **("sets the baseline first": Withdrawn 2026-11-23, §12.6)**, then creates `pm_prompt` rows for tagged tasks on a first actual start or finish. A forecast finish moving
   later needs a `delay_reason_id` (and note for Other); earlier needs none.
-- `set_baseline`: sets `baseline_set_at/by`, writes baseline v1 from the forecast dates. Planned dates are read-only
+- `set_baseline` **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**: sets `baseline_set_at/by`, writes baseline v1 from the forecast dates. Planned dates are read-only
   afterwards; the service refuses edits of planned dates and only a change order approval writes a new baseline
-  (section 5).
+  (section 5). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
 - Status is computed in one function (Done, Late, At risk, On track, Not started; a phase takes its worst task; the
   job compares forecast finish with the contract date); never stored. Lookahead and Gantt/Calendar choice are
   per-user preferences (area 17's list preferences), not schedule data. Share schedule renders milestones and
@@ -508,7 +516,7 @@ reads):
 | Recording approval needs approved-by and date and proof (signed CO or email); before confirming it shows the effect: revised contract, revised budget by cost code, forecast margin, the new SOV line | C21 |
 | Approved COs lock; fixes use a new CO; nothing posts to the ledger | C21 |
 | Approval changes the budget by cost code and the contract; the estimate to complete does not move by itself (the cost was already forecast) | C21 sample |
-| A CO with a time extension gets an "Extend schedule" step: pick tasks and work days per task; on approval baseline v2 is created and linked to the CO | flow B5; A 5:35 PM |
+| A CO with a time extension gets an "Extend schedule" step: pick tasks and work days per task; on approval baseline v2 is created and linked to the CO **("baseline v2": Withdrawn 2026-11-23 (owner 7:20 PM): approval moves the target finish, §12.6)** | flow B5; A 5:35 PM |
 | "Proceeding at risk" (work done before signature) is a flag | C21 PROPOSED, not built |
 | PCO, change events and T&M tickets ahead of formal COs | controller 11-13 item 3: recommended, not decided (open item 3) |
 
@@ -562,7 +570,7 @@ single mechanism, default OFF):
 2. Extending the schedule writes `job_schedule_baseline` v(n+1) with `change_order_id`, `days_added`, and one
    baseline task line per task with its work days added; forecast dates do not move on their own (a person applies
    an update). When the baseline was never set, approval sets it first from the then-current forecast. Approval is
-   allowed without extending (a warning only, rule 0).
+   allowed without extending (a warning only, rule 0). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
 3. Nothing posts to the ledger.
 Void and Reject write the reason; Reject needs `rejection_reason`.
 
@@ -615,7 +623,7 @@ no change order because tax is calculated on each invoice.
 - Tests to write later: approve without proof or signer refused; approval writes budget rows whose sum equals the
   cost change and a revised budget per cost code that matches the preview; an approved line cannot be edited or
   deleted (trigger); a Rejected CO needs a reason; converting a field event copies photos and links `co_id`; a CO
-  with days extends the schedule to baseline v2 linked to the CO and "Compare to v1" still reads v1; approval does
+  with days extends the schedule to baseline v2 linked to the CO **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)** and "Compare to v1" still reads v1; approval does
   not change `job_forecast_line.etc_cents`; nothing posts (journal tables unchanged).
 
 ---
@@ -745,7 +753,7 @@ overhead', has no original job and resolves its account through `service_goodwil
 
 **New controls** (Company Settings > Controls; each default permissive, change logged with a reason, shown on the
 Controls page): `stage_requirements_block` (0), `stage_backdate_days` (NULL), `schedule_at_risk_days` (1),
-`schedule_late_days` (5), `schedule_pct_behind_points` (20), `baseline_reminder_days` (14),
+`schedule_late_days` (5), `schedule_pct_behind_points` (20), `baseline_reminder_days` (14) **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**,
 `forecast_reason_over_cents` (NULL). They are `company_settings` columns now; area 21's scoped policy records may
 move them. The crew label (`crew_label_singular`, `crew_label_plural`, default 'Crew' and 'Crews', section 4.3) is a
 label setting, not a control.
@@ -912,7 +920,7 @@ them read only. B: each template can override.
 
 Q12. **Baseline set by the first update.** A (recommended): baseline v1 is the forecast dates just before that
 update's changes. B: the dates after the update.
-**Answer: A.**
+**Answer: A.** **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
 
 Q13. **Crews table.** A (recommended): defined here (`crew`) and reused by area 15. B: wait for area 15.
 **Answer: A, plus a label: the crew table is defined here and reused by area 15; a company setting holds the crew name, singular and plural (default "Crew" / "Crews"), used by every screen, report and export label (section 4.3).**
@@ -1003,7 +1011,7 @@ order.
    attachment kind. The amendment line for the codes and reasons is written (area 18 section 2.4, 2026-11-19).
 7. Whether "no change this month" for the `estimates_to_complete_updated` check needs its own record or a revision
    with no changed lines; settled when area 13's check is built.
-8. Area 21: the company calendar query reads job tasks, milestones and `calendar_item`; the needs-attention items
+8. Area 21: the company calendar query reads job tasks, milestones and `calendar_item` **(Withdrawn 2026-11-23 (owner 7:10 PM): §12.5)**; the needs-attention items
    (schedule not updated in 7 days, milestone missed) are computed.
 9. The variance sign (positive means under budget) and the committed definition are to be confirmed against the
    mockup's budget table when design batch D is built.
@@ -1036,16 +1044,17 @@ Source: inbox 2026-11-23 1:54 AM "schedule hierarchy is Stage > Phase > Task (ow
   milestone is reached. No new column: the state is read from the stage's completion milestone (`actual_finish` set)
   while the job is still in that stage. The stage moves only through §1's stage-history service, as approved.
 - **Schema effects (consequences of the decision, built in the 2.9 pass):**
-  1. `job_schedule_phase` and `schedule_template_phase` gain `stage_id` INTEGER NOT NULL REFERENCES `service_stage`.
+  1. `job_schedule_phase` and `schedule_template_phase` gain `stage_id` INTEGER NOT NULL REFERENCES `service_stage`. **Withdrawn 2026-11-23 (owner 7:10 PM, work tree): §12.5.**
   2. Milestones stay `kind = 'Milestone'` and record what they complete: `completes` TEXT CHECK IN ('Phase',
      'Stage'), NULL for an ordinary task; a stage-completion milestone sits in a phase of that stage. At most one
-     stage-completion milestone per stage per job schedule (service rule).
+     stage-completion milestone per stage per job schedule (service rule). **`completes`: Withdrawn 2026-11-23 (owner 7:10 PM): a milestone row names the node it closes, `closes_node_id`, §12.5.**
   3. Schedule templates belong to a service type: `schedule_template.service_type_id` NOT NULL, because their phases
      point at that type's stages. **Conflict flagged:** this reverses C30 ("templates are independent of service
      type"; the §4.2 row is marked withdrawn). A service type still names its default template (§4.2), now one of its
-     own.
+     own. **The C30 reversal is confirmed by the owner 2026-11-23 (7:10 PM: one template per job type); §12.5.**
   4. The optional `stage_id` tag on `job_schedule_task`, `schedule_template_item` and `calendar_item` is Q25 and Q26
-     below.
+     below. **Answered 2026-11-23 (owner 7:10 PM): no stage tag anywhere; the stage is the ancestor in the tree,
+     §12.5.**
   5. Sample data (design run, no schema): the mockup Gantt groups (Pre-construction / Installation / Closeout) hold
      items named like stages (Site survey, Permitting); the mockups regroup them under stages.
 - Tests: `test_phase_requires_stage_of_jobs_service_type`,
@@ -1066,7 +1075,7 @@ approved.
 - **A time extension does not need a change order, but may have one.** The delay log's change-order link stays
   optional. **Conflict flagged:** §4.2 says baseline versions after the first come only from a change order
   ("Baselines are versioned; each new version references the change order"). Q27 below asks what a time extension
-  without a change order moves.
+  without a change order moves. **Decided 2026-11-23 (owner 7:20 PM, Q27): §12.6.**
 - **Delay log Action column** opens the field event / change order wizard ("File new event" is the existing
   "+ Field event", §5). Screen only.
 - **The weather forecast stays on.** The daily log and look-ahead read the forecast for the job site address
@@ -1087,26 +1096,209 @@ task start of each job schedule (`job_schedule_task` forecast dates), `project.t
 "include sent estimates" filter; Area 6), stock available (on hand less reserved; Area 9) and open PO quantity by
 expected date (Area 9). Rule shown on the page: surplus or deficit = available now + open PO quantity expected by the
 start date - needed by earlier starts in the view - needed on the date. Gaps handed on: `lead.estimated_start_on`
-(Area 15 §12 input) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
+(Area 15 §12 input; **Withdrawn 2026-11-23 (owner 7:28 PM, Area 15 Q24): leads get a Requested completion date, not
+a start; lead demand placement is Q30, §12.9**) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
 asks that every job carry an estimated start date: Q28.
 
 ### 12.4 Questions for Mark (recommended option first)
 
-- **Q25. The stage tag on tasks and template items (hierarchy item 2).**
+- **Q25. The stage tag on tasks and template items (hierarchy item 2).** **Superseded 2026-11-23 (owner 7:10 PM): the
+  work tree, §12.5. Options A and B Withdrawn 2026-11-23.**
   A (recommended): drop `job_schedule_task.stage_id` and `schedule_template_item.stage_id`; a task's stage is its
   phase's stage. Example: task "Permitting" in phase "Permits" under stage "Pre-construction" reads Pre-construction.
   B: keep the column, filled by the service from the phase and read-only.
-- **Q26. The stage on calendar items (hierarchy item 5).**
+- **Q26. The stage on calendar items (hierarchy item 5).** **Superseded 2026-11-23 (owner 7:10 PM): a calendar item is an
+  activity pointing to a tree node, §12.5. Options A and B Withdrawn 2026-11-23.**
   A (recommended): drop `calendar_item.stage_id`; the stage comes from the required phase. The drawer shows Stage,
   then Phase filtered by stage. Example: an inspection item on phase "Electrical" shows stage "Installation".
   B: keep an optional stage tag that may differ from the phase's stage.
-- **Q27. A time extension without a change order (11/22 decision vs §4.2).**
+- **Q27. A time extension without a change order (11/22 decision vs §4.2).** **Answered 2026-11-23 (owner 7:20 PM):
+  three dates; option A ("baseline only by CO") Withdrawn 2026-11-23. §12.6.**
   A (recommended): it moves the forecast finish and the job's `target_finish_on` (reason from the delay, logged); the
   baseline still changes only through a change order, so schedule variance shows the slip. Example: 3 rain days
   move the target finish from 12/04 to 12/09; the baseline finish stays 12/04.
   B: it creates a new baseline version without a change order, with a reason and the delay link.
-- **Q28. Every job carries an estimated start date (material forecast).**
+- **Q28. Every job carries an estimated start date (material forecast).** **Answered 2026-11-23 (owner 7:23 PM): A.
+  §12.6.**
   A (recommended): `project.target_start_on` becomes required when a job is created, copied from the contract's start
   date (Q9 A) or typed on New job, editable and logged. Example: a New job without a lead must enter a start date.
   Cross-area: the column is in Area 7's `project` DDL (approved, §1 table); A adds an amendment line there.
   B: it stays optional; the forecast lists jobs with no start date under "No start date".
+
+### 12.5 One work tree and one activity table (Decided 2026-11-23, owner)
+
+Source: inbox 2026-11-23 1:30 PM "from design chat: schedule tree, tasks without %, and one activity table" (items
+1–3 decided in the design chat 12:39–1:27 PM; item 4 written up as a proposal) and the owner's restatement in
+`owner_decisions_2026-11-22.md`, "Owner answer to Area 8 Q25 and Q26" (7:10 PM), which decides item 4's core (one
+activity table, each row pointing to a tree node). This replaces §12.1's schema effects 1, 2 and 4 (marked
+withdrawn there) and Q25/Q26. §12.1's milestone prompt (the stage turns gold; the PM clicks "Mark <stage>
+complete"; the stage never moves by itself) stands.
+
+**Decided.**
+- **Four levels: Contract stage > Stage > Phase > Task.** Contract stages are pre-templated: **Sales,
+  Pre-construction, Construction, Post-construction**. Stages are the job type's stages; phases group tasks; tasks
+  are the smallest unit. A **milestone** is a task row flagged as one; it marks the completion of a phase or a stage.
+- **One self-referencing tree table per side**: `work_template_node` (the job type's template) and `job_work_node`
+  (copied per job at contract signing). Each row has parent, level, name, order and the milestone flag. **Level
+  names are a company setting** (default Contract stage / Stage / Phase / Task). One template per job type
+  (Solar, Reroof, Remodel and General seeded), which confirms the C30 reversal flagged in §12.1.
+- **Leads use the same tree:** the Sales contract stage holds the sales stages, so a lead and a job still share one
+  pipeline (Area 15 §1.4).
+- **Tasks have no %.** A task is Not started, In progress (actual start set) or Done (actual finish set).
+  `pct_complete` comes off the task and off `schedule_update_line`. Phase, stage and contract stage % complete are
+  computed from the tasks under them, **weighted by working days** (forecast start to finish on the company work
+  week, Q11 A; milestones and activities excluded), shown with "n of m tasks". `schedule_pct_behind_points`
+  compares at phase level. Revenue % complete (cost-to-cost, C28) is unaffected.
+- **Task start and finish create activities.** Setting a task's actual start or finish creates a Work started or
+  Work completed activity linked to the task node, the crew or vendor and the date, and asks for a note. The note
+  is optional; a Company control `require_note_on_task_start_finish` (PROPOSED name, **OFF by default**, Controls
+  page, logged) requires it. The dates stay on the task; a later correction logs a correction activity.
+- **Things that happen are rows in one `activity` table** with a type, each pointing to a node in the tree:
+  calendar items, punch items, delays, extra work, notes, completions. The Gantt keeps its own schedule table
+  (forecast and actual dates, predecessors), whose tasks link to their place in the tree. The Gantt and stages stay
+  in the tree; Punch list, Delay log, Field events, Daily log, job calendar and the Schedule view (renamed from
+  Look-ahead) are views, not tables. One entry point, "+ Log", with the type as the first field.
+
+**Proposed schema (built in the 2.9 pass).**
+- `work_template_node(node_id PK, version_id NOT NULL FK schedule_template_version, parent_id NULL FK
+  work_template_node, level INTEGER NOT NULL CHECK 1-4, name NOT NULL, sort_order, is_milestone INTEGER NOT NULL
+  DEFAULT 0 CHECK (0, 1), closes_node_id NULL FK work_template_node, work_days, pred_node_id NULL FK, pred_type CHECK
+  (NULL or IN ('FS', 'SS')), lag_work_days NOT NULL DEFAULT 0, default_crew_id, default_vendor_id, target_days,
+  guidance, can_skip, stage_role)`. CHECKs: `parent_id IS NULL` exactly when `level = 1`; only level 4 has
+  `work_days`, a predecessor and a default assignee; only a milestone has `closes_node_id`; `stage_role` (the
+  approved `service_stage.stage_role` values plus 'Lost', Area 15 §1.4) and `can_skip` only on level 2. The service
+  checks that a parent is one level up, that a milestone closes one of its own ancestors (phase or stage), and that
+  there are no loops (H4: rules in the service, not triggers). Template versions stay immutable (Q15 A).
+- `job_work_node`: the same shape plus `project_id` NOT NULL, `source_node_id` FK work_template_node and
+  `row_version`; copied from the accepted template version at signing.
+- `job_schedule_task` stays as the Gantt's table, one row per level-4 node: `node_id` INTEGER NOT NULL UNIQUE FK
+  job_work_node, forecast and actual start and finish, predecessor, lag, crew, vendor or subcontract,
+  `payment_milestone_id` (milestones), notes, `row_version`. It loses `phase_id`, `stage_id`, `kind`, `name`,
+  `sort_order` and `pct_complete` (from the node, or gone). Baseline task lines and update lines keep pointing at
+  `task_id`.
+- **Dropped:** `schedule_template_phase`, `schedule_template_item`, `job_schedule_phase`, `calendar_item` and
+  `calendar_item_notify` (attendees are `activity_attendee`), and **`service_stage` as the stage list**: the stage
+  is a level-2 node. Consequences, built in the same pass: `project.service_stage_id` becomes
+  `current_stage_node_id` FK job_work_node; `project_stage_history` from/to point at `job_work_node`; `stage_trigger`
+  points at the template's level-2 node; a lead's stage and `lead_stage_history` point at the Sales level-2 nodes of
+  the job type's template (Area 15 amendment, §12.5 is the owner). `schedule_template` gains `service_type_id` NOT
+  NULL UNIQUE (one per type), and `service_type.default_schedule_template_id` is withdrawn with it (lead default).
+- `company_settings.work_level1_name` to `work_level4_name` TEXT NOT NULL with the defaults above.
+- **`activity` (Area 15 §2.3 table) gains:** `work_node_id` INTEGER FK job_work_node (a phase or task; required for
+  field types, service rule), `related_activity_id` FK activity (cause and effect: punch, then delay, then extra
+  work), `vendor_contact_id`, and `verified_at`/`verified_by` (status Open, Done, then Verified; both or neither, and
+  only after done). `activity_type` gains behaviour flags beside `is_appointment`: `needs_verify`,
+  `blocks_final_billing` (read only while the Company control `block_final_billing_with_open_punch_items` is ON,
+  default OFF, §12.2), `moves_forecast` (a Delay writes a `schedule_update` on the task it affects; the baseline is
+  unchanged) and `can_become_change_order` (Extra work). Seeded field types: Calendar item, Inspection, Punch, Delay,
+  Extra work, Note, Work started, Work completed (sales types unchanged). Type-specific fields sit in small 1:1
+  tables: `punch_detail` (priority, from inspection), `delay_detail` (cause from `reason_option` kind 'Delay' with
+  the new "Rework / punch", working days lost, notice to owner) and `extra_work_detail` (customer signed, time
+  extension, change order link). Activity photos are attachments (Area 18 §3).
+- **Default stages per job type (seeded, from the 1:30 PM message):** Solar: Pre-construction = Site survey,
+  Design & engineering, Permitting, Ready to install; Construction = Installation, Inspection; Post-construction =
+  Interconnection / PTO, Complete, Final billing. Reroof and remodel: Pre-construction = Pre-construction,
+  Mobilization; Construction = In progress, Punch list; Post-construction = (Substantial completion,) Complete,
+  Final billing. "Contract signed" closes Sales; Closed ends Post-construction. Companies can move any stage.
+  Roll-ups read the tree with a recursive query (standard SQL `WITH RECURSIVE`, H5).
+- §10's v1.1 field records (punch and inspection items, the delay log, field events of the field plan) are these
+  activity types, not separate tables. `field_event` (§5, numbered FE-####, with cost lines and the CO link) is
+  Q32.
+
+**Lead defaults (owner may revise).** Work-days weighting is a one-line switch to task count. Stage identity across
+template versions: each level-2 node carries a stable `stage_key` copied to new versions, so leads and stage
+triggers on an older version still resolve. The mockups `job-calendar.html` (own form with Stage) and the unused
+calendar drawer in `pages/job-detail.ops.js` are design queue items, not schema.
+
+Tests: `test_work_tree_parent_is_one_level_up_and_level1_has_no_parent`,
+`test_only_task_rows_carry_dates_work_days_and_predecessors`,
+`test_milestone_closes_one_of_its_own_ancestors`, `test_job_work_tree_copied_from_template_at_signing`,
+`test_one_schedule_task_per_task_node`, `test_task_status_from_actual_start_and_finish_without_pct`,
+`test_phase_and_stage_pct_rollup_weighted_by_working_days_excludes_milestones`,
+`test_task_start_and_finish_create_activities_and_note_required_only_with_control`,
+`test_field_activity_points_to_phase_or_task_node`, `test_delay_activity_writes_schedule_update_not_baseline`,
+`test_level_names_follow_company_setting`, `test_lead_stage_points_at_sales_node_of_job_type_template`.
+
+### 12.6 Three schedule dates, the start date and Requested completion (Decided 2026-11-23, owner)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answer to Area 8 Q27" (7:20 PM), "... Q28" (7:23 PM) and "Owner
+answer to Area 15 Q24" (7:28 PM).
+
+- **Amendment 2026-11-23 (Q27).** A job keeps **three** schedule dates:
+  - **Baseline:** the dates on the signed contract, **locked at signing**; later estimate edits do not change it.
+    One baseline per job, never versioned. `job_schedule_baseline` keeps one row per schedule (version 1,
+    `change_order_id` NULL), written at signing with its task lines from the schedule built then; insert-only, as
+    approved. The Set baseline button, the first-update rule (Q12) and the `baseline_reminder_days` setting are
+    withdrawn.
+  - **Target finish:** the date owed to the customer now = baseline finish + the work days of approved change
+    orders + extensions the customer granted. A granted extension is recorded with a reason. Derived in one
+    function, never typed, and shown with its parts ("Baseline 3/20 + 5 granted rain work days = 3/27").
+  - **Forecast:** the predicted real finish from the schedule tasks; a reschedule on the job calendar or the Gantt
+    updates it. It includes delays the customer has not agreed to.
+  - Example: baseline 3/20; the customer grants 5 work days for rain, so the target is 3/27; the crew is behind, so the
+    forecast is 3/31, late against the target.
+- **New record (proposed): `schedule_extension`** (`extension_id` PK, `project_id` NOT NULL, `work_days` INTEGER
+  NOT NULL CHECK > 0, `granted_on` date, `reason_id` FK `reason_option` kind 'Delay' with its label, `reason_text`
+  (10 typed characters only for Other, Area 18 §8.7), optional `granted_by_contact_id` and `delay_activity_id`,
+  `recorded_by`, `recorded_at`, and `voided_at`/`voided_by`/`void_reason`). Insert-only except the void columns. An
+  extension that comes with a change order is the CO's `days_added`, not a second row (the 11/22 rule "may have a
+  CO" without counting it twice). Permission: `job.schedule.edit` (project scope).
+- **Change order approval** with days moves the target finish (by `days_added`); it no longer writes baseline
+  v(n+1) (§5 step 2 marked withdrawn). The "Extend schedule" step stays as the PM's choice of which tasks move in the
+  forecast.
+- **Status** compares the forecast finish with the target finish (Late, At risk, On track by the existing
+  `schedule_at_risk_days` and `schedule_late_days`), and the target with the baseline shows the granted slip.
+  `project.target_finish_on` as an editable copy is withdrawn (§3.1 row) and dropped (lead default, owner may revise).
+- **Amendment 2026-11-23 (Q28 A).** `project.target_start_on` is **required when the job is created** (at contract
+  signing): no job without a start date (an owner decision, not a control), so the baseline and forecast can be built. "Start" means the first day of
+  work on site, the first task of the Construction contract stage (owner 7:28 PM), not the signing date. Example:
+  North field array signs 12/1; the PM enters a start of 1/5. Q31 asks how the build places Pre-construction tasks.
+- **Requested completion (Area 15 Q24, owner 7:28 PM).** The lead's optional Requested completion (Area 15 §12.1)
+  is copied at signing to `project.requested_completion_on` (TEXT date, NULL allowed, editable, logged). The job
+  shows a **warning** (never a block) when the forecast finish is after it. Example: requested completion 12/31,
+  forecast 1/9: the job shows the warning.
+- **Area 7 amendment lines (same pass):** `project.target_start_on` NOT NULL and the new
+  `project.requested_completion_on` are recorded in Area 7 §14 (the `project` DDL).
+- Tests: `test_baseline_set_at_signing_from_contract_dates_and_never_versioned`,
+  `test_target_finish_is_baseline_plus_approved_co_days_plus_granted_extensions`,
+  `test_extension_with_change_order_counts_once`, `test_reschedule_moves_forecast_not_target_or_baseline`,
+  `test_status_compares_forecast_with_target`, `test_job_creation_refused_without_start_date`,
+  `test_requested_completion_copied_at_signing_and_warns_when_forecast_later`.
+
+### 12.7 Conflicts with earlier decisions (flagged; the owner's 11/23 answers win)
+
+- **Baseline timing:** Q27 returns to C28 ("baseline at signing"), replacing A 5:46 PM and Q12 A (Set baseline or
+  first update; F5 above). Code and tests cite the 11/23 answer.
+- **Change order days:** §5's baseline v(n+1) on approval (flow B5) is replaced by the target finish.
+- **C30:** confirmed reversed (one template per job type).
+- **`service_stage`:** approved Areas 8 §1 and 15 §1.4 build on it (stage roles, history, triggers, lead stages);
+  the tree replaces it as the stage list (consequences in §12.5). Area 15 gets an amendment line pointing here.
+- **`field_event`:** the design chat's proposal also replaces it with an activity type, but §5's approved
+  `field_event` carries a number, cost lines and the CO link. Not changed: Q32.
+
+### 12.8 Inbox note with no schema effect
+
+- **RI0001-003's contract value is $260,000.00 everywhere** (owner 8:00 PM): sample data and mockups only.
+
+### 12.9 Questions for Mark (recommended option first)
+
+- **Q29. Does the Gantt keep its own schedule list, separate from the work tree?** (The 1:30 PM design-chat
+  write-up put task dates in the tree; your 7:10 PM answer said the Gantt keeps its own schedule.)
+  A (recommended): yes, as you restated: the tree says what the work is (stage, phase, task, milestone) and the
+  Gantt schedule holds each task's dates, predecessor and crew. Example: task "Set inverters" sits under phase
+  "Electrical" in the tree; its forecast 2/10–2/12 and its crew are on the Gantt.
+  B: one list only: each task's dates, predecessor and crew are kept on the tree itself.
+- **Q30. Where a lead's sent estimate sits on the Material forecast now that leads have no start date.**
+  A (recommended): with "include sent estimates" on, lead demand shows in a "Leads, not scheduled" band with its
+  Requested completion, not netted against dated stock. Example: a lead needing 40 panels by 3/31 shows in the band.
+  B: place it on `expected_close_date` as a stand-in start, labelled "estimated".
+- **Q31. How the build places Pre-construction tasks now that the start date is the first day on site.**
+  A (recommended): the first Construction task is anchored on the start date; Pre-construction tasks are scheduled
+  forward from the signing date, and the build warns when they would finish after the start. Example: signed 12/1,
+  start 1/5, permitting needs 30 work days: "Pre-construction ends 1/12, after the start date 1/5."
+  B: back-schedule Pre-construction from the start date so it ends the day before.
+- **Q32. Does a field event keep its own number and cost lines?**
+  A (recommended): yes: a field event (FE-#### number, cost lines, link to the change order, as approved in §5)
+  stays its own record; logging Extra work on the job creates or links to one. Example: Extra work "Add 2 panels"
+  logged on 2/10 becomes FE-0009 with its cost lines.
+  B: Extra work is only an activity; the number and cost lines move onto the activity.
