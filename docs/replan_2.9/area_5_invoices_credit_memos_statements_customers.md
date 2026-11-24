@@ -482,7 +482,7 @@ flag. Every §9.3 question is decided (2026-11-22), so the amended plan is ready
   `test_invoice_tax_override_leaves_tax_code_unchanged`. Under §9.3 Q12 (decided) the override and the OD-18
   recalculation apply to all lines, including signed-quote lines.
 - **Amendment 2026-11-22: document numbering (item 7; DOCNUM-02).** Company settings shows the journal entry
-  sequence read-only (for example "Next: 2026-00432"); `ledger.py` keeps sole ownership of journal numbers. Add the
+  sequence read-only (for example "Next: JE-000432" (Amended 2026-11-24: journal entry example renumbered to the L4 format; no rule or amount changed.)); `ledger.py` keeps sole ownership of journal numbers. Add the
   credit memo series in the format `CM-###` (the separate gapless credit series of §8.2 Q2) and keep the existing
   Settings wording. Schema: the credit memo series row and its `CM-` prefix in the shared sequence pattern; no new
   table. Test: `test_credit_memo_series_assigns_cm_numbers_gapless`,
