@@ -30,7 +30,7 @@ section 9.
 - **Envelope.** Success: `{"ok": true, "result": {...}, "warnings": [...]}` (`warnings` optional, each
   `{"message": "...", "field": "..."}`, never blocking). Failure: `{"ok": false, "error": {...}}` (section 9).
 - **IDs** are opaque strings (`"lay_8f3k2"`). Pages never parse, compare, sort or do arithmetic on them (g1).
-  Display numbers (`"JE-000412"`, `"INV-0391"`) come in their own `display_*` fields.
+  Display numbers (`"JE-000412"`, `"INV-0401"`) come in their own `display_*` fields. (Amended 2026-11-24: example invoice renumbered from INV-0391, which the mockups use for the draft invoice of pay app 8; no rule or amount changed.)
 - **Dates** are `"YYYY-MM-DD"` (accounting dates have no time); timestamps are ISO 8601 UTC with `Z`
   (`"2026-11-19T14:05:00Z"`). Pages only format them (g2); periods, ranges and dynamic dates are resolved by the
   service from `context.today` (H2, G6).
@@ -728,7 +728,7 @@ valid after the layout changes. The service re-authorizes on every use; a handle
 anything. Formula and variance cells have `drill: null` (their `explain` names the inputs, each of which can be
 drilled on its own row).
 
-Request: `{"drill": "dh_a4", "limit": 100, "cursor": null}` → `drill_financial` result:
+Request: `{"drill": "dh_a4", "limit": 100, "cursor": null}` → `drill_financial` result: (Amended 2026-11-24: example invoice renumbered from INV-0391, which the mockups use for the draft invoice of pay app 8; no rule or amount changed.)
 
 ```json
 {
@@ -739,7 +739,7 @@ Request: `{"drill": "dh_a4", "limit": 100, "cursor": null}` → `drill_financial
     {
       "line_ref": "jl_77120",
       "date": "2026-10-06",
-      "display_number": "INV-0391",
+      "display_number": "INV-0401",
       "source_type": "invoice",
       "name": "Brennan residence",
       "memo": "Re-roof, pay app 7",
