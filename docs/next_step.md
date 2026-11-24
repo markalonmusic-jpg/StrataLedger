@@ -1,12 +1,22 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, 1:14 AM answer folded)
+## Current planning stop (2026-11-24, 1:37 AM answer folded)
+
+From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:37 AM"), Area 8 §12.19 and Area
+18 §8.10: the task-baseline rebuild uses the existing `job.schedule.edit` (job scope), no new permission; one new
+Company control `require_baseline_rebuild_approval` (PROPOSED name, OFF by default): off, the editor rebuilds alone;
+on, the rebuild is a request written only on approval, never self-approved, and a refused request leaves the
+baseline unchanged. Reason and history in both modes; insert-only and `finish_on` are not controllable. **STOP
+question for Mark:** who may approve when the control is on (proposed rule: Area 14's single approval mechanism,
+default approvers Admin, Master and job-scoped `job.schedule.edit` holders, never the requester).
+
+## Earlier planning stop (2026-11-24, 1:14 AM answer folded)
 
 From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:14 AM"), Area 8 §12.18: the
 task-level baseline can be rebuilt from the current schedule with a required reason, as a new insert-only version
 (the earlier one is kept and reads as superseded); the planned completion (`finish_on`) never changes, so Late is
-unaffected; slip uses the latest version; not a control. **STOP question for Mark:** which existing permission
-covers the rebuild (candidate `job.schedule.edit`; no new permission added).
+unaffected; slip uses the latest version; not a control (**Withdrawn 2026-11-24, owner 1:37 AM: one approval control, OFF; §12.19**). **STOP question for Mark:** which existing permission
+covers the rebuild (candidate `job.schedule.edit`; no new permission added). **Answered 2026-11-24 1:37 AM: `job.schedule.edit`.**
 
 ## Earlier planning stop (2026-11-24, 12:28 AM answers folded)
 

@@ -114,8 +114,8 @@ posting; 5 AI features; 6 installer package; after the desktop app, the hosted e
     (custom fields service, FR1 as amended).
   - **Posting fixes after Codex batch 2 (done).**
   - **2.9 Schema replan (in progress):** 21 areas (docs/replan_2.9/, plan in docs/next_step.md); 13 owner-approved
-    as of 2026-11-24 (18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2); areas 1, 9, 11, 14, 16, 19, 20 and 21 to draft. Open owner question (2026-11-24): which existing
-    permission covers the Area 8 task baseline rebuild (docs/next_step.md).
+    as of 2026-11-24 (18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2); areas 1, 9, 11, 14, 16, 19, 20 and 21 to draft. Open owner question (2026-11-24): who approves an Area 8
+    task baseline rebuild when the new approval control is on (docs/next_step.md).
   - **2.8 Password recovery, restore and backups (next after 2.9):** password recovery (PW1-PW11), restore, and
     scheduled backups that include attachments (the backup step: backlog 16, with the portable company package and
     key bundle). Gap: docs/roadmap.md "Baseline gaps", Step 2.8.

@@ -451,7 +451,7 @@ user_id FK NULL, crew_id FK NULL, contact_id FK NULL, row_version)`; CHECK at mo
 `calendar_item_notify(item_id FK, user_id, PK both)`. Indexes on (`item_date`), (`project_id`, `item_date`). Calendar
 items never write task dates. Busy checks for users and crews (area 15) read `start_time`, `length_minutes`.
 
-**Controls (new, permissive defaults):** `company_settings.schedule_at_risk_days` INTEGER NOT NULL DEFAULT 1,
+**Controls (new, permissive defaults):** **(Amendment 2026-11-24: plus the Company control `require_baseline_rebuild_approval`, OFF by default; §12.19, Area 18 §8.10.)** `company_settings.schedule_at_risk_days` INTEGER NOT NULL DEFAULT 1,
 `schedule_late_days` INTEGER NOT NULL DEFAULT 5 (Late when more than this), `schedule_pct_behind_points` INTEGER NOT
 NULL DEFAULT 20, `baseline_reminder_days` INTEGER NOT NULL DEFAULT 14 **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**; CHECKs `>= 0`. Each change logged with a
 reason (area 18).
@@ -1593,7 +1593,8 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:14 AM". The 
   check against version 1), so Late (Q33, Q35) is unaffected.
 - **Task slip is measured against the latest task baseline version.** Reports can show that a rebuild happened (who,
   when, reason) and compare with an earlier version on request.
-- **Not a control and no setting.**
+- **Not a control and no setting.** **Withdrawn 2026-11-24 (owner 1:37 AM): one approval control, OFF by default;
+  §12.19.**
 - Example: on 12/15 the PM types start 1/5 instead of 1/15 and the task baseline locks. On 12/16 the PM rebuilds it
   with the reason "Start date typed wrong": task baselines shift 10 work days, planned completion 3/20 is unchanged,
   and the history shows version 1, the PM and the time.
@@ -1602,6 +1603,45 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:14 AM". The 
   `test_ordinary_schedule_edits_never_change_task_baseline`,
   `test_task_slip_uses_latest_baseline_version`.
 
-**STOP question for Mark (not decided): which existing permission covers the rebuild?** No new permission is added.
+**STOP question for Mark (not decided): which existing permission covers the rebuild?** **Answered 2026-11-24
+(owner 1:37 AM): `job.schedule.edit`; §12.19.** No new permission is added.
 The candidate is `job.schedule.edit` ("Edit a job's schedule and calendar items", project scope; §8: Project manager
 template, Admin, Master), which matches "whoever can manage the job's schedule". Not chosen until Mark confirms.
+
+### 12.19 Owner answer 2026-11-24 1:37 AM (rebuild permission and approval control; refines §12.18)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:37 AM". The planning chat accepted 910a9aa.
+
+- **Amendment 2026-11-24: permission.** A task-baseline rebuild needs the existing `job.schedule.edit` (job scope;
+  Project manager, Admin and Master by default, §8). No new permission. Without it the rebuild is refused.
+- **Amendment 2026-11-24: one Company control, OFF by default:** PROPOSED name `require_baseline_rebuild_approval`
+  ("Require approval to rebuild a schedule baseline"), Admin or Master, Controls page, every change audit-logged;
+  listed in Area 18 §8.10.
+  - **OFF (default):** the schedule editor rebuilds alone; the new baseline version is written at once (§12.18).
+  - **ON:** the rebuild is a **request**. Nothing is written to `job_schedule_baseline` or
+    `job_schedule_baseline_task` until it is approved; on approval the service inserts the new version. The
+    requester cannot approve their own request. A refused request leaves the baseline unchanged and stays in the
+    history (who asked, when, the reason, who refused, when).
+  - Lead defaults, owner may revise: the request is held in the single approval mechanism (`approval_request`,
+    Area 14) rather than a new table; at most one open rebuild request per schedule; the new version is copied from
+    the schedule as it stands at approval, and the approval screen shows that preview.
+- **Reason and history are recorded in both modes** (the Area 18 Q26 reason rule).
+- **Not controllable (integrity):** baseline rows stay insert-only, and `finish_on` (planned completion) never
+  changes on a rebuild, with the control on or off. Late (Q33) is unaffected either way.
+- Examples: control off, the PM fixes a wrong start date with the reason "Start date typed wrong" and the new version
+  is written at once, logged with her name; control on, the PM requests the same rebuild, an Admin approves it, and
+  only then is the new version written; if refused, the baseline is unchanged and the request stays in the history.
+- Tests: `test_baseline_rebuild_allowed_with_job_schedule_edit`,
+  `test_baseline_rebuild_refused_without_job_schedule_edit`,
+  `test_baseline_rebuild_control_off_writes_version_at_once`,
+  `test_baseline_rebuild_control_on_writes_nothing_until_approved`,
+  `test_baseline_rebuild_self_approval_refused`,
+  `test_refused_baseline_rebuild_leaves_baseline_unchanged_and_stays_in_history`,
+  `test_require_baseline_rebuild_approval_defaults_off`.
+
+**STOP question for Mark (not decided): who may approve a rebuild when the control is on?** The rule I would use:
+the existing approval setup, the single approval mechanism of Area 14 (as for "Change order approval", §5), with a
+new approval type "Schedule baseline rebuild" whose default approvers are Admin and Master, plus any holder of
+`job.schedule.edit` on that job, never the requester. Why: it reuses the one approval mechanism instead of a new
+path, it matches your example (an Admin approves), and the job-scoped editors are the people who already manage that
+schedule. Not chosen until Mark confirms; Area 14 is not drafted yet.

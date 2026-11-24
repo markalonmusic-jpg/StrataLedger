@@ -1259,7 +1259,8 @@ re-runs on the new counts when built.
 
 `lock_account_type_after_posting` and `require_zero_balance_to_deactivate` (§8.1); `subcontract_overlimit_block`
 and `vendor_credit_writeoff_approval_threshold_cents` (NULL = off) for Area 3 (next_step). Area 20's
-`capture_rejected_retention_days` (default 30) is a company setting, not a control.
+`capture_rejected_retention_days` (default 30) is a company setting, not a control. **Amendment 2026-11-24: plus
+`require_baseline_rebuild_approval` (OFF; Area 8 §12.19), §8.10.**
 
 ### 8.4 Owner answer
 
@@ -1357,3 +1358,11 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   the §8.5 "a Manager cannot override the final-billing block" amendment is withdrawn with it.
 - **Reclass approval (Area 10 Q36 A, §11.9):** only expense and COGS-account reclasses skip approval; whole-invoice
   and whole-bill job moves follow manual-entry approval when it is on.
+
+### 8.10 Owner answer 2026-11-24 1:37 AM (placement only; rule owned by Area 8 §12.19)
+
+- **New Company control, OFF by default (Controls page, Admin or Master, audit-logged):** PROPOSED
+  `require_baseline_rebuild_approval`, "Require approval to rebuild a schedule baseline". Off: a holder of
+  `job.schedule.edit` rebuilds the task baseline alone; on: the rebuild waits for a second person's approval and the
+  requester cannot approve their own. It joins the §8.3 list. No new permission: the rebuild uses
+  `job.schedule.edit` (job scope). Who approves when it is on is an open question (Area 8 §12.19).
