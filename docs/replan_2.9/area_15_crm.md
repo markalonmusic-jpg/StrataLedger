@@ -1041,16 +1041,23 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
 
 ### 12.1 Owner answers and decisions 2026-11-23 (dated amendments; Decided 2026-11-23, owner)
 
-- **Amendment 2026-11-23 (Q24, owner 7:28 PM; replaces options A and B).** A lead gets an optional **Requested
+- **Amendment 2026-11-23 (Q24, owner 7:28 PM; replaces options A and B).** **(Withdrawn 2026-11-23, owner 8:30 PM:
+  the last bullet of this section.)** A lead gets an optional **Requested
   completion** date, `lead.requested_completion_on` TEXT (`IS date(...)` or NULL): the customer's deadline (for
   example "must be energized by 12/31"). There is no `lead.estimated_start_on`, and `expected_close_date` is not
   used for the job start. At signing the PM enters the job start date (required, Area 8 Q28), and the lead's
   Requested completion is copied to the job, which warns when the forecast finish is after it (Area 8 §12.6, the
   owner of the job side). Example: requested completion 12/31, forecast 1/9: the job shows a warning. Test:
-  `test_lead_requested_completion_is_optional_date`.
+  `test_lead_requested_completion_is_optional_date`. **Withdrawn 2026-11-23 (owner 8:30 PM): Requested completion
+  becomes Estimated completion; next bullet.**
 - **Amendment 2026-11-23 (owner 7:10 PM, work tree; owner of the design: Area 8 §12.5).** Two effects here, built
   in the same pass: (1) a lead's stage and `lead_stage_history` point at the Sales level-2 nodes of the job type's
   `work_template_node` tree instead of `service_stage` (§1.4; the stage role 'Lost' moves to the node with the other
   roles); (2) `activity` (§2.3) becomes the one table for sales and field activities; its new columns, type flags
   and field types are listed only in Area 8 §12.5. The busy check (§2.3) reads Calendar item activities
   instead of `calendar_item`. Nothing else in this area changes.
+- **Amendment 2026-11-23 (owner 8:30 PM revision of Q24; job side and Material forecast: Area 8 §12.10).** The
+  lead's optional date is **Estimated completion date** (the name, owner 8:22 PM), `lead.estimated_completion_on` TEXT (`IS date(...)` or NULL),
+  replacing `requested_completion_on` (people disagree on when "start" begins and it keeps moving, so the lead
+  tracks completion). No lead estimated start. At signing it is copied to the job, which warns when its forecast
+  finish is later. Test: `test_lead_estimated_completion_is_optional_date`.

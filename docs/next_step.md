@@ -9,10 +9,18 @@ inbox message 2026-11-23 1:30 PM "schedule tree, tasks without %, and one activi
 |---|---|
 | Area 10 §11.5–§11.6 (approved; amendments) | Q18 (AR and revenue lines take the new job together, in Reclass job and on the Reclassify page; §2.4 exception); Q19 B (the page follows OD-69/OD-70); new Q20 (AP lines), Q21 (one date rule, OD-71) |
 | Area 18 §8.7 (approved; amendment) | Q26 A (a listed reason satisfies the rule; 10 typed characters only for Other or no list); the unapplied role also posted from the page |
-| Area 8 §12.5–§12.9 (approved; amendments) | work tree (`work_template_node`, `job_work_node`), tasks without %, task start and finish activities, one `activity` table (Q25, Q26 superseded); Q27 three dates (baseline locked at signing; a CO or a granted extension moves the target; `schedule_extension`); Q28 A (start date required); Requested completion warning; new Q29–Q32 |
-| Area 15 §12.1, Area 7 §14 (approved; amendments) | Q24: optional `lead.requested_completion_on`; lead stages on the tree; `activity` gains the field columns; `project.target_start_on` NOT NULL, `requested_completion_on` added, `target_finish_on` dropped |
+| Area 8 §12.5–§12.9 (approved; amendments) | work tree (`work_template_node`, `job_work_node`), tasks without %, task start and finish activities, one `activity` table (Q25, Q26 superseded); Q27 three dates (baseline locked at signing; a CO or a granted extension moves the target; `schedule_extension`); Q28 A (start date required); Requested completion warning; new Q29–Q32 **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
+| Area 15 §12.1, Area 7 §14 (approved; amendments) | Q24: optional `lead.requested_completion_on`; lead stages on the tree; `activity` gains the field columns; `project.target_start_on` NOT NULL, `requested_completion_on` added, `target_finish_on` dropped **(target, extension and Requested completion parts Withdrawn 2026-11-23, owner 8:30 PM: see below)** |
 | Area 3 draft | Q1 A, Q2 A, Q3 (compliance hold is a control, OFF; warning by default; the draft no longer has it always on), Q4 (vendor or total only, only with approval ON), Q5 A (remainder on the last line), Q6 A |
 | Area 2 draft | Q1 A, Q2 A (void reversal date follows Area 10 §2.4), Q3 A (warn only) |
+
+**Correction folded 2026-11-23 (owner revision 8:30 PM; Area 8 §12.10, Area 15 §12.1, Area 7 §14):** baseline
+set at signing, never moves; forecast = baseline + approved CO time + delays + reschedules; target = a PM-editable
+date with a history log (`project_target_history`), not calculated; the lead's optional date is Estimated completion
+(the job warns when the forecast is later); the Material forecast places leads in the week of their Estimated
+completion, tagged Estimate. The e949ba3 text for Q27, Q24 and Q30 (calculated target, `schedule_extension`,
+Requested completion) is marked withdrawn. New question: Area 8 Q33 (which date makes a job Late). Not yet folded:
+the owner's 8:05 PM answers (Area 10 Q20 B, Q21 A) and 8:15 PM answers (Area 8 Q29 A, Q31, Q32).
 
 The 8:00 PM RI0001-003 contract value ($260,000.00) is sample data only (Area 8 §12.8). Controls stay OFF by default
 (new: `vendor_compliance_hold`, `require_note_on_task_start_finish`, both PROPOSED names) and the integrity rules are

@@ -43,7 +43,7 @@ Sources read (only these, searched by date, title or code):
 | 2 | Job close | `Closed` is one stage with an outcome Completed or Cancelled (Q2). Cancel reasons are a company list. `project` gains `close_outcome`, `cancel_reason_id`, `cancel_note`, `cancelled_at_stage_id`, `completed_on`, `closed_on`, `closed_at`. The cancelled-at stage is set by the service. Close and cancel are history rows too, so reports never lose a reopened job's earlier outcome | company |
 | 3 | Other job columns | Job site and target dates (Q9), manual % complete with who and why (area 13 check), billing type and warranty link (area 15), final bill requests, PM prompts (stage move, bill next milestone). `project.status` is dropped; an on-hold flag with an append-only hold history replaces its "Suspended" (Q6 C) | company |
 | 4 | Schedules | Templates (version > phase > item), job schedule copied from a version, baselines (set_at/set_by, new versions only from a change order), updates with delay reasons, calendar items, crews. Status is computed, lookahead is a view. Work days use area 13's work week and holidays | company |
-| 5 | Change orders | Existing `change_order` and lines grow reason, send, reject and approval-proof fields, markup per line, and a `field_event` table. Approving writes the budget lines (`project_budget.co_line_id`) and, with days, a new baseline version. Approved lines are locked **("with days, a new baseline version": Withdrawn 2026-11-23 (owner 7:20 PM): a CO's days move the target finish, §12.6.)** | company |
+| 5 | Change orders | Existing `change_order` and lines grow reason, send, reject and approval-proof fields, markup per line, and a `field_event` table. Approving writes the budget lines (`project_budget.co_line_id`) and, with days, a new baseline version. Approved lines are locked **("with days, a new baseline version": Withdrawn 2026-11-23 (owner 7:20 PM): a CO's days move the target finish, §12.6. "Target" Withdrawn 2026-11-23 (owner 8:30 PM): a CO's days move the forecast, §12.10.)** | company |
 | 6 | Forecast | `job_forecast_line` holds the current estimate to complete (ETC) per cost code. Every forecast change or budget transfer first writes an insert-only revision (header, eight figures per cost code, totals). Codes `job.forecast.edit` and `job.budget.transfer` | company |
 | 7 | Boundary with area 7 | Area 7 owns the job record, budgets and cost codes; area 8 owns lifecycle, schedule, change orders, forecast. Table in section 7 | both |
 | 8 | Controls, labels and permissions | New controls and the crew label setting, all permissive by default; new codes `job.schedule.edit`, `schedule.template.manage`, `service_type.manage`, `job.stage.backdate`, and the two forecast codes (section 8) | company |
@@ -297,7 +297,7 @@ Neither posts to the ledger. Costs and billing after Closed are refused by the s
 
 | Need | Source | Today | Proposal |
 |------|--------|-------|----------|
-| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) **(`target_finish_on` as an editable copy: Withdrawn 2026-11-23 (owner 7:20 PM): the target finish is derived, §12.6; `target_start_on` is required, Q28, §12.6)** |
+| Job site, target dates | X 5 | none (`contact.address` only; the contract has `start_date`, `completion_date`) | Q9 A: `project.site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on`, copied from the contract at creation, editable, every change in the audit log (no overwrite without history) **(`target_finish_on` as an editable copy: Withdrawn 2026-11-23 (owner 7:20 PM): the target finish is derived, §12.6 (this withdrawal Withdrawn 2026-11-23, owner 8:30 PM: `target_finish_on` is editable again, with history, §12.10); `target_start_on` is required, Q28, §12.6)** |
 | Manual % complete, with who and why | area 13 check `manual_pct_complete` | none | `project.manual_pct_complete` REAL CHECK (NULL or 0-100), `manual_pct_reason` TEXT, `manual_pct_by` INTEGER, `manual_pct_at` TEXT. NULL = cost-to-cost (rule: schedule % is never used for revenue, C28) |
 | Status | baseline | `project.status` | Q6 C: drop `project.status`. "Open", "Complete" (stage role Complete, not closed) and "Closed · Completed/Cancelled" derive from the stage and outcome. Add `project.on_hold` INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) (the current copy) and the append-only `project_hold_history` below |
 | Warranty and service jobs | A 11-18 | none | `project.billing_type` TEXT NOT NULL DEFAULT 'Billable' CHECK IN ('Billable', 'Warranty'); `warranty_for_job_id` INTEGER REFERENCES project; `source_case_id` INTEGER (FK added by area 15, which defines `service_case`; the link table `case_job(case_id, job_id)` is area 15's). Editable until the first cost posts (service rule); a Warranty job cannot be invoiced; its costs roll up to the original job's warranty line (area 7/10 job cost) |
@@ -423,7 +423,7 @@ ordinary audited `company_settings` change (not a control).
   type has no stage of that name).
 - `job_schedule_baseline(baseline_id PK, schedule_id FK, version_no INTEGER NOT NULL, set_at, set_by,
   change_order_id INTEGER REFERENCES change_order, days_added INTEGER NOT NULL DEFAULT 0, note, UNIQUE (schedule_id,
-  version_no))`; CHECK `(version_no = 1) = (change_order_id IS NULL)`. **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
+  version_no))`; CHECK `(version_no = 1) = (change_order_id IS NULL)`. **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6. "Moves the target" Withdrawn 2026-11-23 (owner 8:30 PM): a CO moves the forecast, §12.10.**
 - `job_schedule_baseline_task(baseline_id FK, task_id FK, planned_start, planned_finish, days_added INTEGER NOT NULL
   DEFAULT 0, PRIMARY KEY (baseline_id, task_id))`. A task with no line in the newest baseline is "Added after
   baseline". Baseline and baseline task rows are insert-only (integrity: a baseline is the record the schedule was
@@ -470,7 +470,7 @@ reads):
   later needs a `delay_reason_id` (and note for Other); earlier needs none.
 - `set_baseline` **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**: sets `baseline_set_at/by`, writes baseline v1 from the forecast dates. Planned dates are read-only
   afterwards; the service refuses edits of planned dates and only a change order approval writes a new baseline
-  (section 5). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
+  (section 5). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6. "Moves the target" Withdrawn 2026-11-23 (owner 8:30 PM): a CO moves the forecast, §12.10.**
 - Status is computed in one function (Done, Late, At risk, On track, Not started; a phase takes its worst task; the
   job compares forecast finish with the contract date); never stored. Lookahead and Gantt/Calendar choice are
   per-user preferences (area 17's list preferences), not schedule data. Share schedule renders milestones and
@@ -516,7 +516,7 @@ reads):
 | Recording approval needs approved-by and date and proof (signed CO or email); before confirming it shows the effect: revised contract, revised budget by cost code, forecast margin, the new SOV line | C21 |
 | Approved COs lock; fixes use a new CO; nothing posts to the ledger | C21 |
 | Approval changes the budget by cost code and the contract; the estimate to complete does not move by itself (the cost was already forecast) | C21 sample |
-| A CO with a time extension gets an "Extend schedule" step: pick tasks and work days per task; on approval baseline v2 is created and linked to the CO **("baseline v2": Withdrawn 2026-11-23 (owner 7:20 PM): approval moves the target finish, §12.6)** | flow B5; A 5:35 PM |
+| A CO with a time extension gets an "Extend schedule" step: pick tasks and work days per task; on approval baseline v2 is created and linked to the CO **("baseline v2": Withdrawn 2026-11-23 (owner 7:20 PM): approval moves the target finish, §12.6; "target" Withdrawn 2026-11-23 (owner 8:30 PM): approval moves the forecast, §12.10)** | flow B5; A 5:35 PM |
 | "Proceeding at risk" (work done before signature) is a flag | C21 PROPOSED, not built |
 | PCO, change events and T&M tickets ahead of formal COs | controller 11-13 item 3: recommended, not decided (open item 3) |
 
@@ -570,7 +570,7 @@ single mechanism, default OFF):
 2. Extending the schedule writes `job_schedule_baseline` v(n+1) with `change_order_id`, `days_added`, and one
    baseline task line per task with its work days added; forecast dates do not move on their own (a person applies
    an update). When the baseline was never set, approval sets it first from the then-current forecast. Approval is
-   allowed without extending (a warning only, rule 0). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
+   allowed without extending (a warning only, rule 0). **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6. "Moves the target" Withdrawn 2026-11-23 (owner 8:30 PM): a CO moves the forecast, §12.10.**
 3. Nothing posts to the ledger.
 Void and Reject write the reason; Reject needs `rejection_reason`.
 
@@ -920,7 +920,7 @@ them read only. B: each template can override.
 
 Q12. **Baseline set by the first update.** A (recommended): baseline v1 is the forecast dates just before that
 update's changes. B: the dates after the update.
-**Answer: A.** **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6.**
+**Answer: A.** **Withdrawn 2026-11-23 (owner 7:20 PM, Q27: baseline locked at signing; a CO or a granted extension moves the target): §12.6. "Moves the target" Withdrawn 2026-11-23 (owner 8:30 PM): a CO moves the forecast, §12.10.**
 
 Q13. **Crews table.** A (recommended): defined here (`crew`) and reused by area 15. B: wait for area 15.
 **Answer: A, plus a label: the crew table is defined here and reused by area 15; a company setting holds the crew name, singular and plural (default "Crew" / "Crews"), used by every screen, report and export label (section 4.3).**
@@ -1097,7 +1097,8 @@ task start of each job schedule (`job_schedule_task` forecast dates), `project.t
 expected date (Area 9). Rule shown on the page: surplus or deficit = available now + open PO quantity expected by the
 start date - needed by earlier starts in the view - needed on the date. Gaps handed on: `lead.estimated_start_on`
 (Area 15 §12 input; **Withdrawn 2026-11-23 (owner 7:28 PM, Area 15 Q24): leads get a Requested completion date, not
-a start; lead demand placement is Q30, §12.9**) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
+a start; lead demand placement is Q30, §12.9; "Requested completion" Withdrawn 2026-11-23 (owner 8:30 PM):
+Estimated completion, §12.10**) and `purchase_order.expected_on` with an optional per-line override (Area 9, next_step). The owner
 asks that every job carry an estimated start date: Q28.
 
 ### 12.4 Questions for Mark (recommended option first)
@@ -1116,7 +1117,7 @@ asks that every job carry an estimated start date: Q28.
   three dates; option A ("baseline only by CO") Withdrawn 2026-11-23. §12.6.**
   A (recommended): it moves the forecast finish and the job's `target_finish_on` (reason from the delay, logged); the
   baseline still changes only through a change order, so schedule variance shows the slip. Example: 3 rain days
-  move the target finish from 12/04 to 12/09; the baseline finish stays 12/04.
+  move the target finish from 12/04 to 12/09; the baseline finish stays 12/04. **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
   B: it creates a new baseline version without a change order, with a reason and the delay link.
 - **Q28. Every job carries an estimated start date (material forecast).** **Answered 2026-11-23 (owner 7:23 PM): A.
   §12.6.**
@@ -1221,6 +1222,9 @@ Tests: `test_work_tree_parent_is_one_level_up_and_level1_has_no_parent`,
 
 ### 12.6 Three schedule dates, the start date and Requested completion (Decided 2026-11-23, owner)
 
+**Revised 2026-11-23 (owner 8:30 PM): the target, forecast, extension, status and Requested completion text below is
+withdrawn and replaced by §12.10; the baseline and Q28 parts stand.**
+
 Source: `owner_decisions_2026-11-22.md`, "Owner answer to Area 8 Q27" (7:20 PM), "... Q28" (7:23 PM) and "Owner
 answer to Area 15 Q24" (7:28 PM).
 
@@ -1230,25 +1234,26 @@ answer to Area 15 Q24" (7:28 PM).
     `change_order_id` NULL), written at signing with its task lines from the schedule built then; insert-only, as
     approved. The Set baseline button, the first-update rule (Q12) and the `baseline_reminder_days` setting are
     withdrawn.
-  - **Target finish:** the date owed to the customer now = baseline finish + the work days of approved change
+  - **Target finish** **(Withdrawn 2026-11-23, owner 8:30 PM: the target is a PM-editable date, §12.10)**: the date owed to the customer now = baseline finish + the work days of approved change
     orders + extensions the customer granted. A granted extension is recorded with a reason. Derived in one
-    function, never typed, and shown with its parts ("Baseline 3/20 + 5 granted rain work days = 3/27").
+    function, never typed, and shown with its parts ("Baseline 3/20 + 5 granted rain work days = 3/27"). **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
   - **Forecast:** the predicted real finish from the schedule tasks; a reschedule on the job calendar or the Gantt
-    updates it. It includes delays the customer has not agreed to.
+    updates it. It includes delays the customer has not agreed to. **Revised 2026-11-23 (owner 8:30 PM): forecast =
+    baseline + approved CO time + delays + reschedules, §12.10.**
   - Example: baseline 3/20; the customer grants 5 work days for rain, so the target is 3/27; the crew is behind, so the
-    forecast is 3/31, late against the target.
+    forecast is 3/31, late against the target. **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
 - **New record (proposed): `schedule_extension`** (`extension_id` PK, `project_id` NOT NULL, `work_days` INTEGER
   NOT NULL CHECK > 0, `granted_on` date, `reason_id` FK `reason_option` kind 'Delay' with its label, `reason_text`
   (10 typed characters only for Other, Area 18 §8.7), optional `granted_by_contact_id` and `delay_activity_id`,
   `recorded_by`, `recorded_at`, and `voided_at`/`voided_by`/`void_reason`). Insert-only except the void columns. An
   extension that comes with a change order is the CO's `days_added`, not a second row (the 11/22 rule "may have a
-  CO" without counting it twice). Permission: `job.schedule.edit` (project scope).
+  CO" without counting it twice). Permission: `job.schedule.edit` (project scope). **Withdrawn 2026-11-23 (owner 8:30 PM): a granted extension is a $0 change order with days; §12.10.**
 - **Change order approval** with days moves the target finish (by `days_added`); it no longer writes baseline
   v(n+1) (§5 step 2 marked withdrawn). The "Extend schedule" step stays as the PM's choice of which tasks move in the
-  forecast.
-- **Status** compares the forecast finish with the target finish (Late, At risk, On track by the existing
+  forecast. **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
+- **Status** **(Withdrawn 2026-11-23, owner 8:30 PM: Q33, §12.10)** compares the forecast finish with the target finish (Late, At risk, On track by the existing
   `schedule_at_risk_days` and `schedule_late_days`), and the target with the baseline shows the granted slip.
-  `project.target_finish_on` as an editable copy is withdrawn (§3.1 row) and dropped (lead default, owner may revise).
+  `project.target_finish_on` as an editable copy is withdrawn (§3.1 row) and dropped (lead default, owner may revise). **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
 - **Amendment 2026-11-23 (Q28 A).** `project.target_start_on` is **required when the job is created** (at contract
   signing): no job without a start date (an owner decision, not a control), so the baseline and forecast can be built. "Start" means the first day of
   work on site, the first task of the Construction contract stage (owner 7:28 PM), not the signing date. Example:
@@ -1256,20 +1261,23 @@ answer to Area 15 Q24" (7:28 PM).
 - **Requested completion (Area 15 Q24, owner 7:28 PM).** The lead's optional Requested completion (Area 15 §12.1)
   is copied at signing to `project.requested_completion_on` (TEXT date, NULL allowed, editable, logged). The job
   shows a **warning** (never a block) when the forecast finish is after it. Example: requested completion 12/31,
-  forecast 1/9: the job shows the warning.
+  forecast 1/9: the job shows the warning. **Withdrawn 2026-11-23 (owner 8:30 PM): Estimated completion, §12.10.**
 - **Area 7 amendment lines (same pass):** `project.target_start_on` NOT NULL and the new
-  `project.requested_completion_on` are recorded in Area 7 §14 (the `project` DDL).
+  `project.requested_completion_on` are recorded in Area 7 §14 (the `project` DDL). **(`requested_completion_on`
+  Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.)**
 - Tests: `test_baseline_set_at_signing_from_contract_dates_and_never_versioned`,
   `test_target_finish_is_baseline_plus_approved_co_days_plus_granted_extensions`,
   `test_extension_with_change_order_counts_once`, `test_reschedule_moves_forecast_not_target_or_baseline`,
   `test_status_compares_forecast_with_target`, `test_job_creation_refused_without_start_date`,
-  `test_requested_completion_copied_at_signing_and_warns_when_forecast_later`.
+  `test_requested_completion_copied_at_signing_and_warns_when_forecast_later`. **Withdrawn 2026-11-23 (owner 8:30 PM):
+  the target, extension, status and requested-completion tests; replacements in §12.10.**
 
 ### 12.7 Conflicts with earlier decisions (flagged; the owner's 11/23 answers win)
 
 - **Baseline timing:** Q27 returns to C28 ("baseline at signing"), replacing A 5:46 PM and Q12 A (Set baseline or
   first update; F5 above). Code and tests cite the 11/23 answer.
-- **Change order days:** §5's baseline v(n+1) on approval (flow B5) is replaced by the target finish.
+- **Change order days:** §5's baseline v(n+1) on approval (flow B5) is replaced by the target finish. **"Target"
+  Withdrawn 2026-11-23 (owner 8:30 PM): replaced by the forecast, §12.10.**
 - **C30:** confirmed reversed (one template per job type).
 - **`service_stage`:** approved Areas 8 §1 and 15 §1.4 build on it (stage roles, history, triggers, lead stages);
   the tree replaces it as the stage list (consequences in §12.5). Area 15 gets an amendment line pointing here.
@@ -1288,10 +1296,13 @@ answer to Area 15 Q24" (7:28 PM).
   Gantt schedule holds each task's dates, predecessor and crew. Example: task "Set inverters" sits under phase
   "Electrical" in the tree; its forecast 2/10–2/12 and its crew are on the Gantt.
   B: one list only: each task's dates, predecessor and crew are kept on the tree itself.
-- **Q30. Where a lead's sent estimate sits on the Material forecast now that leads have no start date.**
+- **Q30. Where a lead's sent estimate sits on the Material forecast now that leads have no start date.** **Answered
+  2026-11-23 (owner 8:15 PM, revised 8:30 PM): the week of the lead's Estimated completion, tagged Estimate; options A
+  and B Withdrawn 2026-11-23. §12.10.**
   A (recommended): with "include sent estimates" on, lead demand shows in a "Leads, not scheduled" band with its
   Requested completion, not netted against dated stock. Example: a lead needing 40 panels by 3/31 shows in the band.
-  B: place it on `expected_close_date` as a stand-in start, labelled "estimated".
+  B: place it on `expected_close_date` as a stand-in start, labelled "estimated". **(A and B Withdrawn 2026-11-23, owner
+  8:15 PM and 8:30 PM: §12.10.)**
 - **Q31. How the build places Pre-construction tasks now that the start date is the first day on site.**
   A (recommended): the first Construction task is anchored on the start date; Pre-construction tasks are scheduled
   forward from the signing date, and the build warns when they would finish after the start. Example: signed 12/1,
@@ -1302,3 +1313,52 @@ answer to Area 15 Q24" (7:28 PM).
   stays its own record; logging Extra work on the job creates or links to one. Example: Extra work "Add 2 panels"
   logged on 2/10 becomes FE-0009 with its cost lines.
   B: Extra work is only an activity; the number and cost lines move onto the activity.
+
+### 12.10 Owner revision 2026-11-23 8:30 PM: schedule dates and lead timing (Decided 2026-11-23, owner)
+
+Source: `owner_decisions_2026-11-22.md`, "OWNER REVISION 2026-11-23 8:30 PM ... schedule dates and lead timing". It
+replaces the 7:20 PM Q27 answer, the 7:28 PM Area 15 Q24 answer and the 8:15 PM Q30 placement, as folded in
+e949ba3 (§12.6, §12.9 and Area 15 §12.1; that text is marked withdrawn, not deleted). Q28 (start date required)
+stands.
+
+- **Baseline:** the planned dates set at signing. It never moves (as §12.6: one row, never versioned).
+- **Forecast = baseline + all approved change-order time + delays + reschedules.** Approving a change order with
+  days moves the forecast through the "Extend schedule" step (the PM picks the tasks the days go to; §5 step 1). A
+  Delay activity (`moves_forecast`, §12.5) and a reschedule on the job calendar or the Gantt move it too. None of
+  them moves the baseline.
+- **Target:** a date the PM types, an internal target for when things move around. It is never calculated.
+  `project.target_finish_on` is **restored** as an editable date (NULL until the PM sets it; lead default, owner may
+  revise). Every change is kept in a new insert-only history record, **`project_target_history`** (`history_id`
+  PK, `project_id` NOT NULL, `changed_at`, `old_target_on`, `new_target_on`, `changed_by`, `note`; the note is
+  optional, lead default). Permission: `job.schedule.edit` (project scope).
+- **A time extension the customer grants is a $0 change order with days** (the owner's example). The proposed
+  `schedule_extension` record is withdrawn.
+- Example: baseline 3/20; the customer grants 5 rain days as a $0 CO with +5 days and the crew loses 4 more days, so
+  the forecast is 3/29. The PM sets the target to 3/25 to push the crew; a later change to 3/27 is logged with who,
+  when and the note.
+- **Status** (Late, At risk, On track): which date it compares with is Q33.
+- **Estimated completion (Area 15 Q24 revised).** The lead's optional Estimated completion (Area 15 §12.1) is
+  copied at signing to `project.estimated_completion_on` (TEXT date or NULL, editable, logged), replacing
+  `project.requested_completion_on`. The job **warns** (never blocks) when its forecast finish is later. There is no
+  lead estimated start.
+- **Material forecast (Q30 revised).** With the filter "Signed plus estimates sent", a lead's quantities show in
+  the **week of its Estimated completion**, tagged "Estimate", alongside signed jobs; with "Contracts signed only"
+  they are hidden. Example: 40 panels, estimated completion 3/31: shown in the 3/31 week. A lead with no Estimated
+  completion shows in an "Estimate, no date" row (lead default, owner may revise).
+- **Mockup changes needed (design queue, no schema):** the job-detail Schedule tab text ("changes only through an
+  approved change order with a time extension") and a Target field with its history; field-material-forecast's
+  "at the lead's estimated start date".
+- **Name (owner 8:22 PM, "Owner naming"):** the lead field's label, column and report heading is **"Estimated
+  completion date"**; it replaces "Estimated completion" in this section (column `estimated_completion_on`).
+- Area 7 §14 and Area 15 §12.1 carry the matching amendment lines.
+- Tests: `test_forecast_is_baseline_plus_approved_co_days_delays_and_reschedules`,
+  `test_co_approval_moves_forecast_not_baseline`, `test_target_is_editable_and_every_change_writes_history`,
+  `test_target_history_is_insert_only`, `test_estimated_completion_copied_at_signing_and_warns_when_forecast_later`,
+  `test_material_forecast_places_lead_in_week_of_estimated_completion_tagged_estimate`.
+
+**Q33. Which date makes a job Late?**
+A (recommended): the forecast compared with the date owed to the customer (the baseline plus approved change-order
+time); the target shows separately as "n days behind target". Example (day counts in calendar days): baseline Fri
+3/20 + a 5-work-day CO = owed Fri 3/27; forecast 3/29 shows Late by 2 days; target 3/25 shows "4 days behind target".
+B: the forecast compared with the target. Example: the same job shows Late by 4 days.
+C: the forecast compared with the baseline. Example: the same job shows Late by 9 days.

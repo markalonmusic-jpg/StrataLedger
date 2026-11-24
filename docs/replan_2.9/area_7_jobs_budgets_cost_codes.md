@@ -135,7 +135,7 @@ Screen behaviour only: no schema or permission effect; the drawer reads the same
 | `poc_method` | TEXT NOT NULL DEFAULT 'Cost to cost' CHECK IN ('Cost to cost', 'Manual percent', 'Completed contract') | D3 |
 | `manual_pct_complete`, `manual_pct_reason`, `manual_pct_by`, `manual_pct_at` | as area 8 section 3.1 | areas 8, 13 |
 | `billing_type`, `warranty_for_job_id` | as area 8 section 3.1 | area 8 |
-| `site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on` | as area 8 section 3.1 (Q9 A there) **(Amendment 2026-11-23: `target_start_on` NOT NULL, `target_finish_on` dropped, `requested_completion_on` added; §14)** | area 8 |
+| `site_street`, `site_city`, `site_state`, `site_zip`, `target_start_on`, `target_finish_on` | as area 8 section 3.1 (Q9 A there) **(Amendment 2026-11-23: `target_start_on` NOT NULL, `target_finish_on` dropped, `requested_completion_on` added; §14; "dropped" and `requested_completion_on` Withdrawn 2026-11-23 (owner 8:30 PM): `target_finish_on` stays editable with history, `estimated_completion_on` added, §14)** | area 8 |
 | `site_contact_name`, `site_contact_phone` | TEXT NULL | C62 section 2 |
 | `close_outcome`, `cancel_reason_id`, `cancel_reason_label`, `cancel_note`, `cancelled_at_stage_id`, `completed_on`, `closed_on`, `closed_at` | as area 8 section 2.3 and its amendment | area 8 |
 | `on_hold` | INTEGER NOT NULL DEFAULT 0 CHECK (0, 1) | area 8 |
@@ -1077,5 +1077,10 @@ Handed to areas not yet drafted:
 - **Amendment 2026-11-23 (owner 7:23 PM and 7:28 PM; owner of the rule: Area 8 §12.6).** In the `project` DDL (§1):
   `target_start_on` becomes NOT NULL (a job cannot be created without a start date, the first day of work on site,
   Area 8 Q28 A), and `requested_completion_on` TEXT (date or NULL) is added, copied from the lead's Requested
-  completion at signing (Area 15 §12.1). `target_finish_on` is dropped (lead default, owner may revise): the target finish is
+  completion at signing (Area 15 §12.1) **(Withdrawn 2026-11-23, owner 8:30 PM: next line)**. `target_finish_on` is dropped (lead default, owner may revise) **(Withdrawn 2026-11-23, owner 8:30 PM: next line)**: the target finish is
   derived (Area 8 §12.6).
+- **Amendment 2026-11-23 (owner 8:30 PM revision; owner of the rule: Area 8 §12.10).** `target_finish_on` stays an
+  editable date (NULL until the PM sets it), and every change writes a row in the new insert-only
+  `project_target_history` (date, old, new, who, note). `estimated_completion_on` TEXT (date or NULL) replaces
+  `requested_completion_on`, copied from the lead's Estimated completion date at signing (Area 15 §12.1).
+  `target_start_on` NOT NULL stands (Q28).
