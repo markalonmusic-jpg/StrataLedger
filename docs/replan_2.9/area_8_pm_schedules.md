@@ -451,7 +451,7 @@ user_id FK NULL, crew_id FK NULL, contact_id FK NULL, row_version)`; CHECK at mo
 `calendar_item_notify(item_id FK, user_id, PK both)`. Indexes on (`item_date`), (`project_id`, `item_date`). Calendar
 items never write task dates. Busy checks for users and crews (area 15) read `start_time`, `length_minutes`.
 
-**Controls (new, permissive defaults):** **(Amendment 2026-11-24: plus the Company control `require_baseline_rebuild_approval`, OFF by default; §12.19, Area 18 §8.10.)** `company_settings.schedule_at_risk_days` INTEGER NOT NULL DEFAULT 1,
+**Controls (new, permissive defaults):** **(Amendment 2026-11-24: plus the Company control `require_baseline_rebuild_approval`, OFF by default; §12.19, Area 18 §8.10.)** **(Withdrawn 2026-11-24, owner 1:48 AM: no separate control; the on/off switch is the Approvers row "Schedule baseline rebuilds"; Area 8 §12.20)** `company_settings.schedule_at_risk_days` INTEGER NOT NULL DEFAULT 1,
 `schedule_late_days` INTEGER NOT NULL DEFAULT 5 (Late when more than this), `schedule_pct_behind_points` INTEGER NOT
 NULL DEFAULT 20, `baseline_reminder_days` INTEGER NOT NULL DEFAULT 14 **(Withdrawn 2026-11-23 (owner 7:20 PM): §12.6)**; CHECKs `>= 0`. Each change logged with a
 reason (area 18).
@@ -1614,13 +1614,13 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:37 AM". The 
 
 - **Amendment 2026-11-24: permission.** A task-baseline rebuild needs the existing `job.schedule.edit` (job scope;
   Project manager, Admin and Master by default, §8). No new permission. Without it the rebuild is refused.
-- **Amendment 2026-11-24: one Company control, OFF by default:** PROPOSED name `require_baseline_rebuild_approval`
+- **Amendment 2026-11-24: one Company control, OFF by default:** **(Withdrawn 2026-11-24, owner 1:48 AM: no separate control; the on/off switch is the Approvers row "Schedule baseline rebuilds"; Area 8 §12.20)** PROPOSED name `require_baseline_rebuild_approval`
   ("Require approval to rebuild a schedule baseline"), Admin or Master, Controls page, every change audit-logged;
   listed in Area 18 §8.10.
   - **OFF (default):** the schedule editor rebuilds alone; the new baseline version is written at once (§12.18).
   - **ON:** the rebuild is a **request**. Nothing is written to `job_schedule_baseline` or
     `job_schedule_baseline_task` until it is approved; on approval the service inserts the new version. The
-    requester cannot approve their own request. A refused request leaves the baseline unchanged and stays in the
+    requester cannot approve their own request. **(Withdrawn 2026-11-24, owner 1:48 AM: self-approval follows "Require a separate approver"; §12.20)** A refused request leaves the baseline unchanged and stays in the
     history (who asked, when, the reason, who refused, when).
   - Lead defaults, owner may revise: the request is held in the single approval mechanism (`approval_request`,
     Area 14) rather than a new table; at most one open rebuild request per schedule; the new version is copied from
@@ -1635,13 +1635,56 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:37 AM". The 
   `test_baseline_rebuild_refused_without_job_schedule_edit`,
   `test_baseline_rebuild_control_off_writes_version_at_once`,
   `test_baseline_rebuild_control_on_writes_nothing_until_approved`,
-  `test_baseline_rebuild_self_approval_refused`,
+  `test_baseline_rebuild_self_approval_refused` **(Withdrawn 2026-11-24, owner 1:48 AM: self-approval follows "Require a separate approver"; §12.20)**,
   `test_refused_baseline_rebuild_leaves_baseline_unchanged_and_stays_in_history`,
-  `test_require_baseline_rebuild_approval_defaults_off`.
+  `test_require_baseline_rebuild_approval_defaults_off` **(Withdrawn 2026-11-24, owner 1:48 AM: no separate control; the on/off switch is the Approvers row "Schedule baseline rebuilds"; Area 8 §12.20)**.
 
-**STOP question for Mark (not decided): who may approve a rebuild when the control is on?** The rule I would use:
+**STOP question for Mark (not decided): who may approve a rebuild when the control is on?** **Answered 2026-11-24
+(owner 1:48 AM): configured on the Approvers page like every other kind of work; the proposed default list below is
+Withdrawn 2026-11-24; §12.20.** The rule I would use:
 the existing approval setup, the single approval mechanism of Area 14 (as for "Change order approval", §5), with a
 new approval type "Schedule baseline rebuild" whose default approvers are Admin and Master, plus any holder of
 `job.schedule.edit` on that job, never the requester. Why: it reuses the one approval mechanism instead of a new
 path, it matches your example (an Admin approves), and the job-scoped editors are the people who already manage that
 schedule. Not chosen until Mark confirms; Area 14 is not drafted yet.
+
+### 12.20 Owner answer 2026-11-24 1:48 AM (rebuild approval is an Approvers row; refines §12.19)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:48 AM". The planning chat accepted 0d86bc3 with
+these changes; the §12.19 lead defaults stand (the pending rebuild is held in the shared approvals record; at most one
+open rebuild request per job schedule; the new version is copied from the schedule as it stands at approval, with a
+preview for the approver).
+
+- **Amendment 2026-11-24: a new approval kind, "Schedule baseline rebuilds" (PM), OFF by default.** It is a row on the
+  Approvers page like every other kind of work. When an Admin or the Master turns it on, they pick who approves with
+  the same choices as any other row: anyone with permission, the job's project manager, a role, specific people, or a
+  chain, with an optional backup (live approvers.html). No fixed approver list: the proposed default list in §12.19
+  (Admin, Master and `job.schedule.edit` holders) is Withdrawn 2026-11-24. Example: the row is on and set to "A role:
+  Controller"; PM Tomas Okafor requests a rebuild with the reason "Start date typed wrong"; Dana Reyes approves; the
+  new baseline version is written then.
+- **One switch only (point 3 check).** The plan models every approval kind as a **row** of the approvals setup, not
+  as its own Company control: the baseline's `document_approval_setting` (`document_type` CHECK list with
+  `requires_approval` DEFAULT 0; "RP9: every approval toggle lives here, all OFF by default") holds Bill, Change
+  order, Pay run and the others, and the Approvers page sets who approves (`approval_policy`, `approval_step`; Area
+  14). So the separate control `require_baseline_rebuild_approval` (§12.19, Area 18 §8.3 and §8.10) is **withdrawn**,
+  and the switch is the new row: `document_approval_setting.document_type` gains 'Schedule baseline rebuild', seeded
+  with `requires_approval` = 0. Row off: the schedule editor rebuilds alone and the version is written at once; row
+  on: the rebuild is a request written only on approval; a refused request leaves the baseline unchanged and stays
+  in the history.
+- **Amendment 2026-11-24: self-approval follows the existing company control "Require a separate approver"**
+  (`company_settings.require_separate_approver`, OFF by default): when it is off, a person may approve their own
+  rebuild and it is marked Self-approved; when it is on, it goes to another approver. The rebuild has no special
+  rule; §12.19's "the requester cannot approve their own request" and its test are withdrawn. Example: the row is set
+  to "The job's project manager" and "Require a separate approver" is off: the PM's own rebuild is approved by her
+  and marked Self-approved.
+- **Unchanged (always on):** the permission (`job.schedule.edit`, job scope); the reason and the history in both
+  modes; baseline rows insert-only; `finish_on` (planned completion) never changes on a rebuild; Late (Q33)
+  unaffected.
+- **Area 14 handoff:** the approval kind "Schedule baseline rebuilds" must be included when Area 14 is drafted
+  (next_step).
+- Tests: `test_schedule_baseline_rebuild_approval_row_defaults_off`,
+  `test_rebuild_with_approval_row_off_writes_version_at_once`,
+  `test_rebuild_with_approval_row_on_writes_nothing_until_approved`,
+  `test_rebuild_self_approval_allowed_and_marked_when_separate_approver_off`,
+  `test_rebuild_self_approval_refused_when_separate_approver_on`,
+  `test_no_separate_rebuild_control_exists`.

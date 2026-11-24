@@ -1260,7 +1260,7 @@ re-runs on the new counts when built.
 `lock_account_type_after_posting` and `require_zero_balance_to_deactivate` (§8.1); `subcontract_overlimit_block`
 and `vendor_credit_writeoff_approval_threshold_cents` (NULL = off) for Area 3 (next_step). Area 20's
 `capture_rejected_retention_days` (default 30) is a company setting, not a control. **Amendment 2026-11-24: plus
-`require_baseline_rebuild_approval` (OFF; Area 8 §12.19), §8.10.**
+`require_baseline_rebuild_approval` (OFF; Area 8 §12.19), §8.10.** **(Withdrawn 2026-11-24, owner 1:48 AM: no separate control; the on/off switch is the Approvers row "Schedule baseline rebuilds"; Area 8 §12.20)**
 
 ### 8.4 Owner answer
 
@@ -1361,8 +1361,17 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
 
 ### 8.10 Owner answer 2026-11-24 1:37 AM (placement only; rule owned by Area 8 §12.19)
 
-- **New Company control, OFF by default (Controls page, Admin or Master, audit-logged):** PROPOSED
+- **New Company control, OFF by default (Controls page, Admin or Master, audit-logged):** **(Withdrawn 2026-11-24, owner 1:48 AM: no separate control; the on/off switch is the Approvers row "Schedule baseline rebuilds"; Area 8 §12.20)** PROPOSED
   `require_baseline_rebuild_approval`, "Require approval to rebuild a schedule baseline". Off: a holder of
   `job.schedule.edit` rebuilds the task baseline alone; on: the rebuild waits for a second person's approval and the
-  requester cannot approve their own. It joins the §8.3 list. No new permission: the rebuild uses
+  requester cannot approve their own. **(Withdrawn 2026-11-24, owner 1:48 AM: self-approval follows "Require a separate approver"; §12.20)** It joins the §8.3 list. No new permission: the rebuild uses
   `job.schedule.edit` (job scope). Who approves when it is on is an open question (Area 8 §12.19).
+
+### 8.11 Owner answer 2026-11-24 1:48 AM (placement only; rule owned by Area 8 §12.20)
+
+- **Withdrawn 2026-11-24:** the separate Company control `require_baseline_rebuild_approval` (§8.3, §8.10). Approval
+  kinds are rows of the approvals setup (`document_approval_setting`, all OFF by default; RP9), so the switch is the
+  new Approvers row "Schedule baseline rebuilds" (`document_type` 'Schedule baseline rebuild', `requires_approval`
+  = 0), configured on the Approvers page like every other kind of work. One switch only.
+- **Self-approval** follows the existing `require_separate_approver` (OFF by default; off = allowed and marked
+  Self-approved). No new permission; the rebuild uses `job.schedule.edit`.

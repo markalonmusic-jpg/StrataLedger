@@ -1,13 +1,25 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, 1:37 AM answer folded)
+## Current planning stop (2026-11-24, 1:48 AM answer folded)
+
+From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:48 AM"), Area 8 §12.20 and Area
+18 §8.11: rebuild approval is a new Approvers row "Schedule baseline rebuilds" (PM), OFF by default, configured like
+every other kind of work (anyone with permission, the job's PM, a role, specific people or a chain; optional
+backup). The separate control `require_baseline_rebuild_approval` is withdrawn: approval kinds are rows of
+`document_approval_setting` (RP9), so the row is the only switch. Self-approval follows "Require a separate approver"
+(off = allowed, marked Self-approved). **Area 14 handoff: include the approval kind "Schedule baseline rebuilds"
+when Area 14 is drafted.** No open owner questions remain in the drafted areas.
+
+## Earlier planning stop (2026-11-24, 1:37 AM answer folded)
 
 From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:37 AM"), Area 8 §12.19 and Area
 18 §8.10: the task-baseline rebuild uses the existing `job.schedule.edit` (job scope), no new permission; one new
-Company control `require_baseline_rebuild_approval` (PROPOSED name, OFF by default): off, the editor rebuilds alone;
-on, the rebuild is a request written only on approval, never self-approved, and a refused request leaves the
+Company control `require_baseline_rebuild_approval` (PROPOSED name, OFF by default; **Withdrawn 2026-11-24, owner
+1:48 AM: the switch is the Approvers row, above**): off, the editor rebuilds alone;
+on, the rebuild is a request written only on approval, never self-approved (**Withdrawn 2026-11-24: follows "Require a separate approver"**), and a refused request leaves the
 baseline unchanged. Reason and history in both modes; insert-only and `finish_on` are not controllable. **STOP
-question for Mark:** who may approve when the control is on (proposed rule: Area 14's single approval mechanism,
+question for Mark:** who may approve when the control is on (**answered 2026-11-24 1:48 AM: the Approvers page; the
+proposed rule is Withdrawn**; proposed rule: Area 14's single approval mechanism,
 default approvers Admin, Master and job-scoped `job.schedule.edit` holders, never the requester).
 
 ## Earlier planning stop (2026-11-24, 1:14 AM answer folded)
