@@ -1234,7 +1234,7 @@ answer to Area 15 Q24" (7:28 PM).
 
 - **Amendment 2026-11-23 (Q27).** A job keeps **three** schedule dates:
   - **Baseline:** the dates on the signed contract, **locked at signing**; later estimate edits do not change it.
-    One baseline per job, never versioned. `job_schedule_baseline` keeps one row per schedule (version 1,
+    One baseline per job, never versioned **(Refined 2026-11-24, owner 1:14 AM: the task baseline can be rebuilt with a required reason, as a new version; §12.18)**. `job_schedule_baseline` keeps one row per schedule (version 1,
     `change_order_id` NULL), written at signing with its task lines from the schedule built then; insert-only, as
     approved. The Set baseline button, the first-update rule (Q12) and the `baseline_reminder_days` setting are
     withdrawn.
@@ -1271,7 +1271,7 @@ answer to Area 15 Q24" (7:28 PM).
 - **Area 7 amendment lines (same pass):** **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)** `project.target_start_on` NOT NULL and the new
   `project.requested_completion_on` are recorded in Area 7 §14 (the `project` DDL). **(`requested_completion_on`
   Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.)**
-- Tests: `test_baseline_set_at_signing_from_contract_dates_and_never_versioned`,
+- Tests: `test_baseline_set_at_signing_from_contract_dates_and_never_versioned`, **(task baseline: rebuild with a reason, §12.18)**
   `test_target_finish_is_baseline_plus_approved_co_days_plus_granted_extensions`,
   `test_extension_with_change_order_counts_once`, `test_reschedule_moves_forecast_not_target_or_baseline`,
   `test_status_compares_forecast_with_target`, `test_job_creation_refused_without_start_date`,
@@ -1330,7 +1330,7 @@ replaces the 7:20 PM Q27 answer, the 7:28 PM Area 15 Q24 answer and the 8:15 PM 
 e949ba3 (§12.6, §12.9 and Area 15 §12.1; that text is marked withdrawn, not deleted). Q28 (start date required **(Withdrawn 2026-11-24, owner 11:58 PM 11/23, Q28 revisited: the start date is optional; planned completion is required; Area 8 §12.16)**)
 stands.
 
-- **Baseline:** the planned dates set at signing. It never moves (as §12.6: one row, never versioned).
+- **Baseline:** the planned dates set at signing. It never moves (as §12.6: one row, never versioned) **(Refined 2026-11-24, owner 1:14 AM: the task baseline can be rebuilt with a required reason, as a new version; §12.18)**.
 - **Forecast = baseline + all approved change-order time + delays + reschedules.** Approving a change order with
   days moves the forecast through the "Extend schedule" step (the PM picks the tasks the days go to; §5 step 1). A
   Delay activity (`moves_forecast`, §12.5) and a reschedule on the job calendar or the Gantt move it too. None of
@@ -1544,11 +1544,11 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answers 2026-11-24 12:28 AM". Th
 
 - **Amendment 2026-11-24: task baseline dates are fixed at the first schedule build.** The baseline finish (planned
   completion) is fixed at signing. The task-level baseline dates (`job_schedule_baseline_task` lines) are written
-  automatically the first time the PM enters the start date and the schedule is built, and never move after that
+  automatically the first time the PM enters the start date and the schedule is built, and never move after that **(Refined 2026-11-24, owner 1:14 AM: the task baseline can be rebuilt with a required reason, as a new version; §12.18)**
   (insert-only, as approved). Later edits move the forecast only. Until then the baseline holds only `finish_on`. If
   that first schedule ends after the planned completion, the job is Late at once (forecast after the baseline
   finish; Q33, Q35). Example: North field array signs 12/1, planned completion 3/20; on 12/15 the PM enters start
-  1/5 and the schedule is built; "Set inverters 2/10 to 2/12" is locked as baseline that day; the first schedule ends
+  1/5 and the schedule is built; "Set inverters 2/10 to 2/12" is locked as baseline that day; **(task baseline: rebuild with a reason, §12.18)** the first schedule ends
   3/27, so the job shows "Late 7 days" at once.
 - **Amendment 2026-11-24: corrections after a failed inspection are open tasks, never punch items.** A failed
   inspection adds each correction as an **open task** on the Task list, with an assignee, plus a re-inspection to
@@ -1575,3 +1575,33 @@ Source: `owner_decisions_2026-11-22.md`, "Owner answers 2026-11-24 12:28 AM". Th
   `test_material_forecast_lead_in_estimated_completion_week_tagged_estimate`,
   `test_material_forecast_signed_unscheduled_job_in_planned_completion_week_tagged_not_scheduled`,
   `test_material_forecast_scheduled_job_moves_to_task_weeks`.
+
+### 12.18 Owner answer 2026-11-24 1:14 AM (task baseline rebuild; refines §12.17)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answer 2026-11-24 1:14 AM". The planning chat accepted 8532272.
+
+- **Amendment 2026-11-24: the task-level baseline can be rebuilt from the current schedule, with a required
+  reason** (the Area 18 Q26 rule, §8.7: a listed reason, or at least 10 typed characters). Task baselines never move
+  on their own or by ordinary schedule edits (§12.17); only a logged rebuild changes them.
+- **Insert-only is kept.** A rebuild inserts a new `job_schedule_baseline` row (`version_no` + 1, `set_at`/`set_by` =
+  when and who, new `rebuild_reason` TEXT and `rebuild_reason_id` FK `reason_option`, the label at the time of use)
+  with a full set of `job_schedule_baseline_task` lines copied from the current schedule. The earlier version is
+  never updated or deleted; it reads as **superseded** because a later version exists (derived, so no row is
+  changed). Proposed CHECK: `(version_no = 1) = (rebuild_reason IS NULL AND rebuild_reason_id IS NULL)` (the
+  approved `change_order_id` version rule stays withdrawn, §12.6).
+- **`finish_on` (planned completion) never changes on a rebuild:** the new version carries the same value (service
+  check against version 1), so Late (Q33, Q35) is unaffected.
+- **Task slip is measured against the latest task baseline version.** Reports can show that a rebuild happened (who,
+  when, reason) and compare with an earlier version on request.
+- **Not a control and no setting.**
+- Example: on 12/15 the PM types start 1/5 instead of 1/15 and the task baseline locks. On 12/16 the PM rebuilds it
+  with the reason "Start date typed wrong": task baselines shift 10 work days, planned completion 3/20 is unchanged,
+  and the history shows version 1, the PM and the time.
+- Tests: `test_baseline_rebuild_requires_reason`, `test_baseline_rebuild_keeps_earlier_version`,
+  `test_baseline_rebuild_leaves_finish_on_unchanged`,
+  `test_ordinary_schedule_edits_never_change_task_baseline`,
+  `test_task_slip_uses_latest_baseline_version`.
+
+**STOP question for Mark (not decided): which existing permission covers the rebuild?** No new permission is added.
+The candidate is `job.schedule.edit` ("Edit a job's schedule and calendar items", project scope; §8: Project manager
+template, Admin, Master), which matches "whoever can manage the job's schedule". Not chosen until Mark confirms.

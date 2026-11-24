@@ -1,12 +1,20 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, 12:28 AM answers folded)
+## Current planning stop (2026-11-24, 1:14 AM answer folded)
+
+From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:14 AM"), Area 8 §12.18: the
+task-level baseline can be rebuilt from the current schedule with a required reason, as a new insert-only version
+(the earlier one is kept and reads as superseded); the planned completion (`finish_on`) never changes, so Late is
+unaffected; slip uses the latest version; not a control. **STOP question for Mark:** which existing permission
+covers the rebuild (candidate `job.schedule.edit`; no new permission added).
+
+## Earlier planning stop (2026-11-24, 12:28 AM answers folded)
 
 From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answers 2026-11-24 12:28 AM"), Area 8 §12.17:
-task baseline dates are fixed automatically at the first schedule build and never move (until then the baseline
+task baseline dates are fixed automatically at the first schedule build and never move (rebuild with a reason: §12.18) (until then the baseline
 holds only the planned completion); a failed inspection adds open tasks with an assignee plus a re-inspection, never
 punch items; on the Material forecast a signed job with no start stays in the week of its planned completion, tagged
-"Not scheduled", until it is scheduled. No open owner questions remain in the drafted areas.
+"Not scheduled", until it is scheduled.
 
 ## Earlier planning stop (2026-11-24, later): Q28 revisited and inspections folded
 
