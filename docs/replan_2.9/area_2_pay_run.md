@@ -261,11 +261,9 @@ returns).
   reason (at least 10 typed characters, or a listed reason, Area 18 §8.7), the payment's entry is reversed (Dr bank /
   Cr AP, and the discount credit reversed with it), its allocations and credit uses are released, and its bills
   return to unpaid: Approved, or Open when 'Bill' approval is off, ready for a later pay run. They do **not** go
-  back into the original run, which keeps the voided line in its history. **Reversal date:** Area 10's reclass date
-  rule (§2.4), one rule for both: the original Date paid when its period is open and not locked; when it is closed,
-  the first day of the current open period; never into a locked period (refused with the lock sentence). The owner's
-  wording ("the void date, or the original date if that period is open") matches OD-71, not yet folded; Area 10 Q21
-  asks which rule both follow. A payment matched to a bank line is unmatched first in Area 12 (lead default, owner
+  back into the original run, which keeps the voided line in its history. **Reversal date (Area 10 Q21 A with OD-71,
+  decided 2026-11-23 8:05 PM; Area 10 §11.7):** the original Date paid when its period is open and not locked,
+  otherwise today (the void date); the user may change it, never into a closed or locked period. A payment matched to a bank line is unmatched first in Area 12 (lead default, owner
   may revise). Example: check #1042 lost in the mail and voided: its 3 bills are payable again.
 - **Bank file:** the bank's ACH or positive-pay upload cannot be a NACHA file, because no bank account numbers are
   stored (RP1; S 11-14 2:55 PM left the format to planning). Proposal: a CSV pay list keyed by each vendor's

@@ -1020,7 +1020,8 @@ Amendment 2026-11-21 (to_planning 2026-11-21 "Area 15 CRM intake audit follow-up
 
 This area is approved: nothing above is rewritten. These are inputs for later passes and one question for Mark.
 
-- **Lead import** (design chat gap list item 1, 2026-11-22): still not designed (open item in §11). It must follow
+- **Lead import** (design chat gap list item 1, 2026-11-22): still not designed (open item in §11). **Rules decided
+  2026-11-23 (OD-73 to OD-76): last bullet of §12.1.** It must follow
   the import-origin rule (one human review per batch, CLAUDE.md section 0) and the §3 duplicate checks. Owner: this
   area's next pass.
 - **Lead alert design pass** (gap list item 2): speed to lead, proposal follow-up, the stale digest and business-hours
@@ -1061,3 +1062,23 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
   replacing `requested_completion_on` (people disagree on when "start" begins and it keeps moving, so the lead
   tracks completion). No lead estimated start. At signing it is copied to the job, which warns when its forecast
   finish is later. Test: `test_lead_estimated_completion_is_optional_date`.
+- **Amendment 2026-11-23 (OD-73 to OD-76, owner 3:20 PM; CRM-IMPORT revision confirmed 4:10 PM): lead import rules.**
+  The schema waits for this area's import design pass (§12 Lead import); the rules are decided:
+  - **Required fields (OD-73 B):** every row needs a name plus at least one of email or phone; otherwise the row is
+    an Error that blocks approval of the batch.
+  - **Matches (OD-74 A):** a row that matches an existing customer or contact (the §3 duplicate checks) is marked
+    "Matches existing" with the match shown; the reviewer picks **link** (default; it becomes a repeat-customer
+    lead), **create anyway** or **skip**.
+  - **Size (OD-75 B):** at most 1,000 rows per file; a larger file is refused whole with the stated error.
+  - **Who approves (OD-76, owner's option):** anyone with `lead.create` can stage and approve a batch; approval is
+    direct and recorded as "Imported by <name>", which is the batch's one human review (integrity rule, CLAUDE.md
+    section 0). A Company control **"Require approval for lead imports"** (PROPOSED name
+    `require_lead_import_approval`, **OFF by default**, Admin or Master, audit-logged; placed in Settings with the
+    other CRM and approval controls, a lead default) makes approval need an Admin or a lead-import approval
+    permission (PROPOSED `lead.import_approve`, placed by an Area 18 amendment), and then the approver must not be
+    the person who staged the batch (CRM-IMPORT revision; only while the control is on). Stagers are never marked
+    "Self-approved".
+  - Tests: `test_lead_import_row_without_name_or_contact_is_error_blocking_approval`,
+    `test_lead_import_match_offers_link_create_or_skip_default_link`, `test_lead_import_file_over_1000_rows_refused_whole`,
+    `test_lead_import_direct_approval_records_imported_by_when_control_off`,
+    `test_lead_import_needs_separate_approver_with_permission_when_control_on`.

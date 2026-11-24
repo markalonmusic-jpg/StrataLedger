@@ -986,7 +986,7 @@ vendor, other), linked to the daily log and to the change order that grants a ti
 crew and subs on schedule phases and calendar items, with a cross-job "who's where tomorrow" board. (4) Look-ahead: a
 2–3 week view of existing phases only; baseline and slip unchanged; no new baseline. (5) Punch and inspection items:
 job, type (company list), assignee, status, pass/fail and photo; a Company control
-`block_final_billing_with_open_punch_items` (OFF by default) blocks Final billing while items are open (Area 5 and
+`block_final_billing_with_open_punch_items` (OFF by default) blocks Final billing while items are open **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)** (Area 5 and
 Area 4 handoff). (6) Field material request: Area 9 (next_step). Job page (12:45 PM): operations roles (PM, field,
 operations) open the job on the existing Schedule tab; finance roles keep the overview; default tab by role comes from
 the Area 18 access model. Nothing phone-related until the cloud version (phone capture, photo location, offline sync,
@@ -1069,7 +1069,8 @@ Source: inbox 2026-11-22 "from design chat: CRM and Field gap list ... with 11/2
 §10 inbox-input questions except one. The field records stay inputs (not decided schema) until the wireframes are
 approved.
 
-- **The daily log feeds the status update** (it does not replace it): submitted daily log lines are offered to the
+- **The daily log feeds the status update** **(Withdrawn 2026-11-23, owner 8:15 PM, Q32: the daily log's "Feeds the
+  status update" section is removed; §12.11)** (it does not replace it): submitted daily log lines are offered to the
   next status update.
 - **The PM creates material requests** (Area 9 entry in next_step).
 - **A time extension does not need a change order, but may have one.** The delay log's change-order link stays
@@ -1084,7 +1085,7 @@ approved.
   (vendors, shown with their vendor code). Crews are not held as vendors. When the field records are designed, a
   daily-log crew line names either a `crew_id` or a vendor `contact_id` (exactly one).
 - **A Manager cannot override the final-billing block** (`block_final_billing_with_open_punch_items`, OFF by
-  default): Area 18 §8.5 amendment.
+  default): Area 18 §8.5 amendment. **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)**
 - **Still open for the wireframe review:** which inspections are standard.
 - The Field role and its nav (about five items) from the 12:41 PM message are owned by Area 18 §8.5.
 
@@ -1189,7 +1190,7 @@ complete"; the stage never moves by itself) stands.
   field types, service rule), `related_activity_id` FK activity (cause and effect: punch, then delay, then extra
   work), `vendor_contact_id`, and `verified_at`/`verified_by` (status Open, Done, then Verified; both or neither, and
   only after done). `activity_type` gains behaviour flags beside `is_appointment`: `needs_verify`,
-  `blocks_final_billing` (read only while the Company control `block_final_billing_with_open_punch_items` is ON,
+  `blocks_final_billing` **(pending Q34, §12.11: a punch item is logged work, not an open item)** (read only while the Company control `block_final_billing_with_open_punch_items` is ON,
   default OFF, §12.2), `moves_forecast` (a Delay writes a `schedule_update` on the task it affects; the baseline is
   unchanged) and `can_become_change_order` (Extra work). Seeded field types: Calendar item, Inspection, Punch, Delay,
   Extra work, Note, Work started, Work completed (sales types unchanged). Type-specific fields sit in small 1:1
@@ -1256,8 +1257,10 @@ answer to Area 15 Q24" (7:28 PM).
   `project.target_finish_on` as an editable copy is withdrawn (§3.1 row) and dropped (lead default, owner may revise). **Withdrawn 2026-11-23 (owner 8:30 PM): §12.10.**
 - **Amendment 2026-11-23 (Q28 A).** `project.target_start_on` is **required when the job is created** (at contract
   signing): no job without a start date (an owner decision, not a control), so the baseline and forecast can be built. "Start" means the first day of
-  work on site, the first task of the Construction contract stage (owner 7:28 PM), not the signing date. Example:
+  work on site, the first task of the Construction contract stage **("first task of the Construction contract stage"
+  Withdrawn 2026-11-23, owner 8:15 PM, Q31: no stage is special; §12.11)** (owner 7:28 PM), not the signing date. Example:
   North field array signs 12/1; the PM enters a start of 1/5. Q31 asks how the build places Pre-construction tasks.
+  **(Answered 2026-11-23, owner 8:15 PM: §12.11.)**
 - **Requested completion (Area 15 Q24, owner 7:28 PM).** The lead's optional Requested completion (Area 15 §12.1)
   is copied at signing to `project.requested_completion_on` (TEXT date, NULL allowed, editable, logged). The job
   shows a **warning** (never a block) when the forecast finish is after it. Example: requested completion 12/31,
@@ -1290,7 +1293,8 @@ answer to Area 15 Q24" (7:28 PM).
 
 ### 12.9 Questions for Mark (recommended option first)
 
-- **Q29. Does the Gantt keep its own schedule list, separate from the work tree?** (The 1:30 PM design-chat
+- **Q29. Does the Gantt keep its own schedule list, separate from the work tree?** **Answered 2026-11-23 (owner 8:15 PM):
+  A. §12.11.** (The 1:30 PM design-chat
   write-up put task dates in the tree; your 7:10 PM answer said the Gantt keeps its own schedule.)
   A (recommended): yes, as you restated: the tree says what the work is (stage, phase, task, milestone) and the
   Gantt schedule holds each task's dates, predecessor and crew. Example: task "Set inverters" sits under phase
@@ -1303,12 +1307,14 @@ answer to Area 15 Q24" (7:28 PM).
   Requested completion, not netted against dated stock. Example: a lead needing 40 panels by 3/31 shows in the band.
   B: place it on `expected_close_date` as a stand-in start, labelled "estimated". **(A and B Withdrawn 2026-11-23, owner
   8:15 PM and 8:30 PM: §12.10.)**
-- **Q31. How the build places Pre-construction tasks now that the start date is the first day on site.**
+- **Q31. How the build places Pre-construction tasks now that the start date is the first day on site.** **Answered
+  2026-11-23 (owner 8:15 PM): no Pre-construction rule; options A and B Withdrawn 2026-11-23. §12.11.**
   A (recommended): the first Construction task is anchored on the start date; Pre-construction tasks are scheduled
   forward from the signing date, and the build warns when they would finish after the start. Example: signed 12/1,
   start 1/5, permitting needs 30 work days: "Pre-construction ends 1/12, after the start date 1/5."
   B: back-schedule Pre-construction from the start date so it ends the day before.
-- **Q32. Does a field event keep its own number and cost lines?**
+- **Q32. Does a field event keep its own number and cost lines?** **Answered 2026-11-23 (owner 8:15 PM) with the PCO
+  rule; options A and B Withdrawn 2026-11-23; the number and cost lines are a lead default. §12.11.**
   A (recommended): yes: a field event (FE-#### number, cost lines, link to the change order, as approved in §5)
   stays its own record; logging Extra work on the job creates or links to one. Example: Extra work "Add 2 panels"
   logged on 2/10 becomes FE-0009 with its cost lines.
@@ -1356,9 +1362,73 @@ stands.
   `test_target_history_is_insert_only`, `test_estimated_completion_copied_at_signing_and_warns_when_forecast_later`,
   `test_material_forecast_places_lead_in_week_of_estimated_completion_tagged_estimate`.
 
-**Q33. Which date makes a job Late?**
+**Q33. Which date makes a job Late?** **Answered 2026-11-23 (owner 8:35 PM): A. §12.11.**
 A (recommended): the forecast compared with the date owed to the customer (the baseline plus approved change-order
-time); the target shows separately as "n days behind target". Example (day counts in calendar days): baseline Fri
+time); the target shows separately as "n days behind target". Example (day counts in calendar days) **("calendar
+  days" Withdrawn 2026-11-23, owner 8:35 PM: change-order time is work days; §12.11)**: baseline Fri
 3/20 + a 5-work-day CO = owed Fri 3/27; forecast 3/29 shows Late by 2 days; target 3/25 shows "4 days behind target".
 B: the forecast compared with the target. Example: the same job shows Late by 4 days.
 C: the forecast compared with the baseline. Example: the same job shows Late by 9 days.
+
+### 12.11 Owner answers 2026-11-23 8:15 PM and 8:35 PM (Q29, Q31, Q32, Q33; Decided 2026-11-23, owner)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answers to Area 8 Q29 to Q32" (8:15 PM; its Q30 is replaced by the
+8:30 PM revision, §12.10) and "Owner answer to Area 8 Q33" (8:35 PM, with the planning-chat review note on work
+days).
+
+- **Q29 A.** The Gantt keeps its own schedule list (planned and forecast dates, predecessors, crew), apart from the
+  work tree; each Gantt task links to its tree node. This is the §12.5 shape (`job_schedule_task.node_id`), now
+  decided. Example: tree Electrical > "Set inverters"; its dates 2/10–2/12 and crew are on the Gantt.
+- **Q31: no special stage scheduling.** Stages and tasks are a customizable parent/child tree ("Preconstruction is
+  not a fixed thing"), so no stage gets its own scheduling rule. Each task is placed by its own Gantt dates and
+  predecessors. The build keeps the approved rule (dates from the start date, work days, predecessors and the work
+  week). Lead default, owner may revise: the job start date (Q28, required) anchors the first task with no
+  predecessor, whatever its stage.
+- **Q32: PCO, then CO by a PM; no COR.** Whoever logs a Delay or Extra work activity may tag it as a PCO (potential
+  change order; the live daily log's "Create PCO"), and a PM converts the PCO into a change order. There is no
+  change order request (COR) step; §5's statuses already have none ('With sales rep' and 'Sent to customer' are
+  steps of the change order itself). Lead defaults, owner may revise: tagging creates the §5 `field_event`
+  (FE-#### number, cost lines) and its `change_order` in 'PCO pending', linked from `delay_detail` or
+  `extra_work_detail` (`change_order_id`); creating the PCO needs only the right to log the activity, converting
+  it needs `change_order.create` (the PM, project scope); the "Change order approval" control stays OFF by default.
+- **Q32: the daily log's "Feeds the status update" section is removed** (the §12.2 bullet is marked withdrawn). The
+  live `field-daily-log.html` no longer has it.
+- **Q32: a punch item is an activity**: work done out of schedule on the day, not an open task, including the Task
+  list's punch item row. A Punch activity is logged as done on its date (`done_at` set when saved); it has no Open
+  state, so `needs_verify` and `blocks_final_billing` do not apply to the Punch type. What the approved final-billing
+  control then reads is Q34.
+- **Q33 A.** A job is **Late** when its forecast finish is after the date owed to the customer = baseline +
+  approved change-order time. The PM's target shows separately as "n days behind target" and **never** sets Late.
+  The §12.6 Status bullet (forecast vs target) stays withdrawn.
+- **Work days (fee73a8 fix).** Change-order time is in **work days**, like the Gantt (company work week, Q11 A).
+  Example: baseline Fri 3/20/2026 + an approved CO of 5 work days = owed Fri 3/27 (5 calendar days would be 3/25);
+  target 3/25; forecast 3/29: "Late 2 days" and "4 days behind target" (the owner's figures). The unit of the "Late
+  n days" count is Q35.
+- Tests: `test_gantt_task_links_to_its_tree_node`, `test_build_places_tasks_by_dates_and_predecessors_only`,
+  `test_delay_or_extra_work_tagged_pco_creates_field_event_and_pco_pending`,
+  `test_pm_converts_pco_to_change_order_without_cor_step`, `test_punch_activity_is_logged_done_with_no_open_state`,
+  `test_late_compares_forecast_with_baseline_plus_approved_co_work_days`,
+  `test_target_shows_days_behind_and_never_sets_late`.
+
+### 12.12 Inbox note with no schema effect (10:05 PM)
+
+- **The 10/31 WIP sample** (owner 10:05 PM): RI0001-003 shows earned $13,000.00, billed $0.00, under-billed
+  $13,000.00, matching posted billing. Sample data only, owned by the design-queue run; no schema effect. It agrees
+  with the owner's 9:28 PM rule that Billed to date is always actual posted billing, never the WIP report.
+
+### 12.13 Questions for Mark (recommended option first)
+
+- **Q34. What the final-billing control checks now that a punch item is logged work.** The 11/22 control
+  `block_final_billing_with_open_punch_items` (OFF by default; a Manager cannot override it, Area 18 §8.5) reads open
+  punch items, which no longer exist.
+  A (recommended): retire the control and the Area 18 §8.5 override note; final progress billing is never blocked
+  and the retainage release waits for the Complete stage, as the live mockups say. Example (live
+  `field-final-billing.html`): SU0004-004 is in Punch list; the page shows "Final progress billing · Not blocked" and
+  "Punch items and the closeout items below don't block it."
+  B: keep the control, OFF by default, but have it read the schedule tasks under the job's punch-list stage that are
+  not Done.
+- **Q35. The unit of "Late n days" and "n days behind target".**
+  A (recommended): calendar days, as in your Q33 example (owed Fri 3/27, forecast Sun 3/29 = "Late 2 days");
+  change-order time and task lengths stay in work days. Example (live `pages/ops-menu.js` job chips): RI0001-002
+  "14 days late".
+  B: work days: the same job reads "Late 0 days" (3/28 and 3/29 are a weekend).

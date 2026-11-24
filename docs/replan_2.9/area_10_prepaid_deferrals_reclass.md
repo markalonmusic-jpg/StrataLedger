@@ -236,7 +236,7 @@ revenue deferrals come with billed-in-advance invoicing (C2).
   required. Each reclass posts a journal entry (source Reclass) with one line pair per original line (Cr old, Dr
   new), never netted; each pair carries the original's vendor or customer, date, memo, item and job, the original
   document and line ids, and the reason. The original is never changed.
-- Date: the original line's date when its period is open; otherwise the first day of the current open period;
+- Date **(Withdrawn 2026-11-23, owner 8:05 PM, Q21 A: one date rule, §11.7)**: the original line's date when its period is open; otherwise the first day of the current open period;
   never into a closed period.
 - Rules: job reclass updates job cost; 1099 and sales tax follow the original's name and tax code; reversing a
   reclass restores the earlier view; logged.
@@ -287,7 +287,7 @@ the Controls page, audited with a reason (Q15 A).
   (`is_deferral_account = 1`), which move only through schedules (Q17 A). One sentence names the account and what to
   use instead ("AR lines are corrected through the invoice or a credit memo.").
 - Same account type unless `allow_cross_type_reclass` is on.
-- Date: the original line's date when its period is open **and not locked**; when its period is closed, the first
+- Date **(Withdrawn 2026-11-23, owner 8:05 PM, Q21 A and OD-71: one date rule, §11.7)**: the original line's date when its period is open **and not locked**; when its period is closed, the first
   day of the current open period (Q14 A: the period holding `context.today`, if open; else the earliest open period
   after the original's); when its period is open but locked, refused with the lock sentence (Q13 A, R48).
 - Each pair copies the original line's contact, job, cost code and dimensions onto the In line except what is being
@@ -306,7 +306,7 @@ the Controls page, audited with a reason (Q15 A).
 - Tests to write later: one pair per line, never netted; amounts and names unchanged; refused on AR, AP, a tracked
   account, a bank account, a card account and the prepaid account, and across types unless the control is on (and
   the control change is audited); dated the original's date in an open period, in the current open period when the
-  original's is closed, refused when the original's period is locked; a closed period's report and its close
+  original's is closed, refused when the original's period is locked **(Withdrawn 2026-11-23, owner 8:05 PM, Q21 A: one date rule, §11.7)**; a closed period's report and its close
   snapshot are unchanged after a reclass dated later; a chain of two reclasses shows once under the latest account;
   reversing the second restores the first; job cost moves with a job reclass; 1099 grouping follows the original's
   vendor; the Agent cannot reclass.
@@ -582,10 +582,10 @@ All nineteen answered A, one by one; Q2 and Q10 with the owner's detail. The opt
 | Q10 Permissions | **A with the owner's change:** `deferral.manage` at Accountant · Standard; `je.reclass` at the level holding `je.post` (Accountant · Manager); neither in AGENT_ALLOWED | 7.1 |
 | Q11 Reclass details | insert-only `reclass_line` | 2.3 |
 | Q12 Refused accounts | tracked, bank, card and deferral accounts | 2.4 |
-| Q13 Locked original period | refused with the lock sentence | 2.4 |
-| Q14 Current open period | the period holding today if open, else the earliest open after the original | 2.4 |
+| Q13 Locked original period | refused with the lock sentence **(Withdrawn 2026-11-23, owner 8:05 PM, Q21 A and OD-71: one date rule, §11.7)** | 2.4 |
+| Q14 Current open period | the period holding today if open, else the earliest open after the original **(Withdrawn 2026-11-23, owner 8:05 PM, Q21 A and OD-71: one date rule, §11.7)** | 2.4 |
 | Q15 Cross-type | control, OFF by default | 2.3 |
-| Q16 Reclass approval | manual-entry approval rules apply | 2.4 |
+| Q16 Reclass approval | manual-entry approval rules apply **(amended 2026-11-23, owner 8:05 PM: an expense-account reclass posts with no approval and no hold, §11.7)** | 2.4 |
 | Q17 Deferral accounts | refuse reclass | 2.4 |
 | Q18 Related to | `journal_line_related` now | 6 |
 | Q19 Early cancellation | Stop leaves the remainder; refund by vendor credit | 1.4 |
@@ -708,7 +708,7 @@ with approved text are flagged here for Mark, not changed.
 - **Amendment 2026-11-22.** A QuickBooks-style **Reclassify transactions** page: a list of posted transactions with
   filters (date, account, job, type, vendor or customer), checkboxes and a mass reclass of account and/or job. Each
   selected transaction gets **its own** RECLASS journal entry (source 'Reclass', §2.3), never one combined entry, and
-  each follows the JE/reclass approval route (§2.4, Q16 A). It is the §2 Reclassify tool with a multi-select list; it
+  each follows the JE/reclass approval route (§2.4, Q16 A; **an expense-account reclass posts with no approval, §11.7**). It is the §2 Reclassify tool with a multi-select list; it
   adds no table. Every line still runs the §2.4 rules: whole lines only, refused accounts (Q12 A), same type unless
   `allow_cross_type_reclass` is on, the date rule (Q13 A, Q14 A). A selected transaction whose lines are partly
   refused moves only its eligible lines and the page names the refused ones in one sentence; a transaction with no
@@ -823,10 +823,10 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   (§11.2) now happens from both entry points.
 - **Not covered by the answers:** the payable side. Bills are job-coded per line (Area 3 Q1 A, decided 2026-11-23),
   and Area 3's same-gross correction moves bill expense lines only (Area 3 §3.4, F5). Q20 below asks about AP lines.
-- **Not yet folded (outside this fold's range):** OD-71 (owner 3:20 PM) sets the Reclassify page's date default to
+- **Folded 2026-11-23 in §11.7 (Q21 A):** OD-71 (owner 3:20 PM) sets the Reclassify page's date default to
   the original date when its period is open, else today when it is locked, changeable but never into a locked
   period. That differs from §2.4's approved rule (first day of the current open period; refused when the period is
-  open but locked). Q21 below.
+  open but locked). Q21 below. **(Decided 2026-11-23: OD-71 wins, §11.7.)**
 - Tests: `test_job_reclass_moves_receivable_retainage_and_revenue_lines_together`,
   `test_reclassify_page_job_change_on_invoice_moves_whole_invoice`,
   `test_account_change_on_receivable_line_is_still_refused`,
@@ -835,12 +835,13 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
 
 ### 11.6 Questions for Mark (recommended option first)
 
-- **Q20. A job change on a bill: does the amount owed to the vendor move to the new job too?**
+- **Q20. A job change on a bill: does the amount owed to the vendor move to the new job too?** **Answered 2026-11-23
+  (owner 8:05 PM): B; option A Withdrawn 2026-11-23. §11.7.**
   A (recommended): no. A bill is job-coded per line (Area 3 Q1 A), so the amount owed to the vendor is not tied to
   one job; a job change moves the bill's cost lines only. Example: VCH-1015 line 2
   ($4,000.00 panels) moves from RI0001-002 to RI0001-003; the AP line is unchanged.
   B: when every line of a bill is on one job, the AP line takes the new job as well, like Q18 for invoices.
-- **Q21. One date rule for reclasses and payment voids.** (Your 3:20 PM answer for the Reclassify page and your
+- **Q21. One date rule for reclasses and payment voids.** **Answered 2026-11-23 (owner 8:05 PM): A, with OD-71. §11.7.** (Your 3:20 PM answer for the Reclassify page and your
   Area 2 void answer use "the original date, else today"; the approved reclass rule uses "the first day of the
   current open period".)
   A (recommended): one rule everywhere (Reclassify page, Reclass job, payment void): the original date when its
@@ -849,3 +850,61 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   and dated Nov 23.
   B: keep the approved rule (the first day of the current open period when the original period is closed; refused
   when it is open but locked) for Reclass job and voids, and use "else today" on the page only.
+
+### 11.7 Owner answers 2026-11-23 (Q20 and Q21 at 8:05 PM; OD-71, OD-72 and OD-77 at 3:20 PM and 4:10 PM; Decided 2026-11-23, owner)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answers to OD-71 to OD-76", "Owner answer to
+OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
+
+- **Amendment 2026-11-23 (Q20 B).** When a bill is reclassed to another job and the **whole bill is on one job**, the
+  cost lines **and** the AP (amount owed) line take the new job, the same rule as Q18 for invoices. When the bill is
+  split across jobs, only the moved cost line changes and the AP line keeps its job. §2.4 gains this second
+  job-only exception (written into §2.4 in the 2.9 pass); an account change on an AP line stays refused. Example:
+  VCH-1015, all $12,000.00 on RI0001-002, moves to RI0001-003: cost and AP both become RI0001-003. Area 3's
+  same-gross correction (Area 3 §3.4, F5) follows it.
+- **Amendment 2026-11-23 (Q21 A with OD-71): one date rule** for every reclass (the Reclassify page, Reclass job,
+  an expense-account reclass) and for payment voids (Area 2 §5). The entry defaults to the original transaction's
+  date when that period is open and not locked, otherwise to today; the user may change the date, but never into a
+  closed or locked period. This replaces §2.4's "first day of the current open period" and Q13 A/Q14 A (marked
+  withdrawn there). The memo names the original transaction (OD-71). Example: Aug 15 bill, expense 5100 → 5200 on
+  Nov 23 with August locked: dated Nov 23; with August open: Aug 15. Integrity stays always on: no date in a closed
+  or locked period is accepted; when today's own period is closed or locked the service refuses with the lock
+  sentence (lead default, owner may revise).
+- **Amendment 2026-11-23 (owner 8:05 PM): an expense-account reclass just posts a journal entry, with no approval
+  and no hold**, even while JE approval is ON. Lead default, owner may revise: "expense-account reclass" means every
+  line of the RECLASS entry is on an Expense or Cost of goods sold account (account and/or job change). Q16 A
+  (manual-entry approval rules) still applies to every other reclass. An agent-origin entry still needs a human
+  approval (integrity, CLAUDE.md section 0). Q36 below asks whether the job-only moves of Q18 and Q20 also post with
+  no approval.
+- **Amendment 2026-11-23 (OD-72 B).** The pay app follows the invoice: Reclass job (or the page, Q19 B) moves INV-0388's
+  pay app 7 to RI0001-003. RI0001-002's Billed to date falls by $40,000.00, RI0001-003's rises by $40,000.00, and the
+  pay app row is listed on RI0001-003, so WIP over/(under) billing stays in step with the revenue that moved. The pay
+  app's job link is Area 4's record; this area's reclass service updates it in the same transaction (Area 4 pointer).
+- **Amendment 2026-11-23 (OD-77, A + C).** Reclass job posts **no** WIP (over/under billing) entry. WIP adjusting
+  entries post only at period close from the WIP schedule. A closed WIP schedule stays as closed; the next WIP close
+  recalculates both jobs with the moved billing. Until then the jobs list shows the note "Billing moved by reclass;
+  WIP recalculated at the next WIP close." (screen; derived, no column).
+- **Scope of the date rule:** Q21 covers reclasses and payment voids only. Prepaid and deferral schedule entries
+  keep their approved dates (Q3 A: the bill date when its period is open and not locked, else the first day of the
+  current open period); not changed here.
+- **Billed to date (owner 9:28 PM rule, recorded here because the reclass moves it):** Billed to date on every page
+  is the job's actual posted billing (invoices and pay apps), never the WIP report. Example: RI0001-003's Billed to
+  date is $0.00 before INV-0388's reclass and $40,000.00 after.
+- Tests: `test_whole_bill_on_one_job_moves_cost_and_ap_lines_together`,
+  `test_split_bill_job_reclass_moves_only_the_cost_line`,
+  `test_reclass_and_void_default_to_original_date_when_open_else_today`,
+  `test_reclass_date_change_refused_into_closed_or_locked_period`,
+  `test_expense_account_reclass_posts_without_approval_even_when_je_approval_on`,
+  `test_agent_origin_reclass_still_needs_human_approval`,
+  `test_reclass_job_moves_pay_app_and_billed_to_date_to_new_job`,
+  `test_reclass_job_posts_no_wip_entry`.
+
+### 11.8 Questions for Mark (recommended option first)
+
+- **Q36. Do the job-only moves of a whole invoice or a whole bill (Q18, Q20) also post with no approval?**
+  A (recommended): no: they move AR or AP and, for an invoice, the payment application, so they keep the JE/reclass
+  approval route (OFF by default); only expense-account reclasses skip it. Example: the live `cost-detail.html`
+  shows journal entry 2026-00389 "Reclass inbound freight from 5900 to the job" (cost code 03-100), $1,228.00, an expense
+  reclass that posts directly; with JE approval ON, moving INV-0388 to RI0001-003 would wait as "Reclass pending
+  approval" (Reclass job has no live mockup yet; it is in the design queue, OD-28).
+  B: yes: every job-only reclass posts directly, like an expense-account reclass.

@@ -1280,7 +1280,7 @@ and field material requests are placed here once the wireframes are approved.
 
 Amendment 2026-11-22 (owner, design chat "CRM and Field gap list", 11/22 owner decisions): a Manager cannot override
 the final-billing block of `block_final_billing_with_open_punch_items` (control OFF by default). When the control is
-ON, Final billing is refused while punch or inspection items are open, for every role; turning the control off is the
+ON, Final billing is refused while punch or inspection items are open **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)**, for every role; turning the control off is the
 only way past it (Controls page, Admin or Master, logged). The control's placement still waits for Area 8's v1.1 pass.
 
 ### 8.6 Owner rules from 2026-11-22 evening (Decided 2026-11-22, owner)
@@ -1342,3 +1342,11 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   change on the Reclassify transactions page un-applies a payment (Area 10 §11.5), not only by Reclass job.
 - Tests: `test_listed_reason_satisfies_required_reason_without_typed_text`,
   `test_other_reason_needs_10_typed_characters_after_trim`.
+
+### 8.8 Owner decisions 2026-11-23 afternoon and evening (placement only; rules owned elsewhere)
+
+- **Control (OFF by default, Controls page, audit-logged):** PROPOSED `require_lead_import_approval`, "Require
+  approval for lead imports" (OD-76; Area 15 §12.1). PROPOSED permission `lead.import_approve` (sensitive: approves
+  an import batch when the control is on), to be placed in the §2.4 tables when Area 15's import pass is approved.
+- **Reclass approval:** an expense-account reclass posts with no approval and no hold (owner 8:05 PM; Area 10
+  §11.7); `je.reclass` is still required. An agent-origin entry still needs a human approval.

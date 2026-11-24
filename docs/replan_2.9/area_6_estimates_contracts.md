@@ -1323,3 +1323,17 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
 16. **2.8 backups and restore:** the company logo's `storage.py` key (`company_branding.logo_storage_key`) is included
     in the company backup and restore, like attachments (area 18 Q14: a company backup without them is not complete),
     and recorded in `backup_run`.
+
+## 17. Owner decisions 2026-11-23 (dated amendments)
+
+- **Amendment 2026-11-23 (planning chat correction 4:12 PM, ESTIMATE-PRETAX).** Each estimate line carries its own
+  Taxable/Exempt flag (`is_taxable`, already in this plan by the 2026-11-20 amendment), and the cost-code
+  summary shows the mix, for example "Taxable $42,100.00 · Exempt $18,300.00". The summary is derived, never stored;
+  the lead default of one flag per cost-code summary is withdrawn. No schema change. Test:
+  `test_cost_code_summary_shows_taxable_and_exempt_mix_from_line_flags`.
+- **Amendment 2026-11-23 (OD-78 B, owner 4:50 PM).** The signed contract file (`signed_attachment_id`) may be a PDF
+  **or a photo (JPG or PNG)** of the signed paper, uploaded with the same file picker and checks as the job page, so
+  a crew can photograph a signed contract. Photos show no page count. Uploading the signed file closes the loop and
+  hands the job to the PM (the 11/20 rule). The allowed file types stay a company setting (Area 18 §3, Area 21);
+  their default for the signed contract includes PDF, JPG and PNG. Photo limits and wording are lead defaults. Test:
+  `test_mark_signed_accepts_pdf_jpg_or_png_signed_file`.

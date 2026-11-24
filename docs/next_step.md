@@ -1,6 +1,27 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-23 evening): owner answers of 6:55–8:00 PM folded
+## Current planning stop (2026-11-23 late): owner answers of 3:20–4:50 PM and 8:05–10:05 PM folded
+
+Folded from `Strata_Teams\docs\owner_decisions_2026-11-22.md` (OD-71 to OD-78 with the 4:10 PM revisions and the
+4:12 PM correction; Area 10 Q20–Q21 at 8:05 PM; Area 8 Q29–Q32 at 8:15 PM; Q33 at 8:35 PM; 10:05 PM WIP sample).
+One owner each:
+
+| Owner | Items |
+|---|---|
+| Area 10 §11.7–§11.8 (approved; amendments) | Q20 B (AP line moves only when the whole bill is on one job); Q21 A + OD-71 (one date rule for reclasses and payment voids); expense-account reclass posts with no approval or hold; OD-72 B (pay app follows the invoice); OD-77 (no WIP entry; jobs-list note); Billed to date is posted billing (9:28 PM); new Q36 |
+| Area 8 §12.11–§12.13 (approved; amendments) | Q29 A; Q31 (no special stage scheduling); Q32 (PCO by whoever logs, CO by a PM, no COR; no "Feeds the status update"; a punch item is logged work); Q33 A (Late vs baseline + approved CO time; target never sets Late); work-days fix of fee73a8; 10:05 PM WIP sample (no schema); new Q34, Q35 |
+| Area 15 §12.1 (approved; amendment) | OD-73 to OD-76 lead import rules; control "Require approval for lead imports" (OFF) |
+| Area 6 §17 (approved; amendments) | ESTIMATE-PRETAX (line Taxable/Exempt flags, summary shows the mix); OD-78 B (signed file may be a PDF or a JPG/PNG photo) |
+| Area 4, Area 18 §8.8 (pointers) | OD-72 pay app follows; placement of `require_lead_import_approval` and `lead.import_approve` (PROPOSED) |
+| Area 3 and Area 2 drafts | Q20 B and the one date rule in the same-gross bill reclass; void reversal date per Q21 A |
+
+Not folded (mockups only, owned by the design-queue run): the 8:26, 8:28, 9:33, 9:42 and 9:45 PM page-width
+decisions. Controls stay OFF by default; integrity rules unchanged (no posting into a closed or locked period; an
+agent-origin entry still needs a human approval). Areas 2 and 3 are drafted (Q1–Q6 and Q1–Q3 answered) and wait
+for owner approval with Area 4 and the amended Area 5. Questions for Mark: Area 10 Q36, Area 8 Q34–Q35 (in the areas
+and the log `Strata_Teams\planning_replan_log_2026-11-22.md`).
+
+## Earlier planning stop (2026-11-23 evening): owner answers of 6:55–8:00 PM folded
 
 Folded from `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer to Area 10 Q18" to the end) and the
 inbox message 2026-11-23 1:30 PM "schedule tree, tasks without %, and one activity table". One owner each:
@@ -24,7 +45,7 @@ the owner's 8:05 PM answers (Area 10 Q20 B, Q21 A) and 8:15 PM answers (Area 8 Q
 
 The 8:00 PM RI0001-003 contract value ($260,000.00) is sample data only (Area 8 §12.8). Controls stay OFF by default
 (new: `vendor_compliance_hold`, `require_note_on_task_start_finish`, both PROPOSED names) and the integrity rules are
-unchanged. **Not folded (outside this range): OD-71 to OD-78 (owner 3:20–4:50 PM)**, which touch Area 10 (OD-71
+unchanged. **Not folded (outside this range): OD-71 to OD-78 (owner 3:20–4:50 PM)** (folded 2026-11-23 late, above), which touch Area 10 (OD-71
 date rule, OD-72 pay app follows, OD-77 no WIP entry), Area 15 (OD-73 to OD-76 lead import) and the design queue
 (OD-78); Area 10 Q21 asks about OD-71. Next action: fold OD-71 to OD-78; Mark answers the new questions and approves
 Areas 2, 3 and 4 and the amended Area 5. Questions for Mark: each area and the log

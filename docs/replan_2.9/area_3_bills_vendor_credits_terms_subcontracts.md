@@ -301,13 +301,15 @@ on the Controls page: a hold warns 7 days before and on the date; it never relea
   only with 'Bill' approval ON; otherwise the edit posts with the warning "This bill was approved at <amount>; the
   change is logged."
 - **Same-gross correction (item 13).** When the total is unchanged and only account, job or line allocation moves,
-  the bill service posts a reclass (Area 10 §2, one pair per moved line, the AP line untouched) instead of a
-  reversal and repost, through the approval route set for reclasses. The bill keeps its version; it shows
+  the bill service posts a reclass (Area 10 §2, one pair per moved line; the AP line takes the new job too when the
+  whole bill is on one job, otherwise it is untouched: Area 10 Q20 B, decided 2026-11-23) instead of a reversal and
+  repost. A reclass whose lines are all expense accounts posts with no approval and no hold (owner 8:05 PM, Area 10
+  §11.7); any other reclass follows the approval route set for reclasses. The bill keeps its version; it shows
   "Reclassed". The edit dialog routes to it automatically. The same guards as Edit apply: refused while the bill is
   in a pay run or in a locked owner pay app (a job or cost-code move changes that pay app's cost basis; Area 4 needs
-  a new revision, so an approver unlocks it first). The reclass date follows Area 10 §2.4 (the bill line's date when
-  its period is open and unlocked, else the first day of the current open period; refused when the period is open
-  but locked), and Area 13 checks that date. Permission: `je.reclass` (Area 10 §7.1) in addition to the bill edit
+  a new revision, so an approver unlocks it first). The reclass date follows Area 10's one date rule (§11.7, Q21 A
+  with OD-71, decided 2026-11-23): the bill line's date when its period is open and unlocked, otherwise today,
+  changeable but never into a closed or locked period; Area 13 checks that date. Permission: `je.reclass` (Area 10 §7.1) in addition to the bill edit
   code.
 
 ### 3.5 Lands, effects, tests
@@ -578,7 +580,8 @@ no refund request, no hold.
 - **F4 `payment.method` CHECK** (`:670`: Cash, Check, Bank Transfer, GCash, Maya) lacks ACH, Wire, Card and Paid
   outside; Area 2 proposes the change.
 - **F5 Item 13 vs Area 10 §2.4:** the same-gross correction is a reclass, which never moves the AP line (refused
-  there); consistent, since the total and vendor do not change.
+  there); consistent, since the total and vendor do not change. **Updated 2026-11-23 (owner 8:05 PM, Area 10 Q20 B): a
+  job change on a bill wholly on one job moves the AP line too (Area 10 §11.7).**
 - **F6 Re-hold trigger:** S 11-17 5:13 PM puts the re-hold in AP; Area 4 §4 applies the rule. This draft writes the
   rows when Area 4's service calls it.
 

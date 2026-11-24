@@ -132,3 +132,9 @@ Amendment 2026-11-22 (owner_decisions_2026-11-22 item 17; §7 Q5): add one sensi
 7. **Q7 Decided 2026-11-22 (owner; owner_decisions_2026-11-22 "Planning-session follow-ups", 12:47 PM):** adjust never edits certified amounts on the invoice draft. It unlocks the pay app and creates a new revision for the customer to certify, and the linked invoice draft follows that revision. Q5 and test 8 are unchanged. Test: `test_payapp_adjust_creates_new_revision_and_draft_follows_it`.
 
 Review gate: keep the plan unstaged. Implementation waits for owner decisions and source contracts.
+
+Amendment 2026-11-23 (OD-72 B, owner 3:20 PM; rule owned by Area 10 §11.7): when Reclass job moves an invoice to
+another job, its linked pay app follows it: the pay app row is listed on the new job and Billed to date moves by the
+invoice amount (INV-0388 and pay app 7: RI0001-002 -$40,000.00, RI0001-003 +$40,000.00). The reclass service
+updates the pay app's job in the same transaction; certified amounts are not edited (Q7). Billed to date is always
+actual posted billing, never the WIP report (owner 9:28 PM).
