@@ -811,7 +811,7 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
 - **Amendment 2026-11-23 (Q19 B).** On the Reclassify page, a job change on an invoice that has a payment applied
   runs the same flow as Reclass job: the application is undone, the OD-70 entry posts (Dr Accounts receivable /
   Cr Unapplied customer payments on the payment's original job), the whole invoice moves, the pay app follows it
-  (OD-72) and no WIP entry posts (OD-77). The page and the ... menu call one service function, so they give the same
+  (OD-72; with SOV line mapping, §11.10) and no WIP entry posts (OD-77). The page and the ... menu call one service function, so they give the same
   entries. With JE/reclass approval ON, each invoice is its own pending request, as in §11.2 (one entry per
   transaction, §11.1).
 - **Lead default, owner may revise: other lines of the invoice.** Sales tax payable lines move with the invoice (job
@@ -879,7 +879,7 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
 - **Amendment 2026-11-23 (OD-72 B).** The pay app follows the invoice: Reclass job (or the page, Q19 B) moves INV-0388's
   pay app 7 to RI0001-003. RI0001-002's Billed to date falls by $40,000.00, RI0001-003's rises by $40,000.00, and the
   pay app row is listed on RI0001-003, so WIP over/(under) billing stays in step with the revenue that moved. The pay
-  app's job link is Area 4's record; this area's reclass service updates it in the same transaction (Area 4 pointer).
+  app's job link is Area 4's record; this area's reclass service updates it in the same transaction (Area 4 pointer). **(refined 2026-11-23, owner 11:55 PM: certified SOV lines are mapped to the new contract; §11.10)**
 - **Amendment 2026-11-23 (OD-77, A + C).** Reclass job posts **no** WIP (over/under billing) entry. WIP adjusting
   entries post only at period close from the WIP schedule. A closed WIP schedule stays as closed; the next WIP close
   recalculates both jobs with the moved billing. Until then the jobs list shows the note "Billing moved by reclass;
@@ -919,3 +919,10 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
 - **Lead default (accepted 2026-11-23 by the planning chat, owner may revise):** the reclass and payment-void date
   (§11.7) may be changed by the user to any date in an open, unlocked period.
 - Test: `test_whole_invoice_or_bill_job_move_follows_manual_entry_approval_when_on`.
+
+### 11.10 Pointer 2026-11-23 (owner 11:55 PM, Area 4 approval)
+
+- **Amendment 2026-11-23 (pointer).** The OD-72 "pay app follows" rule (§11.7) is refined in Area 4: on Reclass job
+  the user maps each certified SOV line of the linked pay app to a line on the new contract's SOV, and the reclass is
+  refused if any line cannot be mapped (Area 4, amendment of 2026-11-23 11:55 PM). The refusal is part of Reclass job
+  here and on the Reclassify page (Q19 B).

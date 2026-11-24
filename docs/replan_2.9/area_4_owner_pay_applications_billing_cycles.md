@@ -1,6 +1,7 @@
 # Area 4 — Customer pay applications and billing cycles
 
-Phase 2.9 schema replan draft, 2026-11-21. Status 2026-11-22: ready for owner full-plan approval; Q1–Q7 are decided (Q6–Q7 on 2026-11-22, 12:47 PM). “Customer pay app” is the UI label.
+Phase 2.9 schema replan draft, 2026-11-21. **Status 2026-11-23: approved by the owner 11:55 PM (planning chat), with
+the OD-72 fix below.** Status 2026-11-22: ready for owner full-plan approval; Q1–Q7 are decided (Q6–Q7 on 2026-11-22, 12:47 PM). “Customer pay app” is the UI label.
 
 ## 0. Summary
 
@@ -136,5 +137,27 @@ Review gate: keep the plan unstaged. Implementation waits for owner decisions an
 Amendment 2026-11-23 (OD-72 B, owner 3:20 PM; rule owned by Area 10 §11.7): when Reclass job moves an invoice to
 another job, its linked pay app follows it: the pay app row is listed on the new job and Billed to date moves by the
 invoice amount (INV-0388 and pay app 7: RI0001-002 -$40,000.00, RI0001-003 +$40,000.00). The reclass service
-updates the pay app's job in the same transaction; certified amounts are not edited (Q7). Billed to date is always
+updates the pay app's job in the same transaction; certified amounts are not edited (Q7). **("Updates the pay app's
+job": refined 2026-11-23, owner 11:55 PM: the SOV lines are mapped; next amendment.)** Billed to date is always
 actual posted billing, never the WIP report (owner 9:28 PM).
+
+Amendment 2026-11-23 (owner approval 11:55 PM, fix to the OD-72 amendment). When Reclass job (or the Reclassify
+page, Area 10 Q19 B) moves an invoice with a linked pay app to another job:
+- The user **maps each certified SOV line of the pay app to a line on the new contract's schedule of values**.
+  Certified amounts are unchanged. The reclass is **refused** if any line cannot be mapped ("Map every pay app line
+  to a line on <new contract> first."). The mapping is stored per pay app line (proposed: a `payapp_line_move` row
+  with the old SOV line, the new SOV line, the reclass entry, who and when; insert-only) and posts in the same
+  transaction as the RECLASS entry (all or nothing).
+- The old contract's later pay apps drop the moved pay app from "previously billed" and show "Pay app 7 moved to
+  RI0001-003" (no re-billing of moved work). The new contract's G703 billed to date includes it, so both G702/G703s
+  tie to posted billing.
+- Example: pay app 7, $40,000.00 on RI0001-002's lines, mapped to RI0001-003's lines; RI0001-002 pay app 8's
+  previously billed falls by $40,000.00; RI0001-003's G703 shows $40,000.00 billed.
+- With JE/reclass approval ON the mapping is saved with the pending request and applied on approval (Area 10 §11.2,
+  §11.9).
+- Tests: `test_reclass_job_requires_every_certified_sov_line_mapped_to_new_contract`,
+  `test_reclass_job_refused_when_a_pay_app_line_cannot_be_mapped`,
+  `test_mapped_pay_app_keeps_certified_amounts`,
+  `test_old_contract_later_pay_app_drops_moved_pay_app_from_previously_billed_with_note`,
+  `test_new_contract_g703_billed_to_date_includes_moved_pay_app`,
+  `test_g702_g703_tie_to_posted_billing_on_both_jobs_after_move`.

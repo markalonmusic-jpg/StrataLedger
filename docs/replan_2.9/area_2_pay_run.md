@@ -1,6 +1,7 @@
 # Step 2.9 schema replan, area 2: pay run
 
-Status: **Draft 2026-11-23, for owner approval; owner answers to Q1–Q3 (2026-11-23 7:55 PM) folded the same day.** Docs only: nothing here changes code, a baseline, a migration or a
+Status: **Approved by the owner 2026-11-23 11:40 PM (planning chat), as of commit c0780e2, with two fixes recorded in §10.**
+Drafted 2026-11-23; owner answers to Q1–Q3 (2026-11-23 7:55 PM) folded the same day. Docs only: nothing here changes code, a baseline, a migration or a
 test. Everything below is built only in the 2.9 baseline pass, after the whole replan is approved. Items marked
 PROPOSED are not decided. Bills, vendor credits, terms, holds, waivers and vendors are Area 3
 (`area_3_bills_vendor_credits_terms_subcontracts.md`); this area is how they are paid.
@@ -35,7 +36,7 @@ run: bank details on file, cash after the run, remittances), 11:15 PM (flat list
 |---|------|----------------------|----------|
 | 1 | Run and lifecycle | Draft → (Submitted, when approval is on) → Approved (bills "In pay run") → Completed, or Cancelled; return to draft with a reason; approval posts nothing | company |
 | 2 | Lines, credits and discounts | a line per bill with apply, editable discount and credit uses; vendor credits as their own linked rows; cash = apply − discount − credits; one open line per bill | company |
-| 3 | Recording | each line (or a batch) records Date paid and the method's reference; that is when the payment posts, Dr AP (the bill's stored AP account) / Cr the funding bank / Cr discount; retry-safe | company |
+| 3 | Recording | each line (or a batch) records Date paid and the method's reference; that is when the payment posts, Dr AP (the bill's stored AP account) / Cr the funding bank (a Card line: the chosen card account, §10) / Cr discount; retry-safe | company |
 | 4 | Checks at approval and recording | holds, approval, compliance (a warning; a hold only with its control ON), waivers, usable credit, already paid or in another run, locks; changed bills are removed and named; a negative funding balance warns only (Q3) | company |
 | 5 | After recording | remittance, Date cleared from the bank feed, void of a recorded payment (bills payable again, Q2), stuck-run and ACH-not-debited alerts | company |
 
@@ -58,7 +59,7 @@ no return-to-draft or cancel reason, no row version. `document_approval_setting`
 | "Approve run" is the button when release approval is off; "Submit run for approval" when it is on | S 11-14 2:55 PM; C71 |
 | Return to draft and Cancel run each ask for a reason; the bills return to Approved; logged | C71 |
 | Unfinished runs warn after N days (default 3) and can be cancelled or returned to draft | S 11-14 11:44 PM |
-| The run shows cash after this run and cash available after everything open | S 11-14 2:55 PM; C71 |
+| The run shows cash after this run and cash available after everything open (Card lines excluded, §10 fix 1) | S 11-14 2:55 PM; C71 |
 | Pay run layout B: the first row has no empty slot; Date cleared moves up into row 1 | OD-19 B (screen only) |
 
 ### 1.3 Proposed schema
@@ -176,7 +177,7 @@ of cash (OD-25).
   'Paid outside', 'Cash', 'Bank Transfer', 'GCash', 'Maya') (the last three kept for the PH add-on).
 - **Posting (one entry per payment, through `ledger.create_document_entry`):** Dr each bill's stored AP account,
   vendor and clearing group for cash plus discount (`apply_cents` less the line's credit uses); Cr the run's funding
-  bank account (cash); Cr the discount (Area 3 §5.3: the job cost line or `purchase_discounts`). Example: a $1,000.00
+  bank account (cash) **(for a Card line: the chosen credit card account, §10 fix 1, owner 11:40 PM)**; Cr the discount (Area 3 §5.3: the job cost line or `purchase_discounts`). Example: a $1,000.00
   bill with a $20.00 discount and a $100.00 credit: Dr AP $900.00, Cr bank $880.00, Cr discount $20.00, and the
   credit's $100.00 application settles the rest. Allocations: the payment's `payment_allocation` row carries the
   cash ($880.00) in `amount_applied_cents` and the discount in a new `discount_cents` column ($20.00, INTEGER NOT
@@ -185,7 +186,8 @@ of cash (OD-25).
   `payments.allocate` (source = the credit memo, target = the bill) in the same transaction (R58 application
   entries). All lines of the group post, or none.
 - **Method references:** Check needs a check number unique per funding account among recorded, not voided payments
-  (error state "check number already used", C71); ACH and Wire need a reference; Card needs the card account
+  **("among recorded, not voided" Withdrawn 2026-11-23, owner 11:40 PM: unique across all payments, voided included;
+  §10 fix 2)** (error state "check number already used", C71); ACH and Wire need a reference; Card needs the card account
   reference; Paid outside needs a note (at least 10 characters). Checks can be numbered up from a starting number
   for a batch (C71).
 - **Retry:** recording with the same `operation_id` returns the first result and posts nothing more (PAYRUN-01).
@@ -235,7 +237,8 @@ it (the group is all or nothing, §3.2). An expired discount at recording sets '
 
 **Funding balance (Q3 A, Decided 2026-11-23, owner 7:55 PM):** a run that would take the funding account below
 zero shows a warning only and can still be approved and recorded; there is no refuse control. Example: Operating
-holds $20,000.00 and the run is $26,500.00: "This run leaves Operating at -$6,500.00." Test:
+holds $20,000.00 and the run is $26,500.00: "This run leaves Operating at -$6,500.00." (Card lines are not counted,
+§10 fix 1.) Test:
 `test_payrun_negative_funding_balance_warns_and_still_approves`.
 
 Tests: `test_payrun_recording_rechecks_bill_eligibility_and_area13_locks`,
@@ -326,3 +329,22 @@ Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
 - **O3 (Area 12):** Open payments (uncleared and unmatched) and the 5-bank-day ACH flag.
 - **O4 (Area 14):** routing for a submitted run and separation of duties.
 - **O5 (Area 17):** cash requirements and the pay run register reports.
+
+## 10. Owner approval 2026-11-23 11:40 PM: two fixes (dated amendments)
+
+Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner approval of Area 2, pay run".
+
+- **Fix 1, card posting (Amendment 2026-11-23).** A line recorded with method **Card** credits the chosen **credit
+  card account** (a liability; a card `bank_account` row, Area 12), not the run's funding bank account. The line
+  names it in a new `pay_run_line.card_account_id` INTEGER REFERENCES bank_account (required when `method` = 'Card'
+  and NULL otherwise, CHECK; the service checks it is a card account), copied to the payment. Card lines are
+  excluded from "cash after this run" and from the negative-funding-balance warning (§4). Example: a $500.00 bill
+  paid by card: Dr AP $500.00 / Cr 2100 card account $500.00; Operating unchanged. The lock check (Area 13 §1.4)
+  covers the card account the line touches. Tests: `test_card_line_credits_chosen_card_account_not_funding_bank`,
+  `test_card_lines_excluded_from_cash_after_run_and_negative_balance_warning`,
+  `test_card_line_requires_card_account`.
+- **Fix 2, check numbers are never reused (Amendment 2026-11-23).** A check number is unique per funding account
+  across **all** payments, voided ones included: a UNIQUE index on (`bank_account_id`, `check_number`) for
+  method 'Check'. A voided check stays in the register; the reissue takes the next number. Example: #1042 voided
+  (lost in the mail), so the reissue is #1043. Replaces §3.2's "unique among recorded, not voided payments" (marked
+  withdrawn there). Test: `test_check_number_unique_per_funding_account_including_voided`.

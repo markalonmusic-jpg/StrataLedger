@@ -1,7 +1,7 @@
 # Step 2.9 schema replan, area 3: bills, vendor credits, payment terms, subcontract bills and vendors
 
-Status: **Draft 2026-11-23, for owner approval; owner answers to Q1–Q6 (2026-11-23 7:32–7:48 PM) folded the same
-day.** Docs only: nothing here changes code, a baseline, a migration or a
+Status: **Approved as drafted by the owner 2026-11-23 11:55 PM (planning chat), as of commit c0780e2.** Drafted
+2026-11-23; owner answers to Q1–Q6 (2026-11-23 7:32–7:48 PM) folded the same day. Docs only: nothing here changes code, a baseline, a migration or a
 test. Every table, column, code and check below is built only in the 2.9 baseline pass, after the whole replan is
 approved. Items marked PROPOSED are not decided. The pay run itself is Area 2 (`area_2_pay_run.md`); this area owns
 what a bill, a vendor credit, a term and a vendor are, and what a pay run may read from them.

@@ -1,6 +1,23 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-23 late): owner answers of 3:20–4:50 PM and 8:05–10:45 PM folded
+## Current planning stop (2026-11-24): Areas 2, 3, 4 and 5 approved; Area 8 Q37 folded
+
+Owner approvals in `Strata_Teams\docs\owner_decisions_2026-11-22.md` (2026-11-23 11:25 PM to 2026-11-24 12:00 AM):
+
+| Area | Status | Change folded |
+|---|---|---|
+| 2 Pay run | Approved 2026-11-23 11:40 PM | §10: a Card line credits the chosen credit card account and is left out of cash after the run and the negative-balance warning; check numbers unique per funding account across all payments, voided included |
+| 3 Bills, vendor credits, terms, subcontracts, vendors | Approved as drafted 2026-11-23 11:55 PM | none |
+| 4 Customer pay apps and billing cycles | Approved 2026-11-23 11:55 PM | OD-72 fix: on Reclass job each certified SOV line of the linked pay app is mapped to the new contract's SOV (refused if any line cannot be mapped); old contract's later pay apps show "moved to <job>"; new G703 includes it |
+| 5 Invoices, credit memos, statements, customers | Approved again 2026-11-24 12:00 AM | §9.5 pointers only (Area 10 Q18, Q19, Q21, Q36; billed to date from postings; Area 4 SOV mapping) |
+| 8 PM and schedules | (approved earlier; Q37 answered 2026-11-23 11:25 PM) | §12.15: Q37 A, an open PCO's cost is its own forecast line tagged with the field event, removed if the PCO is closed; mockup item for the job-detail Budget |
+
+Approved: 13 of 21 areas (18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2). Not yet drafted or approved: Areas 1, 9, 11,
+14, 16, 19, 20 and 21; their owner inputs are in the sections below. No open owner questions remain from the
+drafted areas. Next action: draft the next area (Area 1, payments and receipts, holds the most handoffs: OD-69/OD-70
+undo and re-apply, RP11, allocations for Area 2). The baselines change in one pass after the full replan is approved.
+
+## Earlier planning stop (2026-11-23 late): owner answers of 3:20–4:50 PM and 8:05–10:45 PM folded
 
 **Added 2026-11-23 (owner 10:45 PM):** Area 10 Q36 A (only expense and COGS reclasses skip approval; whole-invoice
 and whole-bill job moves follow manual-entry approval when it is on; §11.9); Area 8 Q34 A (the final-billing control

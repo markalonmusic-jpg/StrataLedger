@@ -1,6 +1,7 @@
 # Step 2.9 schema replan, area 5: invoices, credit memos, statements and customers
 
-Status: **Approved in full by the owner, 2026-11-22 2:15 AM** (shared_decisions 2026-11-22 "invoicing plan approved"). Later findings are dated Amendment lines. The 2026-11-22 owner decisions are folded in §9; every question is decided, and the amended plan is ready for owner full-plan approval. Drafted 2026-11-20 for the single approved 2.9 pass.
+Status: **Approved again by the owner 2026-11-24 12:00 AM (planning chat) after the refresh in §9.5, no new rules.**
+Earlier: **Approved in full by the owner, 2026-11-22 2:15 AM** (shared_decisions 2026-11-22 "invoicing plan approved"). Later findings are dated Amendment lines. The 2026-11-22 owner decisions are folded in §9; every question is decided, and the amended plan is ready for owner full-plan approval. Drafted 2026-11-20 for the single approved 2.9 pass.
 
 Evidence: `docs/design.md:17` (AQ1/AQ2), `:62` (open items), `:83` (posted edits); `Strata_Teams/schema_replan_2026-11-17.md:26` and `:92`; `shared_decisions.md:76` (payments), `:180` and `:550` (posted edits), `:1174` (customers), `:1510` (reasons), `:1617`, `:1629`, `:1637` (owner 2:10, 2:20 and 2:30 PM); `inbox/to_planning.md:503` (quote handoff). Mockup references below are to the shared run 1 v3 review snapshot under `Strata_Teams/outputs/shared_run1_retest_2026-11-20_v3/current`.
 
@@ -583,3 +584,16 @@ message and `docs\planning_owner_features_2026-11-22.md` (its text is not in own
   `payment_allocation.released_*`) with reason "Reclass job" and posts the OD-70 entry in the same transaction;
   re-applying is a new allocation that reverses it. **Flagged:** baseline RP11 allows a release only after the
   payment's entry is voided; Area 1 amends RP11 for the "Reclass job" release while the payment stays posted.
+
+### 9.5 Refresh 2026-11-24 (owner approval 12:00 AM; pointers only, no new rules)
+
+- **Amendment 2026-11-24 (pointer): Area 10 Q18 and Q19 decided** (2026-11-23): on a job reclass of an invoice both
+  the AR and the revenue lines take the new job, and the Reclassify page follows OD-69/OD-70 (Area 10 §11.5).
+- **Amendment 2026-11-24 (pointer): one date rule** for reclasses and payment voids (Area 10 Q21 A with OD-71,
+  §11.7).
+- **Amendment 2026-11-24 (pointer): invoice job moves follow manual-entry approval** when that control is on (Area
+  10 Q36 A, §11.9).
+- **Amendment 2026-11-24 (pointer): Billed to date is actual posted billing only**, never the WIP report (owner
+  9:28 PM; Area 10 §11.7).
+- **Amendment 2026-11-24 (pointer): the linked pay app's certified SOV lines are mapped to the new contract** on
+  Reclass job (Area 4, owner 11:55 PM amendment).

@@ -1463,9 +1463,24 @@ planning chat's review of the 3da374b lead defaults.
   `test_pm_conversion_creates_change_order_in_draft_and_marks_field_event_converted`,
   `test_open_pco_is_absent_from_co_lists_revised_contract_and_budget`.
 
-**Q37. Does an open PCO's cost show in the job's cost forecast before a PM converts it?**
+**Q37. Does an open PCO's cost show in the job's cost forecast before a PM converts it?** **Answered 2026-11-23 (owner
+11:25 PM): A. §12.15.**
 A (recommended): yes, as its own forecast line by cost code tagged with the field event (`job_forecast_line.
 field_event_id` in place of `change_order_id`); it never reaches the budget, the revised contract or the CO lists.
 Example (live `field-daily-log.html`): a delay on "Panels, sections 3 and 4" with "Create PCO" shows its cost as a
 "PCO" line in the forecast until it is converted or closed.
 B: no: the forecast shows nothing until the PM converts the PCO into a change order.
+
+### 12.15 Owner answer 2026-11-23 11:25 PM (Q37 A; Decided 2026-11-23, owner)
+
+- **Amendment 2026-11-23 (Q37 A).** An open (unconverted) PCO's cost shows in the job's cost forecast at once, as its
+  own line tagged with the field event: `job_forecast_line.field_event_id` INTEGER NULL REFERENCES field_event (in
+  place of the withdrawn `change_order_id` tagging), so forecast margin drops now. It never reaches the budget, the
+  revised contract or the CO lists until a PM converts it; on conversion the line moves to the change order's
+  forecast lines; if the PCO is closed without converting, a forecast revision removes the line. Example: extra work
+  "Add 2 panels", $1,800.00, tagged PCO FE-0009: forecast cost +$1,800.00 "PCO FE-0009".
+- **Mockup item (design queue, no schema):** the job-detail Budget / forecast needs the PCO forecast line; the live
+  daily log has "Create PCO" but no PCO cost line yet.
+- Tests: `test_open_pco_cost_shows_as_forecast_line_tagged_with_field_event`,
+  `test_open_pco_never_reaches_budget_revised_contract_or_co_lists`,
+  `test_closed_pco_removes_its_forecast_line`.
