@@ -1,6 +1,14 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, later): Q28 revisited and inspections folded
+## Current planning stop (2026-11-24, 12:28 AM answers folded)
+
+From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answers 2026-11-24 12:28 AM"), Area 8 §12.17:
+task baseline dates are fixed automatically at the first schedule build and never move (until then the baseline
+holds only the planned completion); a failed inspection adds open tasks with an assignee plus a re-inspection, never
+punch items; on the Material forecast a signed job with no start stays in the week of its planned completion, tagged
+"Not scheduled", until it is scheduled. No open owner questions remain in the drafted areas.
+
+## Earlier planning stop (2026-11-24, later): Q28 revisited and inspections folded
 
 From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer to Area 8 Q28, revisited", 11/23 11:58 PM;
 "Owner answer to field review question 3, inspections", 11/24 12:04 AM):
@@ -10,9 +18,10 @@ From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer to Area 8 
 - **Area 15 §12.1 and Area 7 §14:** the lead's Estimated completion date pre-fills the planned completion;
   `project.target_start_on` NULL allowed again. Earlier "start date required" lines are marked withdrawn.
 - **STOP question for Mark:** when task-level baseline dates are fixed if the job has no start at signing
-  (proposed, not approved: the first time the PM enters the start and the schedule is built).
+  (proposed, not approved: the first time the PM enters the start and the schedule is built). **Answered 2026-11-24
+  12:28 AM: approved; Area 8 §12.17.**
 - **Conflict flagged:** a failed inspection "adds its corrections as punch items" vs Q32 (a punch item is logged
-  work, not an open task).
+  work, not an open task). **Resolved 2026-11-24 12:28 AM: corrections are open tasks; Area 8 §12.17.**
 
 ## Earlier planning stop (2026-11-24): Areas 2, 3, 4 and 5 approved; Area 8 Q37 folded
 

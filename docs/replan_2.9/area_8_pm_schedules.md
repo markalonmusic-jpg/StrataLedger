@@ -1497,7 +1497,7 @@ says the start date is required.
   completion date is required** and becomes the **baseline finish**: the date owed to the customer, so Late (Q33) =
   forecast finish after that date plus approved change-order time. Proposed: the baseline row written at signing,
   `job_schedule_baseline`, gains `finish_on` TEXT NOT NULL (the planned completion); its task lines come later
-  (STOP question below). `project.target_start_on` is **no longer required** (NULL allowed again); a job with no
+  (STOP question below; **answered 2026-11-24 12:28 AM: fixed at the first schedule build, §12.17**). `project.target_start_on` is **no longer required** (NULL allowed again); a job with no
   start shows **"Not scheduled"** until the PM enters one. The planned completion is pre-filled from the lead's
   Estimated completion date (Area 15) and can be changed before signing; after signing it never moves (the baseline
   rule).
@@ -1507,7 +1507,8 @@ says the start date is required.
 - Example: North field array signs 12/1. Planned completion 3/20 is required (pre-filled from the lead). Start is
   left blank, so the job shows "Not scheduled" until the PM enters 1/5.
 - **Lead default, owner may revise:** a job with no start appears on the Material forecast (§12.3) in a "Not
-  scheduled" row, not netted by date.
+  scheduled" row, not netted by date. **Withdrawn 2026-11-24 (owner 12:28 AM): the job stays in the week of its
+  planned completion, tagged "Not scheduled"; §12.17.**
 - **Mockup notes (design queue, no schema):** job-new.html's "Target finish" collides with the three-date naming
   (Target is the PM's internal date); the signing field is named for the baseline, proposed "Planned completion"
   (owner may revise). sign-contract.html has no date field, so where the required date is entered at signing needs a
@@ -1528,9 +1529,49 @@ says the start date is required.
   `test_new_job_copies_job_type_inspection_list_and_pm_edits_only_the_job`.
 
 **STOP question for Mark (not decided): when are task-level baseline dates fixed if the job has no start at
-signing?** Task baseline lines need a start date to compute. Proposed (not approved): they are fixed the first time
+signing?** **Answered 2026-11-24 (owner 12:28 AM): the proposal is approved; §12.17.** Task baseline lines need a start date to compute. Proposed (not approved): they are fixed the first time
 the PM enters the start and the schedule is built. Until then the baseline holds only the planned completion.
 
-**Conflict flagged (not changed):** the 12:04 AM note says a failed inspection adds its corrections as punch items
+**Conflict flagged (not changed):** **Resolved 2026-11-24 (owner 12:28 AM): corrections are open tasks, never punch
+items; the 12:04 AM "Unchanged" line is Withdrawn 2026-11-24; §12.17.** The 12:04 AM note says a failed inspection adds its corrections as punch items
 plus a re-inspection (live field-punch.html), while Q32 (8:15 PM) says a punch item is logged work done that day,
 not an open task (§12.11). Corrections waiting to be done are open work; how they are held is for Mark.
+
+### 12.17 Owner answers 2026-11-24 12:28 AM (baseline timing, inspection corrections, Material forecast)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answers 2026-11-24 12:28 AM". The planning chat accepted cc61de2:
+`job_schedule_baseline.finish_on` and the label "Planned completion" stand as lead defaults.
+
+- **Amendment 2026-11-24: task baseline dates are fixed at the first schedule build.** The baseline finish (planned
+  completion) is fixed at signing. The task-level baseline dates (`job_schedule_baseline_task` lines) are written
+  automatically the first time the PM enters the start date and the schedule is built, and never move after that
+  (insert-only, as approved). Later edits move the forecast only. Until then the baseline holds only `finish_on`. If
+  that first schedule ends after the planned completion, the job is Late at once (forecast after the baseline
+  finish; Q33, Q35). Example: North field array signs 12/1, planned completion 3/20; on 12/15 the PM enters start
+  1/5 and the schedule is built; "Set inverters 2/10 to 2/12" is locked as baseline that day; the first schedule ends
+  3/27, so the job shows "Late 7 days" at once.
+- **Amendment 2026-11-24: corrections after a failed inspection are open tasks, never punch items.** A failed
+  inspection adds each correction as an **open task** on the Task list, with an assignee, plus a re-inspection to
+  schedule. Nothing is created as a punch item; punch items stay logged work done out of schedule on the day
+  (§12.11). The 12:04 AM "Unchanged" line ("a failed one adds its corrections as punch items") is Withdrawn
+  2026-11-24 (owner 12:28 AM). Example: the electrical inspection fails 11/10; "Re-terminate RTU feeder" becomes an
+  open task assigned to Brightline Electric, and a re-inspection is added.
+- **Amendment 2026-11-24: Material forecast, signed job with no start.** It stays in the **week of its planned
+  completion**, tagged **"Not scheduled"**, and moves to its real task weeks once the PM schedules it. There is no
+  separate row (the §12.16 lead default is withdrawn). This keeps a lead's materials in the weekly view across
+  signing: a lead sits in the week of its Estimated completion tagged "Estimate" (§12.10). Example: a lead needing 40
+  panels, estimated completion 3/31, shows in the 3/31 week tagged "Estimate"; it signs with planned completion 3/31
+  and no start, so the 40 panels stay in the 3/31 week, tagged "Not scheduled"; once scheduled they move to the weeks
+  of their tasks.
+- **Mockup items (design queue, no schema):** field-punch.html help text ("adds the corrections as punch items") and
+  field-final-billing.html ("1 correction open (P-015, Brightline Electric)") must show the correction as a task,
+  not a punch item with a P- number.
+- Tests: `test_task_baseline_written_once_at_first_schedule_build`,
+  `test_task_baseline_unchanged_by_later_schedule_edits`,
+  `test_job_with_no_start_has_baseline_finish_only`,
+  `test_first_schedule_ending_after_planned_completion_is_late_at_once`,
+  `test_failed_inspection_creates_open_tasks_with_assignee_and_reinspection`,
+  `test_failed_inspection_creates_no_punch_item`,
+  `test_material_forecast_lead_in_estimated_completion_week_tagged_estimate`,
+  `test_material_forecast_signed_unscheduled_job_in_planned_completion_week_tagged_not_scheduled`,
+  `test_material_forecast_scheduled_job_moves_to_task_weeks`.
