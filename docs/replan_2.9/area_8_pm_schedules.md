@@ -557,7 +557,7 @@ Approved, and refuse any update of an Approved header except nothing (an approve
 CO, so Void applies to Draft and Submitted only). Budget and contract totals derive from approved lines, so this
 is the same kind of lock as posted `journal_line` rows.
 
-Note 2026-11-20 (owner 12:05 AM): Superseded by the 2026-11-19 amendment: Void from any open state (PCO pending,
+Note 2026-11-20 (owner 12:05 AM): **(Withdrawn 2026-11-23, owner 10:45 PM: no 'PCO pending' status; a PCO is a field event; §12.14, Q37)** Superseded by the 2026-11-19 amendment: Void from any open state (PCO pending,
 Draft, With sales rep, Submitted); Approved and Rejected stay final.
 
 **Approval service** (`change_orders.py`; `change_order.create` to draft and send, `change_order.approve` to record
@@ -582,13 +582,13 @@ Amendment 2026-11-19 (owner 11:20 PM, from area 15):
 - `field_event` gets cost lines: `field_event_line`, kind Material (with `material_code_id`) or Other (with
   `cost_code_id`). The summary by cost code is derived, never stored. A field event can still close with a reason
   without a CO.
-- PCO and CO are one `change_order` record. `change_order.status` CHECK IN ('PCO pending', 'PCO rejected', 'Draft'
+- PCO and CO are one `change_order` record **(Withdrawn 2026-11-23, owner 10:45 PM: a PCO is a field event; a CO record exists only after a PM converts it; §12.14)**. `change_order.status` CHECK IN ('PCO pending', 'PCO rejected', 'Draft'
   (priced), 'With sales rep', 'Submitted' (label "Sent to customer"), 'Approved', 'Rejected', 'Void'); Void is
   allowed from any open state. New insert-only `change_order_status_history` (from status, to status, who, when,
   `reason_id`, `reason_label`) with no-update and no-delete triggers.
 - Internal PCO approval is the "Change order approval" control, OFF by default (area 14). When off, the PM approves
   with one click (logged). When on, the approver approves or rejects with a reason.
-- Moving to PCO pending writes a `job_forecast_revision` of kind 'PCO' and `job_forecast_line` rows tagged
+- Moving to PCO pending **(Withdrawn 2026-11-23, owner 10:45 PM: a PCO is a field event; a CO record exists only after a PM converts it; §12.14)** writes a `job_forecast_revision` of kind 'PCO' and `job_forecast_line` rows tagged
   `change_order_id`, so pending PCO cost is its own line by cost code (section 6.3 amendment). PCO rejected or Void
   writes a revision that removes them. Customer approval writes the budget and contract rows as already approved
   and leaves the ETC unchanged. The revised budget never moves before customer approval.
@@ -608,7 +608,7 @@ send (to Submitted) returns a warning and succeeds. It never refuses (rule 0). W
 under-floor condition is area 14's policy condition, the same as for estimates.
 
 Amendment 2026-11-20 (owner 11-19 10:10 PM, decision audit; answered 1:50 AM, Q2 A): an office change order is
-created with `field_event_id` NULL and enters PCO pending once its costs are entered. From there it follows the same
+created with `field_event_id` NULL and enters PCO pending once its costs are entered **(Withdrawn 2026-11-23, owner 10:45 PM: a PCO is a field event; a CO record exists only after a PM converts it; §12.14)**. From there it follows the same
 statuses, forecast revision (kind 'PCO') and "Change order approval" step as the field-event path.
 
 Amendment 2026-11-22 (tax on signed quotes; Area 5 Q12): change order prices are pre-tax, and a tax-rate change needs
@@ -695,11 +695,12 @@ the cost code, as recognized (area 10: a deferred line counts only as recognized
   `changed_at`; `estimates_to_complete_updated` checks that every open job has a revision in the period (or a
   recorded "no change", open item 7).
 
-Amendment 2026-11-19 (owner 11:20 PM, from area 15): `job_forecast_revision.kind` CHECK adds 'PCO'.
+Amendment 2026-11-19 (owner 11:20 PM, from area 15): `job_forecast_revision.kind` CHECK adds 'PCO'. **(Tagging by
+`change_order_id`: Withdrawn 2026-11-23, owner 10:45 PM; Q37, §12.14.)**
 `job_forecast_line` gains `change_order_id` INTEGER NULL (FK `change_order`), so a pending PCO's cost is its own line
 by cost code. Moving a change order to PCO pending writes a revision of kind 'PCO' and the tagged lines; PCO rejected
 or Void writes a revision that removes them; customer approval leaves the ETC unchanged, and the revised budget never
-moves before customer approval (section 5.3 amendment).
+moves before customer approval (section 5.3 amendment). **(Withdrawn 2026-11-23, owner 10:45 PM: no 'PCO pending' status; a PCO is a field event; §12.14, Q37)**
 
 Amendment 2026-11-20 (owner 12:05 AM, from area 15): `job_forecast_line` gains `change_order_id` INTEGER NULL (FK
 `change_order`). The key (`project_id`, `cost_code_id`) is replaced by two partial unique indexes: UNIQUE
@@ -986,7 +987,7 @@ vendor, other), linked to the daily log and to the change order that grants a ti
 crew and subs on schedule phases and calendar items, with a cross-job "who's where tomorrow" board. (4) Look-ahead: a
 2–3 week view of existing phases only; baseline and slip unchanged; no new baseline. (5) Punch and inspection items:
 job, type (company list), assignee, status, pass/fail and photo; a Company control
-`block_final_billing_with_open_punch_items` (OFF by default) blocks Final billing while items are open **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)** (Area 5 and
+`block_final_billing_with_open_punch_items` (OFF by default) blocks Final billing while items are open **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)** (Area 5 and
 Area 4 handoff). (6) Field material request: Area 9 (next_step). Job page (12:45 PM): operations roles (PM, field,
 operations) open the job on the existing Schedule tab; finance roles keep the overview; default tab by role comes from
 the Area 18 access model. Nothing phone-related until the cloud version (phone capture, photo location, offline sync,
@@ -1085,7 +1086,7 @@ approved.
   (vendors, shown with their vendor code). Crews are not held as vendors. When the field records are designed, a
   daily-log crew line names either a `crew_id` or a vendor `contact_id` (exactly one).
 - **A Manager cannot override the final-billing block** (`block_final_billing_with_open_punch_items`, OFF by
-  default): Area 18 §8.5 amendment. **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)**
+  default): Area 18 §8.5 amendment. **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)**
 - **Still open for the wireframe review:** which inspections are standard.
 - The Field role and its nav (about five items) from the 12:41 PM message are owned by Area 18 §8.5.
 
@@ -1190,7 +1191,7 @@ complete"; the stage never moves by itself) stands.
   field types, service rule), `related_activity_id` FK activity (cause and effect: punch, then delay, then extra
   work), `vendor_contact_id`, and `verified_at`/`verified_by` (status Open, Done, then Verified; both or neither, and
   only after done). `activity_type` gains behaviour flags beside `is_appointment`: `needs_verify`,
-  `blocks_final_billing` **(pending Q34, §12.11: a punch item is logged work, not an open item)** (read only while the Company control `block_final_billing_with_open_punch_items` is ON,
+  `blocks_final_billing` **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)** (read only while the Company control `block_final_billing_with_open_punch_items` is ON,
   default OFF, §12.2), `moves_forecast` (a Delay writes a `schedule_update` on the task it affects; the baseline is
   unchanged) and `can_become_change_order` (Extra work). Seeded field types: Calendar item, Inspection, Punch, Delay,
   Extra work, Note, Work started, Work completed (sales types unchanged). Type-specific fields sit in small 1:1
@@ -1389,13 +1390,14 @@ days).
   change order request (COR) step; §5's statuses already have none ('With sales rep' and 'Sent to customer' are
   steps of the change order itself). Lead defaults, owner may revise: tagging creates the §5 `field_event`
   (FE-#### number, cost lines) and its `change_order` in 'PCO pending', linked from `delay_detail` or
-  `extra_work_detail` (`change_order_id`); creating the PCO needs only the right to log the activity, converting
+  `extra_work_detail` (`change_order_id`) **("and its `change_order` in 'PCO pending'" and the `change_order_id` link:
+  Withdrawn 2026-11-23, owner 10:45 PM: no CO record until a PM converts; §12.14)**; creating the PCO needs only the right to log the activity, converting
   it needs `change_order.create` (the PM, project scope); the "Change order approval" control stays OFF by default.
 - **Q32: the daily log's "Feeds the status update" section is removed** (the §12.2 bullet is marked withdrawn). The
   live `field-daily-log.html` no longer has it.
 - **Q32: a punch item is an activity**: work done out of schedule on the day, not an open task, including the Task
   list's punch item row. A Punch activity is logged as done on its date (`done_at` set when saved); it has no Open
-  state, so `needs_verify` and `blocks_final_billing` do not apply to the Punch type. What the approved final-billing
+  state, so `needs_verify` and `blocks_final_billing` do not apply to the Punch type. What the approved (now retired, §12.14) final-billing
   control then reads is Q34.
 - **Q33 A.** A job is **Late** when its forecast finish is after the date owed to the customer = baseline +
   approved change-order time. The PM's target shows separately as "n days behind target" and **never** sets Late.
@@ -1418,7 +1420,8 @@ days).
 
 ### 12.13 Questions for Mark (recommended option first)
 
-- **Q34. What the final-billing control checks now that a punch item is logged work.** The 11/22 control
+- **Q34. What the final-billing control checks now that a punch item is logged work.** **Answered 2026-11-23 (owner
+  10:45 PM): A. §12.14.** The 11/22 control
   `block_final_billing_with_open_punch_items` (OFF by default; a Manager cannot override it, Area 18 §8.5) reads open
   punch items, which no longer exist.
   A (recommended): retire the control and the Area 18 §8.5 override note; final progress billing is never blocked
@@ -1427,8 +1430,42 @@ days).
   "Punch items and the closeout items below don't block it."
   B: keep the control, OFF by default, but have it read the schedule tasks under the job's punch-list stage that are
   not Done.
-- **Q35. The unit of "Late n days" and "n days behind target".**
+- **Q35. The unit of "Late n days" and "n days behind target".** **Answered 2026-11-23 (owner 10:45 PM): A. §12.14.**
   A (recommended): calendar days, as in your Q33 example (owed Fri 3/27, forecast Sun 3/29 = "Late 2 days");
   change-order time and task lengths stay in work days. Example (live `pages/ops-menu.js` job chips): RI0001-002
   "14 days late".
   B: work days: the same job reads "Late 0 days" (3/28 and 3/29 are a weekend).
+
+### 12.14 Owner answers 2026-11-23 10:45 PM (Q34, Q35, PCO correction; Decided 2026-11-23, owner)
+
+Source: `owner_decisions_2026-11-22.md`, "Owner answers to Area 10 Q36 and Area 8 Q34, Q35" (10:45 PM), with the
+planning chat's review of the 3da374b lead defaults.
+
+- **Q34 A: the 11/22 final-billing control is retired.** `block_final_billing_with_open_punch_items` is not built
+  (marked withdrawn in §10, §12.2, §12.5 and Area 18 §8.5). Final progress billing is never blocked; the retainage
+  release opens when the job reaches Complete; punch and closeout items are tracked only, as the live
+  `field-final-billing.html` shows. `activity_type.blocks_final_billing` is dropped with it.
+- **Q35 A: "Late n days" and "n days behind target" count calendar days** (the live "14 days late"). Change-order
+  days and task durations stay in work days. Example: owed Fri 3/27, forecast Mon 3/30 = "Late 3 days".
+- **PCO correction (replaces the §12.11 lead default, marked withdrawn there):** tagging a Delay or Extra work
+  activity as a PCO creates **no** change order. The PCO is the tagged `field_event` (FE-#### number and cost lines,
+  status Open, §5). A `change_order` record exists only after a PM converts the PCO (`field_event.status`
+  'Converted', `co_id` set); the CO then starts in 'Draft'. Nothing pending reaches the change order lists, the
+  revised contract or the budgets. The activity links to the field event (`delay_detail.field_event_id`,
+  `extra_work_detail.field_event_id`).
+- **Effects on approved §5 (marked withdrawn there):** `change_order.status` loses 'PCO pending' and 'PCO rejected';
+  the PCO state lives on `field_event` (Open, then Converted or Closed with a reason). An office change order with no
+  field event starts as a CO in 'Draft' (lead default, owner may revise). The "Change order approval" control (OFF by
+  default) applies to the change order after conversion. Whether a PCO's cost still shows in the cost forecast is
+  Q37.
+- Tests: `test_final_billing_is_never_blocked_by_punch_items`, `test_late_days_count_calendar_days`,
+  `test_tagging_pco_creates_field_event_and_no_change_order`,
+  `test_pm_conversion_creates_change_order_in_draft_and_marks_field_event_converted`,
+  `test_open_pco_is_absent_from_co_lists_revised_contract_and_budget`.
+
+**Q37. Does an open PCO's cost show in the job's cost forecast before a PM converts it?**
+A (recommended): yes, as its own forecast line by cost code tagged with the field event (`job_forecast_line.
+field_event_id` in place of `change_order_id`); it never reaches the budget, the revised contract or the CO lists.
+Example (live `field-daily-log.html`): a delay on "Panels, sections 3 and 4" with "Create PCO" shows its cost as a
+"PCO" line in the forecast until it is converted or closed.
+B: no: the forecast shows nothing until the PM converts the PCO into a change order.

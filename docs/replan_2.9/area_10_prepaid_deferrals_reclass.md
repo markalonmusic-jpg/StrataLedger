@@ -901,10 +901,21 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
 
 ### 11.8 Questions for Mark (recommended option first)
 
-- **Q36. Do the job-only moves of a whole invoice or a whole bill (Q18, Q20) also post with no approval?**
+- **Q36. Do the job-only moves of a whole invoice or a whole bill (Q18, Q20) also post with no approval?** **Answered
+  2026-11-23 (owner 10:45 PM): A. §11.9.**
   A (recommended): no: they move AR or AP and, for an invoice, the payment application, so they keep the JE/reclass
   approval route (OFF by default); only expense-account reclasses skip it. Example: the live `cost-detail.html`
   shows journal entry 2026-00389 "Reclass inbound freight from 5900 to the job" (cost code 03-100), $1,228.00, an expense
   reclass that posts directly; with JE approval ON, moving INV-0388 to RI0001-003 would wait as "Reclass pending
   approval" (Reclass job has no live mockup yet; it is in the design queue, OD-28).
   B: yes: every job-only reclass posts directly, like an expense-account reclass.
+
+### 11.9 Owner answers 2026-11-23 10:45 PM (Q36; lead default confirmed)
+
+- **Amendment 2026-11-23 (Q36 A).** Only expense and COGS-account reclasses post directly with no approval. Moving
+  a whole invoice or a whole bill to another job (AR and revenue, or AP and cost lines) follows manual-entry approval
+  when that control is on; with the control off it posts directly. Example: JE 2026-00389, freight 5900 to job cost
+  03-100, $1,228.00, posts directly; INV-0388 RI0001-002 → RI0001-003 waits for approval when approval is on.
+- **Lead default (accepted 2026-11-23 by the planning chat, owner may revise):** the reclass and payment-void date
+  (§11.7) may be changed by the user to any date in an open, unlocked period.
+- Test: `test_whole_invoice_or_bill_job_move_follows_manual_entry_approval_when_on`.

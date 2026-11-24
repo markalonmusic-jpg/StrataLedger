@@ -1275,12 +1275,12 @@ Not decided schema. A Field role with a nav of about five items (proposal: Today
 tickets, Capture), set through the 11/17 access model (roles, levels, job titles); it follows field planning in
 build order. Default job tab by role: operations roles (PM, field, operations) open the job on the Schedule
 tab, finance roles keep the overview. Area 8's proposed `block_final_billing_with_open_punch_items` control
-(OFF) joins §8.3 when that area's v1.1 pass is approved. Permission codes for daily logs, delays, punch items
+(OFF) joins §8.3 when that area's v1.1 pass is approved. **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: retired; §8.9.)** Permission codes for daily logs, delays, punch items
 and field material requests are placed here once the wireframes are approved.
 
-Amendment 2026-11-22 (owner, design chat "CRM and Field gap list", 11/22 owner decisions): a Manager cannot override
+**(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)** Amendment 2026-11-22 (owner, design chat "CRM and Field gap list", 11/22 owner decisions): a Manager cannot override
 the final-billing block of `block_final_billing_with_open_punch_items` (control OFF by default). When the control is
-ON, Final billing is refused while punch or inspection items are open **(pending Q34, Area 8 §12.13: a punch item is now logged work, not an open item)**, for every role; turning the control off is the
+ON, Final billing is refused while punch or inspection items are open **(Withdrawn 2026-11-23, owner 10:45 PM, Q34 A: the control is retired; Area 8 §12.14)**, for every role; turning the control off is the
 only way past it (Controls page, Admin or Master, logged). The control's placement still waits for Area 8's v1.1 pass.
 
 ### 8.6 Owner rules from 2026-11-22 evening (Decided 2026-11-22, owner)
@@ -1350,3 +1350,10 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   an import batch when the control is on), to be placed in the §2.4 tables when Area 15's import pass is approved.
 - **Reclass approval:** an expense-account reclass posts with no approval and no hold (owner 8:05 PM; Area 10
   §11.7); `je.reclass` is still required. An agent-origin entry still needs a human approval.
+
+### 8.9 Owner answers 2026-11-23 10:45 PM (placement only)
+
+- **Retired control:** `block_final_billing_with_open_punch_items` (11/22, §8.5) is not built (Area 8 Q34 A, §12.14);
+  the §8.5 "a Manager cannot override the final-billing block" amendment is withdrawn with it.
+- **Reclass approval (Area 10 Q36 A, §11.9):** only expense and COGS-account reclasses skip approval; whole-invoice
+  and whole-bill job moves follow manual-entry approval when it is on.

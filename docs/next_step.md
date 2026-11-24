@@ -1,6 +1,14 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7 and 5 approved; area 4 ready for approval)
 
-## Current planning stop (2026-11-23 late): owner answers of 3:20–4:50 PM and 8:05–10:05 PM folded
+## Current planning stop (2026-11-23 late): owner answers of 3:20–4:50 PM and 8:05–10:45 PM folded
+
+**Added 2026-11-23 (owner 10:45 PM):** Area 10 Q36 A (only expense and COGS reclasses skip approval; whole-invoice
+and whole-bill job moves follow manual-entry approval when it is on; §11.9); Area 8 Q34 A (the final-billing control
+is retired; §12.14), Q35 A ("Late n days" in calendar days); the PCO correction (tagging a PCO creates a field event
+and no change order; a CO exists only after a PM converts it; the 3da374b default and the approved 'PCO pending'
+statuses are marked withdrawn); the editable reclass/void date within open periods is a lead default. New
+question: Area 8 Q37 (does an open PCO's cost show in the forecast). **Waiting for owner approval:** Areas 2 and 3
+(drafts, all their questions answered), Area 4 (ready for approval) and the amended Area 5.
 
 Folded from `Strata_Teams\docs\owner_decisions_2026-11-22.md` (OD-71 to OD-78 with the 4:10 PM revisions and the
 4:12 PM correction; Area 10 Q20–Q21 at 8:05 PM; Area 8 Q29–Q32 at 8:15 PM; Q33 at 8:35 PM; 10:05 PM WIP sample).
