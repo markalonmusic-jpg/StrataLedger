@@ -319,7 +319,7 @@ RP. Replan resolutions (owner, 2026-11-16; section "RP. Replan resolutions"):
 - RP8 Chain v1 edited in place before the first release (entity_id, clearing_id); frozen at the first release
 - RP9 No approval_rule table: document_approval_setting covers every document type, all OFF
 - RP10 user_company_role in the master, schema only until authz reads it
-- RP11 Allocations of a posted source are released once, never deleted
+- RP11 Allocations of a posted source are released once, never deleted (amended 2026-11-24: a user may unapply, Area 1 §3.5)
 
 MR, HA, FR. Phase 2.7 (owner, 2026-11-17; section "MR, HA, FR. Phase 2.7"):
 - MR1 Phase 2.7 is three STOPs (A multi-role, B hooks and add-ons, C custom fields plan), a fresh session each
@@ -1547,6 +1547,12 @@ The owner approved these before the consolidated pre-release baseline update (ST
   allocation once (`released_at`, `released_by`, `release_reason`), and only after the source's entry is voided,
   so a live posted payment cannot be quietly unapplied; the history shows what was applied and undone. (A later
   "unapply" of a live payment would be a new decision.)
+  **Amended 2026-11-24 (owner 8:55 PM, Q2; docs/replan_2.9/area_1_payments_receipts.md §3.5):** that new decision is
+  made. A user with the permission may unapply an application while the payment stays posted, with a reason (OD-31):
+  Dr Accounts receivable / Cr Unapplied customer payments, then re-apply; Reclass job and Reclassify also release. The
+  trigger keeps only the append-only guarantees (no delete; an update may only stamp the release columns of a live
+  row); which releases are allowed is the service's rule. "Only after the source's entry is voided" no longer
+  applies (baseline rebuild).
 
 ## MR, HA, FR. Phase 2.7 (decided 2026-11-17)
 

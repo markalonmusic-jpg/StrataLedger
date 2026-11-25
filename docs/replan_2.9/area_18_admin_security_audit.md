@@ -1392,3 +1392,20 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   = 0), configured on the Approvers page like every other kind of work. One switch only.
 - **Self-approval** follows the existing `require_separate_approver` (OFF by default; off = allowed and marked
   Self-approved). No new permission; the rebuild uses `job.schedule.edit`.
+
+### 8.12 Owner answers 2026-11-24 8:55 PM (placement only; rules owned by Area 1)
+
+- **Reasons (Settings > Lists > Reasons), new kinds:** 'Void payment' (shipped rows "Not cleared" and "NSF", owner
+  8:55 PM; further rows are a planning proposal) and 'Unapply payment' (planning proposal: "Applied to the wrong
+  invoice", "Customer asked to change"). Each follows the Q26 A rule (§8.7): a listed reason, or Other with at least
+  10 typed characters. The system reason "Reclass job" is written by the service.
+- **Permissions:** `payment.void` is **not** added; Area 2's proposal is Withdrawn (Area 1 §4, owner Q7). PROPOSED, for
+  the owner to confirm, all sensitive, Accountant cap, Admin and the Master, none in `AGENT_ALLOWED`: `payment.unapply`
+  (Area 1 §3), `customer_refund.issue`, `customer_refund.void`, `invoice.write_off`, `invoice.write_off_reverse`
+  (Area 1 §5, the four of Area 5). The seeded code count (115, §8.2) is recomputed in the baseline pass.
+- **Accounts:** `account.control_type` gains 'Customer deposits' and 'Unapplied customer payments' (both
+  `track_clearing_id` = 1, posted only by the receipts service). **Q1 narrows the §8.6 amendment of 2026-11-24 (2:55
+  PM):** a stated customer deposit posts to a deposit account the user chooses; money that cannot yet be placed posts
+  to the `unapplied_customer_payments` role.
+- **Lists:** `payment_method` (Area 1 §1.3) is edited under the same Settings > Lists permission as the other lists.
+- **Audit:** triggers for `payment_method`, `customer_refund`, `invoice_writeoff` and `statement_send` join §1's list.

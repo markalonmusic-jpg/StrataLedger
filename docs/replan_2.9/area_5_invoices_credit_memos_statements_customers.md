@@ -442,6 +442,14 @@ invoices is superseded; frozen issue tax on each issued invoice version stays.
 - **Q9 reversal.** For a failed payout that was cleared or reconciled, require an authorized Area 12 bank correction
   before void. Preserve match and reconciliation history. Reverse on an allowed effective date and restore source
   availability as of that date. Cash paid and later returned is a separate linked bank event.
+- **Amendment 2026-11-24 (owner 2:55 PM and 8:55 PM for the receipt rules; the refund debit and the permission names are planning proposals, owner may revise; postings: Area 1 §5).** The Q9 debit above is refined: a refund
+  from an **unapplied receipt** debits **Unapplied customer payments** (not Accounts receivable), a refund from a
+  **customer deposit** debits the deposit account the user chose on that receipt, and a refund of an **unapplied
+  credit memo** still debits Accounts receivable against that credit. Credit the payout bank account as above.
+  Example: $2,500.00 of unapplied cash refunded: Dr 2325 Unapplied customer payments $2,500.00 / Cr Operating bank
+  $2,500.00. The statement's "Unapplied credits and payments" section (§4.2) lists unapplied payments and unapplied
+  credit memos; deposits show as their own "Customer deposits" line (planning proposal). Area 1 also names the four
+  sensitive refund and write-off permissions as planning proposals (Area 1 §5; Area 18 §8.12).
 - **Q10 (owner clarification, 2026-11-21 at 1:35 AM).** The Write off form requires an explicit **GL account**
   selection for each write-off. Any active, postable account is eligible except the AR control account and bank
   or cash accounts. Eligible examples include a bad debt allowance, direct write-off expense and contra-revenue

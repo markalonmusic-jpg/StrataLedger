@@ -174,7 +174,7 @@ of cash (OD-25).
   Example: 3 bills paid 11/28 by check #1042 are one $9,600.00 payment. `payment` gains `pay_run_id` INTEGER REFERENCES pay_run and `reference`
   TEXT; Date cleared is not a `payment` column: it is read from Area 12's `bank_line_clearing` on the payment's bank
   journal line (Area 12 Q1 A). `method` CHECK extends to ('Check', 'ACH', 'Wire', 'Card',
-  'Paid outside', 'Cash', 'Bank Transfer', 'GCash', 'Maya') (the last three kept for the PH add-on).
+  'Paid outside', 'Cash', 'Bank Transfer', 'GCash', 'Maya') (the last three kept for the PH add-on). **(Refined 2026-11-24, owner 2026-11-24 8:55 PM, Q6: the CHECK is replaced by the company-editable `payment_method` list; Area 1 §1.3)**
 - **Posting (one entry per payment, through `ledger.create_document_entry`):** Dr each bill's stored AP account,
   vendor and clearing group for cash plus discount (`apply_cents` less the line's credit uses); Cr the run's funding
   bank account (cash) **(for a Card line: the chosen credit card account, §10 fix 1, owner 11:40 PM)**; Cr the discount (Area 3 §5.3: the job cost line or `purchase_discounts`). Example: a $1,000.00
@@ -284,7 +284,7 @@ Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
   Bill payments | every line"), at recording and at void.
 - **Permissions:** `payment.make` (build, approve when 'Pay run' approval is OFF, record, take out), `payment.approve`
   (sensitive; approve a submitted run when approval is ON; with separation of duties on, not the submitter),
-  `ap.view`. PROPOSED: `payment.void` (void a recorded payment; sensitive), placed by an Area 18 amendment when
+  `ap.view`. PROPOSED: `payment.void` (void a recorded payment; sensitive) **(Withdrawn 2026-11-24, owner 2026-11-24 8:55 PM, Q7: no separate void permission; Area 1 §4)**, placed by an Area 18 amendment when
   approved. None is in `AGENT_ALLOWED`: the agent never approves or records (CLAUDE.md section 0).
 - **Controls:** 'Pay run' approval (existing toggle, OFF); `require_lien_waivers_before_paying` and
   `vendor_compliance_hold` (Area 3, both OFF); no funding-balance control (Q3);
@@ -324,7 +324,7 @@ Tests: `test_payrun_take_out_needs_reason_and_returns_bill_to_approved`,
 ## 9. Open items (not decisions)
 
 - **O1 (Area 20 or the bank connection):** the bank's payee-ID upload layout and the positive-pay format.
-- **O2 (Area 1):** shared allocation rules (operation IDs, posted-only status as of a date, release fields) used by
+- **O2 (Area 1):** **(Answered 2026-11-24: Area 1 §3 and §1.4; a card fee is an optional fee on a receipt only, payments made carry none.)** shared allocation rules (operation IDs, posted-only status as of a date, release fields) used by
   §3.2; card fees if a card payment carries one.
 - **O3 (Area 12):** Open payments (uncleared and unmatched) and the 5-bank-day ACH flag.
 - **O4 (Area 14):** routing for a submitted run and separation of duties.
@@ -348,3 +348,17 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner approval of Ar
   method 'Check'. A voided check stays in the register; the reissue takes the next number. Example: #1042 voided
   (lost in the mail), so the reissue is #1043. Replaces §3.2's "unique among recorded, not voided payments" (marked
   withdrawn there). Test: `test_check_number_unique_per_funding_account_including_voided`.
+
+## 11. Pointers from Area 1 (2026-11-24, owner 2026-11-24 8:55 PM; pointers only)
+
+- **Voiding a recorded payment (§5):** no `payment.void` (Withdrawn above); whoever holds `payment.make` may void with
+  a reason (a listed reason such as "Not cleared" or "NSF", or Other with 10 typed characters). A cleared or
+  reconciled payment goes through Area 12's bank correction first (the §5 sentence on unmatching stands). The reversal
+  date rule stays Area 10's. Area 1 §4.
+- **Method list (§2.3, §3.2):** `pay_run_line.method` and `payment.method` take their values from the
+  `payment_method` list table (kinds Check, ACH, Wire, Card, Paid outside, Cash, Bank transfer, Other); a method's
+  kind keeps §3.2's reference rules (a Check number unique across all payments, an ACH or Wire reference, the Card
+  account). Area 3's `vendor.default_payment_method` follows the same list. Area 1 §1.3.
+- **Shared columns (§3.2):** `payment.reference` and `payment.pay_run_id` are one column each, listed in Area 1 §1.3;
+  `payment_allocation` gains `discount_cents` (§3.2), `operation_id` and the release fields (Area 1 §3.3).
+- **Locks:** unchanged; Bill payments and every account a line touches (Area 1 §6).

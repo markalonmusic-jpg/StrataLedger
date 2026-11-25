@@ -1,6 +1,20 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, mockup audit and 2:55 PM to 8:15 PM answers folded)
+## Current planning stop (2026-11-24, Area 1 drafted)
+
+`docs/replan_2.9/area_1_payments_receipts.md` drafted (owner approved the outline 2026-11-24 8:55 PM, with answers Q1,
+Q2, Q3, Q4, Q6, Q7 and Q8; Q5 and Q9 recommended defaults, planning proposals). It places every Area 1 input of this
+file (OD-69/OD-70, the 2:55 PM unapplied-payments rule, RP11, Area 2's allocation rules, the Mark triage). Owner
+rules: the user chooses where a receipt lands (Q3) and, for a stated deposit, the deposit account (Q1, narrowing the
+2:55 PM answer; unplaced money posts to Unapplied customer payments); a user with the permission may unapply an
+application while the payment stays posted (Q2, RP11 rewritten); payment methods are a company-editable list (Q6); no
+`payment.void`, whoever records may void with a reason (Q7); optional fee on a receipt (Q4). Pointers: Areas 2, 5, 6,
+10, 12 and 18 §8.12, and beside RP11 in the decisions file. **Awaiting the owner's approval of the Area 1 file.**
+Planning proposals to confirm: the new permission `payment.unapply`, the four refund and write-off permission names,
+`customer_refund`, `invoice_writeoff` and `statement_send`. Three planning agent files (`cpa-controller`, `planner`,
+`reviewer` under `.claude/agents/` and `.codex/agents/`) are drafted and uncommitted, held for the owner.
+
+## Earlier planning stop (2026-11-24, mockup audit and 2:55 PM to 8:15 PM answers folded)
 
 Mockup code-hygiene audit items 1-15 applied as dated amendments (planning proposals unless an owner answer applies):
 CLAUDE_UI.md rule 6 (money parser); docs/design.md section 1 (escaping, URLs, UTF-8, shipped secrets, packaging
@@ -259,7 +273,7 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
 - **Area 2, Pay run:** carries items 14 and 16 through the Area 3 lines above. **Folded 2026-11-23 into the Area 2
   draft** (`docs/replan_2.9/area_2_pay_run.md`, for owner approval; questions Q1–Q3 there, answered 2026-11-23
   7:55 PM and folded).
-- **Area 1, Payments and receipts (added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
+- **Area 1, Payments and receipts (drafted 2026-11-24: docs/replan_2.9/area_1_payments_receipts.md; added 2026-11-23; OD-69 and OD-70, inbox 2026-11-22 10:55 PM and the OD-70
   addition):** Reclass job on a part-paid invoice (Area 10 §11.2) undoes each payment application on it: the
   allocation is released (reason "Reclass job") and, in the same transaction, one entry posts on the payment's
   original job: Dr Accounts receivable / Cr Unapplied customer payments (Area 18 §8.6 role, current liability). Cash
@@ -455,7 +469,7 @@ beside them, never deleted (area 7 fix 3).
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 
-- **Area 1 (Payments, deposits, undeposited funds; not yet drafted; Mark triage 2026-11-21 1:45 AM — must-fix inputs):**
+- **Area 1 (Payments, deposits, undeposited funds; not yet drafted [Update 2026-11-24: drafted, Area 1 §1 to §6 place every input below]; Mark triage 2026-11-21 1:45 AM — must-fix inputs):**
   - Invoice status counts only posted applications effective on or before the as-of date. Draft receipts, draft credit memos and future-dated applications never make an invoice Paid. Add `test_invoice_status_uses_only_posted_applications_as_of_date`, covering each case. `tests/test_payments.py::test_releasing_a_draft_source_allocation_posts_no_entry` (around line 381) currently expects Paid after allocating a draft source; flag that expectation as wrong and replace it in the rebuild with the non-Paid status assertion.
   - Require an operation ID on each application call; retrying the same ID returns the original result without another allocation, following the 2026-11-20 5:15 PM billing-claim retry principle. Test `test_allocation_same_operation_id_retry_returns_original_result`.
   - Store allocation release-effective date and the replacement invoice version link. Voiding a paid invoice releases its applications back to the original receipt, which stays posted. Reposting under the same number uses one stable invoice identity because `invoice_sales_number_unique` reserves a sales number on one row today. Test `test_allocation_release_records_effective_date_and_replacement_invoice_version`, `test_paid_invoice_void_releases_allocations_to_posted_receipt`, and `test_same_number_repost_uses_stable_invoice_identity_after_number_reserved`.

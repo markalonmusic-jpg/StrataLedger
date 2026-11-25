@@ -752,7 +752,7 @@ with approved text are flagged here for Mark, not changed.
 - **Conflict flagged (baseline RP11, not changed):** the trigger comment and rule at `migrations/001_company.sql`
   (RP11, `payment_allocation` release) allow a posted payment's allocation to be released only after the source
   entry is voided. OD-69 releases it while the payment stays posted. Area 1 must amend RP11 for this one release
-  reason (next_step Area 1 entry).
+  reason (next_step Area 1 entry). **(Resolved 2026-11-24, owner 2026-11-24 8:55 PM, Q2: RP11 rewritten; Area 1 §3.5.)**
 - §2.4's sentence "AR lines are corrected through the invoice or a credit memo." gains "or Reclass job" when Q18 is
   answered; the approved sentence is not edited here. **Answered 2026-11-23 (owner 6:55 PM): §11.5.**
 - **Conflict flagged (approved text, not changed):** §2.4 refuses reclass lines on every `track_clearing_id = 1`
@@ -822,7 +822,7 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   its schedule first." (Deferral lines stay refused, Q17 A.)
 - **Lead default, owner may revise:** ticking any line of an invoice for a job change on the page selects the whole
   invoice, and the row reads "Moves the whole invoice INV-0388 (3 lines)."
-- **Still flagged for Area 1 (baseline RP11, not changed):** the allocation release while the payment stays posted
+- **Still flagged for Area 1 (baseline RP11, not changed):** **(Resolved 2026-11-24, owner 2026-11-24 8:55 PM, Q2: Area 1 §3.5.)** the allocation release while the payment stays posted
   (§11.2) now happens from both entry points.
 - **Not covered by the answers:** the payable side. Bills are job-coded per line (Area 3 Q1 A, decided 2026-11-23),
   and Area 3's same-gross correction moves bill expense lines only (Area 3 §3.4, F5). Q20 below asks about AP lines.
@@ -929,3 +929,9 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
   the user maps each certified SOV line of the linked pay app to a line on the new contract's SOV, and the reclass is
   refused if any line cannot be mapped (Area 4, amendment of 2026-11-23 11:55 PM). The refusal is part of Reclass job
   here and on the Reclassify page (Q19 B).
+
+- **Amendment 2026-11-24 (pointer; owner 2026-11-24 8:55 PM, Q2, Area 1 §3).** The Reclass job and Reclassify releases (§11.2,
+  §11.5) run through one release function (planning proposal, owner may revise) with `release_kind` 'Reclass job' or 'Reclassify page'; a user with the
+  permission may also unapply an application while the payment stays posted (Dr Accounts receivable / Cr Unapplied
+  customer payments, with a reason). RP11 no longer requires the payment to be voided. The OD-70 entries above are
+  unchanged.

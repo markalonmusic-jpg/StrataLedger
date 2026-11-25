@@ -1353,3 +1353,10 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   hands the job to the PM (the 11/20 rule). The allowed file types stay a company setting (Area 18 §3, Area 21);
   their default for the signed contract includes PDF, JPG and PNG. Photo limits and wording are lead defaults. Test:
   `test_mark_signed_accepts_pdf_jpg_or_png_signed_file`.
+
+- **Amendment 2026-11-24 (pointer; owner 2026-11-24 8:55 PM, Area 1 §2).** Money a customer pays toward a contract: a payment on
+  the draft deposit invoice that signing creates (§5.2) is an ordinary receipt applied to that invoice once it posts.
+  Money stated as a deposit before an invoice exists posts to the customer deposit account the user chooses
+  (Dr Operating bank $20,000.00 / Cr Customer Deposits $20,000.00 for RI0001-003) and is applied later; money the user
+  cannot yet place posts to Unapplied customer payments. Signing itself posts nothing. The pro-rata "Less deposit
+  applied" on pay apps reads the held deposit balance (Area 4's rule).

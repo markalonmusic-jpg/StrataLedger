@@ -460,7 +460,7 @@ account (Q15 A). Approval: the existing "Payments need approval" control covers 
 
 - Service rule (extends `bank_accounts.HOLDER_TYPES`): Credit card requires a Liability account; every other kind an
   Asset account. Reconciled-through is derived (latest Finished reconciliation), never stored.
-- `payment.bank_account_id` keeps referencing `account` (area 1 may change it); the service checks it has a
+- `payment.bank_account_id` keeps referencing `account` (area 1 may change it) **(Answered 2026-11-24, owner 2026-11-24 8:55 PM: kept; the service checks the landing account is a `bank_account` row or the Undeposited funds role; Area 1 §1.3)**; the service checks it has a
   `bank_account` row.
 - **Ending cash (area 13 section 4.4, Q16 B):** the accounts with a `bank_account` row whose `kind` is not
   'Credit card', plus `company_settings.undeposited_funds_acct_id`. This replaces "account types Bank and Cash",
@@ -714,7 +714,7 @@ All twenty answered A, one by one. The options as asked are kept in 9.1.
 
 ## 10. Open items (not decisions)
 
-- Area 1: the payment service (receipt destination: undeposited funds or bank; `payment.method` values for ACH,
+- **(Answered 2026-11-24: Area 1 §1.2, §1.3.)** Area 1: the payment service (receipt destination: undeposited funds or bank; `payment.method` values for ACH,
   wire, card); `payment.bank_account_id` target.
 - Area 2: pay run posting (one entry per vendor payment or one per run) decides how a pay run's bank lines look to
   the matcher; this doc assumes one bank line per payment.
@@ -725,3 +725,16 @@ All twenty answered A, one by one. The options as asked are kept in 9.1.
 - Area 21: `row_version` mechanics and the open payments limits (30 and 180 days) as policy records (Q16 A).
 - Imports (area 19 or the provider step): Ramp lines and the BF1 never-booked-twice rule (F11).
 - Contracts: CF1's cash flow category on accounts (reports.md section 12 item 18) uses this area's cash set.
+
+## 11. Pointers from Area 1 (2026-11-24, owner 2026-11-24 8:55 PM; pointers only)
+
+- **Receipt destination (§4):** the user chooses on each receipt whether it lands in Undeposited funds or a bank
+  account; there is no default by method. A receipt in Undeposited funds is later deposited here (`deposit_line`,
+  unchanged). A card or processor fee is recorded on the receipt only when it lands in a bank account (planning
+  proposal, owner may revise; the optional fee itself is an owner answer, Q4); otherwise the fee is recorded when the
+  money reaches the bank. Area 1 §1.2 to §1.4.
+- **Method list:** `payment.method` is replaced by the company-editable `payment_method` list (Area 1 §1.3); the open
+  item about ACH, wire and card values (§10) is closed by it.
+- **Voiding a cleared or reconciled payment** goes through this area's bank correction first (Area 1 §4). A deposited
+  check that is later returned (NSF) is a **returned item** handled here, not a plain void; not designed in Area 1
+  (planning note, owner 8:55 PM, Q7).
