@@ -642,3 +642,5 @@ message and `docs\planning_owner_features_2026-11-22.md` (its text is not in own
   pending revision until approved (Area 14 §7, owner 10:20 PM Q5). Storage of the pending revision is this area's.
 
 - **Amendment 2026-11-25 (pointer, Area 19 draft): payroll source ids.** `posted_labor_hours(project_id, cost_code_id, from, to)` returns `time_entry` rows net of reversals with their source ids, hours and wage evidence; accruals and unposted batches are never returned; a payroll reversal is refused while its hours are on an issued T&M invoice (Area 19 §8, Q5 open).
+
+- **Amendment 2026-11-25 (pointer, Area 19 revised; owner A19-Q3b): accruals are never billed.** Job cost accruals (labor, materials, subcontract; `journal_line.cost_nature` = 'Accrued') never reach T&M billing or a pay application; billing reads Actual only (Area 19 §7). *Planning reading, owner may correct:* the rule applies to every job cost accrual. A payroll reversal is refused when its hours are on an issued T&M invoice, naming it (owner A19-Q5).

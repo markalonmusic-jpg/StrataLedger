@@ -1083,3 +1083,5 @@ by service type, with the `poc_snapshot` figures; area 7 section 8.3, Q18 A). `s
 - **Amendment 2026-11-25 (pointer, Area 16; corrects the pointer above): Lead fields are per service type.** A Lead custom field belongs to one service type and one stage; two service types may each have a field with the same label (two definitions, distinct `field_key`s), so the registry shows a Lead field with its service type name beside its label.
 
 - **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): the registry covers Lead fields only.** Custom fields of Contact, Invoice, Bill, Project and Estimate no longer exist (their old rows are archived read-only in `custom_field_legacy`, Area 16 §7); the registry's custom part is `cf.lead.<key>`.
+
+- **Amendment 2026-11-25 (pointer, Area 19 revised; owner A19-Q3b): job cost reports gain the accrual separation.** The job cost catalogue offers Actual, Accrued and Total measures and job profit with and without accruals, read from `journal_line.cost_nature`; wages and burden stay hidden without `payroll.view` (Area 19 §7, §8). Planning reading: the same for every job cost accrual.

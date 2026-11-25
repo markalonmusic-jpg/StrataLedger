@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 19 drafted)
 
+**Update 2026-11-25 (3:00 PM): Area 19 revised for the owner answers A19-Q1 to Q9, Q3b and Q7b; awaiting owner approval; no open owner questions.** Settled: entry from the file's rows (roadmap open decision 1), file kept as long as the entry, accrual built in v1 as a separate accrual posting type (Actual, Accrued, Total; profit with and without accruals; never in T&M or a pay app; all job cost accruals, pointers in Areas 5, 7, 17), burden split by who pays (Accrued burden), 0-hour and negative rows, "Card and spend import" as its own v1.1 area.
+
 `docs/replan_2.9/area_19_payroll_import.md` drafted (planning proposals; docs only). One batch per payroll run through staging (`payroll_import_line`), a mandatory human review of the exact rows (digest), one balanced entry (wages and burden to expense with job and cost code, credit Payroll clearing) plus `time_entry` rows in the same transaction; a reversal inserts negative rows; an optional Labor accrual control (OFF) with an automatic reversal. Worked example: the wizard's four rows, batch 1,695,660 cents. **Awaiting the owner's approval.** **Open for the owner (§13):** Q1 entry from rows or the provider's journal, Q2 source file retention and download, Q3 accrual in v1, Q4 employee not found, Q5 reversal when hours are on a T&M invoice, Q6 job statuses that take cost, Q7 Ramp and other batch types. Pointers: Areas 5, 12, 14, 18. Area still to draft: 21.
 
 ## Earlier planning stop (2026-11-25, Area 16 drafted)
@@ -701,7 +703,7 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
   `test_tm_billing_uses_only_posted_payroll_import_hours`.
   Download source returns the actual file for the selected batch and writes the authorized audit event:
   `test_payroll_download_returns_selected_batch_source_and_audits`. Source-file access and retention policy remain
-  unresolved for Mark. Keep backend work behind Phase 2.9 approval.
+  unresolved for Mark. **[Update 2026-11-25: closed for payroll by owner A19-Q2 (2:20 PM): the file is kept as long as the entry; download needs `payroll.view` and is audited.]** Keep backend work behind Phase 2.9 approval.
 - **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
 - **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with
   `estimates.py`. **Area 17:** `src_leads_estimates` field ids and the rep on the contract. **Area 20:** the proposal

@@ -92,6 +92,7 @@ before building; the database wins on naming.
   employees and vendors into accounts, projects, cost codes and contacts.
 - Payroll: prefer importing the payroll system's own journal entry as the cost
   source, with `time_entry` holding hours only (open decision, see section 9).
+  **[Update 2026-11-25: superseded for payroll by owner A19-Q1: the entry is built from the file's rows; detail in docs/replan_2.9/area_19_payroll_import.md.]**
 
 **Deferrals (one subledger for expense and revenue)**
 - One deferral subledger with `kind` = Expense or Revenue, and

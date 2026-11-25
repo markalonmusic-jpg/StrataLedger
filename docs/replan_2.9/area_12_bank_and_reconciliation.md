@@ -754,4 +754,6 @@ All twenty answered A, one by one. The options as asked are kept in 9.1.
   refuses, an unapplied-cash receipt returns to Unapplied customer payments, and the audit log records it.
 - Closes the Area 1 pointer in section 11 and the Area 1 §9 item.
 
-- **Amendment 2026-11-25 (pointer, Area 19 draft): F11 and BF1.** Area 19 designs payroll only plus the shared batch rules and hands the Ramp lines and the never-booked-twice test to the Ramp provider step (Area 19 Q7, open). The payroll bank debit is matched by this area to the payroll clearing account.
+- **Amendment 2026-11-25 (pointer, Area 19 draft): F11 and BF1.** Area 19 designs payroll only plus the shared batch rules and hands the Ramp lines and the never-booked-twice test to the Ramp provider step (Area 19 Q7, open). **[Updated by the pointer below: the feature is "Card and spend import".]** The payroll bank debit is matched by this area to the payroll clearing account.
+
+- **Amendment 2026-11-25 (pointer, Area 19 revised; owner A19-Q7b): "Card and spend import".** F11 and BF1: the generic uploader for Ramp, Divvy, Bill.com or any other card or spend system is called **Card and spend import**, its own area for v1.1 with the never-booked-twice (BF1) test; Ramp stays an `import_source` name. Replaces "Ramp provider step" in the pointer above.
