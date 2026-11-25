@@ -1707,3 +1707,5 @@ preview for the approver).
   2026-11-22 item 24; Area 20 §6).
 
 - **Amendment 2026-11-25 (pointer, Area 16): per-stage custom fields are defined.** `custom_field_service_type` (field, service type, `shown_from_stage_id`) carries the scope and the stage; a stage requirement "Field filled" references `custom_field_def.field_id` and warns, or blocks only when `stage_requirements_block` = 1 (Area 16 §4 rule 3). Stage `guidance` stays here.
+
+- **Amendment 2026-11-25 (pointer, Area 16; corrects the pointer above): CRM stage fields only.** The scope table is dropped: a Lead custom field carries `service_type_id` and `stage_id` (owner 2:58 AM) and "Field filled" references `field_id`. **Job delivery-stage custom fields stay a separate set and are not designed in Area 16** (open again: A16-Q8); stage `guidance` stays here.

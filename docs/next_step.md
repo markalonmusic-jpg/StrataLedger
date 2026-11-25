@@ -2,7 +2,7 @@
 
 ## Current planning stop (2026-11-25, Area 16 drafted)
 
-`docs/replan_2.9/area_16_custom_fields.md` drafted. Owner inputs: the 2026-11-13 request (all fields company-defined, no packs; warnings at more than 2 board-card fields and more than 20 active fields, never limits; copy fields; help text; shown from stage; remove keeps values) and FR1; Area 15 Q23 A (Lead and Case record types). Planning proposals: one `custom_field_def` table kept (no `deal_field` tables); a `custom_field_service_type` scope with a shown-from stage per service type; a `'User'` type in `value_user_id`; `on_board_card`, `help_text`, `row_version`. This area posts nothing; Money fields are integer cents. **Awaiting the owner's approval.** **Open for the owner (§9):** A16-Q1 one field for several service types, A16-Q2 a value when the lead moves to a type where the field does not apply, A16-Q3 who a User field can pick, A16-Q4 required from the shown-from stage, A16-Q5 case scoping. Pointers: Areas 6, 8, 15, 17 and 18. Areas still to draft: 19, 21.
+`docs/replan_2.9/area_16_custom_fields.md` drafted; **revised for the owner answers of 2:58, 3:05 and 3:09 AM: a CRM custom field belongs to one service type > stage > field (the scope table is dropped), CRM lead fields only; a service type change keeps the old values hidden and is audit-logged; a User field picks any active user; no custom fields for service cases (`'Case'` removed from Area 15 Q23 A); job delivery-stage fields stay a separate set, not designed here.** Owner inputs: the 2026-11-13 request (all fields company-defined, no packs; warnings at more than 2 board-card fields and more than 20 active fields, never limits; copy fields; help text; shown from stage; remove keeps values) and FR1; Area 15 Q23 A (`'Lead'` only; `'Case'` removed by the 3:09 AM answer). Planning proposals: one `custom_field_def` table kept (no `deal_field` tables); `service_type_id` and `stage_id` on the definition (no scope table); a `'User'` type in `value_user_id`; `on_board_card`, `help_text`, `row_version`. This area posts nothing; Money fields are integer cents. **Awaiting the owner's approval.** **Open for the owner (§9):** A16-Q6 stage visibility (onward or only in the stage), A16-Q7 copy fields with no matching stage, A16-Q8 when job delivery-stage fields are designed. Pointers: Areas 6, 7, 8, 15, 17 and 18. Areas still to draft: 19, 21.
 
 ## Earlier planning stop (2026-11-25, Area 11 drafted)
 
@@ -635,7 +635,7 @@ beside them, never deleted (area 7 fix 3).
 - **Area 7 (done, approved 2026-11-20):** `project.sales_rep_user_id`; `project.source_case_id`.
 - **Area 5:** the `lead_contact` hand-off at signing; the contact-person table.
 - **Area 14:** approvals on sales stage moves (default OFF).
-- **Area 16:** Lead and Case custom fields; per-service-type fields.
+- **Area 16:** Lead custom fields by service type and stage; no custom fields for service cases (owner 3:09 AM, Area 16).
 - **Area 20 (Connections; planning-only CONN-01 through CONN-03):** verify an address-only calendar setting edit
   reaches Review changes, requires a reason, Cancel discards it, Apply saves it, reload retains it and the next
   event uses that destination; validate it differs from the company's actual sending mailbox. Test

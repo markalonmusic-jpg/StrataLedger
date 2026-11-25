@@ -1092,3 +1092,5 @@ Handed to areas not yet drafted:
   **sent** POs and subcontracts (`purchase_order.committed_at`; Area 9 §6.2), less closed remainders. A material code needs
   an active leaf cost code, and a cost code cannot be deactivated while an active material code uses it (Area 9 §4).
   The PO's inline over-budget transfer calls `add_transfer_rows`.
+
+- **Amendment 2026-11-25 (pointer, Area 16): job custom fields per stage are open again.** The owner kept job delivery-stage fields a separate set from the CRM lead fields (2:58 AM); Area 16 designs only Lead fields by service type and stage. Project custom fields stay company-wide and unscoped until that set is designed (Area 16 A16-Q8).

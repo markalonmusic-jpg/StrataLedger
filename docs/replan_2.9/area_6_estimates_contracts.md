@@ -1388,3 +1388,5 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   notice in Area 20's feed (§7; in-app always, email only if the user opted in), not a document email.
 
 - **Amendment 2026-11-25 (pointer, Area 16): custom fields on estimates.** Estimate values attach to `estimate` (Q25 A) through the one `custom_field_def` table; a field scoped to service types applies to an estimate through its lead's or job's service type, and the Estimate refusal in `custom_fields.py` is lifted when `estimates.py` ships (Area 16 §3, §4 rules 1 and 8).
+
+- **Amendment 2026-11-25 (pointer, Area 16; corrects the pointer above): Estimate fields are company-wide.** Lead fields are scoped to one service type and stage (owner 2:58 AM) and are not inherited by an estimate; Estimate values attach to `estimate` (Q25 A) under unscoped Estimate definitions, and the refusal in `custom_fields.py` is lifted when `estimates.py` ships.
