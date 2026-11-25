@@ -1386,3 +1386,5 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
 - **Amendment 2026-11-25 (pointer, Area 20): sending and the expiry notice.** The proposal email goes through the company mailbox and is logged in
   `email_log`; the revision stores `sent_email_id` (a new column, planning proposal) beside its sent date; Cc the rep. The 3-day expiry reminder is a
   notice in Area 20's feed (§7; in-app always, email only if the user opted in), not a document email.
+
+- **Amendment 2026-11-25 (pointer, Area 16): custom fields on estimates.** Estimate values attach to `estimate` (Q25 A) through the one `custom_field_def` table; a field scoped to service types applies to an estimate through its lead's or job's service type, and the Estimate refusal in `custom_fields.py` is lifted when `estimates.py` ships (Area 16 §3, §4 rules 1 and 8).

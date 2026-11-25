@@ -1096,3 +1096,5 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
   (`activities.calendar_rows`) and `row_version`. The appointment event's SEQUENCE is Area 20's own counter (create at 0, one increment per successful
   update or cancel, a retry never increments twice), **not** `row_version` (this replaces "SEQUENCE = `row_version`" above), and each sent event keeps its
   original destination for updates and cancels (owner 2026-11-22 item 24).
+
+- **Amendment 2026-11-25 (pointer, Area 16): the scoping columns.** `'Lead'` and `'Case'` are record types of `custom_field_def` (Q23 A); lead scoping is the child table `custom_field_service_type` with a shown-from stage per service type, `on_board_card` and `help_text` on the definition, the lead page "<service type> details", and the warnings at more than 2 board-card fields or 20 active fields per service type (never limits). Case fields are not scoped here (Area 16 A16-Q5).

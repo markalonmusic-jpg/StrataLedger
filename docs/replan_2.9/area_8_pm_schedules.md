@@ -1705,3 +1705,5 @@ preview for the approver).
   not remove, "the weather forecast stays on" (owner 11/22): the feature stays, the default is OFF. `final_bill_request.email_ref` points to
   `email_log.email_id`; share-schedule emails are sent and logged there; calendar events keep their original destination for updates and cancels (owner
   2026-11-22 item 24; Area 20 §6).
+
+- **Amendment 2026-11-25 (pointer, Area 16): per-stage custom fields are defined.** `custom_field_service_type` (field, service type, `shown_from_stage_id`) carries the scope and the stage; a stage requirement "Field filled" references `custom_field_def.field_id` and warns, or blocks only when `stage_requirements_block` = 1 (Area 16 §4 rule 3). Stage `guidance` stays here.

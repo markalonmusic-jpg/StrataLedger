@@ -1077,3 +1077,5 @@ by service type, with the `poc_snapshot` figures; area 7 section 8.3, Q18 A). `s
 (area 7 Q3 A), the sales rep, and the budget figures original, approved change orders and revised (summed from
 `project_budget`, area 7 Q5 A); it has no draft field (area 7 Q1). The 'plan' compare reads `operating_plan_line` by
 `fiscal_year` and `period_no` 1-12 (area 7 Q13 A) and joins actuals on area 10's `dimension_set` (area 7 Q12 A).
+
+- **Amendment 2026-11-25 (pointer, Area 16): no "Show in reports" flag.** Q1 option A stands: every active custom field of a covered record type is offered by its immutable `field_key`; Area 16 adds `value_user_id` for the new User type, a field with scope rows is offered for records whose service type it applies to, and an inactive field still resolves in saved definitions.
