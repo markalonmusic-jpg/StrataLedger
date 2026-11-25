@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 16: Custom fields (CRM lead fields by service type and stage, User type, board cards)
 
-Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers of 2:58, 3:05, 3:09 and 3:47 AM (section 2).** Docs only: nothing here changes code, a baseline, a migration
+Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers of 2:58, 3:05, 3:09, 3:47 AM and 11:39 AM (section 2); no open owner questions.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.
@@ -90,7 +90,7 @@ Sources read (only these, searched by section, date or code):
 
 ## 4. Rules (`custom_fields.py`, reduced to leads)
 
-1. **A Lead field belongs to one service type and one stage** (owner). It shows on a lead only while the lead's service type equals the field's, and **from the field's stage onward** (planning reading; A16-Q7); the lead page groups fields under their stage. Before that stage the field is hidden and cannot be set;
+1. **A Lead field belongs to one service type and one stage** (owner). It shows on a lead only while the lead's service type equals the field's, and **from the field's stage onward** (owner A16-Q7), visible and editable at later stages; the lead page groups fields under their stage. Before that stage the field is hidden and cannot be set;
    a stage move never deletes a value; moving back hides, not clears.
 2. **Service type change (owner A16-Q2):** when a lead's service type changes (Area 15 allows it only while no estimate names the lead), the old type's values stay stored and hidden and show again if the lead is switched back; the change is audit-logged by the lead's own audit trigger and
    `lead_stage_history` (Area 15); nothing extra is written by this area.
@@ -98,7 +98,7 @@ Sources read (only these, searched by section, date or code):
    **warns, or blocks only when `stage_requirements_block` = 1** (default 0).
 4. **User type (owner A16-Q3):** the value is the id of **any active company user** (Area 18's person pickers, 11-17 item 4), no role filter; the picker shows the current name; a user later deactivated stays on old values, shown "(inactive)", and cannot be picked for a new value. The Agent never sets a value.
 5. **Copy custom fields** (`copy_fields(from_service_type_id, to_service_type_id, field_ids)`): creates a new definition on the target service type for each chosen field (same label, type, choices, help text, board-card flag), on the stage with the same name in the target type, else the same role;
-   a field with no matching stage, or whose label the target already uses, is skipped and listed (planning proposal; A16-Q8). Copy never moves values.
+   a field with no matching stage, or whose label the target already uses, is skipped and listed as "not copied: no <stage> stage on <type>" (owner A16-Q8). Copy never moves values.
 6. **Remove is Make inactive** (FR1): a field is never deleted; inactive fields keep values, are not offered on new leads, and still resolve in saved report definitions (Area 17). Reactivating restores them.
 7. **Warnings, not limits (owner request 2026-11-13):** `list_fields` returns, per service type, a "Busy cards" warning when more than 2 active fields have `on_board_card` = 1, and a "Many fields" warning when more than 20 are active; saving is never refused. Inactive fields do not count. Both are information, not Controls.
 8. **Leads only (owner A16-Q6):** the service refuses to define or set a field for any record type but Lead. There is no custom field on Estimate, Contact, Invoice, Bill or Project; the posted-document lock rule, the Contact bank-number refusal and the per-record-type permission mapping of the Phase 2.7 service are retired with them
@@ -106,16 +106,17 @@ Sources read (only these, searched by section, date or code):
 9. **Permissions:** defining, copying and deactivating need `fields.manage` (sensitive, Admin and the Master, none in `AGENT_ALLOWED`); a value is readable exactly when its lead is (Area 15's lead read check) and set with the lead's own edit check.
 10. **Audit:** every definition and value change is audited by the trigger pattern; the settings page's Save applies all pending edits in one transaction and tags the audit rows with one `event_id`, so the screen shows "one entry" while the log keeps a row per change (Area 18). A reason is not required
     (Area 18 Q15 A: reasons are for controls).
-11. **Job delivery-stage fields are a separate set (owner A16-Q1) and are not designed here** (A16-Q9).
+11. **Job delivery-stage fields are a separate set (owner A16-Q1) and are not designed here** (owner A16-Q9: designed later with the job pages; jobs get no company-wide custom fields).
 
 ## 5. Worked examples, integer cents (no entries to balance)
 
-- **Money field.** A Solar install lead field "Site survey fee quoted" (Money) at the stage "Site survey". Typing "350.00" stores `value_cents` 35000; on another lead "1,250.50" stores 125050. Their sum in a report is 35000 + 125050 = 160050 cents, shown $1,600.50.
+- **Money field.** A Solar install lead field "Site survey fee quoted" (Money) at the lead stage "Site assessed". Typing "350.00" stores `value_cents` 35000; on another lead "1,250.50" stores 125050. Their sum in a report is 35000 + 125050 = 160050 cents, shown $1,600.50.
   "12.345", "1e3" and "$-" are refused by the shared money parser; the stored value is never a float (rule 1).
 - **Posting.** No custom field posts: the fee changes no ledger line, no estimate total, no invoice and no job cost, so there is no journal entry here and nothing to balance. A static test checks that `custom_fields.py` imports neither `ledger` nor any posting service.
-- **Service type, stage and the owner's pattern.** Solar install > Site survey > "Roof type" (Pick list: Tile, Shingle, Metal) and "Main panel rating (A)" (Number); Permitting > "Permit number" (Text). A Residential solar lead in "New lead" shows none of them; at "Site survey" it shows Roof type and Main panel rating; at "Permitting" it also shows Permit number.
+- **Service type, stage and the owner's pattern.** Solar install > lead stage "Site assessed" > "Roof type" (Pick list: Tile, Shingle, Metal) and "Main panel rating (A)" (Number); "Proposal reviewed" > "Proposal notes" (Text). A Residential solar lead in "New lead" shows none of them; at "Site assessed" it shows Roof type and Main panel rating; at "Proposal reviewed" it still shows Roof type and Main panel rating (owner A16-Q7) and also Proposal notes, grouped under their stages.
   A Roofing lead never shows Solar install's fields; Roofing has its own "Roof type" definition.
 - **Service type change (owner A16-Q2).** A lead with Roof type "Tile" is switched from Residential solar to Roofing: "Tile" stays stored and is not shown (Roofing's Roof type is a different, empty field); switching back shows "Tile" again; the change is in the audit log.
+- **Copy with no matching stage (owner A16-Q8).** Copying "Permit fee" (Money, stage "Site assessed") from Solar install to Roofing, which has no "Site assessed" stage, creates nothing and lists "Permit fee: not copied: no Site assessed stage on Roofing"; fields whose stage exists are copied.
 - **Not a custom field.** A Bill needs a "PO reference": it uses the bill's built-in fields and notes; no custom field exists on a Bill (owner A16-Q6).
 - **Warnings.** Residential solar has three active fields with On board card: the list shows "More than 2 custom fields on board cards for Residential solar" and every save still works. A 21st active field shows "Over 20 active custom fields on Residential solar" and saves.
 - **User field.** "Site safety lead" (User) on a lead holds user id 41 (Dana Reyes); it shows "Dana Reyes". When Dana is deactivated it shows "Dana Reyes (inactive)"; a new lead cannot pick her; any other active user can be picked.
@@ -163,27 +164,21 @@ Sources read (only these, searched by section, date or code):
 11. **Area 17 Q1 offered a per-field "Show in reports" flag as option B;** the owner chose A, so this area adds none; the registry now covers Lead fields only.
 12. **Any other mockup page that shows custom fields on a customer, invoice, bill, job or estimate** (the intake and detail pages) must drop them (work order); the live mockups were not searched for every such page in this draft.
 
-## 9. Questions for the owner (recommended option first, with an example)
+## 9. Questions for the owner
 
-The owner answers A16-Q1, Q2, Q3, Q5 and Q6 are in §2 (A16-Q4 follows from Q1, a planning reading). Three small points remain:
-
-- **A16-Q7. Is a Lead field visible only from its stage onward, or only while the lead is in that stage?**
-  (A) From its stage onward, so the Roof type entered at Site survey stays visible at Permitting (recommended: nothing disappears as the lead advances).
-  (B) Only while the lead is in that stage.
-  Example: Roof type entered at "Site survey" is still shown when the lead reaches "Permitting" under A.
-- **A16-Q8. When Copy custom fields cannot find a matching stage in the target service type, what happens?**
-  (A) The field is skipped and listed so an Admin places it (recommended: no field lands on a wrong stage).
-  (B) It is placed on the target's first stage.
-  Example: copying "Permit number" from Solar install to Roofing, which has no "Permitting" stage.
-- **A16-Q9. Job delivery-stage fields.**
-  (A) Design them later with the job pages, as their own set (recommended: the owner called them separate).
-  (B) Design them in this area now.
-  Example: "Inverter serial" collected at the Install stage of a job.
+**No open owner questions.** Decided 2026-11-25 11:39 AM (§2): A16-Q7 (A), A16-Q8 (A), A16-Q9 (A). A16-Q4 stays a planning reading.
 
 ## 10. Open items (not decisions)
 
-- Job delivery-stage custom fields (A16-Q9) and the Custom fields column of `job-type-fields.html`.
+- Job delivery-stage custom fields (owner A16-Q9: later, with the job pages) and the Custom fields column of `job-type-fields.html`.
 - Notes and built-in fields for Estimate, Contact, Invoice, Bill and Project: not designed here (the owner said they use their built-in fields and notes).
 - Conditional fields, calculated fields and formulas; attachments or multi-select choice types.
 - Importing and exporting field definitions and bulk-filling a field.
 - An Admin export of `custom_field_legacy` and its retention.
+
+## 11. Owner answers 2026-11-25 11:39 AM (dated amendment; §9 questions are decided)
+
+- **A16-Q7 (owner, A):** a lead field shows from its stage onward, visible and editable at later stages, grouped under its stage. Example: Roof type on "Site assessed" is still shown at "Proposal reviewed".
+- **A16-Q8 (owner, A):** Copy custom fields skips a field with no matching stage and lists it as "not copied: no <stage> stage on <type>". Example: "Permit fee" on "Site assessed" is not copied to Roofing.
+- **A16-Q9 (owner, A):** job delivery-stage fields stay their own set, designed later with the job pages; jobs get no company-wide custom fields (A16-Q6 stands).
+- Examples in §5 now use lead pipeline stages, not job stages. A16-Q4 stays a planning reading.
