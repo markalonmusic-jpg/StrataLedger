@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 16: Custom fields (CRM lead fields by service type and stage, User type, board cards)
 
-Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers of 2:58, 3:05, 3:09, 3:47 AM and 11:39 AM (section 2); no open owner questions.** Docs only: nothing here changes code, a baseline, a migration
+Status: **Owner-approved 2026-11-25 1:18 PM (23a8b6b); drafted 2026-11-25; revised for the owner answers of 2:58, 3:05, 3:09, 3:47 AM and 11:39 AM (section 2); no open owner questions.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.
