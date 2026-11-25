@@ -1,6 +1,6 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2 and 14 approved)
 
-## Current planning stop (2026-11-24, Area 14 drafted)
+## Current planning stop (2026-11-24, Area 14 approved)
 
 `docs/replan_2.9/area_14_approvals.md` drafted with the owner answers of 10:05 PM (only Reject and Send back need a
 reason; Approve takes an optional comment) and 10:20 PM (Q1-Q7). One mechanism: `approval_kind` (21 kinds, six new, all
@@ -9,8 +9,8 @@ a backup), a widened inbox. Rules: any change to amount, discount, lines or job 
 Q4); a posted document edit is held as a pending revision (Reject discards it); the lock check runs again at the final
 approval of a posting kind; an unavailable approver goes to the backup, then Admin, then the Master; with "Require a
 separate approver" ON and no other eligible approver the submitter may approve with a reason (never an agent).
-**Awaiting the owner's approval.** **Open for the owner:** Q8, the journal entry's separate-approver triggers (they
-refuse the self-approval fallback for journal entries; default: exclude journal entries). Pointers: Areas 1, 2, 3, 5,
+**APPROVED by the owner 2026-11-24 10:40 PM once the final QA (Opus reviewer and Sonnet QA) was clean; 14 of 21 areas approved.** **Q8 answered 10:40 PM (option A):** journal entries are excluded from the self-approval
+fallback and the two separate-approver triggers stay. Pointers: Areas 1, 2, 3, 5,
 6, 8, 13, 15 and 18. **Area 11 handoff (not drafted):** asset disposal is the 'Asset disposal' approval row (OFF);
 Area 11 owns the disposal record and its approval digest. Areas still to draft: 9, 11, 16, 19, 20, 21.
 

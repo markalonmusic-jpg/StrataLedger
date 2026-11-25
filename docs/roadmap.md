@@ -113,8 +113,8 @@ posting; 5 AI features; 6 installer package; after the desktop app, the hosted e
     HA1-HA7), step B2 (WAL, backups, data folder outside the repo, add-on audit; AX1-AX3, HA8-HA11) and STOP C
     (custom fields service, FR1 as amended).
   - **Posting fixes after Codex batch 2 (done).**
-  - **2.9 Schema replan (in progress):** 21 areas (docs/replan_2.9/, plan in docs/next_step.md); 13 owner-approved
-    as of 2026-11-24 (18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2); areas 1, 9, 11, 14, 16, 19, 20 and 21 to draft. [Update 2026-11-24: Area 1 drafted, awaiting approval.] [Update 2026-11-24 10:20 PM: Area 14 (approvals) drafted, awaiting approval; areas 9, 11, 16, 19, 20, 21 to draft.] Area 14 (approvals), when drafted, includes the approval kind
+  - **2.9 Schema replan (in progress):** 21 areas (docs/replan_2.9/, plan in docs/next_step.md); 14 owner-approved
+    as of 2026-11-24 (18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14); areas 1, 9, 11, 16, 19, 20 and 21 to draft. [Update 2026-11-24: Area 1 drafted, awaiting approval.] [Update 2026-11-24 10:20 PM: Area 14 (approvals) drafted, awaiting approval; areas 9, 11, 16, 19, 20, 21 to draft.] [Update 2026-11-24 10:40 PM: Area 14 (approvals) approved after the final QA; Q8 answered (journal entries excluded from the self-approval fallback).] Area 14 includes the approval kind
     "Schedule baseline rebuilds" (Area 8 §12.20).
   - **2.8 Password recovery, restore and backups (next after 2.9):** password recovery (PW1-PW11), restore, and
     scheduled backups that include attachments (the backup step: backlog 16, with the portable company package and

@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 14: Approvals (kinds, policies, routing, inbox)
 
-Status: **DRAFT 2026-11-24, awaiting owner approval; owner answers Q1-Q7 folded 2026-11-24 10:20 PM (§15).** Docs only: nothing here changes code, a baseline, a migration
+Status: **DRAFT 2026-11-24; owner answers Q1-Q7 folded 2026-11-24 10:20 PM and Q8 at 10:40 PM (§15). Owner approval pending the final QA (see next_step).** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. Everything not marked "owner" is a **planning proposal, owner may revise**. PROPOSED items from the
 sources are not built as final.
@@ -32,7 +32,7 @@ Sources read (only these, searched by section):
 | 1 | One mechanism | One approval mechanism for every kind of work (RP9). The only on/off switch is a row of `document_approval_setting`, all OFF by default (two named exceptions: the journal entry's `manual_entry_approval`, and the vendor-credit write-off's Company threshold, NULL = off). No second table, no per-feature control. |
 | 2 | Kinds | A new lookup `approval_kind` lists the 14 existing kinds, the journal entry, and six new ones (Schedule baseline rebuild, Refund, Write-off, Deal stage move, Contract cancellation, Payroll import). All other tables point to it, so lists cannot drift. |
 | 3 | Who approves | An `approval_policy` picks the route by kind, amount band and an optional condition; its `approval_step` rows say who: anyone with the permission, the job's PM, a role, named people, or a chain of steps, each with an optional backup. |
-| 4 | Decisions | **Reject and Send back need a reason (OD-31). Approve takes an optional comment and always records who and when (owner 10:05 PM).** Self-approval follows "Require a separate approver" (OFF by default; marked Self-approved). Exception: the no-eligible-approver fallback (§8). |
+| 4 | Decisions | **Reject and Send back need a reason (OD-31). Approve takes an optional comment and always records who and when (owner 10:05 PM).** Self-approval follows "Require a separate approver" (OFF by default; marked Self-approved). Exception: the no-eligible-approver fallback (§8), never for journal entries (Q8). |
 | 5 | Edits after approval | A change to amount, discount, lines or job voids the approval and needs a new one; history keeps it. Each kind lists its own approval-relevant fields (Bills keep Area 3 Q4). |
 | 6 | Lock at approval | When approval is followed by a posting, the shared period-lock check runs again at approval time; a closed period refuses with the lock message and the document stays pending. |
 | 7 | Approver unavailable | A deactivated approver, or one who lost the permission, is replaced by the step's backup, or by Admin; logged, never stuck. |
@@ -67,10 +67,10 @@ Sources read (only these, searched by section):
 - **RP9:** one switch per kind, all OFF; no `approval_rule` table (decisions file).
 - **2026-11-24 1:48 AM:** every kind is a row on the Approvers page; the choices for who approves are the same for
   every row: anyone with permission, the job's project manager, a role, specific people, or a chain, with an
-  optional backup. Self-approval follows "Require a separate approver" (OFF; marked Self-approved), except the no-eligible-approver fallback (§8, §15, Q8).
+  optional backup. Self-approval follows "Require a separate approver" (OFF; marked Self-approved), except the no-eligible-approver fallback (§8, §15; not for journal entries, Q8).
 - **2026-11-24 10:05 PM (this area):** only **Reject** and **Send back** need a reason (OD-31: a listed reason, or
   Other with at least 10 typed characters). **Approve takes an optional comment and always records who and when.**
-  Area 18's reason table keeps "Reject an approval"; it gains "Send back an approval".
+  Area 18's reason table keeps "Reject an approval"; it gains "Send back an approval" and "Self-approve (no eligible approver)" (the fallback, §8).
 - **Area 1 §3.2 and §4.1 (owner 8:55 PM, Q2 and Q7; 9:10 PM answer 1):** unapply and void of a payment need
   `payment.receive` or `payment.make` and a reason. **Confirmed by the owner (9:10 PM): unapply uses the recording
   permission and a reason, void needs only a reason; neither has an approval kind** (§15). Returned items are Area 12's (9:10 PM answer 2).
@@ -192,9 +192,9 @@ review. Mockup note for the design queue: the batch review screen and the approv
    $38,000.00 estimate revision with "Margin is under the floor; check the markup".
 6. **Self-approval** follows `company_settings.require_separate_approver` (OFF by default): OFF, the creator or
    submitter may approve and the action is marked Self-approved; ON, `check_separate_approver` refuses before any
-   write (applies to the Master and Admin too). **Exception (owner 10:20 PM, Q6):** when the control is ON and no other
+   write (applies to the Master and Admin too). **Exception (owner 10:20 PM, Q6; not for journal entries, owner 10:40 PM, Q8, §8):** when the control is ON and no other
    eligible approver exists, the submitter may approve, marked Self-approved, with a reason (OD-31); §8. An agent
-   never approves, including by this fallback. No kind has a special rule (this retires the §12.19 proposal in
+   never approves, including by this fallback. No kind has a special rule except that Journal entry is excluded from the fallback (Q8) (this retires the §12.19 proposal in
    Area 8).
 7. **Human only.** `approve`, `reject` and `send_back` accept a Human-origin context only (R23); `AGENT_ALLOWED`
    never lists them. An agent-origin journal entry always needs a human approval even when its row is OFF.
@@ -209,7 +209,8 @@ review. Mockup note for the design queue: the batch review screen and the approv
     warns when a 'Job PM' route is chosen for a kind that has no job (Journal entry, Payment).
 13. **Turning a row OFF with requests Pending.** Pending requests finish under their frozen route; only new
     submissions skip approval. Turning a row OFF is audit-logged with a reason (Area 18 Q15 A).
-14. **Turning a row ON** never approves or blocks existing documents; it applies from the next submit.
+14. **Turning a row ON** never approves or blocks existing documents; it applies from the next submit; the change
+    is audit-logged with a reason (Area 18 Q15 A), as turning one OFF is.
 
 **Starting route versus default.** The §3 column is a preset the Approvers page offers when a row is first turned on
 (presets first, section 0b). If no policy is saved, §5 rule 1's default applies: anyone holding the kind's approve
@@ -317,6 +318,7 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   with the lock sentence; the AR Clerk redates it to November 3 and resubmits; approved and posted.
 - Tests: `test_final_approval_refused_in_closed_period_and_request_stays_pending`,
   `test_final_approval_refused_in_locked_area_and_names_the_area`,
+  `test_final_approval_refused_on_or_before_the_special_cutoff`,
   `test_approval_in_open_period_writes_action_and_posts`,
   `test_intermediate_step_approval_does_not_run_the_lock_check`,
   `test_non_posting_kind_skips_the_lock_check`,
@@ -388,7 +390,9 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   the kind's approve permission and a covering limit); **the Master and every active Admin count** when they qualify.
   An agent-origin
   entry still always needs a human: the fallback never lets an agent approve (R23), and an agent-origin item never
-  uses the fallback: it waits for a different human (the initiating user is not its submitter). Example: a one-user company with
+  uses the fallback: it waits for a different human (the initiating user is not its submitter). **Journal entries are
+  excluded from the fallback (owner 10:40 PM, Q8):** the baseline triggers stay, and the creator of a journal entry
+  can never approve it while the control is ON. Example: a one-user company with
   the control ON; the owner submits a $3,000.00 refund and approves it with the reason "Only user".
 - **People who fill a role slot** are not "unavailable" when another holder of the role exists; only an empty role
   triggers the fallback.
@@ -405,6 +409,8 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   `test_submitter_may_self_approve_with_reason_when_no_other_eligible_approver_and_control_on`,
   `test_self_approval_fallback_needs_a_reason_and_is_marked`,
   `test_self_approval_fallback_never_applies_to_an_agent`,
+  `test_self_approval_fallback_excluded_for_journal_entries_and_triggers_still_refuse`,
+  `test_self_approval_fallback_applies_to_every_other_kind`,
   `test_reassignment_runs_on_user_deactivation_and_again_on_refresh_routes`,
   `test_pending_for_writes_nothing`.
 
@@ -418,7 +424,8 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   project manager", "A role", "Specific people" or "A chain" (add steps), a backup, and an amount band. The page
   warns, never blocks, when a route lets one person create and approve (Area 18 Q10 A) or when a 'Job PM' route is
   chosen for a kind with no job.
-- **Reasons list.** Reject uses the Reasons kind 'Approval rejection' (a new kind Area 18 adds beside its table row "Reject an approval") and Send back uses Area 6's existing kind 'Send back'
+- **Reasons list.** The self-approval fallback uses the Reasons kind 'Self-approval' (Area 18's table gains "Self-approve (no eligible
+  approver)"). Reject uses the Reasons kind 'Approval rejection' (a new kind Area 18 adds beside its table row "Reject an approval") and Send back uses Area 6's existing kind 'Send back'
   (no new duplicate kind); both are company-editable lists under Settings > Lists > Reasons (OD-31), stored as
   `approval_action.reason_id` and `reason_label` beside the free text for Other (Area 18 reason pattern); Other needs 10 typed characters.
 - **Mockup work orders** (design queue, not written here): the Approvers rows and chain editor; the inbox with the
@@ -498,9 +505,6 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   approval-relevant fields voids it, except Bills, which keep Area 3 Q4 (recommended: simple and matches "changing
   ... voids"). (B) Only a change that raises the amount or discount, or changes the lines or job, voids it; a
   reduction keeps the approval. Example: a $12,000.00 approved invoice cut to $11,800.00.
-- **Q7. Who receives a send-back from In approval: the rep or the submitter?** (A) The submitter, the PM or rep who
-  submitted that revision (recommended; one rule for every kind). (B) Always the rep, as Area 6 line 260 reads.
-  Example: the PM submits a revision the rep priced; the Controller sends it back; under A it goes to the PM.
 - **Q4. Is OD-81's "discount approval control" the Estimate row?** (A) Yes, the same row, no new switch
   (recommended). (B) A separate switch on the Controls page. Example: with the Estimate row OFF and a 12% discount over
   a 10% limit, Send works with the warning.
@@ -511,7 +515,10 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   "No eligible approver" to Admin and the Master and leave it pending (recommended). (B) Let the Master approve
   anyway, marked Self-approved, overriding the control (never: the control applies to the Master too).
 
-- **Q8 (new, from the reviewer; open for the owner). The journal entry's separate-approver triggers.** The baseline
+- **Q7. Who receives a send-back from In approval: the rep or the submitter?** (A) The submitter, the PM or rep who
+  submitted that revision (recommended; one rule for every kind). (B) Always the rep, as Area 6 line 260 reads.
+  Example: the PM submits a revision the rep priced; the Controller sends it back; under A it goes to the PM.
+- **Q8 (new, from the reviewer; ANSWERED 2026-11-24 10:40 PM: option A, §15). The journal entry's separate-approver triggers.** The baseline
   triggers `journal_entry_separate_approver_insert` and `_update` (migrations/001_company.sql, near line 3700) refuse
   an approver who is the creator whenever "Require a separate approver" is ON, so the §8 fallback cannot work for
   journal entries as the baseline stands. (A) Exclude Journal entry from the fallback and leave the triggers
@@ -544,6 +551,13 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   the submitter may approve, marked Self-approved, with a reason (OD-31). The fallback never lets an agent approve.
 - **Q7 (owner):** a send-back goes to the submitter (the PM or rep), with the reason; history records from, to and
   when. **Area 6 is amended** (pointer there).
+- **Q8 (owner 10:40 PM): option A.** The two `journal_entry_separate_approver` triggers stay. **Journal entries are
+  excluded from the Q6 self-approval fallback:** with "Require a separate approver" ON, the creator of a journal entry
+  can never approve it; a one-person company turns the control OFF or adds a second user. The fallback applies to
+  every other kind. Example: the only user's $3,000.00 manual entry cannot be self-approved while the control is ON;
+  the same user's $3,000.00 refund can, with a reason. Owner rule. Tests:
+  `test_self_approval_fallback_excluded_for_journal_entries_and_triggers_still_refuse`,
+  `test_self_approval_fallback_applies_to_every_other_kind`.
 - **Area 1 cross-check confirmed (owner 9:10 PM):** unapply uses the recording permission (`payment.receive` or
   `payment.make`); void needs only a reason; neither has an approval kind.
 - **§12 conflicts resolved:** (1) Bills keep Area 3 Q4; (2) the baseline lists are replaced by `approval_kind`; (3)

@@ -1692,4 +1692,5 @@ preview for the approver).
 - **Amendment 2026-11-24 (pointer, Area 14): Area 14 handoffs done.** The Approvers row has the page label "Schedule
   baseline rebuilds" and the code `Schedule baseline rebuild` (Area 14 §3); Change order approval is the 'Change
   order' row with the margin-floor condition; self-approval follows "Require a separate approver" with the Area 14 §8
-  fallback; at most one open rebuild request per schedule (Area 14 §5 rule 10).
+  fallback (refused only while another eligible approver exists, so the test above reads
+  `test_rebuild_self_approval_refused_when_separate_approver_on_and_another_eligible_approver_exists`); at most one open rebuild request per schedule (Area 14 §5 rule 10).
