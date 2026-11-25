@@ -228,7 +228,7 @@ CHECK: the release columns are all set or all NULL (as today), and `release_kind
   is replaced in the rebuild with a not-Paid assertion.
 - **One release function** (`payments.unapply`, planning proposal) is the only code that releases a live allocation.
   It runs inside the caller's transaction, checks the lock (§6), writes the opposite entry and stamps the release.
-- **Unapply by the user:** `payment.unapply` (PROPOSED sensitive code, §6), reason required (Area 18 §8.7: a listed
+- **Unapply by the user:** `payment.unapply` (PROPOSED sensitive code, §6), reason required (Area 18 §8.7: a listed **[Withdrawn 2026-11-24 9:10 PM: uses `payment.receive` or `payment.make`; §9.1.]**
   reason such as "Applied to the wrong invoice", or Other with 10 typed characters). Posts Dr 1110 (the invoice's
   group, job and customer, reopening it) / Cr 2325 on the payment's job. Example: $2,500.00 applied to INV-0388 by
   mistake: Dr 1110 $2,500.00 / Cr 2325 $2,500.00; INV-0388 is open again; the payment shows the OD-11 "Unapplied"
@@ -340,7 +340,7 @@ Area 5 decided the rules (§8.5 Q9 and Q10, §4.2); this area owns the postings.
   legacy Sales and Purchases areas in `payments._check_period`; its refusal becomes `PeriodLockedError`.
   Test: `test_payment_locks_use_payments_received_or_bill_payments_area_and_ar_ap_accounts`.
 - **Permissions:** `payment.receive` (record, apply, void a receipt; Accountant cap, existing) and `payment.make`
-  (existing; Area 2). PROPOSED new sensitive `payment.unapply` (Accountant cap, Admin, the Master; owner may instead
+  (existing; Area 2). PROPOSED new sensitive `payment.unapply` (Accountant cap, Admin, the Master; owner may instead **[Withdrawn 2026-11-24 9:10 PM; §9.1.]**
   choose to reuse `payment.receive`) and the four of §5; none in `AGENT_ALLOWED`. The agent never records, applies,
   unapplies or voids (section 0). Area 18 places the codes and recounts the seed (§8.12 there).
 - **Controls:** none new. Refund and write-off approvals and 'Payment' approval are existing `document_approval_setting`
@@ -395,3 +395,15 @@ Area 5 decided the rules (§8.5 Q9 and Q10, §4.2); this area owns the postings.
 - **Vendor prepayments:** not covered; the Purchase side keeps today's remainder line (Area 2/3).
 - **Foreign-currency receipts:** out of scope (`exchange_rate` stays 1.0).
 - **Statement send:** the table's owner (Area 1 or Area 5) is for the owner to confirm.
+
+### 9.1 Answered 2026-11-24 9:10 PM (owner; dated amendment, the §9 items above stay as asked)
+
+- **Answered: unapply permission.** Unapply uses the same permission as recording the payment (`payment.receive` for
+  customer receipts, `payment.make` for vendor payments), with a reason (OD-31). **No `payment.unapply`** (owner
+  rule). The "new sensitive code is proposed" line in §9 and any `payment.unapply` mention in §3 and §6 are
+  **Withdrawn** by this answer.
+- **Answered: returned items (NSF after deposit).** A returned check that already cleared is a returned-item entry in
+  Area 12, not a void (owner rule). The original payment and deposit stay; history links them. Area 12 section 11.1.
+- **Answered (planning decision, owner may revise): `statement_send` belongs to Area 5**, which already names the
+  retained copy. Area 1 does not create the table. Area 5 section 9.6.
+- Still open in §9: customer deposits and pay apps (Areas 4 and 6), vendor prepayments, foreign currency.

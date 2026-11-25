@@ -738,3 +738,18 @@ All twenty answered A, one by one. The options as asked are kept in 9.1.
 - **Voiding a cleared or reconciled payment** goes through this area's bank correction first (Area 1 §4). A deposited
   check that is later returned (NSF) is a **returned item** handled here, not a plain void; not designed in Area 1
   (planning note, owner 8:55 PM, Q7).
+
+### 11.1 Returned items (NSF after the check cleared) (owner 2026-11-24 9:10 PM; table and test names are planning proposals, owner may revise)
+
+- **Owner rule:** a returned check that already cleared is a **returned-item entry**, not a void. The original payment
+  and deposit stay posted; history links the returned item to them. The invoice reopens.
+- **Postings:** Dr Accounts receivable (on the original invoice) / Cr Bank for the returned amount; the bank's fee is
+  Dr Bank charges / Cr Bank. Billing the fee to the customer is optional (a setting with a permissive default, listed
+  on the Controls page and logged).
+- **Example:** a $5,000.00 check is returned with a $35.00 fee. Dr AR $5,000.00 / Cr Bank $5,000.00 (invoice open again
+  for $5,000.00); Dr Bank charges $35.00 / Cr Bank $35.00. If billed to the customer, the $35.00 goes on a new invoice
+  line or a charge invoice.
+- **Planning proposals:** a `returned_item` table (payment id, returned amount, fee, date, reason, reversing entry id);
+  tests: the invoice reopens, the original payment and deposit rows are unchanged, the fee posts once, a locked period
+  refuses, an unapplied-cash receipt returns to Unapplied customer payments, and the audit log records it.
+- Closes the Area 1 pointer in section 11 and the Area 1 §9 item.

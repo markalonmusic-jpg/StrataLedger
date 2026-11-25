@@ -628,3 +628,9 @@ message and `docs\planning_owner_features_2026-11-22.md` (its text is not in own
   9:28 PM; Area 10 §11.7).
 - **Amendment 2026-11-24 (pointer): the linked pay app's certified SOV lines are mapped to the new contract** on
   Reclass job (Area 4, owner 11:55 PM amendment).
+
+### 9.6 `statement_send` owner (planning decision 2026-11-24, after owner answers of 9:10 PM; owner may revise)
+
+- **Amendment 2026-11-24: Area 5 owns the `statement_send` table**, because this area already names the retained copy
+  of a sent statement. Area 1 §9 asked; it does not create the table. The Area 1 refund, write-off and statement
+  service rows (Area 1 §5) call into it. No new rule; the table's columns stay as in section 4.
