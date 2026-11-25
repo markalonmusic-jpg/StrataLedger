@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 19: Payroll import (Gusto, Rippling or a spreadsheet), job labor and month-end accrual
 
-Status: **REVISED 2026-11-25 for the owner answers A19-Q1 to Q9, Q3b and Q7b (2:15 to 3:00 PM; section 15), awaiting owner approval; drafted in d1a406d.** Docs only: nothing here changes code, a baseline, a migration
+Status: **REVISED 2026-11-25 for the owner answers A19-Q1 to Q10, Q3b and Q7b (2:15 to 3:15 PM; section 15), awaiting owner approval; drafted in d1a406d.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise** (text marked "Planning reading" is a planning proposal). PROPOSED items in the sources are not built as final.
@@ -34,7 +34,7 @@ Sources read (only these, searched by section, date or code):
 | 3 | Review | **Always on:** one human review of the exact rows that will post. Any change after review voids the review and any approval. Area 14's 'Payroll import' row (OFF) adds an approver. |
 | 4 | Duplicates | A file already imported is refused (hash); a row already imported is refused (`external_ref` per source); a retry with the same operation id returns the first result. |
 | 5 | Reverse | A posted run is corrected only by a reversal (reversing entry and negative labor rows); refused when the period is locked or the hours are on an issued T&M invoice (Q5). |
-| 6 | Accrual | Optional **Labor accrual** control (OFF), built in v1 (owner Q3): a month-end entry that posts to the GL and to the job as a **separate accrual posting type**, never counted as job cost actuals; job reports show Actual, Accrued and Total and job profit with and without accruals; it never reaches T&M or a pay app. *Planning reading:* the same rule covers every job cost accrual (§7). |
+| 6 | Accrual | Optional **Labor accrual** control (OFF), built in v1 (owner Q3): a month-end entry that posts to the GL and to the job as a **separate accrual posting type**, never counted as job cost actuals; job reports show Actual, Accrued and Total and job profit with and without accruals; it never reaches T&M or a pay app. The same rule covers every job cost accrual (owner Q3b); job percent complete and budget-to-actual count Actual plus Accrued (owner Q10). |
 | 7 | T&M and reports | Only **posted** payroll hours, net of reversals, reach T&M billing (owner S 11-19); a bonus with 0.00 hours adds no billable time (owner Q9). Wages and burden are hidden without `payroll.view`. |
 
 ---
@@ -74,6 +74,7 @@ Sources read (only these, searched by section, date or code):
 16. **A19-Q7 and Q7b (owner, 2:50 PM):** the generic uploader is **"Card and spend import"** (Ramp, Divvy, Bill.com or any other card or spend system), its own area for v1.1 with the never-booked-twice (BF1) test; Area 19 stays payroll plus the shared batch rules. Ramp remains only an `import_source` name.
 17. **A19-Q8 (owner, 3:00 PM):** burden is split by who pays it: provider-paid burden (payroll taxes the provider remits) credits Payroll clearing; burden billed separately (workers' comp, health and similar) credits an Accrued burden account, cleared when the carrier's bill is paid; job cost still gets the full burden.
 18. **A19-Q9 (owner, 3:00 PM):** pay lines with 0 hours (bonus, commission) and negative rows (corrections) are allowed; a bonus posts its cost to the job with 0.00 hours; a negative correction posts negative cost and hours; T&M reads only hours, so a bonus never bills as time.
+19. **A19-Q10 (owner, 3:15 PM):** job percent complete and budget vs actual count Actual plus accrued; job profit still shows with and without accruals. Example: budget $50,000.00, actual $10,000.00, labor accrual $4,531.20 -> 14,531.20 / 50,000.00 = 29.1%.
 
 ---
 
@@ -181,10 +182,10 @@ Entry dated 11/15/2026: Dr 5010 Direct field labor, CA0002-001, 05-100 $500.00; 
 
 ## 7. Job cost accruals: the labor accrual (optional control, OFF) and the separation rule
 
-**Owner A19-Q3 and Q3b (words quoted in §2 item 12):** an accrual is a different type of posting, in the GL and on the job, kept apart from actuals. **Planning reading (owner may correct):** the rule applies to **every job cost accrual** (labor here; materials received not billed and subcontract work not billed in their own areas), so the posting type is shared (pointers in Areas 5, 7 and 17).
+**Owner A19-Q3 and Q3b (words quoted in §2 item 12):** an accrual is a different type of posting, in the GL and on the job, kept apart from actuals. **Owner Q3b ("Same with material accruals or any job cost accruals need to be visible"):** the rule applies to **every job cost accrual**, so the posting type is shared. **Area set (one list, used in §12, §14 and §15):** *producers* of accruals are Area 19 (labor), Area 9 (materials received and not billed: the job-site delivery ticket's Dr Job cost / Cr GRNI carries 'Accrued' until the matched bill's own entry posts the actual) and Area 3 (subcontract work not billed); *readers* are Area 7 (job cost and percent complete), Area 17 (reports) and Area 5 (billing never reads accrued lines). Pointers in Areas 3, 5, 7, 9 and 17. The producers' own mechanics are planning proposals in their areas.
 
-- **The posting type:** an accrual entry's job cost lines carry project, cost code and `journal_line.cost_nature` = 'Accrued' (§3). It is in the GL and the trial balance like any entry. **Job reports read two measures and a total: Actual (lines 'Actual'), Accrued (lines 'Accrued', net of reversals) and Total (both).** Job profit is shown **with and without accruals** (owner). Budget-to-actual and percent complete by cost use **Actual only** (planning proposal; §14).
-- **Never billed:** accrued lines never reach T&M billing or a pay application (owner: "not part of any billing payapp"). `posted_labor_hours` reads `time_entry`, and an accrual writes none; progress billing reads Actual only.
+- **The posting type:** an accrual entry's job cost lines carry project, cost code and `journal_line.cost_nature` = 'Accrued' (§3). It is in the GL and the trial balance like any entry. **Job reports read two measures and a total: Actual (lines 'Actual'), Accrued (lines 'Accrued', net of reversals) and Total (both).** Job profit is shown **with and without accruals** (owner). **Owner A19-Q10: job percent complete and budget-to-actual count Actual plus Accrued.**
+- **Never billed:** accrued lines never reach T&M billing or a pay application (owner: "not part of any billing payapp"). `posted_labor_hours` reads `time_entry`, and an accrual writes none; T&M billing and pay applications never read accrued lines (owner Q3); a pay application bills from its schedule of values, not from the Q10 percent complete.
 - **The control:** `payroll_accrual_enabled` = 0 by default (Company Settings > Controls, Admin or Master, audit-logged). When ON, a batch with `batch_type` 'Labor Accrual' and `batch_nature` 'Accrual' is built from the same file format (pay date = the accrual date, a month-end) for labor worked and not yet in a payroll run. **Built in v1** (owner Q3).
 - **Posting:** one entry dated the accrual date: debit the same wage and burden accounts (job lines with project, cost code, 'Accrued'), credit **Accrued payroll**. The service creates, in the same transaction, a second batch with nature 'Reversal' dated the first day of the next month, whose lines are 'Accrued' too; if that date's period or the Payroll area is locked, the accrual is refused naming it.
 - **Review** applies exactly as in §5 (always on; Area 14's row is additional).
@@ -199,6 +200,7 @@ Entry dated 11/15/2026: Dr 5010 Direct field labor, CA0002-001, 05-100 $500.00; 
   | December 2026 | $4,531.20 | -$4,531.20 | $0.00 |
 
   Job CA0002-001, 05-100 (403,560 = 342000 + 61560) is the same pattern: November Accrued $4,035.60, December Actual $4,035.60 and Accrued -$4,035.60. 453,120 + 403,560 = 856,680.
+  **Percent complete and budget-to-actual (owner Q10, example in cents):** job RI0001-002 budget 5,000,000 ($50,000.00), Actual 1,000,000 ($10,000.00), labor accrual 453,120 ($4,531.20): counted cost 1,000,000 + 453,120 = 1,453,120; 1,453,120 / 5,000,000 = 29.06%, shown **29.1%**; budget remaining 5,000,000 - 1,453,120 = 3,546,880 ($35,468.80). Job profit still shows with and without accruals.
   **Job profit for RI0001-002 in November (illustrative):** revenue billed 2,000,000 ($20,000.00), other actual job cost 900,000 ($9,000.00). **Without accruals** 2,000,000 - 900,000 = 1,100,000 ($11,000.00); **with accruals** 1,100,000 - 453,120 = 646,880 ($6,468.80). T&M and the pay application for that job read Actual only.
 
 ---
@@ -239,7 +241,7 @@ Entry dated 11/15/2026: Dr 5010 Direct field labor, CA0002-001, 05-100 $500.00; 
   `test_zero_hour_bonus_row_posts_cost_with_no_hours`, `test_negative_correction_row_posts_negative_cost_and_hours` (the 50000 and -18000 example), `test_tm_hours_sum_ignores_bonus_cost`,
   `test_unresolved_employee_blocks_post_and_is_never_created`, `test_closed_out_job_row_is_an_error_and_a_completed_job_is_valid`, `test_control_total_one_cent_difference_does_not_block_and_two_cents_blocks`,
   `test_accrual_lines_carry_cost_nature_accrued_and_never_count_as_actuals`, `test_job_report_shows_actual_accrued_total_and_profit_with_and_without_accruals` (the 453,120 and 646,880 example),
-  `test_accrual_never_reaches_a_pay_application`, `test_accrual_reversal_nets_accrued_to_zero_and_the_run_is_actual`, `test_source_file_is_kept_with_the_entry_and_every_download_is_audited`, `test_agent_cannot_import_review_post_or_reverse_payroll`, `test_payroll_import_static_has_no_ui_clock_or_sqlite_pragma`.
+  `test_accrual_never_reaches_a_pay_application`, `test_percent_complete_and_budget_to_actual_count_actual_plus_accrued` (1,453,120 / 5,000,000 = 29.1%, remaining 3,546,880), `test_material_and_subcontract_accruals_use_the_same_cost_nature_and_are_never_billed`, `test_accrual_reversal_nets_accrued_to_zero_and_the_run_is_actual`, `test_source_file_is_kept_with_the_entry_and_every_download_is_audited`, `test_agent_cannot_import_review_post_or_reverse_payroll`, `test_payroll_import_static_has_no_ui_clock_or_sqlite_pragma`.
 
 ---
 
@@ -264,7 +266,7 @@ Integer cents and balanced double entry on the one entry; the review before post
 11. **Mockup "Close" button on a run row** is not a payroll action; assumed to close the row detail (work order).
 
 ---
-12. **`journal_line` has no accrual or actual marker;** `cost_nature` is added (owner Q3 needs the separation; the column is a planning proposal). Areas 5, 7 and 17 read it (pointers).
+12. **`journal_line` has no accrual or actual marker;** `cost_nature` is added (owner Q3 needs the separation; the column is a planning proposal). Producers: Areas 19, 9 and 3; readers: Areas 7, 17 and 5 (§7 area set; pointers).
 13. **Area 6 and Area 5 T&M text says hours come from "posted payroll imports";** accruals write no `time_entry`, so the rule holds (owner Q3).
 
 ## 13. Questions for the owner (recommended option first, with an example; **all answered 2026-11-25 2:15 to 3:00 PM, section 15**)
@@ -307,15 +309,16 @@ Integer cents and balanced double entry on the one entry; the review before post
 - A provider API connector (Gusto, Rippling) instead of a file.
 - Net pay, withholdings, payroll liabilities and a payroll register.
 - **Card and spend import** (Ramp, Divvy, Bill.com or any card or spend system; its own v1.1 area) with the BF1 never-booked-twice test (owner Q7b); bills and reimbursements batches.
-- Whether cost-to-cost percent complete and budget-to-actual should include accrued cost (planning proposal: Actual only; owner may revise).
-- Material and subcontract accruals: the posting type is shared here (§7), their own entries belong to Areas 9 and 3.
+- **Closed (owner A19-Q10):** percent complete and budget-to-actual count Actual plus Accrued. Still open, not a decision: if a later area lets percent complete drive a pay application amount or recognized revenue, that use must be settled against owner Q3 (accruals never in a pay app).
+- Material and subcontract accruals (owner Q3b): the posting type is shared here (§7); their own entries belong to the producers, Area 9 (materials received, not billed) and Area 3 (subcontract work not billed), with Areas 7, 17 and 5 as readers; the same area set as §7.
 - The job-charging posting for equipment by the hour (Area 11 open item) is not payroll.
 
 ## 15. Owner answers 2026-11-25 2:15 to 3:00 PM and the planning fixes (dated amendment; §13 stays as asked)
 
 - **A19-Q1 A, Q2 A, Q4 A, Q5 A, Q6 A (owner):** recorded as owner rules in §2 items 10, 11, 13, 14 and 15. Q1 closes §12 conflict 1 and settles roadmap open decision 1; Q2 closes next_step's payroll retention item.
-- **A19-Q3 and Q3b (owner's words, quoted in §2 item 12):** §7 is reworked: a separate accrual posting type in the GL and the job, never counted as job cost actuals; Actual, Accrued and Total, and job profit with and without accruals; never in T&M or a pay app. *Planning reading (owner may correct):* it applies to all job cost accruals, so `journal_line.cost_nature` is shared (Areas 5, 7, 17 pointers); budget-to-actual uses Actual only.
+- **A19-Q3 and Q3b (owner's words, quoted in §2 item 12):** §7 is reworked: a separate accrual posting type in the GL and the job, never counted as job cost actuals; Actual, Accrued and Total, and job profit with and without accruals; never in T&M or a pay app. **It applies to all job cost accruals (owner Q3b's own words, an owner rule),** so `journal_line.cost_nature` is shared (producers Areas 19, 9, 3; readers Areas 7, 17, 5; pointers in all five).
+- **A19-Q10 (owner, 3:15 PM):** percent complete and budget-to-actual count Actual plus Accrued (budget 5,000,000, Actual 1,000,000, accrual 453,120 -> 1,453,120 / 5,000,000 = 29.1%); this replaces the "Actual only" planning proposal. The §14 item is closed.
 - **A19-Q7 and Q7b (owner):** the feature name is "Card and spend import" (§2 item 16, §12 item 8, §14, Area 12 pointer).
 - **A19-Q8 (owner):** burden by who pays, with the 1,655,660 and 40,000 example (§5). **A19-Q9 (owner):** 0-hour and negative rows with the 50000 and -18000 example (§5, §4 rule 2).
 - **Planning fixes from the review of d1a406d:** §4 rule 2 "Completed (Closed Out)" wording replaced (Closed Out takes no cost); §4 rule 6 states that 1 cent does not block Post and 2 cents or more blocks it (planning proposal, consistent with L8).
-- **Still planning proposals:** the tables for burden types, `journal_line.cost_nature`, "Accrued burden" cleared by the carrier's bill, Actual-only budget-to-actual.
+- **Still planning proposals:** the tables for burden types, `journal_line.cost_nature`, "Accrued burden" cleared by the carrier's bill, the producers' own accrual mechanics in Areas 9 and 3.

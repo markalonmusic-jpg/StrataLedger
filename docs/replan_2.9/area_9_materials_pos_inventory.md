@@ -644,3 +644,5 @@ estimated and corrected there: the answers were given between 11:30 and 11:43 PM
 
 Serial tracking is in: per material code, OFF by default, only while stock tracking is on; recorded at receipt, picked at pull, kept on the job's record for warranty (§8.3). This replaces
 the "serial tracking out of scope" lines in §17 and in the Area 20 pointer above. Example: inverter SN 4471-A pulled to RI0001-002 shows on that job.
+
+- **Amendment 2026-11-25 (pointer, Area 19; owner A19-Q3b): material accruals are visible as Accrued.** A job-site delivery ticket's Dr Job cost / Cr GRNI carries `journal_line.cost_nature` 'Accrued' until the matched bill's own entry posts the actual (the owner: material accruals "need to be visible", separate from actuals). Planning proposal for the mechanics, owner may revise: Area 9 is the producer of material accruals.
