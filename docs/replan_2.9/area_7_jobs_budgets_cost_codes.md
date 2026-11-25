@@ -1093,4 +1093,6 @@ Handed to areas not yet drafted:
   an active leaf cost code, and a cost code cannot be deactivated while an active material code uses it (Area 9 §4).
   The PO's inline over-budget transfer calls `add_transfer_rows`.
 
-- **Amendment 2026-11-25 (pointer, Area 16): job custom fields per stage are open again.** The owner kept job delivery-stage fields a separate set from the CRM lead fields (2:58 AM); Area 16 designs only Lead fields by service type and stage. Project custom fields stay company-wide and unscoped until that set is designed (Area 16 A16-Q8).
+- **Amendment 2026-11-25 (pointer, Area 16): job custom fields per stage are open again.** The owner kept job delivery-stage fields a separate set from the CRM lead fields (2:58 AM); Area 16 designs only Lead fields by service type and stage. Project custom fields stay company-wide and unscoped until that set is designed (Area 16 A16-Q8). **[Updated by the pointer below (A16-Q6): Project custom fields are dropped, not company-wide; the job-set question is now A16-Q9.]**
+
+- **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): Project custom fields are dropped.** The line that `custom_fields.py:55` (Project read and write codes) is unchanged and the hand-off "job custom fields per stage and service type" are withdrawn; a job uses its built-in fields and notes (job delivery-stage fields are open: Area 16 A16-Q9).

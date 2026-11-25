@@ -660,3 +660,5 @@ no refund request, no hold.
   human confirmation (Area 20 §5).
 
 - **Amendment 2026-11-25 (pointer, Area 11): loan payments and asset purchases are bills.** Each loan payment is drafted as a bill to the lender (principal to the loan account, interest to the interest account; Area 11 §6) by `loan_bills.run`; a bill line coded to the fixed-assets account creates or links a `fixed_asset` (§3) with the line amount as its cost; proceeds from a sale or trade-in come back through Area 5's invoice and a vendor credit here (§5).
+
+- **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): no custom fields on bills.** The line that custom field values on a posted bill check the area lock is withdrawn (no custom fields exist on a bill); a bill uses its built-in fields and notes.

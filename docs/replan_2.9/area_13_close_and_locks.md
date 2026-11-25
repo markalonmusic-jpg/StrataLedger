@@ -969,3 +969,5 @@ area 18 O6)?
   'Inventory and receipts' (Area 9 §7).
 
 - **Amendment 2026-11-25 (pointer, Area 11): `depreciation_run` is defined.** The check passes when every In service asset has a Posted or Caught up schedule line for the period (Area 11 §4); the Fixed assets and depreciation and Loans lock areas apply to depreciation, disposals, loan entries and reversals through the shared check (§1.4). A loans check (bills due within the lead days are drafted) is a planning proposal, warn only.
+
+- **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): the custom-field posted-document hook is moot.** No custom field exists on an invoice or a bill, so the `custom_fields._check_posted` row in the §1.4 caller table, the "Custom-field edits on posted invoices and bills" line and the custom-field half of Q6 A do not apply; the attachment-removal half stays.

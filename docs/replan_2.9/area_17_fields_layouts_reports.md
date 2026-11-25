@@ -1081,3 +1081,5 @@ by service type, with the `poc_snapshot` figures; area 7 section 8.3, Q18 A). `s
 - **Amendment 2026-11-25 (pointer, Area 16): no "Show in reports" flag.** Q1 option A stands: every active custom field of a covered record type is offered by its immutable `field_key`; Area 16 adds `value_user_id` for the new User type, a field with scope rows is offered for records whose service type it applies to, and an inactive field still resolves in saved definitions.
 
 - **Amendment 2026-11-25 (pointer, Area 16; corrects the pointer above): Lead fields are per service type.** A Lead custom field belongs to one service type and one stage; two service types may each have a field with the same label (two definitions, distinct `field_key`s), so the registry shows a Lead field with its service type name beside its label.
+
+- **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): the registry covers Lead fields only.** Custom fields of Contact, Invoice, Bill, Project and Estimate no longer exist (their old rows are archived read-only in `custom_field_legacy`, Area 16 §7); the registry's custom part is `cf.lead.<key>`.
