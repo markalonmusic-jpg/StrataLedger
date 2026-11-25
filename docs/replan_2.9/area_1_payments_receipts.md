@@ -414,3 +414,20 @@ Area 5 decided the rules (§8.5 Q9 and Q10, §4.2); this area owns the postings.
   `invoice.write_off.approve` (planning proposals). Confirmed (owner 9:10 PM): unapply uses the recording permission
   and a reason, void needs only a reason, and neither has an approval kind (Area 14 §3, §15). A vendor-credit
   write-off follows the Company threshold alone.
+
+### 9.2 Amendment 2026-11-25 (Area 11 §6, owner A11-Q2): the shipped payment method 'Loan funded' (planning proposal for the mechanics, owner may revise)
+
+A loan paid to the equipment dealer is the dealer's bill (Area 3) paid by a bank payment for any down payment plus a **"loan funded" payment** that names a loan, not a bank account (Area 11 §6).
+
+- **Schema:** `payment_method.kind` gains 'Loan funded' (direction 'Made' only; seeded as a shipped method, `is_core` = 1, not deactivatable while a loan uses it). `payment` gains `loan_id` INTEGER NULL REFERENCES `loan`
+  (Area 11 §6) with `loan_id` set exactly when the method's kind is 'Loan funded' (a service rule with a test, since SQL cannot read the method row) and `bank_account_id` becomes NULL for a Loan funded payment (service check; the column
+  stays required for every other kind). A Loan funded payment has no reference and no fee. **This supersedes three §1.3 items:** the seed is eight core rows (not seven), the kind list gains 'Loan funded', and `bank_account_id` ("a `bank_account` row or the Undeposited funds role account") is NULL for that kind.
+- **Posting:** Dr Accounts payable (the bill's vendor and clearing group) / Cr Loans payable (the loan's `loan_account_id`), **no bank line**; the same payment-allocation rules apply (RP11, `operation_id` retry). It **never appears in bank
+  reconciliation or the bank feed** (Area 12 reads only payments with a `bank_account_id`) and never counts in Open payments.
+- **Combining:** one bill may be paid by several payments, so a bank payment and a loan funded payment can sit on the same bill. **Example:** a $130,000.00 dealer bill = $10,000.00 bank (Dr Accounts payable $10,000.00 / Cr Bank $10,000.00) + $120,000.00 loan funded
+  (Dr Accounts payable $120,000.00 / Cr Loans payable $120,000.00); Accounts payable nets $0.00 and the loan starts at $120,000.00.
+- **Refusals:** the method is refused for customer receipts (direction 'Received'); it is refused for a loan whose status is Paid off or Closed, for a Line of credit (only an Active Term loan or Vehicle loan may be picked), for an amount above the loan's remaining unfunded
+  amount (original amount less principal already funded or paid), and when the bill's vendor is not the dealer the loan names (planning proposal: the loan's `linked_asset_id` or the asset bill must match).
+- **Tests (planning proposals):** `test_loan_funded_payment_posts_dr_accounts_payable_cr_loans_payable_and_no_bank_line`, `test_loan_funded_payment_never_appears_in_bank_reconciliation`, `test_loan_funded_method_refused_on_a_customer_receipt`,
+  `test_loan_funded_payment_refused_for_a_paid_off_or_closed_loan`, `test_loan_funded_payment_refused_for_a_line_of_credit`, `test_bank_payment_and_loan_funded_payment_on_one_bill_net_accounts_payable_to_zero` ($130,000.00 = $10,000.00 + $120,000.00),
+  `test_loan_funded_payment_cannot_exceed_the_loans_unfunded_amount`, `test_loan_funded_retry_with_the_same_operation_id_posts_once`.
