@@ -1,6 +1,10 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14, 9 and 20 approved)
 
-## Current planning stop (2026-11-25, Areas 9 and 20 approved)
+## Current planning stop (2026-11-25, Area 11 drafted)
+
+`docs/replan_2.9/area_11_fixed_assets_depreciation_loans.md` drafted with the owner answers of 1:21 AM: straight-line and declining balance (switching to straight-line when that gives more is a planning reading), and book depreciation only, no tax schedule. Planning calls (owner may revise): loan payments are drafted as bills split into principal and interest; no entity column. The decided disposal inputs (ASSET-02, 03, 04) and Area 14's 'Asset disposal' row (OFF) are carried; every posting has a balanced worked example. **Awaiting the owner's approval.** **Open for the owner (§13):** A11-Q1 current and long-term split (shown always; posting is a control, OFF), A11-Q2 a loan paid to the seller, A11-Q3 disposal month conventions, A11-Q4 job charging by the hour. Pointers: Areas 3, 10, 13, 14 and 18. Areas still to draft: 16, 19, 21 (Area 1 drafted, awaiting approval).
+
+## Earlier planning stop (2026-11-25, Areas 9 and 20 approved)
 
 `docs/replan_2.9/area_20_connections_email_notifications.md` drafted; **revised 2026-11-25 for the owner answers A20-Q1 to Q4 (12:50 AM: Windows credential store; mail read every 15 minutes while the app is open; weather gets only the job site address; purged capture messages leave a content-free stub) and the 12:53 AM answer that serial tracking is in (Area 9 §8.3, per material code, OFF by default).** Owner rules (12:37 AM): every notice shows in the in-app list always, email is opt-in per user and
 per kind of notice, and documents still send by email as their own action; the job-site weather forecast is OFF until an Admin turns it on (one setting, owned here;

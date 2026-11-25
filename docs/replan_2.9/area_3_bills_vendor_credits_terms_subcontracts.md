@@ -658,3 +658,5 @@ no refund request, no hold.
   `emails` service and logged in `email_log` (§4); the request has no table of its own (its record is the `email_log` row, document type
   'vendor document request'). Capture-inbox drafts create vendor bills and vendor documents only through this area's services and only after one
   human confirmation (Area 20 §5).
+
+- **Amendment 2026-11-25 (pointer, Area 11): loan payments and asset purchases are bills.** Each loan payment is drafted as a bill to the lender (principal to the loan account, interest to the interest account; Area 11 §6) by `loan_bills.run`; a bill line coded to the fixed-assets account creates or links a `fixed_asset` (§3) with the line amount as its cost; proceeds from a sale or trade-in come back through Area 5's invoice and a vendor credit here (§5).

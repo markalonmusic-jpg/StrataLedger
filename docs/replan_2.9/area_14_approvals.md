@@ -576,3 +576,5 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
 - **Amendment 2026-11-25 (pointer, Area 20, owner 12:37 AM Q3): approver notices.** Area 14's routing calls Area 20's `notifications.notify` (§7) for approval
   waiting, decided, moved to the backup or Admin, and no eligible approver. Every such notice shows in the user's in-app list; email is opt-in per user and per
   kind, off by default. Area 14 owns no feed.
+
+- **Amendment 2026-11-25 (pointer, Area 11): the 'Asset disposal' row.** Area 11 owns the disposal record (`asset_disposal`, one proceeds row per asset, `operation_id` for exact retry); with the row ON the disposal is Pending approval, `asset.approve` (sensitive) approves, the final approval runs the shared lock check again, and the digest covers the assets, date, proceeds, allocation and counterparty (Area 11 §5).

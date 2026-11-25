@@ -967,3 +967,5 @@ area 18 O6)?
   `material_advances_open` (meaning still open) and `stock_count`, which exists **only while stock tracking is ON** (owner
   11:15 PM; Area 9 §5, §11). Receipts, issues and returns are new callers of the shared lock check (§1.4) under the area
   'Inventory and receipts' (Area 9 §7).
+
+- **Amendment 2026-11-25 (pointer, Area 11): `depreciation_run` is defined.** The check passes when every In service asset has a Posted or Caught up schedule line for the period (Area 11 §4); the Fixed assets and depreciation and Loans lock areas apply to depreciation, disposals, loan entries and reversals through the shared check (§1.4). A loans check (bills due within the lead days are drafted) is a planning proposal, warn only.

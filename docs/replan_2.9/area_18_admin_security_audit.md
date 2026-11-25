@@ -1437,3 +1437,5 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   calendar and weather settings; Admin and the Master), `capture.review`, `capture.manage`; the AI rows keep `ai.settings`; none in `AGENT_ALLOWED`;
   the seeded count grows. `file_attachment.target_type` gains 'Capture message'. The capture discard and the duplicate-bill discard use a Reasons
   list (OD-31). The audit trigger on `capture_message` redacts the sender address and subject (AX4 list).
+
+- **Amendment 2026-11-25 (pointer, Area 11; planning proposals): system account roles and controls.** New roles `fixed_assets_acct_id`, `accumulated_depreciation_acct_id`, `depreciation_expense_acct_id`, `loan_current_portion_acct_id`, `asset_disposal_clearing_acct_id` (the gain and loss and equipment recovery roles exist). New Controls (Admin or Master, reason, audit-logged): `loan_current_portion_reclass` (OFF) and the setting `disposal_month_convention` (Full month). `file_attachment.target_type` gains 'Loan'. Permissions `asset.*` and `loan.*` are unchanged; none in `AGENT_ALLOWED`.
