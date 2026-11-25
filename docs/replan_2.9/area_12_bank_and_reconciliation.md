@@ -753,3 +753,5 @@ All twenty answered A, one by one. The options as asked are kept in 9.1.
   tests: the invoice reopens, the original payment and deposit rows are unchanged, the fee posts once, a locked period
   refuses, an unapplied-cash receipt returns to Unapplied customer payments, and the audit log records it.
 - Closes the Area 1 pointer in section 11 and the Area 1 §9 item.
+
+- **Amendment 2026-11-25 (pointer, Area 19 draft): F11 and BF1.** Area 19 designs payroll only plus the shared batch rules and hands the Ramp lines and the never-booked-twice test to the Ramp provider step (Area 19 Q7, open). The payroll bank debit is matched by this area to the payroll clearing account.

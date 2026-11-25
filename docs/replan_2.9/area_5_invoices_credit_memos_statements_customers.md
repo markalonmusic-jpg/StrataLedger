@@ -640,3 +640,5 @@ message and `docs\planning_owner_features_2026-11-22.md` (its text is not in own
   posts (the lock check runs again at the final approval, Area 14 §6). Invoice and credit memo register their approval
   digests (amount, discount, lines, job, posting date); a posted invoice edited while its row is ON is held as a
   pending revision until approved (Area 14 §7, owner 10:20 PM Q5). Storage of the pending revision is this area's.
+
+- **Amendment 2026-11-25 (pointer, Area 19 draft): payroll source ids.** `posted_labor_hours(project_id, cost_code_id, from, to)` returns `time_entry` rows net of reversals with their source ids, hours and wage evidence; accruals and unposted batches are never returned; a payroll reversal is refused while its hours are on an issued T&M invoice (Area 19 §8, Q5 open).

@@ -578,3 +578,5 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   kind, off by default. Area 14 owns no feed.
 
 - **Amendment 2026-11-25 (pointer, Area 11): the 'Asset disposal' row.** Area 11 owns the disposal record (`asset_disposal`, one proceeds row per asset, `operation_id` for exact retry); with the row ON the disposal is Pending approval, `asset.approve` (sensitive) approves, the final approval runs the shared lock check again, and the digest covers the assets, date, proceeds, allocation and counterparty (Area 11 §5).
+
+- **Amendment 2026-11-25 (pointer, Area 19 draft): 'Payroll import' row.** Area 19 reviews the exact mapped rows through a stored `review_digest` (always on); when this row is ON the entry posts on final approval, and any row, mapping or batch change after review voids the review and the approval (Area 19 §5). Planning proposal, owner may revise.
