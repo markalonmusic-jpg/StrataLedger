@@ -572,3 +572,7 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   rows; a PO with its row ON is 'Pending approval' until approved and is committed only on Send, Mark as sent or Print;
   an approved unsent PO is voided by an edit; a sent PO changes only through a change record (Area 9 §6.3). The digest is
   this area's §7 default (amount, discount, lines, job), plus the vendor (planning proposal).
+
+- **Amendment 2026-11-25 (pointer, Area 20, owner 12:37 AM Q3): approver notices.** Area 14's routing calls Area 20's `notifications.notify` (§7) for approval
+  waiting, decided, moved to the backup or Admin, and no eligible approver. Every such notice shows in the user's in-app list; email is opt-in per user and per
+  kind, off by default. Area 14 owns no feed.

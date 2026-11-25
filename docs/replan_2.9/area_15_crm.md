@@ -1090,3 +1090,9 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
   are new approval kinds, OFF (Area 14 §3, §5.1). A move into a stage marked `service_stage.needs_approval` (a
   proposed column, default 0, owned here) waits for approval and the lead stays where it was. Warnings stay the
   default (F17).
+
+- **Amendment 2026-11-25 (pointer, Area 20; planning call 12:37 AM): the notification feed moves to Area 20.** The lines that name "area 21's feed" (§0 row 8,
+  row 10, the activity reminder, the case Resolve prompt, the boundary row and open item 1) now read Area 20 §7; Area 21 keeps the company calendar query
+  (`activities.calendar_rows`) and `row_version`. The appointment event's SEQUENCE is Area 20's own counter (create at 0, one increment per successful
+  update or cancel, a retry never increments twice), **not** `row_version` (this replaces "SEQUENCE = `row_version`" above), and each sent event keeps its
+  original destination for updates and cancels (owner 2026-11-22 item 24).

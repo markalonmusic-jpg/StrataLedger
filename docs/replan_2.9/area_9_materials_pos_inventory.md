@@ -617,3 +617,7 @@ estimated and corrected there: the answers were given between 11:30 and 11:43 PM
 - **Q7 (owner):** a price difference on received stock splits between stock value (units on hand) and the new controlled "Stock price
   differences" role (units used); job PO differences go to the PO line's job and cost code. §7.
 - **Item list reconciliation (planning proposal, owner may revise):** one list; a stocked item is a material code (§4, §5).
+
+- **Amendment 2026-11-25 (pointer, Area 20): notices and the capture inbox.** The "request line recoded" and "late or short delivery" notices are
+  seeded kinds in Area 20's feed (§7; in-app always, email opt-in per kind). Capture-inbox delivery tickets and pull tickets become Area 9 drafts only
+  through `goods_receipt` and `pull_ticket` services after one human confirmation; serial numbers read from a pallet label stay out of scope here.

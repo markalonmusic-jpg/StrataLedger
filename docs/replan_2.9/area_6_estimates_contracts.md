@@ -1382,3 +1382,7 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   material code as before; the same lock now reaches PO lines and, through the PO line, matched bill lines (Area 9 §10), so a Material
   estimate line, its PO line and its bill line each take the material code's cost code when saved (a later re-pointing changes none of them). (3) A Material estimate line's unit comes from the company
   unit list, including reactivated units (Area 9 §3).
+
+- **Amendment 2026-11-25 (pointer, Area 20): sending and the expiry notice.** The proposal email goes through the company mailbox and is logged in
+  `email_log`; the revision stores `sent_email_id` (a new column, planning proposal) beside its sent date; Cc the rep. The 3-day expiry reminder is a
+  notice in Area 20's feed (§7; in-app always, email only if the user opted in), not a document email.

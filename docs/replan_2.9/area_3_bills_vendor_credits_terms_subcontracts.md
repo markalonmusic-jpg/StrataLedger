@@ -653,3 +653,8 @@ no refund request, no hold.
   price-difference, freight and tax rows post to the same job and cost code. A bill line with no PO match is coded here as before
   (a cost code is required with a job). No "bill line may recode" text exists in this area (checked). A wrong code is fixed on the
   PO before billing or by reclass after posting (Area 10; planning reading, owner may correct). Matching is a Company control, OFF by default (Area 9 §9).
+
+- **Amendment 2026-11-25 (pointer, Area 20): O6 answered.** The remittance email and the vendor document request email are sent by Area 20's
+  `emails` service and logged in `email_log` (§4); the request has no table of its own (its record is the `email_log` row, document type
+  'vendor document request'). Capture-inbox drafts create vendor bills and vendor documents only through this area's services and only after one
+  human confirmation (Area 20 §5).

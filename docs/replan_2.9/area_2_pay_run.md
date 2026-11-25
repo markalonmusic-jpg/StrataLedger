@@ -367,3 +367,7 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner approval of Ar
   one approval mechanism (Area 14 §3, §5.1): `pay_run.approval_request_id` points to `approval_request`; approving
   runs `pay_runs.check_lines` again; approval posts nothing, so the period-lock check at approval does not apply to
   it (Area 14 §6). Separation of duties follows "Require a separate approver" (OFF), with the Area 14 §8 fallback.
+
+- **Amendment 2026-11-25 (pointer, Area 20): remittance email.** After a line is recorded, the email goes through the company mailbox and is
+  logged in `email_log` (kind 'Document', Area 20 §4); with no mailbox the remittance keeps Save PDF, Print and Mark as sent. A document
+  email is its own action and never depends on a notice preference (owner 12:37 AM, Q3).

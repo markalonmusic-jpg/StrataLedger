@@ -1,6 +1,16 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14 and 9 approved)
 
-## Current planning stop (2026-11-25, Area 9 approved)
+## Current planning stop (2026-11-25, Area 20 drafted)
+
+`docs/replan_2.9/area_20_connections_email_notifications.md` drafted. Owner rules (12:37 AM): every notice shows in the in-app list always, email is opt-in per user and
+per kind of notice, and documents still send by email as their own action; the job-site weather forecast is OFF until an Admin turns it on (one setting, owned here;
+Area 8 points to it). Planning calls (owner may revise): the notification feed lives in Area 20 (Area 21 pointed here; next_step lines 645 and 687 marked); email sends
+from the company's own mailbox as live Connections shows. Also built from owner decisions already on file: CAP-04, CONN-01 to CONN-03 and OD-24 (sent events keep their
+destination). Nothing in this area posts, approves or moves money. **Awaiting the owner's approval.** **Open for the owner (§15):** A20-Q1 where secrets live (AG1 versus
+the key store), A20-Q2 how the desktop reads mail, A20-Q3 what the weather service receives, A20-Q4 what stays of a purged capture message. Pointers: Areas 2, 3, 6, 8, 9,
+14, 15 and 18. Areas still to draft: 1 (drafted), 11, 16, 19, 21.
+
+## Earlier planning stop (2026-11-25, Area 9 approved)
 
 `docs/replan_2.9/area_9_materials_pos_inventory.md` drafted with the owner answers of 11:05 to 11:35 PM; **revised 2026-11-24 for the owner answers to §16 Q1 to Q7 (11:30 to 11:43 PM; section 18)**. Owner rules:
 units add and deactivate (never delete, no rename of a used unit; settles OD-51); stock tracking is a Company control,
@@ -577,7 +587,7 @@ beside them, never deleted (area 7 fix 3).
   if the outgoing company's checkpoint fails or is skipped; that outcome is recorded and reported separately against
   the outgoing company, and Signed is shown only when the service confirms it was saved. A failed destination open
   keeps the original company selected and usable. Also retain the open payments limits (30 and 180 days) as policy records (area 12 Q16 A),
-  `row_version` and stale-save refusal on `company_settings`, area 17's general notification feed and whether saved
+  `row_version` and stale-save refusal on `company_settings`, area 17's general notification feed **[Amendment 2026-11-25: Area 20 §7]** and whether saved
   views can be shared.
 - **Areas 12, 13 and 10 and 17 build items for later phases:** (area 17: `field_registry`, `list_prefs`,
   `report_layouts`, `report_formulas`, `report_sources`, `saved_reports`, `packs`, `report_run`, `report_records`,
@@ -642,7 +652,7 @@ beside them, never deleted (area 7 fix 3).
   its UID and sequence. Test `test_calendar_address_change_keeps_sent_event_destination_for_updates_and_cancels`.
   Area 8 handoff: PMSCHED-04 schedule notifications follow the same rule.
   Keep backend work behind Phase 2.9 approval.
-- **Area 21:** the notification feed; `last_seen_at`; the CRM alerts.
+- **Area 21:** the notification feed; `last_seen_at`; the CRM alerts. **[Amendment 2026-11-25 (planning call 12:37 AM): the notification feed and `last_seen_at` are now Area 20 §7; Area 21 keeps the calendar query and `row_version`.]**
 
 ## Handed to later areas by area 6 (open items, not decisions)
 
@@ -684,7 +694,7 @@ Area 6's amendment lines are already in areas 8, 15 and 18; these are the items 
 - **Area 4:** pay apps read the contract's SOV and cost codes, retainage and the deposit-remaining balance.
 - **Area 16:** custom fields on Estimate (on `estimate`, Q25 A); the refusal in `custom_fields.py` is lifted with
   `estimates.py`. **Area 17:** `src_leads_estimates` field ids and the rep on the contract. **Area 20:** the proposal
-  email and its log id. **Area 21:** notifications (PM assigned, Ask the rep, send back, the 3-day expiry reminder) and
+  email and its log id. **Area 21:** notifications (PM assigned, Ask the rep, send back, the 3-day expiry reminder) **[Amendment 2026-11-25: now Area 20 §7]** and
   `row_version` on the new `company_settings` columns.
 - **2.8 (backups):** the company logo's `storage.py` key (`company_branding.logo_storage_key`) is included in the
   company backup and restore, like attachments, and recorded in `backup_run`.

@@ -1699,3 +1699,9 @@ preview for the approver).
   `purchase_order.expected_on` with the optional per-line override on sent POs (Area 9 §6.1, §6.2); stock available is on
   hand less reserved and is 0 when stock tracking is OFF (Area 9 §5, §8.2). Field material requests are raised by the PM
   (Area 9 §8.1).
+
+- **Amendment 2026-11-25 (pointer, Area 20, owner 12:37 AM Q4): the weather forecast is OFF until an Admin turns it on.** The setting
+  `company_settings.weather_forecast_on` is owned by Area 20 Connections (§8); this area (§12.2 "a company setting turns it on") points to it. It clarifies, and does
+  not remove, "the weather forecast stays on" (owner 11/22): the feature stays, the default is OFF. `final_bill_request.email_ref` points to
+  `email_log.email_id`; share-schedule emails are sent and logged there; calendar events keep their original destination for updates and cancels (owner
+  2026-11-22 item 24; Area 20 §6).

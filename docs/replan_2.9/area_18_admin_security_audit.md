@@ -1432,3 +1432,8 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   (Admin or Master, reason, audit-logged): `stock_costing_method` (Moving average or FIFO, picked once, locked after the first stock
   history; owner) and `hold_unmatched_bills` (OFF; only while `po_matching` is ON; it holds a bill that differs from the receipt before approval and sends it to the job's PM, not payment hold; live Settings > ERP text, owner 11/25). `po_matching` is the owner's
   control (OFF by default; live "Match bills to purchase orders").
+
+- **Amendment 2026-11-25 (pointer, Area 20; planning proposals): permissions, attachments and reasons.** New codes `connection.manage` (sensitive; mailbox,
+  calendar and weather settings; Admin and the Master), `capture.review`, `capture.manage`; the AI rows keep `ai.settings`; none in `AGENT_ALLOWED`;
+  the seeded count grows. `file_attachment.target_type` gains 'Capture message'. The capture discard and the duplicate-bill discard use a Reasons
+  list (OD-31). The audit trigger on `capture_message` redacts the sender address and subject (AX4 list).
