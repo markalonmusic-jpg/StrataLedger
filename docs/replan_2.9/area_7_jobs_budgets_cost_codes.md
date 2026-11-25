@@ -1087,3 +1087,8 @@ Handed to areas not yet drafted:
 - **Amendment 2026-11-24 (Area 8 Q28 revisited; rule owned by Area 8 §12.16).** `project.target_start_on` is NULL
   allowed again (a job with no start shows "Not scheduled"). The required date at job creation is the planned
   completion, the baseline finish, held on the baseline (Area 8 §12.16).
+
+- **Amendment 2026-11-24 (pointer, Area 9): committed amounts and material codes.** Job cost "committed" reads only
+  **sent** POs and subcontracts (`purchase_order.committed_at`; Area 9 §6.2), less closed remainders. A material code needs
+  an active leaf cost code, and a cost code cannot be deactivated while an active material code uses it (Area 9 §4).
+  The PO's inline over-budget transfer calls `add_transfer_rows`.

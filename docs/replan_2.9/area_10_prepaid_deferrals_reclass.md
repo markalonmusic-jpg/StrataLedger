@@ -935,3 +935,6 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
   permission may also unapply an application while the payment stays posted (Dr Accounts receivable / Cr Unapplied
   customer payments, with a reason). RP11 no longer requires the payment to be voided. The OD-70 entries above are
   unchanged.
+
+- **Amendment 2026-11-24 (pointer, Area 9): `original_item_ref` becomes `original_material_id`** (FK to
+  `material_code`, NULL for a non-material line) in the same baseline pass (Area 9 §4, §13).

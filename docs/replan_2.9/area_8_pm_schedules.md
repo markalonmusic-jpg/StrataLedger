@@ -1694,3 +1694,8 @@ preview for the approver).
   order' row with the margin-floor condition; self-approval follows "Require a separate approver" with the Area 14 §8
   fallback (refused only while another eligible approver exists, so the test above reads
   `test_rebuild_self_approval_refused_when_separate_approver_on_and_another_eligible_approver_exists`); at most one open rebuild request per schedule (Area 14 §5 rule 10).
+
+- **Amendment 2026-11-24 (pointer, Area 9): the Material forecast inputs (§12.3).** Open PO quantity by date reads
+  `purchase_order.expected_on` with the optional per-line override on sent POs (Area 9 §6.1, §6.2); stock available is on
+  hand less reserved and is 0 when stock tracking is OFF (Area 9 §5, §8.2). Field material requests are raised by the PM
+  (Area 9 §8.1).

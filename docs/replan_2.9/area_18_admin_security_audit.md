@@ -1417,3 +1417,11 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   (planning proposals): `customer_refund.approve`, `invoice.write_off.approve`, `vendor_credit.write_off.approve` and one
   `<kind>.approve` per other kind; all sensitive, none in a level default or `AGENT_ALLOWED`. The Approvers page rows
   are the 21 kinds of `approval_kind` (Area 14 §3, §9).
+
+- **Amendment 2026-11-24 (pointer, Area 9, planning proposals): roles, controls and permissions.** New system account
+  roles `inventory_acct_id` and `purchase_price_variance_acct_id` (GRNI and `inventory_adjustments_acct_id` exist;
+  `job_materials` stays Area 7's cost-type default). New Controls (Admin or Master, reason, audit-logged): `stock_tracking`
+  (OFF, owner), `require_pull_tickets` (OFF; only while tracking is ON) and `po_matching` (OFF, with tolerance settings).
+  New permissions: `material_request.create`, `material_code.manage` and `list.manage` if none exists (seed count 115
+  grows). Reasons: Close PO remaining and the matching override use a Reasons list with the conditional 10-character CHECK
+  (§8.7). Units are a list edited by the Lists permission; no reason required.

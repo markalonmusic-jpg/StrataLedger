@@ -962,3 +962,8 @@ area 18 O6)?
   (Area 14 §9). Area 14 §6 adds a caller of the shared lock check (§1.4): the final approval of a kind that posts on
   approval runs `period_locks.check_open` (and the Special cutoff) again, refusing with the lock sentence and leaving the
   request Pending. `controlled_entry_reviewed` reads the same approvals.
+
+- **Amendment 2026-11-24 (pointer, Area 9): the three Area 9 checks are defined.** `received_not_billed_aged`,
+  `material_advances_open` (meaning still open) and `stock_count`, which exists **only while stock tracking is ON** (owner
+  11:15 PM; Area 9 §5, §11). Receipts, issues and returns are new callers of the shared lock check (§1.4) under the area
+  'Inventory and receipts' (Area 9 §7).

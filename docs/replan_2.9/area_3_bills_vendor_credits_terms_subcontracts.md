@@ -641,3 +641,9 @@ no refund request, no hold.
   write-offs; the Write-off row is not consulted (Area 14 §5.1, Q2). Area 14 adds no duplicate-review approval: the
   duplicate warning with a reason stands. 'Bill' and 'Vendor credit' post in a separate step, which runs the lock
   check; the approval itself does not.
+
+- **Amendment 2026-11-24 (pointer, Area 9, owner 11:25 PM): O1 answered.** A subcontract is a `purchase_order` with
+  `po_type` 'Subcontract' (header, lines as the SOV, `purchase_order_change` rows), with its own number series (SC-014)
+  apart from material POs; Area 9 §6 builds those tables and `bill_match` (§9), so this area's `po_line_id`,
+  `receipt_line_id` and `subcontract_line_id` FKs point there in the same baseline pass. The over-limit check stays this
+  area's control `subcontract_overlimit_block` (OFF by default); Area 9 does not make it integrity.

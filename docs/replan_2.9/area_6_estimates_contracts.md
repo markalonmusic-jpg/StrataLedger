@@ -1367,3 +1367,11 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   `document_approval_setting` is the switch (OFF, RP9), so §4.3's "OFF = no active policy" reads: row OFF = no
   request; row ON with no saved policy = the default route. The Estimate row is the OD-81 discount control (owner
   8:30 PM). 'Contract cancellation' is a new kind (Area 14 §3); `sales_authority_limit` stays here and Area 14 reads it.
+
+- **Amendment 2026-11-24 (pointer, Area 9, owner 11:35 PM): the material code's cost code is driving, not a default.**
+  The line 312 wording "editable per line, C129" and §3.4's "default cost code" are superseded: an estimate cost line with
+  a material code takes that code's cost code and cannot change it; free-text (Other) lines pick their own. A template
+  Material line takes the material code's cost code too. `estimate_cost_line.material_code_id` becomes a FK to Area 9's
+  `material_code` (§4) and the free-text `unit_of_measure` becomes `unit_id` (Area 9 §3). OD-80 is unaffected: the cost
+  code type, and so the fixed markup, follows the material code's cost code. Saved lines never change when a material
+  code is re-pointed.

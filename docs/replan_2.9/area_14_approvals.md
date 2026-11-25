@@ -567,3 +567,8 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
   Area 3's threshold is kept; (4) the Estimate row is the OD-81 control; (5), (6) already withdrawn or corrected by
   pointer; (7) send-back goes to the submitter; (8) the setting row is the switch, a policy never switches approval
   on by itself; (9) both labels kept; (10) the journal entry's switch stays `manual_entry_approval`.
+
+- **Amendment 2026-11-24 (pointer, Area 9): Purchase order and Subcontract rows.** One commitment record serves both
+  rows; a PO with its row ON is 'Pending approval' until approved and is committed only on Send, Mark as sent or Print;
+  an approved unsent PO is voided by an edit; a sent PO changes only through a change record (Area 9 §6.3). The digest is
+  this area's §7 default (amount, discount, lines, job), plus the vendor (planning proposal).

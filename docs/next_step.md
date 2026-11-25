@@ -1,6 +1,18 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2 and 14 approved)
 
-## Current planning stop (2026-11-24, Area 14 approved)
+## Current planning stop (2026-11-24, Area 9 drafted)
+
+`docs/replan_2.9/area_9_materials_pos_inventory.md` drafted with the owner answers of 11:05 to 11:35 PM. Owner rules:
+units add and deactivate (never delete, no rename of a used unit; settles OD-51); stock tracking is a Company control,
+OFF by default; one commitment record `po_type` Materials or Subcontract (commitment on Send, Mark as sent or Print);
+free-text "to be coded" request lines; **a line with a material code takes its cost code, read-only on the line**.
+Planning proposals: `unit_of_measure`, `material_code`, PO, change, receipt, `bill_match`, request, pull ticket and
+stock tables; `po_matching` control (OFF); moving-average costing. **Awaiting the owner's approval.** **Open for the
+owner (§16):** Q1 matching default, Q2 costing method, Q3 free-text PO lines, Q4 bill lines and the cost code lock, Q5
+unit reactivation, Q6 re-coded request lines, Q7 where a job-site price difference posts. Pointers: Areas 3, 6, 7, 8,
+10, 13, 14 and 18. Areas still to draft: 11, 16, 19, 20, 21.
+
+## Earlier planning stop (2026-11-24, Area 14 approved)
 
 `docs/replan_2.9/area_14_approvals.md` drafted with the owner answers of 10:05 PM (only Reject and Send back need a
 reason; Approve takes an optional comment) and 10:20 PM (Q1-Q7). One mechanism: `approval_kind` (21 kinds, six new, all
