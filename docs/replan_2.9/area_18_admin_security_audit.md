@@ -1430,5 +1430,5 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   role `purchase_price_variance_acct_id` is **Withdrawn**: receipts post at actual PO cost with no variance account. Added role
   `stock_price_differences_acct_id` (expense, owner 11:43 PM; "controlled account" is a planning reading) beside `inventory_acct_id`. Added Controls
   (Admin or Master, reason, audit-logged): `stock_costing_method` (Moving average or FIFO, picked once, locked after the first stock
-  history; owner) and `hold_unmatched_bills` (OFF; only while `po_matching` is ON; planning reading). `po_matching` is the owner's
+  history; owner) and `hold_unmatched_bills` (OFF; only while `po_matching` is ON; it holds a bill that differs from the receipt before approval and sends it to the job's PM, not payment hold; live Settings > ERP text, owner 11/25). `po_matching` is the owner's
   control (OFF by default; live "Match bills to purchase orders").

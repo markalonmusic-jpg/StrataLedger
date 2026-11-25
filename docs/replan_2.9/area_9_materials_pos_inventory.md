@@ -421,7 +421,8 @@ Sources read (only these, searched by section, date or code):
   only and the bill goes ahead. ON: each bill is compared with its PO and receipt and a difference over the tolerance needs an
   override and an OD-31 reason (a listed reason, or Other with 10 typed characters) before it is approved. **"Hold bills that do not
   match the receipt"** stays its own control, `company_settings.hold_unmatched_bills` DEFAULT 0, and **applies only while matching is ON**
-  (planning reading; what it holds is payment, as the compliance hold does). This replaces the po design's "matching ON for everyone".
+  (live Settings > ERP text, confirmed by the owner 2026-11-25): **it holds the bill before approval**: a bill whose quantity or price differs from the receipt
+  goes to the job's project manager instead of going to approval with a warning; it does not hold payment. Both controls are OFF by default. This replaces the po design's "matching ON for everyone".
 - **Limits follow the same control (planning proposal):** with `po_matching` OFF a bill past a PO line's open amount
   or a receipt past the open quantity shows a warning and is allowed; with it ON both are exceptions that block beyond
   the tolerance (quantity 0%, price and amount 15%). A subcontract's cap follows Area 3's `subcontract_overlimit_block`. A
@@ -431,6 +432,7 @@ Sources read (only these, searched by section, date or code):
   `test_matching_control_off_never_blocks_approval_or_payment`,
   `test_4200_po_billed_4900_needs_override_only_when_matching_on`,
   `test_hold_unmatched_bills_defaults_off_and_applies_only_with_matching_on`,
+  `test_hold_unmatched_bills_sends_a_mismatched_bill_to_the_jobs_pm_before_approval_not_to_payment_hold`,
   `test_matching_control_on_blocks_until_resolved`, `test_override_needs_reason_and_role`,
   `test_void_of_a_matched_bill_reopens_the_po_line`, `test_bill_price_difference_is_recorded_on_the_match`,
   `test_compare_before_tax_checks_tax_separately`, `test_po_line_billed_past_open_amount_warns_when_off_blocks_when_on`,
@@ -587,7 +589,6 @@ operation ID never double posts; the AI never approves, posts or moves money.
 - **Not asked:** whether Subcontract SOV lines also need a material code (planning proposal: a cost code and no material code, §6.1).
 - **Not asked:** whether roll, sheet, bundle, square, pallet and lot join the shipped unit defaults (§5; today they would be the
   sample company's own units).
-- **Not asked:** what "Hold bills that do not match the receipt" holds when matching is ON (planning reading: payment, not approval).
 - The 59 sample inventory items without material codes (design-queue work order, §5).
 - Returns to vendor and purchase credits for stock items; scrap and write-down of stock beyond count adjustments.
 - Multi-location transfers between warehouses; lot or serial tracking; barcode scanning (out of scope).
@@ -603,7 +604,7 @@ estimated and corrected there: the answers were given between 11:30 and 11:43 PM
 
 - **Q1 matching (owner):** a Company control, OFF by default; ON compares each bill with its PO and receipt (15% price and amount before tax,
   quantity exact), over tolerance needs an override and an OD-31 reason; "Hold bills that do not match the receipt" stays its own
-  control, OFF, only with matching ON (planning reading). §9.
+  control, OFF, only with matching ON; it holds the bill before approval and routes it to the job's project manager (live Settings > ERP text, owner 2026-11-25), not payment. §9.
 - **Q2 costing (owner):** moving average or FIFO, picked once, locked after the first stock history; no LIFO, no standard cost;
   moving average pre-selected (planning reading); both are actual cost, no purchase price variance on receipt; "standard unit cost"
   renamed "default unit cost". §5, §7, §8.2.
