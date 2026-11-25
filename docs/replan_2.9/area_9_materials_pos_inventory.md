@@ -404,6 +404,24 @@ Sources read (only these, searched by section, date or code):
   `test_last_unit_issued_takes_the_remaining_value_under_average`, `test_count_adjustment_posts_to_inventory_adjustments_role`,
   `test_pull_ticket_requires_inventory_pull_permission`.
 
+### 8.3 Serial numbers (owner 12:53 AM, 2026-11-25; reopens Area 20's conflict)
+
+- **Owner rule:** serial tracking is in the plan, **per material code, OFF by default**; a material code can be set to track serial numbers **only when stock tracking is on**.
+  Serials are **recorded at receipt, picked at pull, and kept on the job's record for warranty.** Example: inverter SN 4471-A pulled to RI0001-002 shows on that job's
+  record. Live already has the New inventory item form's "Track serial numbers" (recorded at receipt, checked at pull) and the String inverter 12 kW with 14 serials.
+- **`material_code.track_serials`** INTEGER NOT NULL DEFAULT 0 (the service refuses 1 while `stock_tracking` is OFF, and refuses a change once the code has stock movements; planning proposal).
+- **`stock_serial`** (planning proposal): `serial_id`; `material_id`; `serial_no` TEXT NOT NULL (trimmed, UNIQUE per material ignoring case); `receipt_line_id` (where it came in);
+  `location_id` NULL; `status` CHECK IN ('In stock', 'Pulled', 'Returned to stock', 'Scrapped'); `pull_ticket_line_id` NULL; **`project_id` NULL (set when pulled, kept for warranty after the
+  ticket closes)**; `pulled_at`; `row_version`. **`stock_serial_history`** (insert-only): `serial_id`, `event` (Received, Pulled, Returned, Adjusted), `source_type`, `source_id`, `project_id`, `at`, `by`.
+- **Rules (planning proposals unless the owner words above):** a receipt line for a tracked code needs one serial per unit received, entered or confirmed by a person; a pull ticket line for a tracked
+  code names the serials taken, the count equals the quantity, and each must be In stock at that location (checked at pull); a return puts the serial back In stock and the history keeps the job; a serial
+  pulled to a job shows on the job's record and its warranty view (Area 8's warranty job link); no serial is ever deleted. Serials never change cost: the issue cost still follows moving average or FIFO (§8.2).
+  Typed serials may arrive from a capture draft (Area 20 §5); reading them from a label photo is Phase 6.
+- Tests: `test_track_serials_defaults_off_and_requires_stock_tracking_on`, `test_tracked_receipt_needs_one_serial_per_unit`, `test_serial_unique_per_material_ignoring_case`,
+  `test_pull_checks_each_serial_is_in_stock_at_the_location_and_count_equals_quantity`, `test_pulled_serial_shows_on_the_jobs_record_for_warranty`,
+  `test_return_restores_the_serial_and_history_keeps_the_job`, `test_serial_is_never_deleted`, `test_track_serials_cannot_change_once_the_code_has_movements`,
+  `test_serial_pull_cost_follows_the_costing_method`.
+
 ## 9. Matching and tolerances (owner: a Company control, OFF by default; po design §5)
 
 - **`bill_match`:** `invoice_line_id`, `po_line_id`, `receipt_line_id` NULL, `matched_quantity`, `matched_amount_cents`,
@@ -503,12 +521,12 @@ Sources read (only these, searched by section, date or code):
 - **Baseline (planning):** new tables: `unit_of_measure`, `material_code`, `purchase_order`, `purchase_order_line`,
   `purchase_order_change`, `purchase_order_change_line`, `goods_receipt`, `goods_receipt_line`, `bill_match`,
   `material_request`, `material_request_line`, `stock_location`, `stock_movement`, `stock_reservation`, `pull_ticket`,
-  `pull_ticket_line`, `stock_cost_layer`, `po_number_sequence`; `company_settings` gains `stock_tracking`, `require_pull_tickets`,
+  `pull_ticket_line`, `stock_cost_layer`, `stock_serial`, `stock_serial_history`, `po_number_sequence`; `company_settings` gains `stock_tracking`, `require_pull_tickets`,
   `po_matching`, `hold_unmatched_bills`, `stock_costing_method`, the tolerance columns (with per-vendor override columns on `contact` and per-PO override columns on `purchase_order`),
   `inventory_acct_id`, `stock_price_differences_acct_id` (`job_materials` is a cost-type default role from Area 7 Q20, not a `company_settings`
   column);
   `estimate_cost_line.unit_id` and the `material_code_id` FK replace the free text and the plain integer; Area 3's FKs
-  (`po_line_id`, `receipt_line_id`, `subcontract_line_id`) are added; `reclass_line.original_material_id`; `material_code.item_sku`, `reorder_point`, `is_service`.
+  (`po_line_id`, `receipt_line_id`, `subcontract_line_id`) are added; `reclass_line.original_material_id`; `material_code.item_sku`, `reorder_point`, `is_service`, `track_serials`.
 - **Code:** new services `units.py`, `material_codes.py`, `purchase_orders.py` (create, send, close remainder, change),
   `receipts.py`, `matching.py`, `material_requests.py`, `stock.py`, `pull_tickets.py`; no UI or HTTP imports (H1), no
   clock reads (H2), file attachments through `storage.py` (H3). Static tests: every function that writes `journal_line`
@@ -591,7 +609,7 @@ operation ID never double posts; the AI never approves, posts or moves money.
   sample company's own units).
 - The 59 sample inventory items without material codes (design-queue work order, §5).
 - Returns to vendor and purchase credits for stock items; scrap and write-down of stock beyond count adjustments.
-- Multi-location transfers between warehouses; lot or serial tracking; barcode scanning (out of scope).
+- Multi-location transfers between warehouses; lot tracking; barcode scanning (out of scope). Serial tracking is in (§8.3).
 - Notifications for late or short deliveries: Area 20.
 - Foreign currency, tax on use (the `use_tax_payable_acct_id` role exists), and Ramp or card purchases without a PO.
 - Compliance document defaults (insurance certificate and lien waiver) and the tax tolerance value: the PO design's open
@@ -620,4 +638,9 @@ estimated and corrected there: the answers were given between 11:30 and 11:43 PM
 
 - **Amendment 2026-11-25 (pointer, Area 20): notices and the capture inbox.** The "request line recoded" and "late or short delivery" notices are
   seeded kinds in Area 20's feed (§7; in-app always, email opt-in per kind). Capture-inbox delivery tickets and pull tickets become Area 9 drafts only
-  through `goods_receipt` and `pull_ticket` services after one human confirmation; serial numbers read from a pallet label stay out of scope here.
+  through `goods_receipt` and `pull_ticket` services after one human confirmation; serials are tracked per material code (§8.3); reading them from a pallet label stays Phase 6.
+
+## 19. Amendment 2026-11-25 12:53 AM (owner; serial tracking reopens the Area 20 report)
+
+Serial tracking is in: per material code, OFF by default, only while stock tracking is on; recorded at receipt, picked at pull, kept on the job's record for warranty (§8.3). This replaces
+the "serial tracking out of scope" lines in §17 and in the Area 20 pointer above. Example: inverter SN 4471-A pulled to RI0001-002 shows on that job.

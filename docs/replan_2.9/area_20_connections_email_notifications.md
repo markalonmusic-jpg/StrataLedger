@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 20: Connections, company email, capture inbox, company calendar, notifications and Playbook
 
-Status: **DRAFT 2026-11-25, awaiting owner approval.** Docs only: nothing here changes code, a baseline, a migration
+Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers A20-Q1 to Q4 (12:50 AM) and the serial-number answer (12:53 AM), section 17.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.
@@ -39,7 +39,7 @@ Sources read (only these, searched by section, date or code):
 | 5 | Company calendar | **Off by default, Admin only (live mockup and the planning call).** One company calendar address receives every calendar item as an `.ics` event; stable UID and SEQUENCE; a downloadable `.ics` when there is no mailbox. |
 | 6 | Weather | **OFF until an Admin turns it on (owner 12:37 AM, Q4).** One setting, owned here (planning call); Area 8 points to it. Sends job addresses to a weather service. |
 | 7 | AI assistant connection | Connection settings, spending cap and an `ai_usage` log only; the assistant itself is Phase 6. Off until an Admin or the Master turns it on (AG3); a saved key and a passed test come first (planning proposal). |
-| 8 | Secrets | Passwords, tokens and keys are never in the company file, a backup or the audit log (mockup rule; AG1 conflict flagged, A20-Q1). |
+| 8 | Secrets | Passwords, tokens and keys are never in the company file, a backup or the audit log (mockup rule; AG1 superseded by the owner's A20-Q1 answer: the Windows credential store, section 17). |
 | 9 | Playbook | Tables for pages, versions and rules (C41, C42, C77), built in the baseline pass; services later (stage 3 waits for Phase 5). |
 
 ---
@@ -94,7 +94,7 @@ Sources read (only these, searched by section, date or code):
   style); `last_tested_at`, `last_test_result`, `connected_by`, `connected_at`; `row_version`. One row per kind (UNIQUE `kind`).
 - **Company mailbox settings** (`company_mailbox`, one row): `sending_name`, `sending_address` (the "Sending as" identity), `reply_to`;
   for Other: `imap_host`, `imap_port`, `imap_security`, `smtp_host`, `smtp_port`, `smtp_security`, `user_name` (no password); `check_every_minutes`
-  CHECK IN (5, 15, 0) DEFAULT 5 (the mockup's first option) (0 = manual; **the desktop app checks only while it is open**); `capture_allowed_senders` per address (§5).
+  CHECK IN (5, 15, 0) DEFAULT 15 (owner A20-Q2: every 15 minutes, an Admin may choose 5, plus Check now; 0 = manual) (0 = manual; **the desktop app checks only while it is open**); `capture_allowed_senders` per address (§5).
 - **AI assistant settings** (`ai_setting`, one row): `provider` (Google Gemini in v1; others later, AG2 includes a local model),
   `model_tier` CHECK IN ('Recommended', 'Higher quality'), `paid_plan_confirmed`, `read_company_records` DEFAULT 0, `monthly_cap_cents`
   DEFAULT 2500 ($25.00, C18.1), `who_may_use` CHECK IN ('Everyone', 'Admins and Controllers', 'Chosen roles') DEFAULT 'Everyone' (the mockup's first option), `enabled` DEFAULT 0.
@@ -103,7 +103,7 @@ Sources read (only these, searched by section, date or code):
   `used_at`, `user_id`, `provider`, `form_code`, `cost_cents` (estimated), `outcome`; never the content or the key.
 - **Weather settings:** `company_settings.weather_forecast_on` INTEGER NOT NULL DEFAULT 0 (**owner: OFF**), Admin or Master, a reason,
   audit-logged; forecasts in `weather_forecast` (§8).
-- **Secrets (planning proposal; AG1 versus the mockup, A20-Q1):** the key store holds every password, app password, refresh token and API
+- **Secrets (owner 12:50 AM, A20-Q1: the Windows credential store on the desktop, locked to the Windows user; a server secret store when hosted; AG1's "DATA_DIR\Secrets" is superseded for connection secrets):** the key store holds every password, app password, refresh token and API
   key; the company file, backups, logs and the audit log never do. The audit log records that a key was added, replaced or removed,
   by whom, and (AI key only) its last 4 characters. The hosted version uses a key vault. Services reach the key store and the
   mail and weather clients only through injected provider objects (like `clock`), so `modules/services/` imports no OS, network or
@@ -158,7 +158,7 @@ Sources read (only these, searched by section, date or code):
   `from_user_id` NULL / `from_contact_id` NULL; `received_at`; `item_type`; `project_id` NULL; `match_method` CHECK IN ('Per-job address',
   'PO number', 'Vendor or address', "Sender's jobs", 'Unsorted'); `status` CHECK IN ('Draft ready', 'Needs a job', 'Possible duplicate',
   'Needs review', 'Rejected sender', 'Reviewed', 'Discarded', 'Purged'); `discard_reason_code`, `discard_reason_text` (OD-31,
-  conditional CHECK); `purge_after` (received or discarded date + `capture_rejected_retention_days`); `reprocess_count`; `row_version`.
+  conditional CHECK); `content_fingerprint` TEXT (a hash of the message content, kept by the stub); `purge_after` (received or discarded date + `capture_rejected_retention_days`); `reprocess_count`; `row_version`.
   Files are `file_attachment` rows (Area 18 §3 adds a 'Capture message' target type), through `storage.py`.
 - **`capture_draft`** (what the assistant or a person typed): `draft_id`; `message_id`; `target_type` CHECK IN ('Goods receipt', 'Pull ticket',
   'Vendor bill', 'Vendor document', 'Job attachment'); `fields_json` (each value with where it was read and a confidence mark: Matches,
@@ -174,15 +174,15 @@ Sources read (only these, searched by section, date or code):
   - **Possible duplicate:** same vendor and bill number as an existing bill (Area 3's duplicate warning): the tray offers Discard
     duplicate (a reason, OD-31) or Keep as a different bill (a note).
   - Discard needs a reason (OD-31). Rejected and deleted messages are kept `capture_rejected_retention_days` (default 30, owner) and then
-    **purged**: the files and sender text are deleted and a stub row stays (status Purged, address, received date) so a repeat of the same
-    message is still recognized (A20-Q4).
+    **purged**: the files and sender text are deleted and a stub row stays (status Purged, content fingerprint, sender, dates) so a repeat of the same
+    message is still recognized (owner A20-Q4: the stub keeps only a content fingerprint, the sender and the dates; a re-sent bill photo is flagged "already received 01/12, rejected").
   - **Assistant off:** the photo still arrives; the person types the delivery beside it (live). The reading is Phase 6; the tray works
     without it.
   - On Confirm the reply to the sender is previewed and, with a mailbox, sent and logged (`email_log` kind 'Capture reply'); with
     none, nothing is sent.
-  - The desktop app reads mail only while open (A20-Q2); "Check now" and the interval live in §3.
-- **Not built here:** reading a serial list from a pallet label (live shows one) needs serial tracking, which Area 9 leaves out of
-  scope (§12).
+  - The desktop app reads mail only while open (owner A20-Q2: every 15 minutes, an Admin may choose 5, plus Check now; mail waits in the mailbox while the app is closed); the interval lives in §3.
+- **Serial numbers:** serial tracking is in (owner 12:53 AM; Area 9 §8.3). A delivery-ticket draft may carry typed serials into the Area 9 receipt, which a person
+  confirms; reading a serial list from a pallet label by the assistant is Phase 6.
 - Tests: `test_capture_message_never_booked_twice_same_provider_id`, `test_capture_unsorted_when_no_match_never_guessed`,
   `test_capture_sender_not_allowed_is_rejected_nothing_read_no_ai_cost`,
   `test_allow_sender_covers_only_that_address_and_reprocess_enters_review`,
@@ -261,7 +261,7 @@ Sources read (only these, searched by section, date or code):
 
 - **Setting (owner 12:37 AM, Q4):** `company_settings.weather_forecast_on` DEFAULT 0, Admin or Master, a reason, audit-logged, shown on
   Connections. **One setting, owned here (planning call); Area 8 points to it** (pointer in Area 8 §12.2; the next_step line "the weather forecast stays on" is clarified by marker). The mockup's Connections page has no weather row (the daily log has only a typed Weather field and an NWS link): design-queue work order.
-- **What is sent (planning proposal, A20-Q3):** only the job site address of jobs with an active schedule, and nothing else (no customer, no
+- **What is sent (owner 12:50 AM, A20-Q3):** only the job site address of jobs with an active schedule, and nothing else (no customer name, no job number, no
   amount). **`weather_forecast`** (`project_id`, `forecast_date`, `summary`, `high_c`, `low_c`, `precip_pct`, `fetched_at`, `source`; UNIQUE
   (`project_id`, `forecast_date`)); fetched **twice a day, read-only**, only while the setting is on and only while the app runs.
 - **Failure and offline:** a failed fetch writes nothing over the last good forecast, shows "Forecast not updated since <time>" and writes
@@ -340,7 +340,7 @@ Sources read (only these, searched by section, date or code):
 ## 13. Integrity checks kept (always on)
 
 Nothing here posts, approves or moves money; an agent-origin draft needs one human confirmation; a capture message is never booked twice;
-a mail from a sender not allowed is never read; secrets are never in the company file, a log or the audit log, and, pending A20-Q1, never in a backup; the email log,
+a mail from a sender not allowed is never read; secrets are never in the company file, a backup, a log or the audit log (owner A20-Q1); the email log,
 AI usage log and page versions are insert-only; a notice or email never carries a memo or a secret; only an Admin or the Master changes
 connections, with a reason; a document is marked sent only by a recorded send result.
 
@@ -350,18 +350,18 @@ connections, with a reason; a document is marked sent only by a recorded send re
    (pointers amend them).
 2. **SEQUENCE:** Area 15 says "SEQUENCE = `row_version`"; the CONN tests say create at 0 and one increment per successful change. This area
    uses its own counter (§6).
-3. **Secrets:** AG1 (decisions file) says "stored under `DATA_DIR\Secrets`"; the mockup and C18 say the OS key store, never in the company
-   file or a backup (A20-Q1).
+3. **Secrets (resolved, owner 12:50 AM A20-Q1):** AG1 (decisions file) says "stored under `DATA_DIR\Secrets`"; the owner chose the Windows credential store on the
+   desktop (a server secret store when hosted), so AG1 is superseded for the mailbox token and the AI key (amendment in the decisions file).
 4. **Weather:** "the weather forecast stays on (owner 11/22)" in next_step is clarified by the owner's 12:37 AM Q4 (the feature stays, the default is OFF until
    an Admin turns it on; Area 8 already says a company setting turns it on); the mockup Connections page has no weather row.
 5. **"Let the assistant read company records"** conflicts with AG4 and AG7; stored, unused until Phase 5.
-6. **Serial numbers read from a pallet label** (live capture inbox) need serial tracking, which Area 9 excludes; not built here.
+6. **Serial numbers (resolved, owner 12:53 AM):** serial tracking is in, per material code, OFF by default (Area 9 §8.3); reading serials from a pallet label stays Phase 6.
 7. **`file_attachment`** has a three-value `target_type`; Area 18 §3 widens it for 'Capture message'.
 8. **Live captures that "skip the PM on a matched bill"** (C19.1) follow Area 9's "Hold bills that do not match the receipt" control (OFF); no
    conflict, noted so the tray and the control share one rule.
 9. **The planning log (3b):** real time is hosted; on the desktop, notices and mail checks run only while the app is open (§2).
 
-## 15. Questions for the owner (recommended option first, with an example)
+## 15. Questions for the owner (recommended option first, with an example; **all answered 2026-11-25 12:50 AM, section 17**)
 
 - **A20-Q1. Where do passwords, tokens and the AI key live on the desktop?** (A) The Windows credential store, never in the company file or a
   backup, as the Connections mockup says; the hosted version uses a key vault (recommended). (B) A `DATA_DIR\Secrets` folder, as AG1 says.
@@ -380,8 +380,20 @@ connections, with a reason; a document is marked sent only by a recorded send re
 
 - Delivery of notices to a phone, push or SMS; read receipts; mention emails to people without a user.
 - Bank feed connections and the payee-ID upload layout (Area 2 O1, "Area 20 or the bank connection"); not designed here.
-- Reading serial numbers from labels (Area 9 serial tracking); reading delivery photos and bills (Phase 6).
+- Reading serial numbers from labels, and reading delivery photos and bills (Phase 6).
 - Sending a statement or invoice by email as a bulk run; email templates and a company signature; bounce handling beyond "Failed".
 - Remittance advice format and the vendor document request wording (Area 3 owns the content; this area sends).
 - Hosted multi-mailbox and per-job capture addresses (M5).
 - The Playbook editor's rich-text toolkit in the HTML front end (Phase 3).
+
+## 17. Owner answers 2026-11-25 12:50 and 12:53 AM (dated amendment; §15 stays as asked)
+
+- **A20-Q1 secrets (owner):** on the desktop the mailbox sign-in token and the AI key live in the Windows credential store, locked to the Windows user, never in the
+  company file or its backups; the hosted edition uses a server secret store. Example: copying the company file to another PC does not copy the token; the user signs in
+  again there. §3, §13, §14 item 3.
+- **A20-Q2 reading mail (owner):** the desktop reads the company mailbox while the app is open, every 15 minutes (an Admin may choose 5), plus Check now; mail waits in
+  the mailbox while the app is closed (a bill photo sent Saturday is picked up Monday). §3, §5.
+- **A20-Q3 weather (owner):** the weather service receives only the job site address; no customer name, job number or amounts (example: "1420 Mesa Rd"). §8.
+- **A20-Q4 purge (owner):** a purged capture message leaves a stub with no content: a fingerprint, the sender and the dates, so a repeat is still recognized. §5.
+- **Serial tracking (owner 12:53 AM):** in the plan, per material code, OFF by default, only while stock tracking is on; serials are recorded at receipt, picked at pull, and
+  kept on the job's record for warranty (Area 9 §8.3). Live already has "Track serial numbers" and the String inverter 12 kW with 14 serials. §5, §14 item 6.

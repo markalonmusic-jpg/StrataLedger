@@ -2,12 +2,11 @@
 
 ## Current planning stop (2026-11-25, Area 20 drafted)
 
-`docs/replan_2.9/area_20_connections_email_notifications.md` drafted. Owner rules (12:37 AM): every notice shows in the in-app list always, email is opt-in per user and
+`docs/replan_2.9/area_20_connections_email_notifications.md` drafted; **revised 2026-11-25 for the owner answers A20-Q1 to Q4 (12:50 AM: Windows credential store; mail read every 15 minutes while the app is open; weather gets only the job site address; purged capture messages leave a content-free stub) and the 12:53 AM answer that serial tracking is in (Area 9 §8.3, per material code, OFF by default).** Owner rules (12:37 AM): every notice shows in the in-app list always, email is opt-in per user and
 per kind of notice, and documents still send by email as their own action; the job-site weather forecast is OFF until an Admin turns it on (one setting, owned here;
 Area 8 points to it). Planning calls (owner may revise): the notification feed lives in Area 20 (Area 21 pointed here; next_step lines 645 and 687 marked); email sends
 from the company's own mailbox as live Connections shows. Also built from owner decisions already on file: CAP-04, CONN-01 to CONN-03 and OD-24 (sent events keep their
-destination). Nothing in this area posts, approves or moves money. **Awaiting the owner's approval.** **Open for the owner (§15):** A20-Q1 where secrets live (AG1 versus
-the key store), A20-Q2 how the desktop reads mail, A20-Q3 what the weather service receives, A20-Q4 what stays of a purged capture message. Pointers: Areas 2, 3, 6, 8, 9,
+destination). Nothing in this area posts, approves or moves money. **Awaiting the owner's approval.** **A20-Q1 to Q4 answered (§17); no open owner question remains in Areas 9 and 20.** Pointers: Areas 2, 3, 6, 8, 9,
 14, 15 and 18. Areas still to draft: 1 (drafted), 11, 16, 19, 21.
 
 ## Earlier planning stop (2026-11-25, Area 9 approved)
