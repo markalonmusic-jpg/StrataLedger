@@ -69,10 +69,10 @@ Everything is company-database only. Nothing goes in `system_master.db` except t
 ### 1.3 Proposed schema (planning proposal, owner may revise)
 
 **`payment_method`** (new): `payment_method_id` PK, `name` TEXT NOT NULL UNIQUE COLLATE NOCASE, `kind` TEXT NOT NULL
-CHECK IN ('Cash', 'Check', 'ACH', 'Wire', 'Card', 'Bank transfer', 'Paid outside', 'Other'), `direction` TEXT NOT
+CHECK IN ('Cash', 'Check', 'ACH', 'Wire', 'Card', 'Bank transfer', 'Paid outside', 'Loan funded', 'Other'), `direction` TEXT NOT
 NULL CHECK IN ('Received', 'Made', 'Both'), `requires_reference` INTEGER NOT NULL DEFAULT 0 CHECK IN (0, 1),
 `is_core` INTEGER NOT NULL DEFAULT 0, `is_active` INTEGER NOT NULL DEFAULT 1, `sort_order` INTEGER NOT NULL,
-`row_version`. Seed: the seven core rows (Paid outside is Made only). A company-added method such as GCash is kind
+`row_version`. Seed: the eight core rows (Paid outside and Loan funded are Made only; Loan funded is shipped for Area 11 §6 and not deactivatable while a loan uses it). A company-added method such as GCash is kind
 'Other' and sets its own `requires_reference`. A used method is deactivated, never deleted. The kind keeps Area 2's
 rules working: a Check needs a number unique across all payments, ACH and Wire need a reference, a Card line needs
 the card account (Area 2 §3.2). Edited under the same permission as the other Settings > Lists pages.
@@ -85,7 +85,7 @@ the card account (Area 2 §3.2). Edited under the same permission as the other S
 | `status` | new, TEXT NOT NULL CHECK IN ('Draft', 'Posted', 'Voided'), service-owned |
 | `reference` | TEXT (the check number, ACH or wire reference, card authorization); Area 2 adds the same column, one column only |
 | `memo` | TEXT, CHECK NULL or length <= 1000 |
-| `bank_account_id` | kept (REFERENCES account); it is the account the money landed in: a `bank_account` row or the Undeposited funds role account (service check); Area 12 §5 (line 463) said Area 1 may change it |
+| `bank_account_id` | kept (REFERENCES account); it is the account the money landed in: a `bank_account` row or the Undeposited funds role account (service check), and NULL for a Loan funded payment (§9.2); Area 12 §5 (line 463) said Area 1 may change it |
 | `project_id` | new, INTEGER NULL REFERENCES project: the job the money is for, when known (a deposit for RI0001-003); carried on the held line |
 | `held_account_id` | new, INTEGER NULL REFERENCES account: where an unapplied part is held; NULL means the Unapplied customer payments role (§2.2) |
 | `fee_cents`, `fee_account_id` | new, INTEGER NOT NULL DEFAULT 0 CHECK (>= 0 AND < `amount_cents`) and INTEGER NULL REFERENCES account (defaults to the `bank_charges` role); CHECK `(fee_cents = 0) = (fee_account_id IS NULL)` and fee only on a Received payment |
@@ -421,13 +421,13 @@ A loan paid to the equipment dealer is the dealer's bill (Area 3) paid by a bank
 
 - **Schema:** `payment_method.kind` gains 'Loan funded' (direction 'Made' only; seeded as a shipped method, `is_core` = 1, not deactivatable while a loan uses it). `payment` gains `loan_id` INTEGER NULL REFERENCES `loan`
   (Area 11 §6) with `loan_id` set exactly when the method's kind is 'Loan funded' (a service rule with a test, since SQL cannot read the method row) and `bank_account_id` becomes NULL for a Loan funded payment (service check; the column
-  stays required for every other kind). A Loan funded payment has no reference and no fee. **This supersedes three §1.3 items:** the seed is eight core rows (not seven), the kind list gains 'Loan funded', and `bank_account_id` ("a `bank_account` row or the Undeposited funds role account") is NULL for that kind.
+  stays required for every other kind). A Loan funded payment has no reference and no fee.
 - **Posting:** Dr Accounts payable (the bill's vendor and clearing group) / Cr Loans payable (the loan's `loan_account_id`), **no bank line**; the same payment-allocation rules apply (RP11, `operation_id` retry). It **never appears in bank
   reconciliation or the bank feed** (Area 12 reads only payments with a `bank_account_id`) and never counts in Open payments.
 - **Combining:** one bill may be paid by several payments, so a bank payment and a loan funded payment can sit on the same bill. **Example:** a $130,000.00 dealer bill = $10,000.00 bank (Dr Accounts payable $10,000.00 / Cr Bank $10,000.00) + $120,000.00 loan funded
   (Dr Accounts payable $120,000.00 / Cr Loans payable $120,000.00); Accounts payable nets $0.00 and the loan starts at $120,000.00.
-- **Refusals:** the method is refused for customer receipts (direction 'Received'); it is refused for a loan whose status is Paid off or Closed, for a Line of credit (only an Active Term loan or Vehicle loan may be picked), for an amount above the loan's remaining unfunded
+- **Refusals:** the method is refused for customer receipts (direction 'Received'); it is refused for a loan whose status is Paid off or Closed, for a Line of credit (**owner 2:36 AM, A1-LOC:** a line of credit pays a vendor through a draw into the bank and then a bank payment; example: a $15,000.00 bill = Draw (Dr Bank / Cr Line of credit 2510) $15,000.00 + bank payment (Dr Accounts payable / Cr Bank) $15,000.00; only an Active Term loan or Vehicle loan may be picked), for an amount above the loan's remaining unfunded
   amount (original amount less principal already funded or paid), and when the bill's vendor is not the dealer the loan names (planning proposal: the loan's `linked_asset_id` or the asset bill must match).
 - **Tests (planning proposals):** `test_loan_funded_payment_posts_dr_accounts_payable_cr_loans_payable_and_no_bank_line`, `test_loan_funded_payment_never_appears_in_bank_reconciliation`, `test_loan_funded_method_refused_on_a_customer_receipt`,
-  `test_loan_funded_payment_refused_for_a_paid_off_or_closed_loan`, `test_loan_funded_payment_refused_for_a_line_of_credit`, `test_bank_payment_and_loan_funded_payment_on_one_bill_net_accounts_payable_to_zero` ($130,000.00 = $10,000.00 + $120,000.00),
+  `test_loan_funded_payment_refused_for_a_paid_off_or_closed_loan`, `test_loan_funded_payment_refused_for_a_line_of_credit`, `test_line_of_credit_draw_then_bank_payment_pays_a_bill` (owner A1-LOC: a $15,000.00 bill, draw Dr Bank / Cr Line of credit 2510 $15,000.00, then bank payment Dr Accounts payable / Cr Bank $15,000.00; the bill is paid, Bank nets $0.00, 2510 is $15,000.00), `test_bank_payment_and_loan_funded_payment_on_one_bill_net_accounts_payable_to_zero` ($130,000.00 = $10,000.00 + $120,000.00),
   `test_loan_funded_payment_cannot_exceed_the_loans_unfunded_amount`, `test_loan_funded_retry_with_the_same_operation_id_posts_once`.
