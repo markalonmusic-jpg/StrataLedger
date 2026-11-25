@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 1: payments and receipts
 
-Status: **Drafted 2026-11-24 for owner approval.** The outline was approved by the owner 2026-11-24 8:55 PM (planning
+Status: **Owner-approved 2026-11-25 2:49 AM (61706a1); drafted 2026-11-24.** The outline was approved by the owner 2026-11-24 8:55 PM (planning
 chat) with the answers recorded in §1.2, §2.1, §3.2 and §4.1; the rest follows the recommended options. Docs only:
 nothing here changes code, a baseline, a migration or a test. Everything below is built only in the 2.9 baseline pass,
 after the whole replan is approved. Items marked PROPOSED or "planning proposal, owner may revise" are not decided.

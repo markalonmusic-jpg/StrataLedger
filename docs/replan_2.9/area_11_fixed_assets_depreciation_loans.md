@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 11: Fixed assets, depreciation, disposals and loans
 
-Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers A11-Q1 to Q4 (2:09 AM) and two planning fixes, section 15.** Docs only: nothing here changes code, a baseline, a migration
+Status: **Owner-approved 2026-11-25 2:49 AM (c464cc1); drafted 2026-11-25; revised for the owner answers A11-Q1 to Q4 (2:09 AM) and two planning fixes, section 15.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.

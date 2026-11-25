@@ -1,8 +1,8 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14, 9 and 20 approved)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14, 9, 20, 1 and 11 approved)
 
 ## Current planning stop (2026-11-25, Area 11 drafted)
 
-`docs/replan_2.9/area_11_fixed_assets_depreciation_loans.md` drafted with the owner answers of 1:21 AM: straight-line and declining balance (switching to straight-line when that gives more is a planning reading), and book depreciation only, no tax schedule. Planning calls (owner may revise): loan payments are drafted as bills split into principal and interest; no entity column. The decided disposal inputs (ASSET-02, 03, 04) and Area 14's 'Asset disposal' row (OFF) are carried; every posting has a balanced worked example. **Revised for the owner answers A11-Q1 to Q4 (2:09 AM): split shown always, posting a control (OFF); a loan paid to the dealer is the dealer's bill plus a "loan funded" payment (Dr Accounts payable / Cr Loans payable, no bank line); disposal month convention is a Company setting; job charging stores the flag and rate only.** Two planning fixes: no month is charged twice (run skips disposed assets; catch-up only when the run line has not posted), and the line-of-credit example now ties. **Awaiting the owner's approval; no open owner question remains in Area 11.** Pointers: Areas 3, 10, 13, 14 and 18. Areas still to draft: 16, 19, 21 (Area 1 drafted, awaiting approval).
+`docs/replan_2.9/area_11_fixed_assets_depreciation_loans.md` drafted with the owner answers of 1:21 AM: straight-line and declining balance (switching to straight-line when that gives more is a planning reading), and book depreciation only, no tax schedule. Planning calls (owner may revise): loan payments are drafted as bills split into principal and interest; no entity column. The decided disposal inputs (ASSET-02, 03, 04) and Area 14's 'Asset disposal' row (OFF) are carried; every posting has a balanced worked example. **Revised for the owner answers A11-Q1 to Q4 (2:09 AM): split shown always, posting a control (OFF); a loan paid to the dealer is the dealer's bill plus a "loan funded" payment (Dr Accounts payable / Cr Loans payable, no bank line); disposal month convention is a Company setting; job charging stores the flag and rate only.** Two planning fixes: no month is charged twice (run skips disposed assets; catch-up only when the run line has not posted), and the line-of-credit example now ties. **APPROVED by the owner 2026-11-25 2:49 AM (c464cc1); 18 of 21 areas approved.** Pointers: Areas 3, 10, 13, 14 and 18. Areas still to draft: 16, 19, 21 (Area 1 drafted, awaiting approval).
 
 ## Earlier planning stop (2026-11-25, Areas 9 and 20 approved)
 
@@ -46,7 +46,7 @@ rules: the user chooses where a receipt lands (Q3) and, for a stated deposit, th
 2:55 PM answer; unplaced money posts to Unapplied customer payments); a user with the permission may unapply an
 application while the payment stays posted (Q2, RP11 rewritten); payment methods are a company-editable list (Q6); no
 `payment.void`, whoever records may void with a reason (Q7); optional fee on a receipt (Q4). Pointers: Areas 2, 5, 6,
-10, 12 and 18 §8.12, and beside RP11 in the decisions file. **Awaiting the owner's approval of the Area 1 file.**
+10, 12 and 18 §8.12, and beside RP11 in the decisions file. **Area 1 APPROVED by the owner 2026-11-25 2:49 AM (61706a1).**
 Planning proposals to confirm: the new permission `payment.unapply`, the four refund and write-off permission names,
 `customer_refund`, `invoice_writeoff` and `statement_send`. Three planning agent files (`cpa-controller`, `planner`,
 `reviewer` under `.claude/agents/` and `.codex/agents/`) are drafted and uncommitted, held for the owner.
