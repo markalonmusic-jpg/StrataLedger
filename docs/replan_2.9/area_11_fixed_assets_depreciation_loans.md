@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 11: Fixed assets, depreciation, disposals and loans
 
-Status: **DRAFT 2026-11-25, awaiting owner approval.** Docs only: nothing here changes code, a baseline, a migration
+Status: **DRAFT 2026-11-25, awaiting owner approval; revised for the owner answers A11-Q1 to Q4 (2:09 AM) and two planning fixes, section 15.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.
@@ -115,7 +115,8 @@ Sources read (only these, searched by section, date or code):
   Live: "October depreciation is 2026-00419", an entry link (the live number format predates L4: work order).
 - **Posting (monthly run, `depreciation.py`):** runs on the last day of each open month, while the app is open with the owner signed in, and catches up once at the next sign-in (Area 10 Contracts Q2 A). Locked period:
   the line is Blocked with the lock sentence; "Post now" dates it the first open day (live: 12/01/2026) (Area 13 §1.4). One entry per run, one debit and one credit line per asset (keys `asset_id` on the lines).
-  **Example, the November 2026 run:** Excavator E-02 $84,000.00 / 60 months = $1,400.00; truck T-04 $973.33 (33rd month: $58,400.00 x 33 / 60 = $32,120.00 less $31,146.67); scissor lift L-01 $22,500.00 / 60 = $375.00.
+  **Rule (planning fix):** the run skips assets Disposed on or before the run date, and a disposal's catch-up (§5) posts only when that month's run line for the asset has not posted; so a month is never charged twice.
+  **Example, the November 2026 run** (all three assets still in service at the run, so no disposal has posted before it): Excavator E-02 $84,000.00 / 60 months = $1,400.00; truck T-04 $973.33 (33rd month: $58,400.00 x 33 / 60 = $32,120.00 less $31,146.67); scissor lift L-01 $22,500.00 / 60 = $375.00.
 
   | Account | Debit | Credit |
   |---|---|---|
@@ -140,7 +141,7 @@ Sources read (only these, searched by section, date or code):
   `reverse_reason_code` / `reverse_reason_text` (OD-31, conditional CHECK); `approval_request_id` NULL; `operation_id` UNIQUE (an exact retry returns the first result and posts nothing twice); `row_version`.
   **`asset_disposal_line`:** `disposal_id`; `asset_id` (UNIQUE among non-Reversed disposals); `proceeds_cents` CHECK >= 0; `cost_cents`, `accumulated_cents`, `book_value_cents`, `gain_loss_cents` (frozen at posting).
   Company setting `disposal_month_convention` CHECK IN ('Full month', 'No depreciation in the disposal month') DEFAULT 'Full month' (live: "taken in full", A11-Q3 in §13).
-- **Rules:** (1) **Unknown or already-disposed asset IDs are refused, naming the first missing one, and the whole disposal is blocked** (no fallback, no substitution). (2) **Catch-up depreciation runs through the disposal date first** as its own
+- **Rules:** (1) **Unknown or already-disposed asset IDs are refused, naming the first missing one, and the whole disposal is blocked** (no fallback, no substitution). (2) **Catch-up depreciation runs through the disposal date first, only if that month's run line has not already posted (otherwise nothing is added, never a second charge),** as its own
   entry (`catch_up_entry_id`), only if the convention takes the month; book value, gain and loss are worked out after it. (3) **Allocation:** a lump sum is split by Book value, Original cost or typed lines (Edited); the lines must sum to the total
   proceeds to the cent (the last line takes the rounding); **a positive lump sum with zero total book value requires a per-asset allocation**: it cannot split by book value, so it defaults to Original cost and is editable (next_step). (4) Scrap may have $0 proceeds; **removal costs are a separate
   expense** (a bill), never netted into proceeds. (5) The disposal posts one entry and persists one durable result linked to it and to the catch-up entry; asset status becomes Disposed and its remaining schedule lines are Replaced (not posted).
@@ -148,7 +149,7 @@ Sources read (only these, searched by section, date or code):
   (7) Proceeds to **Accounts receivable** or a **vendor bill credit** are created through Area 5's and Area 3's services (an invoice to the buyer, a vendor credit), each with one line crediting a new clearing role `asset_disposal_clearing_acct_id` that the disposal entry debits, so each
   subledger document stays its own (planning proposal; §14).
 - **Approval (Area 14):** the 'Asset disposal' row is OFF by default; ON: the disposal is Pending approval, `asset.approve` (sensitive) approves, the final approval runs the shared lock check again (the kind posts on approval, Area 14 §6), and the digest covers the assets, date, proceeds, allocation and counterparty.
-- **Postings, with real amounts (all balanced).**
+- **Postings, with real amounts (all balanced).** The three examples assume the disposal posts **before** the November run (the run then skips these assets, so the catch-up is the only November charge; the §4 run example assumes no disposal has posted, and if these two disposals post first that run would be the excavator's $1,400.00 only).
   1. **Sale at a gain.** Truck T-04 sold 11/30/2026 for $30,000.00 to the bank (cost $58,400.00; accumulated after the November catch-up $32,120.00; book value $26,280.00; gain $3,720.00).
      Catch-up entry: Dr Depreciation expense $973.33 / Cr Accumulated depreciation $973.33. Disposal entry:
 
@@ -160,6 +161,8 @@ Sources read (only these, searched by section, date or code):
      | Gain on disposal (role) | | $3,720.00 |
 
      Debits $62,120.00 = credits $62,120.00.
+
+     **Same sale under "No depreciation in the disposal month" (owner A11-Q3):** no catch-up; accumulated depreciation stays $31,146.67; book value $27,253.33; gain $2,746.67. Entry: Dr Bank $30,000.00, Dr Accumulated depreciation $31,146.67 / Cr Fixed assets $58,400.00, Cr Gain on disposal $2,746.67 (debits $61,146.67 = credits $61,146.67).
   2. **Scrap at $0 with a removal cost.** Scissor lift L-01 scrapped 11/30/2026 (cost $22,500.00; $375.00 November catch-up; accumulated $4,125.00; book value $18,375.00). Disposal entry: Dr Accumulated depreciation $4,125.00, Dr Loss on disposal $18,375.00 / Cr Fixed assets $22,500.00
      (debits $22,500.00 = credits $22,500.00). The $200.00 hauling charge is its own bill: Dr Removal expense $200.00 / Cr Accounts payable $200.00, not part of the disposal.
   3. **Lump sum across assets.** Two fully depreciated assets, A (cost $5,000.00) and B (cost $3,000.00), sold together for $500.00: book value is zero, so the split is by Original cost: A $312.50, B $187.50 (sum $500.00). Entry: Dr Bank $500.00, Dr Accumulated depreciation $8,000.00 / Cr Fixed assets $8,000.00,
@@ -170,12 +173,12 @@ Sources read (only these, searched by section, date or code):
   `test_disposal_positive_lump_sum_with_zero_total_book_value_requires_per_asset_allocation`, `test_lump_sum_split_sums_to_proceeds_with_rounding_in_the_last_line`,
   `test_disposal_respects_period_area_and_account_locks`, `test_disposal_approval_uses_area14_only_when_configured`, `test_disposal_impossible_date_refused_before_posting`,
   `test_sale_at_a_gain_posts_the_balanced_entry_30000_32120_58400_3720`, `test_scrap_posts_loss_18375_and_removal_cost_is_a_separate_bill`, `test_reverse_disposal_restores_asset_and_schedule_and_keeps_catch_up`,
-  `test_disposal_month_convention_default_is_full_month`, `test_disposal_proceeds_to_ar_creates_an_invoice_through_area5_and_clears_the_clearing_role`.
+  `test_disposal_month_convention_default_is_full_month`, `test_no_depreciation_in_the_disposal_month_gain_is_2746_67`, `test_catch_up_is_skipped_when_the_month_run_already_posted`, `test_run_skips_disposed_assets`, `test_disposal_proceeds_to_ar_creates_an_invoice_through_area5_and_clears_the_clearing_role`.
 
 ## 6. Loans
 
 - **`loan`:** `loan_id`; `name`; `loan_type` CHECK IN ('Term loan', 'Line of credit', 'Vehicle loan'); `lender_contact_id` (a vendor, the bills' payee); `original_amount_cents` (the limit for a line of credit); `annual_rate_pct` REAL; `term_months` (NULL for a line of credit);
-  `loan_date`; `first_payment_on`; `payment_cents` (computed, stored); `money_went_to` CHECK IN ('Deposited to a bank account', 'Paid to an equipment seller'); `deposit_bank_account_id` NULL; `linked_asset_id` NULL ("Add as fixed asset"); `bill_lead_days` CHECK IN (0, 5, 10, 15) DEFAULT 10 (live: 10);
+  `loan_date`; `first_payment_on`; `payment_cents` (computed, stored); `money_went_to` CHECK IN ('Deposited to a bank account', 'Paid to the dealer'); `deposit_bank_account_id` NULL; `linked_asset_id` NULL ("Add as fixed asset"); `bill_lead_days` CHECK IN (0, 5, 10, 15) DEFAULT 10 (live: 10);
   `pay_from_bank_account_id`; `loan_account_id` (2500 Loans payable, or 2510 Line of credit); `interest_account_id` (7100); `status` CHECK IN ('Active', 'Paid off', 'Closed'); `row_version`. Attachments (the loan agreement, note and amendments, each typed) through Area 18 (target 'Loan').
 - **`loan_schedule_line`** (the same pattern as the asset schedule): `loan_id`; `payment_no`; `due_on`; `kind` CHECK IN ('Payment', 'Interest'); `payment_cents`; `interest_cents`; `principal_cents`; `extra_principal_cents`; `balance_after_cents`; `status` CHECK IN ('Scheduled', 'Bill drafted', 'Billed', 'Paid', 'Replaced');
   `invoice_id` NULL (the bill, Area 3); UNIQUE (`loan_id`, `payment_no`) WHERE `status` <> 'Replaced'; `row_version`. Interest = round-half-up(balance x annual rate / 12); principal = payment minus interest; **the last payment takes the remainder**.
@@ -195,21 +198,25 @@ Sources read (only these, searched by section, date or code):
      The pay run then pays the bill (Dr Accounts payable / Cr Bank $2,390.32).
   2. **Extra principal (live payment 20).** Payment $2,390.32 plus $410.84 extra: interest $523.08, scheduled principal $1,867.24, extra $410.84; the bill is Dr Loans payable $2,278.08 (= $1,867.24 + $410.84), Dr Interest expense $523.08 / Cr Accounts payable $2,801.16; balance after $84,300.00. The remaining schedule lines are Replaced and recomputed
      from the new balance with the same payment (planning proposal).
-  3. **Line of credit.** Record draw $15,000.00: Dr Bank $15,000.00 / Cr Line of credit (2510) $15,000.00. Month-end interest bill on a $65,000.00 balance at 8.50%: $65,000.00 x 8.5% / 12 = $460.42: Dr Interest expense $460.42 / Cr Accounts payable $460.42. Repay principal $10,000.00: Dr Line of credit $10,000.00 / Cr Bank $10,000.00.
+  3. **Line of credit** (limit $250,000.00; **interest uses the month-end balance**). The balance is $50,000.00 on 11/01/2026. Record draw 11/10/2026 $15,000.00: Dr Bank $15,000.00 / Cr Line of credit (2510) $15,000.00; the month-end balance is $65,000.00 (available $185,000.00). November interest bill: $65,000.00 x 8.50% / 12 = $460.42: Dr Interest expense $460.42 / Cr Accounts payable $460.42.
+     Repay principal 12/05/2026 $10,000.00: Dr Line of credit $10,000.00 / Cr Bank $10,000.00; the 12/31/2026 balance is $55,000.00 and the December interest is $55,000.00 x 8.50% / 12 = $389.58 (Dr Interest expense $389.58 / Cr Accounts payable $389.58).
   4. **Current and long-term reclass (§7).**
-- **Origination (planning proposal; open, §14):** deposited to a bank account: Dr Bank / Cr Loans payable (or Line of credit) for the amount, one entry from the loan service (source 'Loan'). Paid to an equipment seller: no cash reaches the company; A11-Q2 in §13.
+- **Origination (planning proposal for the bank-deposit case; the dealer case is owner A11-Q2, in this bullet):** deposited to a bank account: Dr Bank / Cr Loans payable (or Line of credit) for the amount, one entry from the loan service (source 'Loan'). **Paid to the dealer (owner A11-Q2):** the dealer's bill is entered as usual (Area 3), which creates the asset with its cost from the bill line; it is paid by a bank payment for any down payment plus a **"loan funded" payment**: Dr Accounts payable / Cr Loans payable, with no bank line (the Area 2 and Area 1 payment method list gains a shipped method 'Loan funded' that names a loan, not a bank account).
+  **Example:** a $130,000.00 dealer bill = $10,000.00 down (Dr Accounts payable $10,000.00 / Cr Bank $10,000.00) + $120,000.00 loan funded (Dr Accounts payable $120,000.00 / Cr Loans payable (2500) $120,000.00); the bill posted Dr Fixed assets $130,000.00 / Cr Accounts payable $130,000.00, so Accounts payable nets to $0.00 and the loan starts at $120,000.00. There is no "Dr Fixed assets / Cr Loans payable" origination.
 - **Pay off and close:** Pay off drafts a final bill for the remaining principal plus interest to the pay-off date (the amount the lender states, typed and checked against the schedule); a loan closes only at a $0.00 balance (live: "Pay it off first: the balance must be $0.00"); closed loans keep their history.
 - **Locks and permissions:** area 'Loans' and the accounts hit (Area 13 §1.4); `loan.manage`, `loan.view` (existing); none in `AGENT_ALLOWED`; every change audit-logged.
 - Tests: `test_loan_payment_interest_is_rate_over_12_of_balance_rounded_half_up_and_last_payment_takes_the_remainder`, `test_equipment_loan_payment_21_splits_509_31_interest_1881_01_principal`,
   `test_loan_payment_bill_is_drafted_the_lead_days_before_due_and_posts_nothing_until_approved`, `test_loan_bill_lines_post_principal_to_the_loan_account_and_interest_to_the_interest_account`,
   `test_extra_principal_recomputes_the_remaining_schedule_with_replaced_lines`, `test_line_of_credit_draw_and_repayment_post_to_2510_and_available_is_limit_less_balance`,
   `test_line_of_credit_interest_bill_is_balance_rate_over_12`, `test_loan_balance_ties_to_gl_loan_account`, `test_loan_cannot_close_until_balance_is_zero`,
-  `test_loan_respects_the_loans_lock_area_and_account_locks`, `test_loan_draw_retry_with_same_operation_id_posts_once`, `test_loan_run_drafts_bills_only_while_the_app_is_open_and_catches_up_once`.
+  `test_loan_respects_the_loans_lock_area_and_account_locks`, `test_loan_draw_retry_with_same_operation_id_posts_once`, `test_loan_funded_payment_posts_dr_accounts_payable_cr_loans_payable_and_no_bank_line` (owner A11-Q2),
+  `test_dealer_bill_with_down_payment_and_loan_funded_payment_leaves_accounts_payable_at_zero`, `test_no_origination_entry_debits_fixed_assets_directly`,
+  `test_line_of_credit_interest_uses_the_month_end_balance` (the $65,000.00 then $55,000.00 sequence), `test_loan_run_drafts_bills_only_while_the_app_is_open_and_catches_up_once`.
 
 ## 7. Current and long-term split
 
 - **Shown always (no posting):** the loan page and the balance sheet notes read the split from the schedule: the principal due in the next 12 months is the current part and the rest is long-term (live: balance $84,300.00 = current $23,337.45 + long-term $60,962.55).
-- **Posted reclass is a Company control, OFF by default (planning proposal, graduated controls; A11-Q1):** `company_settings.loan_current_portion_reclass` DEFAULT 0 and a new role `loan_current_portion_acct_id` (Current portion of long-term debt, a liability; the chart template has one). ON: a month-end entry moves the change in the current part from Loans
+- **Posted reclass is a Company control, OFF by default (owner A11-Q1):** `company_settings.loan_current_portion_reclass` DEFAULT 0 and a new role `loan_current_portion_acct_id` (Current portion of long-term debt, a liability; the chart template has one). ON: a month-end entry moves the change in the current part from Loans
   payable to that role (source 'Loan', one per loan per month, only the change after the first). **Example, first ON entry at 10/31/2026:** Dr Loans payable (2500) $23,337.45 / Cr Current portion of long-term debt $23,337.45. The loan tie-out then compares the balance with GL 2500 plus the current-portion role.
   The live loan page ties the balance to GL 2500 alone (work order: it must add the current-portion role when the control is ON). A line of credit has no scheduled principal, so it has no current part unless the lender states one (open).
 - Tests: `test_loan_current_part_is_next_12_months_principal_from_the_schedule`, `test_current_portion_reclass_control_defaults_off_and_logs_a_reason`, `test_reclass_off_posts_nothing_and_balance_sheet_split_is_presentation_only`,
@@ -250,24 +257,34 @@ loan balances tie to the GL; no tax depreciation is stored; the AI never posts o
 
 1. **Loan tie-out versus the current-portion reclass:** live ties the balance to GL 2500 alone; with the optional reclass ON it must add the current-portion role (§7, work order).
 2. **The live journal entry number "2026-00419"** predates the L4 format JE-000NNN (work order).
-3. **Disposal month:** live takes the month in full; the setting offers Full month (default) and No depreciation in the disposal month (A11-Q3).
+3. **Disposal month (resolved, owner A11-Q3):** live takes the month in full; the Company setting offers Full month (default) and No depreciation in the disposal month.
 4. **Proceeds to AR or a vendor credit** (live creates an invoice or uses the vendor's bill): this area routes them through Area 5 and Area 3 with a clearing role (§5).
 5. **The baseline has no asset or loan account roles;** the mockups map GL 1500, 1550, 2500, 2510 and 7100 (roles resolve from the chart template).
 6. **Area 14's 'Asset disposal' row** exists; the digest and the lock-at-approval rule are applied here (§5).
 7. **"Charge to jobs by the hour"** (live New asset form) has a posting (`equipment_recovery_acct_id`) that no approved area designs; stored here only (§14).
 
-## 13. Questions for the owner (recommended option first, with an example)
+## 13. Questions for the owner (recommended option first, with an example; **all answered 2026-11-25 2:09 AM, section 15**)
 
 - **A11-Q1. Is the current and long-term split posted or shown only?** (A) Shown from the schedule always; a Company control posts a month-end reclass, OFF by default (recommended: graduated controls). (B) Always post it monthly. Example: $23,337.45 moves from Loans payable to Current portion of long-term debt at 10/31/2026 only with the control ON.
-- **A11-Q2. A loan paid directly to the equipment seller.** (A) One origination entry: Dr Fixed assets / Cr Loans payable, no seller bill (recommended: simplest, the lender pays the seller). (B) Enter the seller's bill in Area 3 and pay it with a "loan funded" payment. Example: the $120,000.00 excavator loan paid to the dealer.
+- **A11-Q2. A loan paid directly to the equipment seller.** (A) **[REMOVED by the owner answer, §15]** one origination entry with no seller bill (not chosen). (B) Enter the seller's bill in Area 3 and pay it with a "loan funded" payment. Example: the $120,000.00 excavator loan paid to the dealer.
 - **A11-Q3. Disposal month conventions.** (A) Ship Full month (live default) and No depreciation in the disposal month (recommended). (B) Full month only. Example: truck sold 11/30/2026: November's $973.33 is taken under Full month and skipped under the other.
 - **A11-Q4. "Charge to jobs by the hour".** (A) Store the flag and hourly rate on the asset now; the job-charging posting is designed with the job cost areas later (recommended). (B) Design the posting here. Example: excavator $85.00 an hour x 6 hours = $510.00 charged to the job, credited to equipment recovery.
 
 ## 14. Open items (not decisions)
 
-- Loan origination for a loan paid to a seller, and the mechanics of the proceeds clearing role (§5, §6).
-- Job charging for equipment by the hour (the `equipment_recovery_acct_id` posting); Area 7 or a later area.
+- The mechanics of the proceeds clearing role for a sale on account or a trade-in credit (§5). (A loan paid to the dealer is settled: owner A11-Q2.)
+- **Job charging for equipment by the hour** (the `equipment_recovery_acct_id` posting) stays open for job costing (owner A11-Q4: store the flag and hourly rate only).
 - Daily-accrual interest on a line of credit; a payoff quote from the lender; prepayment penalties and loan closing costs (the chart has a Loan Closing Costs account).
 - Leases, capitalized interest, partial disposals (selling part of an asset), asset revaluation and impairment: not covered.
 - Mid-month in-service conventions (the live convention is the full in-service month).
 - Opening balances and the import of existing assets and loans: Area 21.
+
+## 15. Owner answers 2026-11-25 2:09 AM and two planning fixes (dated amendment; §13 stays as asked)
+
+- **A11-Q1 (owner):** the current and long-term split is shown from the schedule always; a posted month-end reclass is a Company control, OFF by default (§7).
+- **A11-Q2 (owner):** a loan paid to the dealer is the dealer's bill entered as usual (it creates the asset, cost from the bill line), paid by a bank payment for any down payment plus a "loan funded" payment, Dr Accounts payable / Cr Loans payable.
+  Example: $130,000.00 bill = $10,000.00 down + $120,000.00 loan funded. The "Dr Fixed assets / Cr Loans payable" option is removed (§6). A test checks the loan-funded payment posts no bank line.
+- **A11-Q3 (owner):** a Company setting with Full month (default, live) and No depreciation in the disposal month. The truck example: Full month gain $3,720.00; the other $2,746.67 (§5).
+- **A11-Q4 (owner):** store the flag and hourly rate only; the job-charging posting stays open for job costing (§14).
+- **Planning fix 1:** the November run and the November catch-up could charge the same month twice. Rule (§4, §5): the run skips assets disposed on or before the run date; a catch-up posts only when that month's run line has not posted; the disposal examples assume the disposal posts before the run. Tests added.
+- **Planning fix 2:** the line-of-credit example now runs $50,000.00 + $15,000.00 draw = $65,000.00 month-end (interest $460.42), then a $10,000.00 repayment = $55,000.00 (December interest $389.58); interest uses the month-end balance (§6).
