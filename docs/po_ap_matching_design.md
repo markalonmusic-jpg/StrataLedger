@@ -248,3 +248,14 @@ Open:
 1. Which compliance document types and expiry rules to ship as defaults?
    PROPOSED: insurance certificate and lien waiver, each with an expiry date.
 2. Tax tolerance value (PROPOSED a small dollar amount or 1%).
+
+## Amendment 2026-11-24 (Area 9, owner answers 11:30 to 11:55 PM; docs/replan_2.9/area_9_materials_pos_inventory.md)
+
+- **Matching is a Company control, OFF by default** (section 5 and the decided summary: "matching ON for everyone" is withdrawn); ON keeps the
+  15% price and amount tolerance before tax and exact quantity, and an over-tolerance bill needs an override and an OD-31 reason.
+- **Section 4, "Coding" (the bill inherits coding; a different coding needs an override with a reason) is withdrawn:** a bill line matched to
+  a PO line takes the PO line's job and cost code, locked; price-difference, freight and tax rows post to the same job and cost code.
+- **Section 4 posts no Purchase Price Variance:** receipts post at actual PO cost; a bill's price difference on received stock splits between
+  stock value (units on hand) and a "Stock price differences" expense account (units used; controlled by planning reading); a job PO difference posts to the PO line's
+  job and cost code. Stock is costed at moving average or FIFO (one choice per company), never standard cost.
+- Section 3 `po_type` value 'Purchase' is 'Materials'; every Materials PO line carries a material code (no free text).

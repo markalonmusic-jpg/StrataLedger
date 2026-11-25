@@ -938,3 +938,7 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
 
 - **Amendment 2026-11-24 (pointer, Area 9): `original_item_ref` becomes `original_material_id`** (FK to
   `material_code`, NULL for a non-material line) in the same baseline pass (Area 9 §4, §13).
+
+- **Amendment 2026-11-24 (pointer, Area 9, owner 11:55 PM): bill-line cost code fixes after posting.** A posted bill line matched to
+  a PO line is locked to the PO line's job and cost code, so a wrong code is corrected here by reclass (history kept), or on the PO
+  before billing (Area 9 §10; planning reading, owner may correct).

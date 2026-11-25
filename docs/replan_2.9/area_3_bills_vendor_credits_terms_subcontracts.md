@@ -647,3 +647,9 @@ no refund request, no hold.
   apart from material POs; Area 9 §6 builds those tables and `bill_match` (§9), so this area's `po_line_id`,
   `receipt_line_id` and `subcontract_line_id` FKs point there in the same baseline pass. The over-limit check stays this
   area's control `subcontract_overlimit_block` (OFF by default); Area 9 does not make it integrity.
+
+- **Amendment 2026-11-24 (pointer, Area 9, owner 11:55 PM): a bill line matched to a PO line is locked to the PO line.** It takes
+  the PO line's job and cost code (which came from the material code) and AP cannot change them on the bill; the bill's
+  price-difference, freight and tax rows post to the same job and cost code. A bill line with no PO match is coded here as before
+  (a cost code is required with a job). No "bill line may recode" text exists in this area (checked). A wrong code is fixed on the
+  PO before billing or by reclass after posting (Area 10; planning reading, owner may correct). Matching is a Company control, OFF by default (Area 9 §9).

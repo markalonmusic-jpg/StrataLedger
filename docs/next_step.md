@@ -2,14 +2,12 @@
 
 ## Current planning stop (2026-11-24, Area 9 drafted)
 
-`docs/replan_2.9/area_9_materials_pos_inventory.md` drafted with the owner answers of 11:05 to 11:35 PM. Owner rules:
+`docs/replan_2.9/area_9_materials_pos_inventory.md` drafted with the owner answers of 11:05 to 11:35 PM; **revised 2026-11-24 for the owner answers to §16 Q1 to Q7 (11:30 to 11:43 PM; section 18)**. Owner rules:
 units add and deactivate (never delete, no rename of a used unit; settles OD-51); stock tracking is a Company control,
 OFF by default; one commitment record `po_type` Materials or Subcontract (commitment on Send, Mark as sent or Print);
 free-text "to be coded" request lines; **a line with a material code takes its cost code, read-only on the line**.
 Planning proposals: `unit_of_measure`, `material_code`, PO, change, receipt, `bill_match`, request, pull ticket and
-stock tables; `po_matching` control (OFF); moving-average costing. **Awaiting the owner's approval.** **Open for the
-owner (§16):** Q1 matching default, Q2 costing method, Q3 free-text PO lines, Q4 bill lines and the cost code lock, Q5
-unit reactivation, Q6 re-coded request lines, Q7 where a job-site price difference posts. Pointers: Areas 3, 6, 7, 8,
+stock tables; `po_matching` control (OFF, owner); costing is the owner's moving average or FIFO, picked once. **Awaiting the owner's approval.** **Q1 to Q7 answered (§18):** matching is a Company control (OFF); costing is moving average or FIFO, picked once; no free-text PO lines; a bill line is locked to its PO line's job and cost code; units can be reactivated; a recoded request line takes the material's cost code; a stock price difference splits between stock value and a new controlled "Stock price differences" role. **Not asked (§17):** Subcontract SOV lines without a material code; roll, sheet, bundle, square, pallet and lot as shipped units; what "Hold bills" holds. Pointers: Areas 3, 6, 7, 8,
 10, 13, 14 and 18. Areas still to draft: 11, 16, 19, 20, 21.
 
 ## Earlier planning stop (2026-11-24, Area 14 approved)

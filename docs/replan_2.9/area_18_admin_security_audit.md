@@ -1425,3 +1425,10 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   New permissions: `material_request.create`, `material_code.manage` and `list.manage` if none exists (seed count 115
   grows). Reasons: Close PO remaining and the matching override use a Reasons list with the conditional 10-character CHECK
   (§8.7). Units are a list edited by the Lists permission; no reason required.
+
+- **Amendment 2026-11-24 (pointer, Area 9, owners 11:30 to 11:45 PM): corrects the Area 9 pointer above.** The proposed system account
+  role `purchase_price_variance_acct_id` is **Withdrawn**: receipts post at actual PO cost with no variance account. Added role
+  `stock_price_differences_acct_id` (expense, owner 11:43 PM; "controlled account" is a planning reading) beside `inventory_acct_id`. Added Controls
+  (Admin or Master, reason, audit-logged): `stock_costing_method` (Moving average or FIFO, picked once, locked after the first stock
+  history; owner) and `hold_unmatched_bills` (OFF; only while `po_matching` is ON; planning reading). `po_matching` is the owner's
+  control (OFF by default; live "Match bills to purchase orders").

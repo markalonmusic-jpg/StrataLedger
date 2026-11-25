@@ -1375,3 +1375,10 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   `material_code` (§4) and the free-text `unit_of_measure` becomes `unit_id` (Area 9 §3). OD-80 is unaffected: the cost
   code type, and so the fixed markup, follows the material code's cost code. Saved lines never change when a material
   code is re-pointed.
+
+- **Amendment 2026-11-24 (pointer, Area 9, owners 11:35, 11:45 and 11:55 PM): update to the 11:35 PM pointer.** (1) §3.4 and C129 call
+  the field "standard unit cost": it is renamed "default unit cost" and only prices new estimate and PO lines; stock and job cost use
+  actual cost (moving average or FIFO) and there is no purchase price variance. (2) The estimate line's cost code is locked to the
+  material code as before; the same lock now reaches PO lines and, through the PO line, matched bill lines (Area 9 §10), so a Material
+  estimate line, its PO line and its bill line each take the material code's cost code when saved (a later re-pointing changes none of them). (3) A Material estimate line's unit comes from the company
+  unit list, including reactivated units (Area 9 §3).

@@ -1,13 +1,15 @@
 # Step 2.9 schema replan, area 9: Materials, units, purchase orders, subcontracts and inventory
 
-Status: **DRAFT 2026-11-24, awaiting owner approval.** Docs only: nothing here changes code, a baseline, a migration
+Status: **DRAFT 2026-11-24, awaiting owner approval; revised 2026-11-24 for the owner answers of 11:30 to 11:43 PM to §16 (section 18).** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Everything else is a **planning proposal, owner may
 revise**. PROPOSED items in the sources are not built as final.
 
 Sources read (only these, searched by section, date or code):
-- Owner answers 2026-11-24 11:05, 11:15, 11:25, 11:30 and 11:35 PM (Strata_Teams `inbox/to_owner.md`, read-only), on
-  the Area 9 outline (commit e7bd1bd).
+- Owner answers 2026-11-24 11:05, 11:15, 11:25, 11:30 and 11:35 PM on the Area 9 outline (commit e7bd1bd) and the
+  answers headed 11:35 PM+, 11:40, 11:43, 11:45, 11:50, 11:55 PM and 12:00 AM on the draft 8e90b0d, §16 Q1 to Q7
+  (Strata_Teams `inbox/to_owner.md`, read-only; the entry times were estimated and corrected there, the answers
+  are unchanged).
 - docs/next_step.md: "Area 9, Materials, POs and inventory" (item 18, OD-04, OD-51, the 2:20 AM forecast input, the
   12:41 PM field request input), "Area 9 (Materials, POs, inventory, warehouse; must-fix inputs)", Area 11's handoff
   line, "Area 14" lines.
@@ -22,7 +24,8 @@ Sources read (only these, searched by section, date or code):
   (`grni_acct_id`, `retainage_payable_acct_id`, `inventory_adjustments_acct_id`), permission seeds `po.*`,
   `subcontract.approve`, `receiving.*`, `inventory.*`, `document_approval_setting`.
 - Live mockups (read-only, StrataLedger_mockups): `units.html`, `pages/units.js`, `ui/sl-lists.js` (the 10 default
-  units, MAT-101 to MAT-105), `design_log.md` 2026-11-24 (MAT-105).
+  units, MAT-101 to MAT-105), `design_log.md` 2026-11-24 (MAT-105), `inventory.html`, `inventory-item.html`,
+  `pages/inventory.js` (64 items, units, SKUs, average cost).
 - Decision codes by grep: OD-04, OD-51, OD-80, STOCK-03, C129, RP5, H1-H5, R-rules cited below.
 
 ---
@@ -32,14 +35,15 @@ Sources read (only these, searched by section, date or code):
 | # | Item | Proposal in one line |
 |---|------|----------------------|
 | 1 | Units | A company-editable `unit_of_measure` list in the company file: **add and deactivate, never delete, never rename a used unit (owner)**. Deactivated units are hidden from new picks and shown on every document that used them. |
-| 2 | Material codes | `material_code` (MAT-nnn, service-assigned): description, vendor, SKU, unit, **a cost code that drives every line (owner)**, standard cost, optional stocked flag. |
+| 2 | Material codes | `material_code` (MAT-nnn, service-assigned): description, vendor, vendor SKU, our SKU, unit, **a cost code that drives every line (owner)**, a **default unit cost** used only to price POs and estimates, optional stocked flag. A stocked item IS a material code (one list, planning proposal). |
 | 3 | Stock tracking | A Company control, **OFF by default (owner)**. Off: materials are charged straight to the job, no stock pages, pull tickets or `stock_count` close task. |
 | 4 | One commitment record | `purchase_order` with `po_type` Materials or Subcontract **(owner)**: one approval row set (Area 14), one commitment rule (starts on Send, Mark as sent or Print), one matching rule. Subcontracts add a retainage rate, lien waivers and a schedule of values, with their own number series. |
-| 5 | Receipts and accounting | Warehouse receipts (Dr Inventory / Cr GRNI) and job-site delivery tickets (Dr Job cost / Cr GRNI); a bill clears the accrual. Commitments post nothing. |
+| 5 | Receipts and accounting | Warehouse receipts (Dr Inventory / Cr GRNI) and job-site delivery tickets (Dr Job cost / Cr GRNI), both at actual PO cost: **no purchase price variance on receipt (owner)**. A bill clears the accrual; a price difference on stock splits between stock value and a new "Stock price differences" expense account **(owner; made a controlled account by planning reading)**. Commitments post nothing. |
 | 6 | Field requests | A PM raises a material request; a line may be free text "to be coded" **(owner)**; purchasing codes it before it can go on a PO. Stock is reserved only when a pull ticket is created. |
 | 7 | Cost code rule | **A line that uses a material code takes that code's cost code, read-only on the line (owner).** Free-text lines pick their own. Saved lines never change when a material code is re-pointed. |
-| 8 | Matching | `bill_match` and tolerances (15% price and amount, 0% quantity, compare before tax) as a control, default permissive (planning proposal, Q1). |
-| 9 | Reads | Open quantity by expected date (Area 8 forecast), commitments read only sent POs (Area 7), received-not-billed and stock tie to the GL. |
+| 8 | Matching | **A Company control, OFF by default (owner)**; ON compares each bill with its PO and receipt (15% price and amount before tax, quantity exact); over tolerance needs an override and an OD-31 reason. **A bill line matched to a PO line takes the PO line's job and cost code, locked (owner).** |
+| 9 | Costing | **Each company picks moving average or FIFO once, locked after the first stock history (owner)**; no LIFO, no standard cost. |
+| 10 | Reads | Open quantity by expected date (Area 8 forecast), commitments read only sent POs (Area 7), received-not-billed and stock tie to the GL. |
 
 ---
 
@@ -50,7 +54,7 @@ Sources read (only these, searched by section, date or code):
   and 'Subcontract' rows (OFF). Permission seeds exist: `po.create`, `po.approve` (sensitive), `subcontract.approve`
   (sensitive), `po.view`, `receiving.stock`, `receiving.jobsite`, `inventory.pull`, `inventory.adjust`,
   `inventory.count`, `inventory.view`. `company_settings` has `grni_acct_id`, `retainage_payable_acct_id` and
-  `inventory_adjustments_acct_id`, but no inventory asset role, no price variance role and no job-materials role
+  `inventory_adjustments_acct_id`, but no inventory asset role, no stock price differences role and no job-materials role
   (Area 7 Q20 names `job_materials`, 5030).
 - **Units:** `estimate_cost_line.unit_of_measure` is free text (a comment suggests "Bags", "Board Feet"); there is no
   units table. The live mockup `units.html` keeps ten built-in units plus units a company adds in browser storage
@@ -76,6 +80,32 @@ Sources read (only these, searched by section, date or code):
 - **Cost code (owner 11:35 PM):** "cost code is driven by the material code, the cost code should autofill the cost
   code unchangeable on the line level." A line that uses a material code (PO, estimate, material request) takes that
   code's cost code and cannot change it; to cost an item elsewhere, use or create a material code with that cost code.
+- **PO matching (owner 11:30 PM):** a Company control, OFF by default, as on live Settings > ERP ("Match bills to purchase
+  orders"). ON: each bill is compared with its PO and receipt; a difference over the tolerance (live: 15%, price and
+  amount before tax; quantity always exact) needs an override and a reason (OD-31). Example: a $4,200.00 PO billed at
+  $4,900.00 (16.7% over) needs an override only with the control ON. This replaces the PO design's "matching ON for
+  everyone".
+- **Costing (owner, answer headed 11:45 PM):** each company picks its stock costing method once, moving average or
+  FIFO, in company setup or when stock tracking is first turned on; locked once the first stock item has history; both
+  built and tested; no LIFO, no standard cost. Examples: average, 10 inverters at $2,150.00 + 6 at $2,230.00 = 16 at
+  $2,180.00 and each pull charges $2,180.00; FIFO, the next 10 pulled cost $2,150.00 each, then $2,230.00.
+- **Every PO line needs a material code (owner, answer headed 11:50 PM; scope "every Materials PO line" is a planning reading, Subcontract lines §6.1):** no free-text lines on a PO; a one-off item, freight
+  or rental needs a material code first, and the line takes that code's cost code (locked). Example: "Crane hire, 1 day"
+  $1,800.00 needs a material code.
+- **Bill lines (owner, answer headed 11:55 PM; "cost code is coming from the material code, so 1 it's going to come from the
+  PO"):** a bill line matched to a PO line takes the PO line's job and cost code and AP cannot change it on the bill;
+  price-difference, freight and tax rows on that bill go to the same job and cost code. Example: PO 1042, MAT-105,
+  03-100, $300.00, billed at $310.00: the bill line and its $10.00 difference both post to 03-100.
+- **Units (owner, answer headed 12:00 AM):** a deactivated unit can be reactivated; it shows in new picks again and
+  history records who did it and when.
+- **Request line recoded (owner 11:40 PM):** when purchasing codes a free-text request line with a material on a different cost
+  code, the line takes the material's cost code and the PM is told; the request shows both ("PM picked 16-100, now 16-200")
+  and history keeps the PM's original pick.
+- **Price difference on stock (owner 11:43 PM):** a bill's price difference on stock already received splits: the part for
+  units still on hand changes stock value; the part for units already used posts to a "Stock price differences"
+  expense account; job costs already charged do not change. Example: 100 rails at $30.00 ($3,000.00); 60 pulled, 40 on
+  hand; bill at $32.00 ($3,200.00): $80.00 (40 x $2.00) raises stock value and $120.00 (60 x $2.00) posts to Stock price
+  differences. On a job PO the difference posts to the PO line's job and cost code.
 - **Carried forward (earlier owner or approved decisions):** commitment starts only on a successful send, Mark as sent
   or Print; drafts, approved-but-unsent POs and failed sends stay uncommitted; Close remainder releases the unreceived
   commitment (item 18, PORDER-01 and 04). A warehouse issue is job costed at the pull ticket; direct-to-site
@@ -98,7 +128,8 @@ Sources read (only these, searched by section, date or code):
   free text `unit_of_measure`), `material_request_line.unit_id`; receipts and pull tickets read the line's unit.
   OD-04's rule that the UOM column of the Material codes table is the authoritative list is **replaced** by this table
   (OD-51 amended it; the owner's 11:05 PM answer settles it).
-- **Services** (`units.py`): `add_unit`, `deactivate_unit`, and (open, Q5) `reactivate_unit`. Rules: add refuses a
+- **Services** (`units.py`): `add_unit`, `deactivate_unit` and `reactivate_unit` (owner: a deactivated unit can be turned back on; the audit log records
+  who and when, for deactivating too). Rules: add refuses a
   blank, over-long or duplicate code (the sentence names the existing unit); deactivate keeps the row and hides it
   from every picker (`list_active_units`); a pick query for a new line filters `is_active = 1`, while any document
   read joins the unit regardless of `is_active`. **There is no delete and no rename of a used unit:** renaming is
@@ -115,8 +146,8 @@ Sources read (only these, searched by section, date or code):
   from `localStorage` to the company file; pickers hide inactive units but still show them on saved documents.
 - Tests (planning proposals): `test_add_unit_refuses_blank_over_10_characters_and_duplicate_ignoring_case`,
   `test_deactivated_unit_hidden_from_new_picks_but_shown_on_existing_documents`,
-  `test_unit_is_never_deleted`, `test_used_unit_cannot_be_renamed`, `test_unused_unit_can_be_renamed`,
-  `test_shipped_units_seeded_in_order_with_kw_spelling`,
+  `test_unit_is_never_deleted`, `test_deactivated_unit_can_be_reactivated_and_audit_records_who_and_when`, `test_used_unit_cannot_be_renamed`, `test_unused_unit_can_be_renamed`,
+  `test_shipped_units_seeded_in_order_with_kW_spelling`,
   `test_units_come_from_company_file_not_browser_storage` (a static test: no `localStorage` units in the shipped
   front end), `test_estimate_cost_line_unit_is_a_foreign_key`.
 
@@ -124,8 +155,11 @@ Sources read (only these, searched by section, date or code):
 
 - **`material_code`:** `material_id` PK; `code` TEXT NOT NULL UNIQUE (service-assigned, 'MAT-' plus at least three
   digits, never reused, never renumbered, like vendor and customer codes); `description` NOT NULL; `vendor_id` NULL
-  (preferred vendor); `vendor_sku` NULL; `unit_id` NOT NULL; **`cost_code_id` NOT NULL (an active leaf cost code, RP5)**;
-  `standard_unit_cost_cents` INTEGER NOT NULL CHECK >= 0 (integer cents, rule 1); `is_stocked` INTEGER NOT NULL DEFAULT
+  (preferred vendor); `vendor_sku` NULL; `item_sku` NULL (planning proposal: our own SKU, unique when set; the live inventory page's PNL-440,
+  against the vendor's SPS-440-BLK); `reorder_point` REAL NULL (the live inventory page; planning proposal); `is_service`
+  INTEGER NOT NULL DEFAULT 0 (planning proposal: a service code such as crane hire has no receipt, so its PO lines are two-way); `unit_id` NOT NULL; **`cost_code_id` NOT NULL (an active leaf cost code, RP5)**;
+  `default_unit_cost_cents` INTEGER NOT NULL CHECK >= 0 (integer cents, rule 1; **renamed from "standard unit cost": it only
+  prices new PO and estimate lines and is never a stock or posting cost**, planning reading of the 11:45 PM answer); `is_stocked` INTEGER NOT NULL DEFAULT
   0 (meaningful only while stock tracking is ON); `is_active` DEFAULT 1; `row_version`. Area 6's "default cost code"
   (C129, §3.4) is **replaced** by this driving cost code (owner 11:35 PM); a pointer goes to Area 6.
 - **Rules:** create and edit need `po.create` or the Purchasing permission Area 18 assigns; a code cannot be deleted,
@@ -142,7 +176,8 @@ Sources read (only these, searched by section, date or code):
   `test_material_code_cost_code_change_does_not_change_saved_lines`,
   `test_material_code_unit_change_refused_once_used`,
   `test_cost_code_with_active_material_code_cannot_be_deactivated`,
-  `test_material_code_is_never_deleted_only_inactive`, `test_standard_cost_is_integer_cents`.
+  `test_material_code_is_never_deleted_only_inactive`, `test_default_unit_cost_is_integer_cents_and_prices_lines_only`,
+  `test_stocked_item_is_a_material_code_not_a_separate_item_table`, `test_item_sku_unique_when_set`.
 
 ## 5. Stock tracking control
 
@@ -156,10 +191,25 @@ Sources read (only these, searched by section, date or code):
 - **ON:** `is_stocked` material codes receive to a location (Dr Inventory / Cr GRNI), are issued by pull ticket (Dr Job
   cost / Cr Inventory) and appear in stock counts. Turning it ON never changes posted entries; turning it OFF with
   stock on hand is refused until on-hand is zero or an Admin posts a count adjustment to zero (planning proposal).
-- **Sample company (planning reading, owner may correct):** has it ON: 64 items = GL 1310 Inventory $214,850.00; the live
-  inventory pages stay as they are. **Not checked against the mockup pages in this draft** (the shared list holds 18
-  material codes; the 64 items are the stocked rows of the inventory page, to confirm in the design queue).
-- Tests: `test_stock_tracking_defaults_off_and_audit_logged_with_reason`,
+- **Sample company (planning reading, owner may correct):** has it ON: 64 items = GL 1310 Inventory $214,850.00; the live inventory
+  pages stay as they are. **Reconciliation with the live mockups (read-only check, planning proposal: one list):** a
+  stocked item IS a material code with stock tracking on; there is no separate item table, so the 64 inventory items are 64
+  stocked material codes. Today the mockups disagree: the inventory page shows 5 of its 64 items (PNL-440, INV-12K,
+  RAIL-14, WIRE-10-500, EMT-1-10) and `pages/inventory.js` links those five to material codes by an internal SKU, while the
+  shared list `SL_LISTS.materials` holds 18 codes (12 in the page's own fallback list); the other 59 items have no
+  material code, and their internal SKU differs from the vendor SKU (hence `item_sku` in §4). **The New inventory item
+  unit picker lists each, roll, box, ft, sheet, bundle, square, pallet, kit and lot, which is not the ten-unit list**
+  (ea, ft, kW, hr, ls, box, cnt, day, sf, kit): only ft, box and kit match, "each" is shown for "ea", and roll, sheet,
+  bundle, square, pallet and lot are not defaults. Planning proposal: the picker reads the company's active units; the
+  sample company adds roll, sheet, bundle, square, pallet and lot as its own units (or the owner adds them to the shipped
+  defaults, §17). Design-queue work order: give the 59 items material codes and a unit from the list.
+- **Costing method (owner):** `company_settings.stock_costing_method` CHECK IN ('Moving average', 'FIFO'), set in company
+  setup or when tracking is first turned on, **moving average pre-selected** (planning reading; the mockups show
+  "Costing: Average cost"); **locked once any `stock_movement` exists** (the service refuses a change; "once the first stock
+  item has history"). No LIFO, no standard cost.
+- Tests: `test_stock_costing_method_picked_once_and_locked_after_first_movement`,
+  `test_costing_method_offers_only_moving_average_and_fifo`, `test_moving_average_preselected`,
+  `test_stock_tracking_defaults_off_and_audit_logged_with_reason`,
   `test_stock_off_has_no_pull_ticket_stock_page_or_stock_count_check`,
   `test_require_pull_tickets_only_applies_when_tracking_on`,
   `test_stock_turned_off_with_stock_on_hand_refused`, `test_stock_on_adds_stock_count_close_check`.
@@ -177,13 +227,16 @@ Sources read (only these, searched by section, date or code):
   `revision_no`; `approval_request_id` NULL; `terms`; `closed_at`, `close_reason_code` and `close_reason_text` (Close remainder); `origin`;
   `row_version`. (The design doc's value 'Purchase' becomes 'Materials' (owner 11:25 PM); its status list gains
   'Pending approval' and 'Sent' to match item 18.)
-- **`purchase_order_line`:** `po_line_id`; `po_id`; `line_no`; `line_type` CHECK IN ('Item', 'Service', 'Subcontract
-  work'); `material_id` NULL; `description`; `quantity` REAL; `unit_id`; `unit_cost_cents`; `amount_cents` (service:
+- **`purchase_order_line`:** `po_line_id`; `po_id`; `line_no`; `line_type` CHECK IN ('Item', 'Subcontract
+  work'); `material_id` NULL (**NOT NULL on every Materials PO line, owner**; NULL on a Subcontract work line); `description`; `quantity` REAL; `unit_id`; `unit_cost_cents`; `amount_cents` (service:
   round-half-up of quantity x unit cost, the same rule as every other service); `project_id`; **`cost_code_id` NOT
   NULL**; `account_id` (the cost code's `account_id`, which Area 7 fills from its cost type's default role, or Inventory for a
-  stocked line when tracking is ON); `expected_on` NULL (per-line override); `match_type` CHECK IN ('Two-way', 'Three-way'); `tax_rate_id`;
+  stocked line when tracking is ON); `expected_on` NULL (per-line override); `match_type` CHECK IN ('Two-way', 'Three-way') (Three-way for a stocked or delivered material; Two-way for a service code and a subcontract line); `tax_rate_id`;
   `request_line_id` NULL; `scheduled_value_cents` (Subcontract work lines: the SOV, a subcontract line's value);
-  `row_version`. CHECK (`line_type` = 'Item') OR `material_id` IS NULL.
+  `row_version`. Service-type lines (freight, rental, crane hire) are Item lines on a material code with `is_service` = 1 (owner: they
+  need a material code). **Planning proposal, not asked: a Subcontract SOV line carries a cost code and no material code**
+  (example SC-014 line 1, 01-500, $24,000.00). CHECK (`line_type` = 'Item') = (`material_id` IS NOT NULL); the service refuses a
+  line whose type does not match the PO's `po_type`.
 - **`purchase_order_change` and `purchase_order_change_line`:** approved changes to a PO or subcontract: `change_no`,
   `status` ('Draft', 'Pending approval', 'Approved', 'Rejected'), `amount_delta_cents`, optional `change_order_id`
   (the project change order, Area 8); **revised commitment = original + approved changes**; pending ones are excluded;
@@ -231,7 +284,9 @@ Sources read (only these, searched by section, date or code):
   `test_subcontract_has_retainage_sov_and_lien_waiver_default_on_and_supplier_default_off`,
   `test_po_approval_row_off_goes_draft_to_sent_row_on_waits`,
   `test_agent_context_cannot_approve_a_po_or_a_po_change`, `test_po_without_project_refused_when_stock_tracking_off`,
-  `test_editing_approved_unsent_po_voids_approval`, `test_sent_po_is_changed_only_by_a_change_record`,
+  `test_editing_approved_unsent_po_voids_approval`, `test_materials_po_line_requires_a_material_code`,
+  `test_free_text_po_line_refused`, `test_subcontract_line_has_a_cost_code_and_no_material_code`,
+  `test_service_item_line_uses_a_service_material_code_two_way`, `test_sent_po_is_changed_only_by_a_change_record`,
   `test_commitment_total_ties_to_sent_po_lines`.
 
 ## 7. Receipts and accounting
@@ -240,21 +295,32 @@ Sources read (only these, searched by section, date or code):
   `location_id` NULL (Warehouse only, tracking ON); `project_id` NULL (Job site); `received_on`; `received_by`;
   `delivery_ticket_attachment_id` NULL (Area 18 attachments); `status` ('Posted', 'Voided'); `entry_id` UNIQUE;
   `operation_id` UNIQUE (a retry with the same ID returns the first result); `row_version`.
-  **`goods_receipt_line`:** `po_line_id`, `quantity` REAL, `unit_cost_cents` (the PO line's), `amount_cents`.
+  **`goods_receipt_line`:** `po_line_id`, `quantity` REAL, `unit_cost_cents` (the PO line's: stock and job cost are at actual PO cost, with no purchase
+  price variance on receipt), `amount_cents`.
   Partial receipts allowed. A receipt past the open PO quantity follows `po_matching` (§9): a warning when OFF, refused beyond the quantity tolerance (0%) when ON.
 - **Postings (materials, po design §4):** warehouse (tracking ON, stocked code): **Dr Inventory / Cr GRNI** at the PO
   cost; job-site delivery: **Dr Job cost (project, cost code) / Cr GRNI**, so delivered materials count toward percent
   complete. Receipt detail reads the saved receipt and its original posting; a preview is read-only and never marks a
   receipt posted (must-fix input). Posted receipts are never edited: a mistake is voided by reversal.
-- **A matched bill clears the accrual with its own entry:** Dr GRNI (matched receipt amount), Dr or Cr the approved price
-  difference (to Purchase price variance, or, for a job-site receipt, to the job line, pending Q7), Cr Accounts payable (Area 3 owns the bill; this area supplies the match and the
-  accrual). No ticket: the bill shows a missing-receipt exception; the PM may approve it without a ticket with a reason
-  (a listed reason, or Other with 10 typed characters), and the cost then posts at the bill (po design §4).
+- **A matched bill clears the accrual with its own entry** (Area 3 owns the bill; this area supplies the match and the accrual):
+  Dr GRNI (the received amount), Cr Accounts payable (the bill total), and **the price difference** (billed less received):
+  *job PO or job-site receipt:* to the PO line's job and cost code, with the bill's freight and tax rows (owner Q4, Q7);
+  *warehouse stock (tracking ON):* split by units, **the part for units still on hand to Inventory (stock value) and the part for units
+  already used to Stock price differences (owner Q7)**; a bill below the receipt reverses the same split. Under **FIFO** the
+  on-hand units are what is left of that receipt's own cost layer; under **moving average** they are the item's quantity on hand when
+  the bill posts, **capped at the quantity this bill covers** (planning reading): on-hand part = difference per unit x min(quantity on hand,
+  billed quantity). Planning proposal: the on-hand part is rounded half-up and the used part is the remainder, so the two always sum to
+  the difference. Example of the cap: 50 older units on hand plus this receipt's 100, with 60 pulled, leaves 90 on hand; a bill covering 100 units caps the
+  on-hand part at 90 units and the used part takes the other 10 (never more units than the bill covers). Example: 100 rails at $30.00 received, 60 pulled, bill at $32.00: Dr GRNI $3,000.00, Dr Inventory $80.00, Dr
+  Stock price differences $120.00, Cr Accounts payable $3,200.00; the jobs that pulled the 60 rails keep $30.00. No ticket: **only while `po_matching` is ON** (planning proposal; CLAUDE.md section 0) the bill shows a missing-receipt exception and the PM
+  may approve it without a ticket with a reason (a listed reason, or Other with 10 typed characters), and the cost then posts at the bill (po design §4);
+  with matching OFF the bill is approved and costs at the bill with no exception.
 - **New system account roles** (Area 18 §8.6 amendment, planning proposals): `inventory_acct_id` (asset, GL 1310 in the
-  sample), and `purchase_price_variance_acct_id` (`job_materials`, 5030, is Area 7 Q20's cost-type default role, not new). `grni_acct_id`,
+  sample), and `stock_price_differences_acct_id` (expense, owner Q7; "controlled account" is a planning reading) replacing the earlier purchase price variance role
+  (**Withdrawn 2026-11-24, owner 11:45 and 11:43 PM**) (`job_materials`, 5030, is Area 7 Q20's cost-type default role, not new). `grni_acct_id`,
   `retainage_payable_acct_id` and `inventory_adjustments_acct_id` exist. Resolved by role, never by number
   (must-fix input).
-- **Controlled accounts (po design §4):** GRNI and Inventory (and Retainage payable, Area 3) are fed only by the receipt,
+- **Controlled accounts (po design §4):** GRNI, Inventory and Stock price differences (and Retainage payable, Area 3) are fed only by the receipt,
   bill, release, issue and count services. A manual entry to them follows the existing controlled-account control
   (`allow_manual_control_je`, a permissive default, Controls page, Area 18); tests below.
 - **Locks:** a receipt, an issue and a return call the shared lock check (Area 13 §1.4) with the area 'Inventory and
@@ -270,6 +336,17 @@ Sources read (only these, searched by section, date or code):
   `test_grni_ties_to_gl`, `test_receipt_over_open_quantity_warns_when_matching_off_refused_when_on`,
   `test_materials_postings_resolve_job_materials_role_not_number` (must-fix input), `test_receipt_respects_period_area_and_account_locks`,
   `test_no_ticket_bill_posts_cost_at_bill_with_pm_reason`,
+  `test_receipt_posts_at_po_cost_with_no_price_variance_account`,
+  `test_bill_price_difference_splits_between_stock_value_and_stock_price_differences` (100 rails, 60 pulled, $80.00 and $120.00),
+  `test_price_difference_split_under_fifo_uses_the_receipts_remaining_layer`,
+  `test_price_difference_split_under_average_uses_quantity_on_hand_at_bill_posting`,
+  `test_price_difference_on_hand_part_is_capped_at_the_billed_quantity`,
+  `test_missing_receipt_exception_only_while_po_matching_on`,
+  `test_bill_match_override_reason_check_is_conditional`,
+  `test_fifo_layer_remaining_value_stays_whole_cents_after_a_price_difference`,
+  `test_price_difference_split_sums_to_the_difference_with_remainder_in_used_part`,
+  `test_jobs_already_charged_are_not_changed_by_a_price_difference`,
+  `test_job_po_price_difference_freight_and_tax_post_to_the_po_lines_job_and_cost_code`,
   `test_manual_entry_to_grni_or_inventory_follows_the_controlled_account_control`.
 
 ## 8. Requests, pull tickets and stock
@@ -279,22 +356,25 @@ Sources read (only these, searched by section, date or code):
 - **`material_request`:** `request_id`; `request_no`; `project_id` NOT NULL; `requested_by` (a PM, or a holder of
   `material_request.create`, planning proposal); `needed_on`; `status` ('Draft', 'Submitted', 'Filled', 'Cancelled');
   `note`; `row_version`. **`material_request_line`:** `material_id` NULL; `free_text` NULL; `quantity`; `unit_id`;
-  **`cost_code_id` NOT NULL**; `coded_material_id` NULL; `status` ('Open', 'To be coded', 'Ordered', 'Issued',
+  **`cost_code_id` NOT NULL**; `coded_material_id` NULL; `original_cost_code_id` NULL; `status` ('Open', 'To be coded', 'Ordered', 'Issued',
   'Cancelled'). CHECK exactly one of `material_id` or `free_text`.
 - **Rules:** a line with a material code takes that code's cost code, read-only (owner). **A free-text line** carries a
   job and a cost code the PM picks (owner); purchasing creates or picks a material code (`code_line`) before the line
   can go on a PO (owner); coding it sets `coded_material_id` and, per the cost code rule, the line then takes that
-  code's cost code (pending Q6). A request posts nothing and reserves nothing. With tracking ON a request feeds the pull ticket
+  code's cost code **and the PM is told (owner 11:40 PM)**: the request shows both ("PM picked 16-100, now 16-200"), and
+  `original_cost_code_id` (NULL until a re-code) keeps the PM's pick in history. A request posts nothing and reserves nothing. With tracking ON a request feeds the pull ticket
   queue; with it OFF it feeds the purchasing queue for a PO.
 - Tests: `test_pm_may_raise_a_request_with_a_free_text_to_be_coded_line`,
   `test_free_text_line_cannot_go_on_a_po_until_coded`, `test_request_line_with_material_takes_its_cost_code_read_only`,
-  `test_request_posts_nothing_and_reserves_nothing`.
+  `test_request_posts_nothing_and_reserves_nothing`,
+  `test_coding_a_free_text_line_to_a_different_cost_code_moves_it_shows_both_and_keeps_the_original`,
+  `test_pm_is_notified_when_purchasing_changes_a_request_lines_cost_code`.
 
 ### 8.2 Pull tickets and stock (tracking ON only)
 
 - **`stock_location`** (`location_id`, `name`, `is_active`). **`stock_movement`** (insert-only; `movement_id`,
-  `material_id`, `location_id`, `quantity_delta` REAL, `unit_cost_cents`, `kind` CHECK IN ('Receipt', 'Issue', 'Return',
-  'Adjustment', 'Count'), `source_type`, `source_id`, `entry_id`, `account_id` (the account the movement posted to),
+  `material_id`, `location_id`, `quantity_delta` REAL, `unit_cost_cents`, `value_delta_cents` (signed integer cents), `kind` CHECK IN ('Receipt', 'Issue', 'Return',
+  'Adjustment', 'Count', 'Price difference'), `source_type`, `source_id`, `entry_id`, `account_id` (the account the movement posted to),
   `operation_id` UNIQUE, `created_at`, `created_by`): **on hand = SUM(`quantity_delta`)**, derived; there is no stored
   quantity column to drift. **Reservation** (`stock_reservation`: ticket line, quantity, status Open/Released) exists
   **only from the moment a pull ticket is created (owner 2026-11-22)**.
@@ -306,43 +386,53 @@ Sources read (only these, searched by section, date or code):
   the mapping has changed (STOCK-03). `inventory.pull` issues, `inventory.count` counts, `inventory.adjust`
   adjusts (posting to `inventory_adjustments_acct_id`), `receiving.stock` receives to the warehouse,
   `receiving.jobsite` confirms job-site tickets.
-- **Costing:** the issue cost is the **moving average** of on-hand at the time (planning proposal, Q2); stock valuation
-  (on hand x average cost) ties to GL Inventory; the `stock_count` check compares counted to on-hand.
+- **Costing (owner: moving average or FIFO, picked once, §5):** both value stock at **actual cost**; the stock value is
+  `SUM(value_delta_cents)` and ties to GL Inventory. *Moving average:* the issue cost is value on hand / quantity on hand at the
+  time (example 10 @ $2,150.00 + 6 @ $2,230.00 = 16 @ $2,180.00); the last unit issued takes the remaining value so nothing is
+  left over. *FIFO:* each receipt is its own layer, `stock_cost_layer` (`layer_id`, `material_id`, `receipt_line_id`,
+  `received_quantity`, `remaining_quantity`, `unit_cost_cents`, `remaining_value_cents` (integer cents, so a price difference is never a fraction of a cent); per material, not per location, planning proposal); issues consume the oldest layer first (the
+  next 10 cost $2,150.00 each, then $2,230.00); a return restores the layer it came from (STOCK-03's account rule still applies).
+  A bill price difference (§7) raises or lowers the remaining layer or the on-hand value. The `stock_count` check compares counted to on-hand.
 - Tests: `test_reservation_exists_only_after_a_pull_ticket_is_created`,
   `test_pull_ticket_issue_posts_stock_reservation_and_cost_once`,
   `test_pull_ticket_issue_retry_same_operation_id_no_double_post`,
   `test_stock03_return_after_mapping_change_uses_original_issue_account`,
-  `test_on_hand_is_derived_from_movements_and_never_negative_unless_allowed`,
-  `test_stock_valuation_ties_to_gl_inventory`, `test_count_adjustment_posts_to_inventory_adjustments_role`,
+  `test_on_hand_is_derived_from_movements_and_an_issue_beyond_on_hand_is_refused`,
+  `test_stock_valuation_ties_to_gl_inventory`,
+  `test_moving_average_issue_cost_is_2180_after_10_at_2150_and_6_at_2230`,
+  `test_fifo_issues_oldest_layer_first_2150_then_2230`, `test_fifo_return_restores_its_layer`,
+  `test_last_unit_issued_takes_the_remaining_value_under_average`, `test_count_adjustment_posts_to_inventory_adjustments_role`,
   `test_pull_ticket_requires_inventory_pull_permission`.
 
-## 9. Matching and tolerances (po design §5; planning proposal on the default)
+## 9. Matching and tolerances (owner: a Company control, OFF by default; po design §5)
 
 - **`bill_match`:** `invoice_line_id`, `po_line_id`, `receipt_line_id` NULL, `matched_quantity`, `matched_amount_cents`,
-  `price_variance_cents`, `status` ('Matched', 'Within tolerance', 'Exception', 'Overridden'), `reason_code` and `reason_text` (a listed reason, or Other
-  with 10 typed characters, for an override), `overridden_by`. Area 3's `invoice_line.po_line_id` and `receipt_line_id` point here.
+  `price_difference_cents`, `status` ('Matched', 'Within tolerance', 'Exception', 'Overridden'), `reason_code` and `reason_text` (a listed reason, or Other
+  with 10 typed characters, for an override; the CHECK is conditional like §6.2's: `reason_code <> 'Other' OR length(trim(reason_text)) >= 10`, required when `status` = 'Overridden'), `overridden_by`. Area 3's `invoice_line.po_line_id` and `receipt_line_id` point here.
 - **Two-way** (services, subcontracts): PO and bill. **Three-way** (materials): PO, receipt, bill; billable quantity is
   received - already billed. A subcontract's cumulative billed is checked against its revised line value by Area 3's control `subcontract_overlimit_block`
   (OFF by default: a reason is required when over; ON refuses).
-- **Tolerances (decided defaults, po design §5 and §10):** price and amount **15%**, quantity **0%**, **compare
+- **Tolerances (owner, as live: 15% price and amount before tax, quantity always exact; po design §5 and §10):** price and amount **15%**, quantity **0%**, **compare
   before tax ON** with a separate tax check (a small tolerance, PROPOSED in the doc, kept open); under-billing never
   raises an exception. Each is a percent and/or a dollar amount (po design §5). Stored as company settings (the baseline has no `policy_rule` table): `match_price_tolerance_pct`,
-  `match_amount_tolerance_pct`, `match_quantity_tolerance_pct`, `match_compare_before_tax`, with a per-vendor and a
-  per-PO override column.
-- **Control, default permissive (planning proposal, Q1):** CLAUDE.md section 0 lists "PO matching and tolerances" as a
-  configurable control, OFF or permissive by default. **`company_settings.po_matching`** INTEGER NOT NULL DEFAULT 0:
-  OFF shows the match and variance as information and never blocks approval or payment; ON makes exceptions block
-  approval and payment until corrected, received, changed or overridden (a reason and a role, a hard stop only by an
-  approved change). The po design doc decided "exceptions block"; that is the ON behaviour here.
-- **Limits follow the same control (planning proposal, Q1):** with `po_matching` OFF a bill past a PO line's open amount
+  `match_amount_tolerance_pct`, `match_quantity_tolerance_pct`, `match_compare_before_tax`, with a per-vendor override (columns on `contact`) and a per-PO override (columns on `purchase_order`).
+- **Control (owner 11:30 PM):** **`company_settings.po_matching`** INTEGER NOT NULL DEFAULT 0, shown on live Settings > ERP as "Match bills
+  to purchase orders"; CLAUDE.md section 0 lists it as a configurable control, permissive by default. OFF: the match is information
+  only and the bill goes ahead. ON: each bill is compared with its PO and receipt and a difference over the tolerance needs an
+  override and an OD-31 reason (a listed reason, or Other with 10 typed characters) before it is approved. **"Hold bills that do not
+  match the receipt"** stays its own control, `company_settings.hold_unmatched_bills` DEFAULT 0, and **applies only while matching is ON**
+  (planning reading; what it holds is payment, as the compliance hold does). This replaces the po design's "matching ON for everyone".
+- **Limits follow the same control (planning proposal):** with `po_matching` OFF a bill past a PO line's open amount
   or a receipt past the open quantity shows a warning and is allowed; with it ON both are exceptions that block beyond
   the tolerance (quantity 0%, price and amount 15%). A subcontract's cap follows Area 3's `subcontract_overlimit_block`. A
   duplicate bill number per vendor stays Area 3's warning. Only the arithmetic, the tie-outs and the locks are integrity.
 - Tests: `test_two_way_and_three_way_matching_happy_paths`, `test_partial_receipt_and_partial_billing`,
   `test_within_tolerance_passes_with_variance_recorded`, `test_over_price_beyond_tolerance_is_an_exception`,
   `test_matching_control_off_never_blocks_approval_or_payment`,
+  `test_4200_po_billed_4900_needs_override_only_when_matching_on`,
+  `test_hold_unmatched_bills_defaults_off_and_applies_only_with_matching_on`,
   `test_matching_control_on_blocks_until_resolved`, `test_override_needs_reason_and_role`,
-  `test_void_of_a_matched_bill_reopens_the_po_line`, `test_price_variance_posts_to_the_variance_role`,
+  `test_void_of_a_matched_bill_reopens_the_po_line`, `test_bill_price_difference_is_recorded_on_the_match`,
   `test_compare_before_tax_checks_tax_separately`, `test_po_line_billed_past_open_amount_warns_when_off_blocks_when_on`,
   `test_subcontract_cap_follows_area3_overlimit_control`, `test_matching_reasons_use_a_pick_list_or_10_typed_characters_for_other`.
 
@@ -362,9 +452,12 @@ Sources read (only these, searched by section, date or code):
   (the template column becomes derived for Material lines). Area 6 gets a pointer.
 - **Area 7 (cost types, leaf-only):** compatible; a material code needs an active leaf cost code (RP5), so the budget and
   postings always find a postable code. Budget transfer rows (`add_transfer_rows`) are unaffected.
-- **Area 3 bills (not covered by the owner's words, Q4):** the po design lets a bill line override the matched PO line's
-  coding with a reason and, per policy, approval. This draft keeps that bill override (planning proposal); the lock
-  applies to PO, estimate and request lines only.
+- **Bill lines (owner 11:55 PM, replaces the earlier draft's "override with a reason"):** a bill line matched to a PO line takes
+  the PO line's `project_id` and `cost_code_id` and **AP cannot change them on the bill**; price-difference, freight and tax rows
+  on the bill post to the same job and cost code. A bill line with no PO match is unchanged (Area 3 codes it, a cost code
+  required with a job). The po design §4 "override with a reason" paragraph is **superseded** (amendment appended there). Planning
+  reading (owner may correct): a wrong cost code is fixed on the PO before billing, or by reclass after posting (Area 10), with history
+  kept. Areas 3 and 10 hold no "bill line may recode" text (checked); the only source is the po design's coding paragraph.
 - **Area 14 digests:** a line's cost code is part of the 'Purchase order' and estimate digests only through the material
   (a material change voids an approval; a cost code change on a material code does not).
 - **Mockup work order (design queue, not written here):** the PO page, the estimate builder and the material request
@@ -372,7 +465,10 @@ Sources read (only these, searched by section, date or code):
   lines keep the picker; the shared `SL_LISTS.materials` rows already carry one cost code each.
 - Tests: `test_line_with_material_code_autofills_its_cost_code_on_po_estimate_and_request`,
   `test_line_with_material_code_refuses_a_different_cost_code`,
-  `test_free_text_line_picks_its_own_cost_code`,
+  `test_free_text_request_line_picks_its_own_cost_code`,
+  `test_bill_line_matched_to_a_po_line_takes_its_job_and_cost_code_locked`,
+  `test_bill_line_with_no_po_match_is_coded_by_ap`,
+  `test_wrong_cost_code_is_fixed_on_the_po_before_billing_or_by_reclass_after_posting`,
   `test_changing_a_material_codes_cost_code_leaves_saved_lines_unchanged`,
   `test_fixed_markup_follows_cost_code_type_of_the_material_codes_cost_code` (OD-80),
   `test_template_material_line_takes_the_material_codes_cost_code`.
@@ -384,9 +480,10 @@ Sources read (only these, searched by section, date or code):
   warn or block per Area 13's per-check modes; this area writes the queries.
 - **Reports (Area 17 owns the screens):** commitments by project and cost code (original, changes, revised, billed,
   remaining), open POs, received-not-invoiced listing tied to GRNI, unmatched bills, exception queue, subcontract status
-  with retainage held, price variance, stock on hand and valuation (tracking ON), the Material forecast page inputs.
+  with retainage held, price differences, stock on hand and valuation (tracking ON), the Material forecast page inputs.
 - **Tests:** `test_received_not_billed_aged_flags_receipts_over_30_days`,
-  `test_stock_count_check_absent_when_tracking_off`, `test_commitments_report_ties_to_sent_pos`.
+  `test_stock_count_check_absent_when_tracking_off`, `test_commitments_report_ties_to_sent_pos`,
+  `test_material_advances_open_check_stays_design_only_until_its_meaning_is_settled` (the check has no query until §17's item is decided),
 
 ## 12. Locks, permissions, row version and audit
 
@@ -396,19 +493,20 @@ Sources read (only these, searched by section, date or code):
   a delivery ticket photo and propose a receipt; a person confirms it; it never approves or posts (po design §4).
 - **Row version** on `purchase_order`, `purchase_order_line`, `purchase_order_change`, `goods_receipt`, `material_code`,
   `material_request`, `unit_of_measure` (Area 21 stale-save refusal). **Audit:** every table is audited by the trigger
-  pattern; `stock_movement` and `purchase_order_change` approved rows are insert-only.
+  pattern; `stock_movement` and `purchase_order_change` approved rows are insert-only. Tests: `test_material_request_create_needs_its_permission`,
+  `test_unit_edit_needs_the_lists_permission`, `test_material_code_manage_needs_its_permission`, `test_stale_row_version_save_is_refused_on_po_and_material_code`.
 
 ## 13. How it lands in the baselines and code
 
 - **Baseline (planning):** new tables: `unit_of_measure`, `material_code`, `purchase_order`, `purchase_order_line`,
   `purchase_order_change`, `purchase_order_change_line`, `goods_receipt`, `goods_receipt_line`, `bill_match`,
   `material_request`, `material_request_line`, `stock_location`, `stock_movement`, `stock_reservation`, `pull_ticket`,
-  `pull_ticket_line`, `po_number_sequence`; `company_settings` gains `stock_tracking`, `require_pull_tickets`,
-  `po_matching`, the four tolerance columns (and a per-vendor and a per-PO override column for each), `inventory_acct_id`,
-  `purchase_price_variance_acct_id` (`job_materials` is a cost-type default role from Area 7 Q20, not a `company_settings`
+  `pull_ticket_line`, `stock_cost_layer`, `po_number_sequence`; `company_settings` gains `stock_tracking`, `require_pull_tickets`,
+  `po_matching`, `hold_unmatched_bills`, `stock_costing_method`, the tolerance columns (with per-vendor override columns on `contact` and per-PO override columns on `purchase_order`),
+  `inventory_acct_id`, `stock_price_differences_acct_id` (`job_materials` is a cost-type default role from Area 7 Q20, not a `company_settings`
   column);
   `estimate_cost_line.unit_id` and the `material_code_id` FK replace the free text and the plain integer; Area 3's FKs
-  (`po_line_id`, `receipt_line_id`, `subcontract_line_id`) are added; `reclass_line.original_material_id`.
+  (`po_line_id`, `receipt_line_id`, `subcontract_line_id`) are added; `reclass_line.original_material_id`; `material_code.item_sku`, `reorder_point`, `is_service`.
 - **Code:** new services `units.py`, `material_codes.py`, `purchase_orders.py` (create, send, close remainder, change),
   `receipts.py`, `matching.py`, `material_requests.py`, `stock.py`, `pull_tickets.py`; no UI or HTTP imports (H1), no
   clock reads (H2), file attachments through `storage.py` (H3). Static tests: every function that writes `journal_line`
@@ -440,17 +538,22 @@ operation ID never double posts; the AI never approves, posts or moves money.
    code is "editable per line, C129", the direct opposite of the owner's rule; it is superseded by pointer; and Area 6 cost templates carry a cost
    code on Material lines (§10).
 5. **PO design says exceptions block approval and payment (decided) versus CLAUDE.md section 0 (matching and tolerances
-   are configurable, permissive by default).** Resolved here as a control, OFF (Q1).
+   are configurable, permissive by default).** Resolved by the owner: a Company control, OFF (Q1, §18).
 6. **PO design value 'Purchase' versus the owner's 'Materials';** and the design's status list lacks 'Sent' (§6.1).
-7. **po design §4 lets a bill line override the coding;** the owner's cost code rule names PO, estimate and request
-   lines only (§10, Q4).
-8. **Sample company counts:** the shared list holds 18 material codes while the owner reads 64 inventory items; not
-   resolved here (§5).
+7. **po design §4 lets a bill line override the coding;** superseded by the owner's answer: a bill line matched to a PO line is locked to the
+   PO line's job and cost code (§10, Q4).
+8. **Sample company counts:** 64 inventory items against 18 shared material codes and 5 linked rows; reconciled by the one-list proposal (§5).
 9. **The "Require pull tickets to take stock" control** is cited as existing, but only the mockups show it; the
    baseline has no such column (§5).
 10. **No `policy_rule` table in the baseline** (Area 3 line 178); tolerances are company settings here (§9).
+11. **po design §4 posts a Purchase Price Variance account on bills;** the owner's costing answers have no variance on receipt and a
+    stock-price-differences split instead (§7). The role `purchase_price_variance_acct_id` is not created.
+12. **Live `purchase-orders.html` says lines are "items from the materials list or free text";** the owner's rule removes free text
+    (work order for the design queue).
+13. **Live inventory "New item" unit picker** (each, roll, box, ft, sheet, bundle, square, pallet, kit, lot) is not the ten-unit list (§5).
+14. **Area 6 §3.4 and C129 call the field "standard unit cost";** renamed "default unit cost" here, used only to price lines (pointer).
 
-## 16. Questions for the owner (recommended option first, with an example)
+## 16. Questions for the owner (recommended option first, with an example; **all answered 2026-11-24 11:30 to 11:43 PM, §18**)
 
 - **Q1. PO matching default.** (A) A control, OFF by default: the match and variance show but never block; ON makes
   exceptions block approval and payment (recommended; follows CLAUDE.md section 0). (B) ON for every company, as the PO
@@ -478,13 +581,38 @@ operation ID never double posts; the AI never approves, posts or moves money.
 
 ## 17. Open items (not decisions)
 
-- Whether a deactivated unit or material code can be reactivated (units: Q5; material codes follow the answer).
+- Whether a deactivated **material code** can be reactivated (units can, owner; material codes follow the same rule, planning proposal).
 - `material_advances_open` (the check's meaning: advance payments to a vendor for materials not yet received) is a
   close-checklist item with no design yet; list it with Area 3's vendor prepayments.
-- Whether free-text PO lines stay allowed: Q3.
+- **Not asked:** whether Subcontract SOV lines also need a material code (planning proposal: a cost code and no material code, §6.1).
+- **Not asked:** whether roll, sheet, bundle, square, pallet and lot join the shipped unit defaults (§5; today they would be the
+  sample company's own units).
+- **Not asked:** what "Hold bills that do not match the receipt" holds when matching is ON (planning reading: payment, not approval).
+- The 59 sample inventory items without material codes (design-queue work order, §5).
 - Returns to vendor and purchase credits for stock items; scrap and write-down of stock beyond count adjustments.
 - Multi-location transfers between warehouses; lot or serial tracking; barcode scanning (out of scope).
 - Notifications for late or short deliveries: Area 20.
 - Foreign currency, tax on use (the `use_tax_payable_acct_id` role exists), and Ramp or card purchases without a PO.
 - Compliance document defaults (insurance certificate and lien waiver) and the tax tolerance value: the PO design's open
   items, kept open.
+
+## 18. Owner answers 2026-11-24 11:30 to 11:43 PM to §16 (dated amendment; §16 stays as asked)
+
+Source: Strata_Teams `inbox/to_owner.md`, entries headed 11:35 PM+, 11:45, 11:50, 11:55 PM, 12:00 AM, 11:40 and 11:43 PM (the times were
+estimated and corrected there: the answers were given between 11:30 and 11:43 PM; the answers are unchanged).
+
+- **Q1 matching (owner):** a Company control, OFF by default; ON compares each bill with its PO and receipt (15% price and amount before tax,
+  quantity exact), over tolerance needs an override and an OD-31 reason; "Hold bills that do not match the receipt" stays its own
+  control, OFF, only with matching ON (planning reading). §9.
+- **Q2 costing (owner):** moving average or FIFO, picked once, locked after the first stock history; no LIFO, no standard cost;
+  moving average pre-selected (planning reading); both are actual cost, no purchase price variance on receipt; "standard unit cost"
+  renamed "default unit cost". §5, §7, §8.2.
+- **Q3 (owner):** every PO line needs a material code, no free text; Subcontract SOV lines carry a cost code and no material code
+  (planning proposal, not asked). §6.1.
+- **Q4 (owner):** a bill line matched to a PO line takes the PO line's job and cost code, locked; price-difference, freight and tax
+  rows go to the same job and cost code; the "override with a reason" is removed. §10.
+- **Q5 (owner):** a deactivated unit can be reactivated; history records who and when. §3.
+- **Q6 (owner):** a recoded request line takes the material's cost code, shows both, the PM is notified, history keeps the original. §8.1.
+- **Q7 (owner):** a price difference on received stock splits between stock value (units on hand) and the new controlled "Stock price
+  differences" role (units used); job PO differences go to the PO line's job and cost code. §7.
+- **Item list reconciliation (planning proposal, owner may revise):** one list; a stocked item is a material code (§4, §5).
