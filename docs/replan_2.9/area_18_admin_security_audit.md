@@ -1310,7 +1310,8 @@ evening "two new owner features + rules" and its OD-70 addition (`docs/planning_
 - **Amendment 2026-11-22: System account role `unapplied_customer_payments` (OD-70 B).** New role
   `company_settings.unapplied_customer_payments_acct_id` INTEGER NULL REFERENCES account, a current liability. It is
   posted only when an applied customer payment is un-applied by Reclass job (Area 10 §11.2): Dr Accounts receivable
-  / Cr Unapplied customer payments on the payment's original job, reversed when the payment is re-applied. Lead
+  / Cr Unapplied customer payments on the payment's original job, reversed when the payment is re-applied. **(Withdrawn 2026-11-24, owner 2:55 PM:
+  "only"; every unapplied customer payment posts to this role; amendment at the end of §8.6.)** Lead
   default: a new account 2325 Unapplied Customer Payments (Current liability, credit balance, controlled: posted only
   by the receipts service) in both chart templates, mapped to the role. Reassignment follows §8.1. Area 1 owns the
   postings (next_step). Tests: `test_unapplied_customer_payments_role_maps_to_current_liability`,
@@ -1319,6 +1320,22 @@ evening "two new owner features + rules" and its OD-70 addition (`docs/planning_
   §7.1); no new code. The seeded code count stays 115.
 - Mockup note: the OD-70 text names 1200 Accounts receivable and 2000 AP (mockup chart); the repo template has 1110
   Accounts Receivable and 2010 Accounts Payable. The baseline follows the repo chart.
+- **Amendment 2026-11-24 (owner 2:55 PM; withdraws "only" above): every unapplied customer payment posts to the
+  `unapplied_customer_payments` role.** The unapplied part of a receipt (nothing applied, or more received than
+  applied) posts Cr Unapplied customer payments, never Cr Accounts receivable; applying it later posts Dr Unapplied
+  customer payments / Cr Accounts receivable. The Reclass job undo (Area 10 §11.2) is one case of the same rule. AR
+  aging shows unapplied payments as their own line. The account stays controlled, posted only by the receipts
+  service. Postings: Area 5 §4.2 amendment 2026-11-24 and Area 1 (next_step). The owner's text names 1200 (mockup
+  chart); in the repo template it is 1110 Accounts Receivable, as the mockup note above says.
+- **Amendment 2026-11-24 (mockup audit item 5; planning proposal, owner may revise): one reason validator.**
+  `reasons.require_reason(reason_id, text, *, has_list)` in `modules/services/` is the only function that checks a
+  required reason (the OD-31 rule above and Q26 A, §8.7). Every service with a reason field calls it before its
+  write transaction, and the refusal is the one sentence above. A static test fails if a service checks a reason's
+  length itself. Tests: `test_every_reason_field_uses_require_reason`,
+  `test_require_reason_accepts_listed_reason_and_refuses_short_other`.
+- **Placement 2026-11-24 (owner 8:15 PM):** the Company control that makes a customer credit hold block new
+  estimates, invoices and sales orders (OFF by default; Area 5 §4.2 amendment 2026-11-24) joins the §8.3 controls
+  list.
 
 **Q26. A reason picked from a Reasons list (OD-31).** **Answered 2026-11-23 (owner 7:00 PM): A. §8.7.**
 A (recommended): picking a listed reason satisfies the rule; typed text is required (at least 10 characters) only

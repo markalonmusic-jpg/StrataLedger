@@ -764,6 +764,9 @@ with approved text are flagged here for Mark, not changed.
   `test_reclass_job_leaves_no_negative_or_orphan_receivable_on_either_job`,
   `test_reapplying_payment_reverses_unapplied_entry_on_invoice_job`,
   `test_reclass_job_rolls_back_both_entries_when_either_fails`, `test_reclass_job_reason_needs_10_characters`.
+- **Pointer 2026-11-24 (owner 2:55 PM):** every unapplied customer payment now posts to the Unapplied customer
+  payments role (Area 18 §8.6 and Area 5 §4.2 amendments 2026-11-24). The undo and re-apply entries above are
+  unchanged and are one case of that rule.
 
 ### 11.3 Other owner rules that touch this area
 

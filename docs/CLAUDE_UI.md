@@ -29,6 +29,16 @@ to copy. Where a mockup and an accounting rule conflict, the rule wins.
    parsed with `Decimal` and converted to integer cents by one shared helper.
    (That helper does not exist yet. The first screen that needs it adds it,
    with tests, to a no-Tk module; no view writes its own.)
+   Amendment 2026-11-24 (mockup audit item 1; planning proposal, owner may revise): the helper is
+   `money.parse_cents(text)` in the no-Tk module `money.py` (Area 6 section 3
+   names it). It accepts `1,500.00`, `$1,500`, `-15.00` and `(15.00)`
+   (parentheses mean negative), parses with `Decimal`, never `float`, and
+   returns integer cents. More than two decimals, letters, or an empty required
+   field is a field error: "Enter an amount like 1,500.00." Services still
+   refuse non-integer cents (rule 1). Tests:
+   `test_parse_cents_parentheses_are_negative`,
+   `test_parse_cents_refuses_three_decimals_and_text`, and a static test that
+   `money.py` never calls `float(`.
 7. Dates follow the company date format (`company_settings.date_format`) for
    display and entry; storage is strict ISO. Use the shared formatter (today
    `new_company_model.format_date`; it moves to the shared module with rule 6).

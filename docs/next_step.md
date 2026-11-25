@@ -1,6 +1,17 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, 1:48 AM answer folded)
+## Current planning stop (2026-11-24, mockup audit and 2:55 PM to 8:15 PM answers folded)
+
+Mockup code-hygiene audit items 1-15 applied as dated amendments (planning proposals unless an owner answer applies):
+CLAUDE_UI.md rule 6 (money parser); docs/design.md section 1 (escaping, URLs, UTF-8, shipped secrets, packaging
+allow-list); Area 17 §9.5 (exports); Area 18 §8.6 (one reason validator; "only" withdrawn for the unapplied role;
+credit-hold control placement); Area 5 §4.2 (unapplied customer payments, owner 2:55 PM; write-off credit hold,
+owner 7:30 PM and 8:15 PM); Area 10 §11.2 pointer; Area 6 §3.5 (OD-80) and §4.4 (OD-81); Area 13 §2.7 ("Skip this
+month", owner 8:15 PM); Phase 5 conflict list below (item 10). Items 4, 6 and 14 were already covered; no change.
+**Open for Mark:** whether OD-81's "discount approval control" is the Estimate approval policy (Area 6 §4.3; read
+that way until answered).
+
+## Earlier planning stop (2026-11-24, 1:48 AM answer folded)
 
 From `Strata_Teams\docs\owner_decisions_2026-11-22.md` ("Owner answer 2026-11-24 1:48 AM"), Area 8 §12.20 and Area
 18 §8.11: rebuild approval is a new Approvers row "Schedule baseline rebuilds" (PM), OFF by default, configured like
@@ -261,6 +272,10 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
   `test_reapply_reverses_unapplied_customer_payments_entry`, `test_application_undo_leaves_cash_and_deposit_unchanged`.
   **Amendment 2026-11-23 (owner 6:58 PM, Area 10 Q19 B):** the same undo runs when a job change on the Reclassify
   transactions page moves an invoice with a payment applied (Area 10 §11.5); one service function for both.
+  **Amendment 2026-11-24 (owner 2:55 PM):** Area 1 posts every unapplied customer payment Cr Unapplied customer
+  payments, never Cr Accounts receivable, and applying it later Dr Unapplied / Cr Accounts receivable; AR aging
+  shows unapplied payments as their own line (Area 5 §4.2 and Area 18 §8.6 amendments 2026-11-24). Open for Area 1:
+  whether customer deposits (Area 5 §8.5 Q9) use the same account, and today's receipt posting in `payments.py`.
 - **Area 9, Materials, POs and inventory:**
   - Item 18 (PORDER-01, PORDER-04): job and cost-code commitment starts only on a successful send (or Mark as sent
     or Print). Drafts, approved-but-unsent POs and failed sends stay uncommitted. Close remainder releases the
@@ -296,6 +311,10 @@ Each line is the rule the drafting session must carry; audit IDs in brackets.
   independent QA only.
 - Item 3: Playbook stage 3 waits for Phase 5. Phase 5 note: "propose page edits from evidence" and "Playbook text is
   sent to the AI provider" conflict with the 11/17 AI privacy rule; resolve them then.
+- **Added 2026-11-24 (mockup audit item 10; no decision now):** the mockup Connections page offers "Let the
+  assistant read company records", which conflicts with the 11/17 AI privacy rule: AG4 (extraction sends only the
+  chosen file or pasted text), AG7 and G4 (analysis sends only locally computed figures, under the AG3 warning and
+  the data-sharing opt-in). Resolve it in Phase 5 with the Playbook items above.
 - Item 4 and OD-01: one more Shared Run 1 release-gate round, run after the open Shared Run 1 fixes pass.
 - OD-05 (SR2-01): a calendar click selects the row and opens its details; the selection clears on reload.
 - OD-06: 1280 px stays the supported minimum width; the normal header and Assistant offsets count as full-window for

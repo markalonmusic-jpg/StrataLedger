@@ -485,6 +485,16 @@ supplies a reason. Verify the dialog respects both modes when two checks have di
 
 - The prepaid check lists Blocked and caught-up entries and passes once due entries are posted.
 - A stale `row_version` on any task save is refused (g4).
+- **Amendment 2026-11-24 (owner 7:30 PM and 8:15 PM): "Skip this month".** Only Custom tasks can be skipped; System
+  tasks cannot (the `skip_*` CHECK in §2.4 and the refusal above stand). Skip needs a reason under the OD-31 rule
+  (Area 18 §8.6, §8.7 Q26 A): a listed reason, or at least 10 typed characters for Other. It records who and when
+  (`skipped_by`, `skipped_at`). **Undo** returns the task to Open while the period is open and is refused once the
+  period is closed; the skip and its undo stay in the audit log. Planning proposal, owner may revise: the typed
+  `skip_reason` gets `length(trim(skip_reason)) >= 10` (a listed reason stores its label at the time of use); Undo
+  clears the three `skip_*` columns in an audited update. Tests (planning proposal, owner may revise):
+  `test_skip_refused_for_system_task`, `test_skip_needs_listed_reason_or_10_typed_characters`,
+  `test_skip_records_who_and_when`, `test_undo_skip_allowed_while_period_open`,
+  `test_undo_skip_refused_after_period_closed`.
 
 ---
 

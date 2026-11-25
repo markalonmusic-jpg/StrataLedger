@@ -422,6 +422,14 @@ be offered (the column stays a plain integer, open item 5).
 - Optional repair groups record Accepted or Declined once at signed-quote upload; only required and Accepted lines
   contribute to the signed pre-tax amount, tax and total. A repeated or missing group choice is refused.
 - Inserting a cost template appends lines; editing the template later does not change the estimate.
+- **Amendment 2026-11-24 (owner 3:05 PM, OD-80): a fixed pricing-template markup wins over a cost-template line's
+  own markup, by cost code type.** On insert, when the line's cost code type has a **fixed** markup in the service
+  type's pricing template, the line takes the template markup and shows the locked style "Set by the <template>
+  pricing template"; the cost-template line's own markup is ignored. An editable or missing template row keeps the
+  cost-template line's markup. Example: MAT-202, cost $8,900.00, fixed 28.2% = $11,409.80. Planning proposal, owner may revise:
+  `cost_template_line` carries `markup_pct` REAL NULL (NULL = take the template's). Tests:
+  `test_fixed_pricing_markup_overrides_cost_template_line_markup`,
+  `test_editable_pricing_row_keeps_cost_template_line_markup`.
 
 ---
 
@@ -462,6 +470,14 @@ authority limits, margin floor or target.
 - With the policy and a limit active, a discount over the limit routes to In approval; at the limit it does not.
 - Under the floor with the control off: Send returns a warning and succeeds.
 - Self-approval is allowed and marked when `require_separate_approver` is 0; refused when it is 1.
+- **Amendment 2026-11-24 (owner 3:05 PM, OD-81): a discount over the rep's authority blocks Send only when the
+  discount approval control is on.** On: the revision goes to In approval and Send waits (as above). Off: Send works
+  and shows a warning. So the rep's authority limit is read in both modes; this refines §4.3 ("read only when the
+  Estimate policy is active") and the first test above ("not limited"). Planning proposal, owner may revise: the
+  "discount approval control" is read as the Estimate approval policy of §4.3 (Area 14), not a new switch, until Mark
+  says otherwise; warning text "This discount is over your authority (10%)." (example: limit 10%, discount 12%).
+  Tests: `test_discount_over_authority_blocks_send_when_control_on`,
+  `test_discount_over_authority_warns_and_sends_when_control_off`.
 
 ---
 

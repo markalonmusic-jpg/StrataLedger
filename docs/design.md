@@ -45,6 +45,30 @@ Token handling when the bridge is built:
 - the token is held in a redacted-repr wrapper like `keys.SecretKey`, and a test proves it never reaches the
   log file.
 
+**Amendments 2026-11-24 (mockup code-hygiene audit; planning proposal, owner may revise; none is an owner rule):**
+- **Escaping (item 2).** Every user-typed value is output as text wherever it appears: CustomTkinter labels are
+  plain text already; the HTML page follows AX10; print, PDF and email templates render with autoescape on; CSV and
+  Excel exports prefix a cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Tests: a
+  static test that the front end builds no `innerHTML` or `insertAdjacentHTML` from data,
+  `test_export_neutralizes_formula_prefixes`, `test_print_template_escapes_customer_name` (a name such as
+  `<b>Acme & Co</b>`). Exports: Area 17 §9.5.
+- **No record data in URLs (item 3).** Routes, deep links and saved report parameters carry only opaque ids, drill
+  handles and display settings, never names, amounts, memos, tax ids or bank details. The page reads the record from
+  the API, which re-authorizes it, as the report contract's drill handles already do. Test: an allow-list check of
+  route and parameter names.
+- **Text encoding (item 7).** Stored text is UTF-8 (SQLite's own encoding); exports, print/PDF and email are UTF-8,
+  and CSV files get a BOM so Excel opens them correctly (lead default). Test: scan `templates/`, the baseline seed
+  rows and the help files for mojibake (for example a curly apostrophe read as Windows-1252) and fail on any hit.
+- **No secrets in shipped data (item 8; for the owner to confirm under U1).** The sample company
+  (`scripts/seed_sample_company.py`, v1.1) creates no users, passwords, recovery codes or chain key: the Master
+  sets their own password at first run and the key is generated when the company is first opened. `tests/` and its
+  fixed test keys and passwords never ship. A release check searches the build folder for the test key values and
+  the known test passwords.
+- **Packaging allow-list (item 9; U1).** The PyInstaller spec lists what goes into `RESOURCE_DIR` (migrations,
+  fonts, templates, help, add-ons). Never included: `archive/`, `docs/`, `tests/`, `scripts/`, `tools/`,
+  `Backups/`, `*_backup*` folders, notes files, mockups or `.db` files. A release test lists the build folder and
+  fails on anything outside the allow-list.
+
 ## 2. Databases and entities
 
 - `system_master.db`: users, the company registry, access. Never company accounting tables (rule 3).

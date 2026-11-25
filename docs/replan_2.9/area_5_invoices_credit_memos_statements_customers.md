@@ -120,6 +120,29 @@ Apply the company document retention policy. If none is configured, retain the c
 Refunds and write-offs follow the approved source, posting and reversal rules in §8.5. Retain source, amount,
 effective date, reason, posting entry and reversal links. Enforce available credit or unpaid balance atomically.
 
+- **Amendment 2026-11-24 (owner 2:55 PM): unapplied customer payments.** Every unapplied customer payment posts Cr
+  Unapplied customer payments (the Area 18 §8.6 role, current liability), never Cr Accounts receivable: a receipt with
+  nothing applied, or the part of a receipt above what it pays, posts Dr bank or Undeposited funds / Cr Unapplied
+  customer payments; applying it later posts Dr Unapplied customer payments / Cr Accounts receivable on the invoice's
+  job. AR aging shows unapplied payments as their own line (statements already show "Unapplied credits and payments",
+  above). Planning proposal, owner may revise: example, a $5,000.00 receipt with nothing applied posts Dr Undeposited
+  funds / Cr 2325 $5,000.00; applying it to INV-0377 posts Dr 2325 / Cr 1110 $5,000.00. Area 1 owns the receipt
+  postings (next_step). Open for Area 1: whether customer deposits (§8.5 Q9) use the same account; today's receipt
+  posting in the baseline and `payments.py` is checked then. Tests (planning proposal, owner may revise):
+  `test_unapplied_receipt_posts_to_unapplied_customer_payments_not_ar`,
+  `test_applying_unapplied_payment_posts_dr_unapplied_cr_ar`, `test_ar_aging_shows_unapplied_payments_line`.
+- **Amendment 2026-11-24 (owner 7:30 PM and 8:15 PM): customer credit hold from a write-off.** The write-off form has
+  a checkbox "Put customer on credit hold", **unchecked by default**. When checked, the same transaction puts the
+  customer on credit hold, audit-logged. A credit hold **warns by default**: new invoices and estimates show
+  "<customer> is on credit hold" and can still be saved. A Company control, **OFF by default** (Controls page, Admin
+  or Master, audit-logged; Area 18 §8.3), makes the hold block new estimates, invoices and sales orders until it is
+  released. Planning proposal, owner may revise: fields `contact.is_credit_hold` INTEGER NOT NULL DEFAULT 0 CHECK IN
+  (0, 1) and `credit_hold_reason` (OD-31 rule); control name `block_sales_on_credit_hold`. Tests (planning proposal, owner may revise):
+  `test_write_off_credit_hold_unchecked_by_default`,
+  `test_write_off_with_credit_hold_sets_customer_hold_in_same_transaction`,
+  `test_credit_hold_warns_and_saves_when_control_off`,
+  `test_credit_hold_blocks_estimates_invoices_and_sales_orders_when_control_on`.
+
 ## 5. Controls, cross-area boundaries and landing
 
 Use `ar.view`, `customer.manage`, `invoice.create`, `invoice.send`, `invoice.void`, `credit_memo.create` and Accountant-only `payment.receive` as the existing permission inputs (`001_company.sql:1196–1201`; area 18 §§2.4, 4). Keep send/post, receive and refund authority separate. Area 14 owns approval policies, default OFF, and approval lifecycle. Do not infer new permission codes or approval thresholds. Use the shared Reasons list (area 15 §7.3 and owner decision :1510) with the stored label and reason details for history. Apply area 13 §§1–2 to invoice/credit, payment and Billing actions, including reversal and replacement dates. Keep period integrity always on. Apply row versions to mutable drafts and customer/settings rows and retain immutable posted versions and audit records. Area 18 owns attachment kinds, sensitive field policy and history format.

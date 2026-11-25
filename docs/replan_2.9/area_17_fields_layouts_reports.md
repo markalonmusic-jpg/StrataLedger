@@ -769,6 +769,10 @@ Excel and PDF files are written through `storage.py` (H3) and returned as handle
 exports (250,000 rows, a confirmation above 50,000). EX1 says a `Report export` checkpoint is signed "for
 journal-based reports only"; Q22 A: financial exports (P&L, balance sheet, cash flow, combined) sign a `Report export`
 checkpoint, being computed from the ledger; Records exports and measure files do not.
+- **Amendment 2026-11-24 (mockup audit items 2, 3 and 7; planning proposal, owner may revise):** exports neutralize formula
+  prefixes (`=`, `+`, `-`, `@`, tab, carriage return) with `'` and are written as UTF-8 (CSV with a BOM); saved
+  report parameters hold only ids, drill handles and display settings, never record data. Rules and tests:
+  docs/design.md section 1, amendments 2026-11-24.
 
 ---
 
