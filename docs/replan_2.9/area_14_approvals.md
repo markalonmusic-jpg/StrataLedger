@@ -210,7 +210,9 @@ review. Mockup note for the design queue: the batch review screen and the approv
 13. **Turning a row OFF with requests Pending.** Pending requests finish under their frozen route; only new
     submissions skip approval. Turning a row OFF is audit-logged with a reason (Area 18 Q15 A).
 14. **Turning a row ON** never approves or blocks existing documents; it applies from the next submit; the change
-    is audit-logged with a reason (Area 18 Q15 A), as turning one OFF is.
+    is audit-logged with a reason, as turning one OFF is. The reason is an owner decision, not a reviewer proposal: Area 18
+    Q15 A ("a reason is needed for controls") and its table row "Change a company control", which names approval toggles
+    and covers a change in either direction.
 
 **Starting route versus default.** The §3 column is a preset the Approvers page offers when a row is first turned on
 (presets first, section 0b). If no policy is saved, §5 rule 1's default applies: anyone holding the kind's approve
@@ -548,7 +550,8 @@ covering limit (MR4, Area 18 §2: approve codes are explicit grants); the page w
 - **Q5 (owner):** editing a posted document while its row is ON is held as a pending revision; the posted version
   stays in the ledger until approved, then reposts; Reject discards it.
 - **Q6 (owner, not the recommended option):** with "Require a separate approver" ON and no other eligible approver,
-  the submitter may approve, marked Self-approved, with a reason (OD-31). The fallback never lets an agent approve.
+  the submitter may approve, marked Self-approved, with a reason (OD-31). The fallback never lets an agent approve (planning note, owner may revise: agent-origin entries always need a human
+  approver, §2 integrity, §5 rule 7 and §8; the fallback is for humans only).
 - **Q7 (owner):** a send-back goes to the submitter (the PM or rep), with the reason; history records from, to and
   when. **Area 6 is amended** (pointer there).
 - **Q8 (owner 10:40 PM): option A.** The two `journal_entry_separate_approver` triggers stay. **Journal entries are
