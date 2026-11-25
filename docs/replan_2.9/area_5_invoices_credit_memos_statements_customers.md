@@ -634,3 +634,9 @@ message and `docs\planning_owner_features_2026-11-22.md` (its text is not in own
 - **Amendment 2026-11-24: Area 5 owns the `statement_send` table**, because this area already names the retained copy
   of a sent statement. Area 1 §9 asked; it does not create the table. The Area 1 refund, write-off and statement
   service rows (Area 1 §5) call into it. No new rule; the table's columns stay as in section 4.
+
+- **Amendment 2026-11-24 (pointer, Area 14): refund and write-off approvals.** 'Refund' and 'Write-off' are new
+  approval kinds (Area 14 §3), all OFF; with a row ON the refund or write-off waits for the kind's approver, then
+  posts (the lock check runs again at the final approval, Area 14 §6). Invoice and credit memo register their approval
+  digests (amount, discount, lines, job, posting date); a posted invoice edited while its row is ON is held as a
+  pending revision until approved (Area 14 §7, owner 10:20 PM Q5). Storage of the pending revision is this area's.

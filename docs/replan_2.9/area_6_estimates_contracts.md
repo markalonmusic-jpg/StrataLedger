@@ -1360,3 +1360,10 @@ with the change and in the audit row. Sections 6.3, 7.3; area 15 amendment (sect
   (Dr Operating bank $20,000.00 / Cr Customer Deposits $20,000.00 for RI0001-003) and is applied later; money the user
   cannot yet place posts to Unapplied customer payments. Signing itself posts nothing. The pro-rata "Less deposit
   applied" on pay apps reads the held deposit balance (Area 4's rule).
+
+- **Amendment 2026-11-24 (pointer, Area 14, owner 10:20 PM): send-back goes to the submitter.** The line at about 260
+  (In approval returns "to the rep") is amended: an approver's send-back, with a reason, goes to the submitter (the
+  PM or the rep who submitted that revision); the history row records from, to, holder and when. The Estimate row of
+  `document_approval_setting` is the switch (OFF, RP9), so §4.3's "OFF = no active policy" reads: row OFF = no
+  request; row ON with no saved policy = the default route. The Estimate row is the OD-81 discount control (owner
+  8:30 PM). 'Contract cancellation' is a new kind (Area 14 §3); `sales_authority_limit` stays here and Area 14 reads it.

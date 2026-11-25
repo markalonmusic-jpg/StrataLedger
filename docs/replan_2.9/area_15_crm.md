@@ -1085,3 +1085,8 @@ B: no lead column; sent estimates are placed on the forecast by `expected_close_
 - **Amendment 2026-11-24 (Area 8 Q28 revisited, owner 11:58 PM 11/23; job side: Area 8 §12.16).** The lead's
   Estimated completion date pre-fills the job's **planned completion** at signing (required, the baseline finish;
   changeable before signing). The job start date is optional.
+
+- **Amendment 2026-11-24 (pointer, Area 14): open item 7 answered.** 'Deal stage move' and 'Contract cancellation'
+  are new approval kinds, OFF (Area 14 §3, §5.1). A move into a stage marked `service_stage.needs_approval` (a
+  proposed column, default 0, owned here) waits for approval and the lead stays where it was. Warnings stay the
+  default (F17).

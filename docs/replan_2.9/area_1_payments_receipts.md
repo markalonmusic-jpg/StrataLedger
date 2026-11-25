@@ -407,3 +407,10 @@ Area 5 decided the rules (§8.5 Q9 and Q10, §4.2); this area owns the postings.
 - **Answered (planning decision, owner may revise): `statement_send` belongs to Area 5**, which already names the
   retained copy. Area 1 does not create the table. Area 5 section 9.6.
 - Still open in §9: customer deposits and pay apps (Areas 4 and 6), vendor prepayments, foreign currency.
+
+- **Amendment 2026-11-24 (pointer, Area 14, owner 10:20 PM): Refund and Write-off are new approval kinds, not
+  existing ones.** The baseline has no such rows; Area 14 §3 adds them to `approval_kind` and
+  `document_approval_setting`, all OFF, with the approve permissions `customer_refund.approve` and
+  `invoice.write_off.approve` (planning proposals). Confirmed (owner 9:10 PM): unapply uses the recording permission
+  and a reason, void needs only a reason, and neither has an approval kind (Area 14 §3, §15). A vendor-credit
+  write-off follows the Company threshold alone.

@@ -634,3 +634,10 @@ no refund request, no hold.
 - **O6 (Area 20):** remittance email after payment and the vendor document request email.
 - **O7 (mockups, no schema):** the CODE_CHANGES 43 `vendor_bank_account` with encrypted numbers is superseded by RP1
   (no bank numbers stored); `bank_payee_id` stays.
+
+- **Amendment 2026-11-24 (pointer, Area 14): O3 answered.** Bills keep Q4 (re-approval only on a vendor or total
+  change, only with 'Bill' approval ON; Area 14 §7); every other kind voids on any change to amount, discount, lines
+  or job. The vendor-credit write-off threshold stays here (NULL = off) and is the only switch for vendor-credit
+  write-offs; the Write-off row is not consulted (Area 14 §5.1, Q2). Area 14 adds no duplicate-review approval: the
+  duplicate warning with a reason stands. 'Bill' and 'Vendor credit' post in a separate step, which runs the lock
+  check; the approval itself does not.

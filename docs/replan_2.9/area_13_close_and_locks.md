@@ -957,3 +957,8 @@ area 18 O6)?
   `ledger_period_balance` with area 17.
 - Area 21 adds `row_version` to `company_settings` and the stale-save refusal shared by every service.
 - Area 14 widens `pending_approvals` beyond journal entries.
+
+- **Amendment 2026-11-24 (pointer, Area 14): `pending_approvals` is widened** to every approval kind, one inbox
+  (Area 14 §9). Area 14 §6 adds a caller of the shared lock check (§1.4): the final approval of a kind that posts on
+  approval runs `period_locks.check_open` (and the Special cutoff) again, refusing with the lock sentence and leaving the
+  request Pending. `controlled_entry_reviewed` reads the same approvals.

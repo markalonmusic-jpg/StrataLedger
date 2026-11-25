@@ -1,6 +1,20 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3 and 2 approved)
 
-## Current planning stop (2026-11-24, Area 1 drafted)
+## Current planning stop (2026-11-24, Area 14 drafted)
+
+`docs/replan_2.9/area_14_approvals.md` drafted with the owner answers of 10:05 PM (only Reject and Send back need a
+reason; Approve takes an optional comment) and 10:20 PM (Q1-Q7). One mechanism: `approval_kind` (21 kinds, six new, all
+OFF), `approval_policy` and `approval_step` (anyone with permission, the job's PM, a role, people or a chain, each with
+a backup), a widened inbox. Rules: any change to amount, discount, lines or job voids an approval (Bills keep Area 3
+Q4); a posted document edit is held as a pending revision (Reject discards it); the lock check runs again at the final
+approval of a posting kind; an unavailable approver goes to the backup, then Admin, then the Master; with "Require a
+separate approver" ON and no other eligible approver the submitter may approve with a reason (never an agent).
+**Awaiting the owner's approval.** **Open for the owner:** Q8, the journal entry's separate-approver triggers (they
+refuse the self-approval fallback for journal entries; default: exclude journal entries). Pointers: Areas 1, 2, 3, 5,
+6, 8, 13, 15 and 18. **Area 11 handoff (not drafted):** asset disposal is the 'Asset disposal' approval row (OFF);
+Area 11 owns the disposal record and its approval digest. Areas still to draft: 9, 11, 16, 19, 20, 21.
+
+## Earlier planning stop (2026-11-24, Area 1 drafted)
 
 `docs/replan_2.9/area_1_payments_receipts.md` drafted (owner approved the outline 2026-11-24 8:55 PM, with answers Q1,
 Q2, Q3, Q4, Q6, Q7 and Q8; Q5 and Q9 recommended defaults, planning proposals). It places every Area 1 input of this

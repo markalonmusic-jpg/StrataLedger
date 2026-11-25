@@ -362,3 +362,8 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner approval of Ar
 - **Shared columns (§3.2):** `payment.reference` and `payment.pay_run_id` are one column each, listed in Area 1 §1.3;
   `payment_allocation` gains `discount_cents` (§3.2), `operation_id` and the release fields (Area 1 §3.3).
 - **Locks:** unchanged; Bill payments and every account a line touches (Area 1 §6).
+
+- **Amendment 2026-11-24 (pointer, Area 14): O4 answered.** The 'Pay run' row routes the submitted run through the
+  one approval mechanism (Area 14 §3, §5.1): `pay_run.approval_request_id` points to `approval_request`; approving
+  runs `pay_runs.check_lines` again; approval posts nothing, so the period-lock check at approval does not apply to
+  it (Area 14 §6). Separation of duties follows "Require a separate approver" (OFF), with the Area 14 §8 fallback.

@@ -1409,3 +1409,11 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
   to the `unapplied_customer_payments` role.
 - **Lists:** `payment_method` (Area 1 §1.3) is edited under the same Settings > Lists permission as the other lists.
 - **Audit:** triggers for `payment_method`, `customer_refund`, `invoice_writeoff` and `statement_send` join §1's list.
+
+- **Amendment 2026-11-24 (pointer, Area 14, owner 10:05 and 10:20 PM): approvals.** The "Which actions require a
+  reason" table gains "Send back an approval"; "Reject an approval" stays; **Approve needs no reason** (optional comment,
+  who and when always recorded) except the self-approval fallback (§8 there), which needs one. Reasons kinds
+  'Approval rejection' and 'Self-approval' are new (Send back uses Area 6's 'Send back'). New approve permissions
+  (planning proposals): `customer_refund.approve`, `invoice.write_off.approve`, `vendor_credit.write_off.approve` and one
+  `<kind>.approve` per other kind; all sensitive, none in a level default or `AGENT_ALLOWED`. The Approvers page rows
+  are the 21 kinds of `approval_kind` (Area 14 §3, §9).

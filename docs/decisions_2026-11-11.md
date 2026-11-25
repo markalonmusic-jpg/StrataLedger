@@ -1746,3 +1746,5 @@ The owner's answers to the Phase 2.7 plan.
   sentence; `KeyboardInterrupt` still propagates, and the transaction rolls back either way); `hooks.fire` refused
   for an Agent writes a denial row after the caller's transaction rolls back (`errors.DeferredDenialError`,
   `authz.record_denial`).
+
+- Amendment 2026-11-24 (Area 14, planning proposal, owner answers 10:05 and 10:20 PM): RP9 stands (one switch per kind, all OFF; the journal entry's switch is `manual_entry_approval`, a vendor-credit write-off's is its Company threshold). New lookup `approval_kind` holds the kinds. Only Reject and Send back need a reason (OD-31); Approve takes an optional comment. Self-approval follows "Require a separate approver", except the no-other-eligible-approver fallback with a reason. Detail: docs/replan_2.9/area_14_approvals.md.
