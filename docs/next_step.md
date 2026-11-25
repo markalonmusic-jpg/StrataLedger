@@ -1,13 +1,13 @@
-# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2 and 14 approved)
+# Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14 and 9 approved)
 
-## Current planning stop (2026-11-24, Area 9 drafted)
+## Current planning stop (2026-11-25, Area 9 approved)
 
 `docs/replan_2.9/area_9_materials_pos_inventory.md` drafted with the owner answers of 11:05 to 11:35 PM; **revised 2026-11-24 for the owner answers to §16 Q1 to Q7 (11:30 to 11:43 PM; section 18)**. Owner rules:
 units add and deactivate (never delete, no rename of a used unit; settles OD-51); stock tracking is a Company control,
 OFF by default; one commitment record `po_type` Materials or Subcontract (commitment on Send, Mark as sent or Print);
 free-text "to be coded" request lines; **a line with a material code takes its cost code, read-only on the line**.
 Planning proposals: `unit_of_measure`, `material_code`, PO, change, receipt, `bill_match`, request, pull ticket and
-stock tables; `po_matching` control (OFF, owner); costing is the owner's moving average or FIFO, picked once. **Awaiting the owner's approval.** **Q1 to Q7 answered (§18):** matching is a Company control (OFF); costing is moving average or FIFO, picked once; no free-text PO lines; a bill line is locked to its PO line's job and cost code; units can be reactivated; a recoded request line takes the material's cost code; a stock price difference splits between stock value and a new controlled "Stock price differences" role. **Not asked (§17):** Subcontract SOV lines without a material code; roll, sheet, bundle, square, pallet and lot as shipped units; "Hold bills" holds the bill before approval and routes it to the job's PM (owner 11/25); Pointers: Areas 3, 6, 7, 8,
+stock tables; `po_matching` control (OFF, owner); costing is the owner's moving average or FIFO, picked once. **APPROVED by the owner 2026-11-25 12:31 AM; 15 of 21 areas approved.** **Q1 to Q7 answered (§18):** matching is a Company control (OFF); costing is moving average or FIFO, picked once; no free-text PO lines; a bill line is locked to its PO line's job and cost code; units can be reactivated; a recoded request line takes the material's cost code; a stock price difference splits between stock value and a new controlled "Stock price differences" role. **Not asked (§17):** Subcontract SOV lines without a material code; roll, sheet, bundle, square, pallet and lot as shipped units; "Hold bills" holds the bill before approval and routes it to the job's PM (owner 11/25); Pointers: Areas 3, 6, 7, 8,
 10, 13, 14 and 18. Areas still to draft: 11, 16, 19, 20, 21.
 
 ## Earlier planning stop (2026-11-24, Area 14 approved)
