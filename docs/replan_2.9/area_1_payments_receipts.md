@@ -443,3 +443,12 @@ A loan paid to the equipment dealer is the dealer's bill (Area 3) paid by a bank
 - **Amendment 2026-11-25 (pointer, Area 21; owner A21-Q13a to Q13d; Planning reading for the mechanics, owner may correct): payment rules.** The payment transfer is blocked when either company's period for the date is closed; in a pay run, paying another company's bill records the full amount as Due from / Due to with no netting ($5,000 bill: 500,000 each side; WSB already owing WEC 100,000 nets to 400,000 only at settlement) (Area 21 §7).
 
 - **Amendment 2026-11-25 (pointer, Area 21; owner A21-Q2f; Planning reading, owner may correct): accounts are found by role.** The intercompany and control accounts used here are the roles Due from (clearing), Due to (clearing), IC AR, IC AP, AP control and AR control, mapped by each company at setup in its own numbering; 1800, 2800, 1210, 2220, 2010 and 1110 are only the stock defaults (Area 21 §6 and §7). Tests look up accounts by role.
+
+### 9.3 Cloud only: Stripe and the billing email page (owner 2026-11-26 2:49 AM; dated amendment, nothing above changes)
+
+**Cloud only.** Owner decision (owner_decisions_2026-11-22.md, "Online payments (Stripe) and the billing email page: cloud only"; verbatim: "skip it until cloud"): desktop v1 has no Stripe connection and no billing email page; both wait for the cloud plan. Invoices keep Send (Company email), Save PDF, Print and Mark as sent as today. No schema change and no change to the receipts design above.
+
+**Planning reading (owner may correct), notes for the cloud plan only, not built:**
+- Receipt through Stripe: Dr Stripe clearing / Cr Accounts receivable.
+- Payout from Stripe: Dr Bank (net) / Dr Bank charges (fee) / Cr Stripe clearing. Example: $1,000.00 paid, fee $29.30 gives Dr Bank $970.70 / Dr Bank charges $29.30 / Cr Stripe clearing $1,000.00.
+- Ramp's invoicing (AR) does not work with Melara today; no Ramp AR work is planned (Ramp stays AP, cards and bills).
