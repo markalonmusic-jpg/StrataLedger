@@ -746,6 +746,7 @@ Closed figures and the close snapshot never change. No table in this area.
   fields your role can't see." (contracts Q15 B); the field catalogue leaves money fields out for such a viewer. Drills,
   exports, PDFs, packs and scheduled runs run the same checks as the viewer (a pack lists the refused report in
   `skipped`).
+- **Updated 2026-11-26 (owner 1:15 PM, "Totals yes, drill needs ledger"; rule in Area 18 section 2.4.4):** `report.financial` shows the report totals and lets the user drill to accounts and jobs. `drill` to the individual entries behind a total (vendor, memo, JE number) also needs `ledger.view`, checked in the service before the read; without it the screen shows "Ask an Accountant for the detail". **Planning reading (owner may correct):** the same applies to the balance sheet, cash flow and trial balance.
 - Row limits (project scope MR3, own-records limits, contact sides) are applied **before** grouping so totals count
   only visible rows.
 - The Agent runs reports only through `AGENT_ALLOWED`; it never exports (G7), designs or schedules (Q24 A).
