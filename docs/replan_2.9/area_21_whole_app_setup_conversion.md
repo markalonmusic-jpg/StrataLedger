@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 21: Whole-app items (stale-save refusal, policy records, company setup, opening balances and conversion, entities, calendar query)
 
-Status: **revised 2026-11-25 for the owner answers A21-Q1 to Q13, Q2b, Q2c, Q2d, Q2e, Q2f, Q13a to Q13g and Q5b (6:50 to 8:04 PM, plus the 7:45, 8:35, 9:34 and 9:44 to 9:53 PM entries; sections 2 and 14), awaiting owner approval.** Docs only: nothing here changes code, a baseline, a migration
+Status: **APPROVED by the owner 2026-11-25 10:18 PM at 024efb3** (owner entry "2026-11-25 10:18 PM — Area 21 approved (owner)": question "Area 21 ... is at 024efb3, with all seven §13 items answered (A21-Q13a–Q13g) and none left open. Approve?"; owner answer, verbatim choice: "Approve Area 21 (Recommended)"). History: revised 2026-11-25 for the owner answers A21-Q1 to Q13, Q2b, Q2c, Q2d, Q2e, Q2f, Q13a to Q13g and Q5b (6:50 to 8:04 PM, plus the 7:45, 8:35, 9:34 and 9:44 to 9:53 PM entries; sections 2 and 14), then approved.** Docs only: nothing here changes code, a baseline, a migration
 or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
 is approved. **Only the lines marked "owner" are owner rules.** Every other proposal is a **Planning reading (owner may correct)**; a
 section that says so applies the label to all of its proposals. PROPOSED items in the sources are not built as final.
