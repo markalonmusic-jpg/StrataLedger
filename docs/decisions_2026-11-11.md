@@ -1766,3 +1766,5 @@ The owner's answers to the Phase 2.7 plan.
 - Amendment 2026-11-25 (Area 16, owner 3:47 AM): custom fields are for CRM leads only; Estimate, Contact, Invoice, Bill and Project have no custom fields and use their built-in fields and notes. Area 6 Q25 A (Estimate values) is withdrawn. Existing rows on those record types are archived, not deleted (planning reading). Detail: docs/replan_2.9/area_16_custom_fields.md.
 
 - Amendment 2026-11-25 (Area 19, owner answers A19-Q1 to Q9, Q3b, Q7b): payroll entry built from the file's rows; source file kept as long as the entry; job cost accruals (labor first, then materials and subcontract) are a separate posting type, never job cost actuals and never billed, shown as Actual, Accrued and Total; burden split by who pays; 0-hour and negative pay lines allowed; "Card and spend import" is its own v1.1 area. Detail: docs/replan_2.9/area_19_payroll_import.md.
+
+- 2026-11-25 amendment (Area 21, owner A21-Q10): [Updated: replaces S7's narrower copy list] a new subsidiary copies the full setup: chart of accounts, roles, approval rules, dimensions, cost codes and service types; no balances or documents.

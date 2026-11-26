@@ -1713,3 +1713,5 @@ preview for the approver).
 - **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): no Project custom fields.** The lines that custom fields on a Project already work (§1) and the per-stage job fields hand-off are withdrawn; job delivery-stage fields are a separate set not designed in Area 16 (Area 16 A16-Q9, which replaces the A16-Q8 named in the pointer above).
 
 - **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): calendar query and policy records.** The company calendar query is `calendar.query` over the date columns this area supplies (Area 21 §8); the forecast thresholds may move to `company_policy` (Area 21 §4, Q6); `row_version` and the stale-save refusal are Area 21 §3 (`tx.update_versioned`, `StaleVersionError`, mapped to `conflict`; insert-only tables exempt).
+
+- **Amendment 2026-11-25 (pointer, Area 21 revision; owner A21-Q6, Q7): [Updated: the pointer above said Q6 open.]** Only new settings and the Area 21 §4 keys use policy records; existing `company_settings` control columns stay columns for now. `row_version` on every editable table.

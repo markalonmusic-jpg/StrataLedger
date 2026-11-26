@@ -184,3 +184,5 @@ Sources read (only these, searched by section, date or code):
 - Examples in §5 now use lead pipeline stages, not job stages. A16-Q4 stays a planning reading.
 
 - **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): row version.** `row_version` and the stale-save refusal are Area 21 §3 (`tx.update_versioned`, `StaleVersionError`, mapped to `conflict`; insert-only tables exempt). A Custom fields Save that changes several fields refuses the whole Save when one is stale (Area 21 §3, Q8 open).
+
+- **Amendment 2026-11-25 (pointer, Area 21 revision; owner A21-Q8): [Updated: the pointer above said Q8 open.]** A Custom fields Save with one stale record is refused as a whole and reloads (three edits, the second changed by Dana -> none save).

@@ -1447,3 +1447,5 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner answer to Area
 - **Amendment 2026-11-25 (pointer, Area 19 draft): payroll permissions.** `import.run` uploads, maps and voids; `payroll.import` (sensitive) reviews, posts and reverses; `payroll.view` (sensitive) sees wages, burden and the source download; `time.approve` is not used by the payroll import. None is in `AGENT_ALLOWED` (Area 19 §9).
 
 - **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): policy records, Export all data and timestamps.** Idle lock minutes and allowed attachment types are `company_policy` keys (Area 21 §4); O3 (who-and-when columns only where a screen shows them), O4 (Export all data, `company.backup`, Area 21 Q12 open) and the `strftime('now')` defaults are Area 21 §9; new permissions proposed there: `conversion.post`, `entity.manage`.
+
+- **Amendment 2026-11-25 (pointer, Area 21 revision; owner A21-Q12, Q13): [Updated: the pointer above said Q12 open.]** Export all data is Admin only using the existing `company.backup`; no new permission. One Admin tool reassigns a deactivated user's open work across every module.

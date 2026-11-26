@@ -371,3 +371,5 @@ Source: `Strata_Teams\docs\owner_decisions_2026-11-22.md`, "Owner approval of Ar
 - **Amendment 2026-11-25 (pointer, Area 20): remittance email.** After a line is recorded, the email goes through the company mailbox and is
   logged in `email_log` (kind 'Document', Area 20 §4); with no mailbox the remittance keeps Save PDF, Print and Mark as sent. A document
   email is its own action and never depends on a notice preference (owner 12:37 AM, Q3).
+
+- **Amendment 2026-11-25 (pointer, Area 21 revision; owner A21-Q2 and Q2b; Planning reading for the mechanics, owner may correct): paying a related entity's bill creates the intercompany charge at payment.** When an entity in the rollup pays a bill that belongs to a related entity, at payment the app creates an AR invoice in the payer to the other entity and an AP bill in the other entity (Dr expense / Cr Due to the payer); eliminations are an auto-generated draft in the month-end review (Area 21 §7). Example: WSB pays WEC's 50,000 ($500.00) bill -> WSB Dr Due from WEC / Cr Bank 50,000; WEC Dr Supplies expense / Cr Due to WSB 50,000. A pay run line for a related entity's bill does the same.

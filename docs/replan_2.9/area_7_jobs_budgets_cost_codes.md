@@ -1102,3 +1102,5 @@ Handed to areas not yet drafted:
 - **Amendment 2026-11-25 (pointer, Area 19; owner A19-Q10): percent complete and budget-to-actual count Actual plus Accrued.** Replaces the "Actual only" proposal in the pointer above. Example: budget 5,000,000, Actual 1,000,000, accrual 453,120 -> 1,453,120 / 5,000,000 = 29.1%; job profit shows with and without accruals. The all-job-cost-accruals rule is the owner's own words (Q3b).
 
 - **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): entities and row version.** The entity of a job is `project.entity_id` (Area 21 §7, Q1 and Q2 open); `row_version` and the stale-save refusal are Area 21 §3 (`tx.update_versioned`, `StaleVersionError`, mapped to `conflict`; insert-only tables exempt).
+
+- **Amendment 2026-11-25 (pointer, Area 21 revision; owner A21-Q1, Q2, Q7): [Updated: the pointer above said Q1 and Q2 open; both are answered.]** An entry spanning entities balances per entity; `project.entity_id` stays a planning reading; `row_version` on every editable table including system-edited ones.
