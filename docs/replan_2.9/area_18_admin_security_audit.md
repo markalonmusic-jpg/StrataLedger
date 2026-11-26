@@ -759,6 +759,8 @@ What changes against the built starter roles:
 
 **Updated 2026-11-26 (full caps and template lists; Area 18 stays owner-approved):** the current caps (80, 32, 46) are printed in full under 2.4.1, the 15 shipped template lists (with the Planning-reading placements below) and the 24 create-and-approve pairs are printed in full, grouped by module, in Strata_Teams inbox/to_design.md, heading "Full caps and template lists". Counts re-checked in Python: (80, 32, 46) current; (99, 34, 51) with section 8.2's four codes, Area 1's five proposals and the 14 placements; no template code outside its role's cap. Nothing here is an owner decision beyond what is marked so.
 
+**Updated 2026-11-26 (owner CON-Q16, 12:55 AM; Area 18 stays owner-approved):** question: which shipped templates hold `customer_refund.issue`, `invoice.write_off` and `payment.unapply`? Owner (verbatim choice): "Controller + Staff accountant (Recommended)". Both templates get all three, in the sensitive column (they are sensitive and in no level; still Area 1 PROPOSED codes, so a Planning reading until the baseline pass). Controller: 37 non-sensitive + 33 sensitive; Staff accountant: 18 non-sensitive + 3 sensitive (its row no longer reads "none" for sensitive codes). Both stay inside the Accountant cap with the placements (99, checked in Python). Whoever holds an issue code and its approve code gets the create-and-approve warning (a warning, never a block): Controller trips 15 of the 24 pairs, Staff accountant none (it holds no approve code). Full lists and the tripped pairs: to_design.md, "CON-Q16: refund and write-off codes in templates".
+
 #### 2.4.4 Old roles mapped to the new model
 
 C57's list of 11 (the owner's UI list; spec section 2):
