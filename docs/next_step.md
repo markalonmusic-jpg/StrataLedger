@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-25 (9:34 PM): A21-Q2e recorded: IC AP is 2220** (the first 22xx number free in both chart templates; Use Tax Payable stays 2210; 1210, 1800, 2800 stay). The account-number open item is closed; AP is 2010 and AR 1110 (design mockups to update). Other open items remain: who creates the mirror bill, other-company period lock, pay-run shares when paying another entity's bill, PO-matched vendors, an approval for the transfer. Awaiting owner approval.
+
 **Update 2026-11-25 (8:35 PM): A21-Q2d recorded ("design sent to planning inbox"):** Area 21 §7 now follows the design chat's intercompany model (1800/2800 clearing at bill entry, automatic transfer to 1210/2210 at payment, split bills 50/30/20, elimination also nets 1800/2800 for unpaid bills, ICB and ICI created at the payment transfer, memo "Paid by WSB" with no AP posting, split stored per bill). Chart check: 2210 is Use Tax Payable in both templates (clash, not renumbered); AP is 2010 and AR 1110. Open: who creates the mirror bill, other-company period lock, pay-run shares when paying another entity's bill, the account numbers. Awaiting owner approval.
 
 **Update 2026-11-25 (7:45 PM): A21-Q2c recorded:** both cross-charging cases (payment for a related entity; bill coded to a related entity), each example stating whose books hold the supplier bill (50,000 WSB/WEC); Due to/Due from from clearing accounts set per entity pair (planning reading); Area 1 and Area 3 pointers updated; Design asked to build cross-charging into bill entry (message in Strata_Teams inbox/to_design.md). Awaiting owner approval.
