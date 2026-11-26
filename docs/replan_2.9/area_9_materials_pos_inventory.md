@@ -162,6 +162,8 @@ Sources read (only these, searched by section, date or code):
   prices new PO and estimate lines and is never a stock or posting cost**, planning reading of the 11:45 PM answer); `is_stocked` INTEGER NOT NULL DEFAULT
   0 (meaningful only while stock tracking is ON); `is_active` DEFAULT 1; `row_version`. Area 6's "default cost code"
   (C129, §3.4) is **replaced** by this driving cost code (owner 11:35 PM); a pointer goes to Area 6.
+**Updated 2026-11-26 (owner 1:05 PM, subcontract create code):** `po.create` creates both commitment types, Materials and Subcontract; there is no subcontract create code. `po.create` + `subcontract.approve` is a create-and-approve warning pair (Area 18).
+
 - **Rules:** create and edit need `po.create` or the Purchasing permission Area 18 assigns; a code cannot be deleted,
   only made inactive (inactive codes stay on old documents, as units do); changing a code's unit is refused once any
   saved line uses it (the line's unit is the saved unit); changing a code's cost code is allowed and **does not change

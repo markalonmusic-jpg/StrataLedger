@@ -348,6 +348,8 @@ on the Controls page: a hold warns 7 days before and on the date; it never relea
 
 ## 4. Subcontract bills, retainage, draws and lien waivers
 
+**Updated 2026-11-26 (owner 1:05 PM):** a subcontract is created with `po.create` (one commitment record, two types); no separate subcontract create code. `po.create` + `subcontract.approve` is a create-and-approve warning pair (Area 18).
+
 ### 4.1 Current state
 
 No subcontract, draw or waiver table; `subcontract.approve` is seeded (`:1214`). `po_ap_matching_design.md`

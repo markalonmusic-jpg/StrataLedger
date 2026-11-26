@@ -415,7 +415,7 @@ after asking (rule 9).
   |---|---|---|
   | Contract (a wording change) | `estimate.create` | `contract.approve` |
   | Contract cancellation | `contract.cancel` | `contract_cancel.approve` |
-  | Subcontract | `po.create` (Area 3 names no create code for a subcontract; open, not decided) | `subcontract.approve` |
+  | Subcontract | `po.create` (owner 2026-11-26 1:05 PM: one code creates both commitment types) | `subcontract.approve` |
   | Vendor credit | `bill.create` | `vendor_credit.approve` |
   | Pay run | `payment.make` | `pay_run.approve` |
   | Invoice | `invoice.create` | `invoice.approve` |
@@ -427,7 +427,8 @@ after asking (rule 9).
   | Deal stage move | `lead.edit` | `deal_stage.approve` |
   | Payroll import | `payroll.import` | `payroll_import.approve` |
   | Fixed asset disposal (also) | `asset.dispose` | `asset.approve` |
-  The approve codes are the placements above. Open, not decided: the create code of a subcontract.
+  The approve codes are the placements above. The create code of a subcontract is decided (below).
+  **Updated 2026-11-26 (owner 1:05 PM, "Same code as POs"): there is no subcontract create code.** `po.create` creates both commitment types, Materials and Subcontract, from + New purchase order; `po.create` + `subcontract.approve` is a create-and-approve warning pair (a warning, never a block). **Planning reading (owner may correct): the pair was already in the 24 as a guess, so the list stays 24, not 25** (the owner's "24 to 25" counted it as new). Recount from the template lists (level defaults not added): Controller 15 and Staff accountant 0 (no `subcontract.approve`, no `po.create`); General Manager preset 1; Sales manager unchanged (no `po.create`); Project manager 4 (`po.create` + `po.approve`, `po.create` + `subcontract.approve`, `change_order.create` + `change_order.approve`, `time.enter` + `time.approve`); Project manager + Estimator 4; Sales rep + Project manager 4; Service manager 0 (holds `po.create`, no approve code).
 - **Contacts (Q11 A):** authorize by the contact's side. Customer-only needs `customer.manage`, vendor-only needs
   `vendor.manage`, both sides or neither takes either. The service reads the flags first, in its own read
   connection (MR6), then authorizes. A holder of one right gets the same sentence, error and denial row for a
