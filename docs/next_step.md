@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-26 (12:05 AM): CON-Q9 to Q13 recorded in Area 18 section 2.4.4 (Area 18 stays approved):** Controller = Accountant · Manager; General Manager preset = Operations · Manager + Sales rep · Manager (updates Q21); Viewer = View only on all 3 roles; Add user preset list = the 15 shipped templates + General Manager + Viewer + company-saved; a preset sets role and level, level editable. Admin row and matrix grouping are Planning readings. Open: the General Manager preset's codes and scope.
+
 **Update 2026-11-25 (10:18 PM): Area 21 APPROVED by the owner at 024efb3** ("Approve Area 21 (Recommended)"). All 21 areas are now drafted and owner-approved. The Phase 2.9 baseline pass, tests first, is the next step; do not start it without the owner's instruction.
 
 **Update 2026-11-25 (10:09 to 10:16 PM): A21-Q13e, Q13f, Q13g recorded:** Available after pay run = balance minus the full run with one IC line per other company (29,620,412 - 4,110,000 = 25,510,412); the IC transfer posts with the payment as one unit with no separate approval; OBE stays open after go-live until an Admin turns it off (zero balance needed; non-zero shows on the close checklist; Area 18 §8.1 exception flagged). Area 21 section 13 has no open intercompany items left. Pointers in Areas 2, 13, 18. Awaiting owner approval.

@@ -1174,3 +1174,5 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-25 Area 21: recorded owner A21-Q13e (Available after pay run, full run plus IC line, 25,510,412 cents example), Q13f (transfer posts with the payment, no separate approval), Q13g (OBE stays open until an Admin turns it off at a zero balance; close checklist item; Area 18 section 8.1 exception flagged); three section 13 items closed; tests added; pointers in Areas 2, 13, 18; design told in to_design.md. Docs only; awaiting owner approval.
 
 - 2026-11-25 Area 21 (whole-app setup, conversion, entities, intercompany) approved by the owner at 024efb3 (10:18 PM, "Approve Area 21 (Recommended)"); status set to approved in the area file and next_step.md; all 21 areas approved. Docs only.
+
+- 2026-11-26 Area 18: recorded owner CON-Q9 to Q13 in section 2.4.4 (Controller = Accountant · Manager; General Manager preset, updating Q21; Viewer = View only on all 3 roles; preset list = 15 shipped + General Manager + Viewer + saved; preset sets role and level, level editable); Admin row and matrix grouping marked Planning reading; area stays approved. Docs only.

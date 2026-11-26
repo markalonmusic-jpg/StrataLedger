@@ -1,6 +1,6 @@
 # Step 2.9 schema replan, area 18: admin, security, audit, attachments
 
-Status: **Owner-approved 2026-11-19** (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17 2026-11-18, folded
+Status: **Owner-approved 2026-11-19** (still approved; **Updated 2026-11-26** for owner CON-Q9 to Q13, section 2.4.4) (first draft 2026-11-18, 6e9cdf8; owner answers Q1-Q17 2026-11-18, folded
 in below, 2a3b497; owner answers Q18-Q24 2026-11-19, all A, section 7). Docs only: nothing here changes
 code, a baseline, a migration or a test.
 Nothing is built until the owner marks area 18 owner-approved in `Strata_Teams\schema_replan_2026-11-17.md`. Every
@@ -706,7 +706,7 @@ C57's list of 11 (the owner's UI list; spec section 2):
 | Old role | Role · level | Job title (template) |
 |----------|--------------|----------------------|
 | Admin | Admin | (any; the spec gives Dana "Controller") |
-| Controller | Admin, or Accountant · Manager | Controller |
+| Controller | Admin, or Accountant · Manager **[Updated 2026-11-26: Accountant · Manager, see below]** | Controller |
 | Accounts payable | Accountant · Standard | AP clerk |
 | Accounts receivable | Accountant · Standard | AR clerk |
 | Sales manager | Sales rep · Manager | Sales manager |
@@ -728,8 +728,17 @@ The built starter roles (`role_templates.py`), where they differ:
 | Foreman | Operations · Standard + Superintendent |
 | Warehouse | Operations · Standard + Warehouse lead |
 | Sales | Sales rep · Standard + Sales rep |
-| General Manager | no shipped template (Q21) |
+| General Manager | no shipped template (Q21) **[Updated 2026-11-26: now a preset, see the note below]** |
 | Payroll | Accountant · Standard + Payroll template (Q20 A) |
+
+**Updated 2026-11-26: owner answers CON-Q9 to Q13 (12:05 AM), recorded here; Area 18 stays owner-approved.** The owner chose each as shown (verbatim choice, then the owner's words):
+- **CON-Q9, Controller preset:** "Accountant · Manager (Recommended)". Dana gets the full Accountant cap at Manager level, but not the Admin-only items (users, roles, restore, add-ons, company settings). Make her Admin separately if she needs those. **Closes** the "Admin, or Accountant · Manager" item above: Controller = Accountant · Manager.
+- **CON-Q10, General Manager preset:** "Preset: Ops + Sales · Manager". Add a General Manager preset that gives Operations · Manager and Sales rep · Manager. **This updates Q21 (section 7):** Q21's answer A (owner 2026-11-19, no template) is superseded for this one role; the table row above ("no shipped template") is superseded; the other Q21 text stays as history. Not decided here: the preset's template codes and project scope (the two roles' level defaults are the starting point); open, not decided.
+- **CON-Q11, Viewer preset:** "View only on all 3 roles (Recommended)". Accountant · View only, Sales rep · View only and Operations · View only, so the user can see everything and change nothing. Labelled "Viewer (see all, change nothing)". **Closes** the Viewer row ("each role held · View only, or a company name").
+- **CON-Q12, preset list:** "Shipped templates + yours (Recommended)". The 15 shipped templates (section 2.4.3), plus General Manager and Viewer, plus any the company saves, in one list (a foreman picks Superintendent).
+- **CON-Q13, what a preset sets:** "Sets role and level (Recommended)". The preset fills in the role, the level and the template permissions, and the level can still be changed before saving.
+- **Planning reading (owner may correct), not owner-decided:** the Users matrix's Admin row reads "All permissions" and lists the 8 Admin-only codes (section 2.4); matrix cells are grouped by module (section 5 O2) with plain-language labels.
+- **Still open, not decided:** the General Manager preset's codes and scope (above); the plain-language wording of each matrix cell.
 
 Nothing needs migrating before the first release: `role_templates.py` and the seed are rewritten, and development
 databases are rebuilt.
@@ -1180,7 +1189,7 @@ above is rewritten in place to quote Area 13 Q6 A and require the reason.
   Project manager template (scope set to All by the company) or Admin.
 - B. Add a shipped "General manager" template spanning Sales rep and Operations: the built role's codes inside
   those caps (its ledger, period and AP views need Accountant · View only as well).
-- **Answer: A** (owner 2026-11-19).
+- **Answer: A** (owner 2026-11-19). **[Updated 2026-11-26: superseded for General Manager by owner CON-Q10: a shipped preset, Operations · Manager + Sales rep · Manager; see section 2.4.4.]**
 
 **Q22. `retainage.release` (in the Accountant and Operations caps, in no template)**
 - A. **Recommended:** add it to the Controller template.
