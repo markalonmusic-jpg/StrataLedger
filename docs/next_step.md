@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-25 (10:09 to 10:16 PM): A21-Q13e, Q13f, Q13g recorded:** Available after pay run = balance minus the full run with one IC line per other company (29,620,412 - 4,110,000 = 25,510,412); the IC transfer posts with the payment as one unit with no separate approval; OBE stays open after go-live until an Admin turns it off (zero balance needed; non-zero shows on the close checklist; Area 18 §8.1 exception flagged). Area 21 section 13 has no open intercompany items left. Pointers in Areas 2, 13, 18. Awaiting owner approval.
+
 **Update 2026-11-25 (9:57 PM): A21-Q2f recorded:** each company assigns its own GL codes; Area 21 names accounts by role (Due from clearing, Due to clearing, IC AR, IC AP, AP control, AR control), the stock numbers are template defaults only, and tests look up accounts by role. Area 1/3 do not set up the chart; the existing `system_role` mechanism and Area 18 §8.1 do, so four intercompany roles and a 'System accounts' setup task (per counterparty entity) are added in Area 21; pointers in Areas 1, 3 and 18; design asked to show role names in the mockups. Awaiting owner approval.
 
 **Update 2026-11-25 (9:44 to 9:53 PM): A21-Q13a to Q13d recorded:** the other company's side posts on save for anyone (audit trail names the WSB user); save blocked when either company's period is closed (same for transfer, voids, credit memos); pay run records the full amount, net 400,000 only at settlement ($5,000 example); no split on PO-matched bills. The four intercompany open items are closed; remaining: 'Available after pay run' uses WSB's balance, an approval for the transfer, the OBE lock. Awaiting owner approval.
