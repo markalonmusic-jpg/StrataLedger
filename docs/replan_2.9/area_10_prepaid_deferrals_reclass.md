@@ -944,3 +944,5 @@ OD-77, plus revisions" and "Owner answers to Area 10 Q20 and Q21".
   before billing (Area 9 §10; planning reading, owner may correct).
 
 - **Amendment 2026-11-25 (pointer, Area 11): the schedule grid is reused.** Fixed-asset depreciation uses the `deferral_schedule_line` pattern (`asset_schedule_line`, statuses Scheduled, Posted, Caught up, Blocked, Reversed, Replaced; catch-up to the first open day; the last line takes the rounding; a posted line changes only to Reversed) and the same sign-in catch-up rule (Area 11 §4).
+
+- **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): feed handoff.** The recurring-work notifications go to Area 20 §7 (the feed moved from Area 21 by the 12:37 AM planning call); Area 21 keeps the calendar query (§8).

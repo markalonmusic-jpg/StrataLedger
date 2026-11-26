@@ -1,6 +1,10 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14, 9, 20, 1, 11 and 16 approved)
 
-## Current planning stop (2026-11-25, Area 19 drafted)
+## Current planning stop (2026-11-25, Area 21 drafted)
+
+`docs/replan_2.9/area_21_whole_app_setup_conversion.md` drafted (Planning readings; docs only). Contents: stale-save refusal (`row_version`, `tx.update_versioned`, `StaleVersionError`), `company_policy` records, the opening balances and conversion batch (one linked entry per item, OBE tie-out and close), the company creation wizard and switch, entities and consolidation, the calendar query and per-user alert state, and the other whole-app items (timestamps, Export all data, reassigning a deactivated user's work). Worked examples: a conversion of eight items with OBE 5,425,333, the stale save 450000 vs 475000 vs 460000, a 1,000,000 intercompany loan and its elimination. **Awaiting the owner's answers.** **Open for the owner (§14):** Q1 balance per entity, Q2 how eliminations post, Q3 opening accumulated depreciation per asset, Q4 OBE close, Q5 year-to-date on a mid-year start, Q6 migrate `company_settings` controls, Q7 which tables get `row_version`, Q8 one stale item in a multi-row Save, Q9 mid-month go-live, Q10 subsidiary copy scope, Q11 closed alerts and content change, Q12 Export all data permission, Q13 reassigning a deactivated user's work. Pointers in Areas 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20.
+
+## Earlier planning stop (2026-11-25, Area 19 drafted)
 
 **Update 2026-11-25 (3:15 PM): A19-Q10 recorded (percent complete and budget-to-actual count Actual plus Accrued; 29.1% example); the all-job-cost-accruals rule is an owner rule; area set: producers Areas 19, 9, 3, readers Areas 7, 17, 5.** **Update 2026-11-25 (3:00 PM): Area 19 revised for the owner answers A19-Q1 to Q9, Q3b and Q7b; awaiting owner approval; no open owner questions.** Settled: entry from the file's rows (roadmap open decision 1), file kept as long as the entry, accrual built in v1 as a separate accrual posting type (Actual, Accrued, Total; profit with and without accruals; never in T&M or a pay app; all job cost accruals, pointers in Areas 5, 7, 17), burden split by who pays (Accrued burden), 0-hour and negative rows, "Card and spend import" as its own v1.1 area.
 

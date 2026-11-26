@@ -646,3 +646,5 @@ Serial tracking is in: per material code, OFF by default, only while stock track
 the "serial tracking out of scope" lines in §17 and in the Area 20 pointer above. Example: inverter SN 4471-A pulled to RI0001-002 shows on that job.
 
 - **Amendment 2026-11-25 (pointer, Area 19; owner A19-Q3b): material accruals are visible as Accrued.** A job-site delivery ticket's Dr Job cost / Cr GRNI carries `journal_line.cost_nature` 'Accrued' until the matched bill's own entry posts the actual (the owner: material accruals "need to be visible", separate from actuals). Planning proposal for the mechanics, owner may revise: Area 9 is the producer of material accruals.
+
+- **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): row version and setup.** `row_version` and the stale-save refusal are Area 21 §3 (`tx.update_versioned`, `StaleVersionError`, mapped to `conflict`; insert-only tables exempt). Setup of units and material codes is a setup task in Area 21 §6.

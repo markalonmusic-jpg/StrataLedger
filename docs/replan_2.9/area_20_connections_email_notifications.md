@@ -397,3 +397,5 @@ connections, with a reason; a document is marked sent only by a recorded send re
 - **A20-Q4 purge (owner):** a purged capture message leaves a stub with no content: a fingerprint, the sender and the dates, so a repeat is still recognized. §5.
 - **Serial tracking (owner 12:53 AM):** in the plan, per material code, OFF by default, only while stock tracking is on; serials are recorded at receipt, picked at pull, and
   kept on the job's record for warranty (Area 9 §8.3). Live already has "Track serial numbers" and the String inverter 12 kW with 14 serials. §5, §14 item 6.
+
+- **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): boundary and setup.** Area 21 keeps `calendar.query`, `row_version` and `user_alert_state` (the per-user closed and snoozed alerts, §8); connections appear as a setup task in Area 21 §6; the notification feed stays here (§7).

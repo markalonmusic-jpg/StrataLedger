@@ -182,3 +182,5 @@ Sources read (only these, searched by section, date or code):
 - **A16-Q8 (owner, A):** Copy custom fields skips a field with no matching stage and lists it as "not copied: no <stage> stage on <type>". Example: "Permit fee" on "Site assessed" is not copied to Roofing.
 - **A16-Q9 (owner, A):** job delivery-stage fields stay their own set, designed later with the job pages; jobs get no company-wide custom fields (A16-Q6 stands).
 - Examples in §5 now use lead pipeline stages, not job stages. A16-Q4 stays a planning reading.
+
+- **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): row version.** `row_version` and the stale-save refusal are Area 21 §3 (`tx.update_versioned`, `StaleVersionError`, mapped to `conflict`; insert-only tables exempt). A Custom fields Save that changes several fields refuses the whole Save when one is stale (Area 21 §3, Q8 open).

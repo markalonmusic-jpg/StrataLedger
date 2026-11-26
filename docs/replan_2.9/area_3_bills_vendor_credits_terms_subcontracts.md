@@ -664,3 +664,5 @@ no refund request, no hold.
 - **Amendment 2026-11-25 (pointer, Area 16, owner 3:47 AM, A16-Q6: custom fields are for CRM leads only): no custom fields on bills.** The line that custom field values on a posted bill check the area lock is withdrawn (no custom fields exist on a bill); a bill uses its built-in fields and notes.
 
 - **Amendment 2026-11-25 (pointer, Area 19; owner A19-Q3b): subcontract accruals are visible as Accrued.** Subcontract work done and not yet billed, if accrued to the job, carries `journal_line.cost_nature` 'Accrued' and is cleared by the bill's own entry (the owner: "any job cost accruals need to be visible"). Planning proposal for the mechanics, owner may revise: Area 3 is the producer of subcontract accruals.
+
+- **Amendment 2026-11-25 (pointer, Area 21 draft; Planning reading, owner may correct): policy defaults.** The default table now; a later move to `company_policy` scoped records is Area 21 §4 (Q6 open).

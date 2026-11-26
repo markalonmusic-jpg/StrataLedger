@@ -1,0 +1,255 @@
+# Step 2.9 schema replan, area 21: Whole-app items (stale-save refusal, policy records, company setup, opening balances and conversion, entities, calendar query)
+
+Status: **DRAFT 2026-11-25, awaiting owner answers (section 14).** Docs only: nothing here changes code, a baseline, a migration
+or a test. Every table, column, code and check below would be built only in the 2.9 baseline pass, after the replan
+is approved. **Only the lines marked "owner" are owner rules.** Every other proposal is a **Planning reading (owner may correct)**; a
+section that says so applies the label to all of its proposals. PROPOSED items in the sources are not built as final.
+
+Sources read (only these, searched by section, date or code):
+- Every "Area 21" or "area 21" handoff in Areas 1 to 20 and in docs/next_step.md (the inventory is §1), `docs/contracts/reports.md` (lines 1315 and 1524: `StaleVersionError`, `row_version` on every editable table).
+- Strata_Teams `schema_replan_2026-11-17.md` (the Area 21 row; COMPANY-01 to 03, COSETUP-01 to 04, OPENBAL-01 to 04), `shared_decisions.md` (build rule g, g4, 2026-11-19 2:29 AM), `planning_decision_audit_2026-11-20.md` (the Area 21 rows).
+- docs/next_step.md "Owner decisions 2026-11-22 for areas not yet drafted" (Area 21 items 5 and 6), the Area 21 company-switch lines (owner, shared_decisions 2026-11-21 10:20 AM).
+- `docs/decisions_2026-11-11.md` (E4 conversion wizard, E6 one currency, S7 a new subsidiary copies the parent, S8 the Admin of a new company); Area 17 §3.2 and §8 amendment 2026-11-20; Area 11 (opening accumulated depreciation); Area 20 §7 and §17 (the notification feed).
+- Live mockups (read-only, StrataLedger_mockups): `new-company.html`, `opening-balances.html`, `first-run.html` and `company.html` (listed only, not read; §12 item 9).
+- `migrations/001_company.sql` (checked: `company_entity` and `journal_line.entity_id` `:3871`, `:508`; `opening_balance_equity_acct_id` `:770`; `journal_entry.source` 'Conversion' `:451`; `fiscal_year`, `fiscal_period`; no `row_version` anywhere, no `first_live_date`, no policy table) and `modules/services/` (`companies.py`, `company_settings.py`, `periods.py`, `tx.py`, `errors.py`).
+
+---
+
+## 0. Summary of the proposals
+
+| # | Item | Proposal in one line (all Planning reading, owner may correct, unless marked owner) |
+|---|------|----------------------|
+| 1 | Stale-save refusal | **Owner (build rule g4):** every editable table has `row_version`; a save sends the version it loaded; a stale save is refused with `StaleVersionError` (mapped to `conflict`) and the page shows "Changed by someone else. Reload." One shared helper in `tx.py` (§3). |
+| 2 | Policy records | **Owner (X 6):** scoped policy records instead of growing `company_settings`, default OFF. One `company_policy` table holds the open payments limits (30 and 180 days), the idle lock, the allowed attachment types, the date format and later settings (§4). |
+| 3 | Opening balances and conversion | **Owner (items 5 and 6):** `first_live_date`; the conversion date is the day before, derived; **one linked entry per item**, never one summary entry. A reviewed `Opening balances` batch posts all item entries atomically, then OBE is tied out and closed (§5). |
+| 4 | Company setup and switch | The creation wizard is one atomic service call; first fiscal years, date format, first live date and a setup-task list; the switch and open rules carried from COMPANY-01 to 03 and COSETUP-01 to 04 (§6). |
+| 5 | Entities and consolidation | **Owner (11-15 2:08 PM; audit Q1 A):** designed here. Balance per entity inside an entry, intercompany accounts, an Eliminations entity, a reversible elimination run; `entity_mode` stays refused until approved (§7). |
+| 6 | Calendar query, attention box | One read-only `calendar.query` over the sources other areas own; a per-user store for closed and snoozed alerts. The notification feed itself is Area 20 §7 (§8). |
+| 7 | Other whole-app items | Timestamps, "who and when" columns, Export all data, reassigning a deactivated user's open work (§9). |
+
+---
+
+## 1. Handoff inventory (every "Area 21" in Areas 1 to 20, with where it lands)
+
+| From | What it says | Lands in |
+|------|--------------|----------|
+| Area 3 (line 177, policy defaults) | the default table now; "Area 21's scoped policy records" later | §4 |
+| Area 6 (lines 65, 726, 1058, 1267) | 3-day expiry reminder is a notification; Area 21 adds `row_version` to the row; allowed file types | §3, §4; the reminder is Area 20 §7 |
+| Area 7 (lines 61, 353, 796, 1060) | `row_version` on the new `company_settings` columns; entities (which entity a job belongs to); the "Enter budget" notification | §3, §7; the notification is Area 20 §7 |
+| Area 8 (lines 194, 372, 758, 1015) | `row_version` on that row; the company calendar query; "scoped policy records may" hold the forecast thresholds; needs-attention items | §3, §4, §8 |
+| Area 9 (lines 515, 539) | stale-save refusal on its tables; setup of units and material codes | §3, §6 |
+| Area 10 (line 477) | the Area 21 notification feed for recurring work | Area 20 §7 (§8) |
+| Area 11 (lines 93, 237, 249, 280) | row versions; opening balances and the import of existing assets and loans; opening accumulated depreciation | §3, §5 |
+| Area 12 (Q16, hand-offs) | open payments limits (30 and 180 days) as policy records; `row_version` | §3, §4 |
+| Area 13 (lines 739, 958) | `row_version` on `company_settings`; the stale-save refusal shared by every service | §3 |
+| Area 14 (line 454) | row version on `approval_kind`, `approval_policy`, `approval_request` | §3 |
+| Area 15 (lines 66, 68, 265, 406, 558, 686, 779, 981) | `row_version` on `company_settings`; the calendar read `activities.calendar_rows`; notifications | §3, §8; the feed is Area 20 §7 |
+| Area 16 (lines 82, 150) | `row_version` on `custom_field_def` and `custom_field_value` | §3 |
+| Area 17 (lines 198, 671, 1060) | the conversion posts the day before the first live date (item 5); entities and consolidation; `row_version` and `StaleVersionError`; a general notification feed (Q19 A: later); sharing `saved_view` | §5, §7, §3, §8 |
+| Area 18 (lines 176, 441, 826, 1047, 1048, 1065) | policy records (idle lock minutes, allowed attachment types); O3 who-and-when columns; O4 Export all data; `strftime('now')` defaults | §4, §9 |
+| Area 20 (lines 77, 250, 314, 338, 349) | the feed moved to Area 20; Area 21 keeps the calendar query and `row_version`, and setup of connections at company setup | §3, §6, §8 |
+| docs/next_step.md items 5 and 6; COMPANY-01 to 03; COSETUP-01 to 04; OPENBAL-01 to 04; COA-01 to 04 (schema_replan) | conversion date and entries (owner items 5 and 6); company switch and wizard tests | §5, §6 (the chart-of-accounts drawer tests stay with Area 18) |
+| `docs/contracts/reports.md` 1315, 1524 | `StaleVersionError` maps to `conflict` | §3 |
+
+---
+
+## 2. Decided (owner) and carried forward
+
+1. **Build rule g4 (owner, 2026-11-19 2:29 AM):** every record a page loads carries a version; saves send it back; a stale save returns a conflict and the page shows "Changed by someone else. Reload". Every editable table gets a `row_version` and services refuse stale saves.
+2. **X 6 (owner):** scoped policy records instead of growing `company_settings`; default OFF.
+3. **Item 5 (owner, 2026-11-22):** the conversion posts on the day before the first live date, for month-end and mid-month go-lives (Jan 1 -> Dec 31; Mar 15 -> Mar 14). `company_settings.first_live_date`; the conversion date is derived, never typed.
+4. **Item 6 (owner, 2026-11-22):** a separate entry per item; **no single summary conversion entry**. Every opening balance and every open invoice or bill gets its own linked posting (source 'Conversion', linked to its source row).
+5. **E4 (owner):** trial balance into Opening Balance Equity, open AR and AP as documents, tie out, then lock and close OBE. **R55 (owner):** human review applies to imported and typed balances.
+6. **Entities (owner 11-15 2:08 PM and 11-16 2:02 PM; audit Q1 A, 2026-11-20 1:50 AM):** consolidating entities inside one company file (`company_entity`, `journal_line.entity_id`, intercompany accounts, eliminations) is designed here; `saved_report.entity_mode` 'entities' stays refused until approved; entity screens stay hidden until a company has a second entity.
+7. **Company switch (owner, shared_decisions 2026-11-21 10:20 AM):** when the destination is ready the switch continues even if the outgoing company's checkpoint fails or is skipped; that outcome is recorded and reported separately; "Signed" shows only when the service confirms it was saved; a failed destination open keeps the original company selected and usable.
+8. **S7 and S8 (owner):** a new subsidiary copies the parent's chart, roles and approval policies; an Admin who creates a subsidiary becomes its Admin; only the Master creates a top-level company. **E6:** one currency per company.
+9. **Area 20 planning call (12:37 AM):** the notification feed and `last_seen_at` are Area 20 §7; Area 21 keeps the calendar query and `row_version`.
+
+---
+
+## 3. Stale-save refusal and `row_version` (Planning reading, owner may correct, within owner rule g4)
+
+- **Column:** `row_version INTEGER NOT NULL DEFAULT 1` on **every editable table**: each area lists its own tables (Areas 9, 11, 14, 16 and 20 name them); this area adds it to `company_settings` and any table an area did not list. **Insert-only tables, ledger tables and append-only tables are exempt** (`journal_line`, `audit_log`, history tables, `depreciation_run`, `custom_field_legacy`).
+- **Helper (`tx.py`, so every service shares it; H4: no trigger):** `tx.update_versioned(conn, table, key_column, key, expected_version, changes)` runs `UPDATE ... SET ..., row_version = row_version + 1 WHERE key = ? AND row_version = ?`; zero rows changed re-reads the row: missing -> the typed not-found error; present -> **`StaleVersionError`** (new, in `errors.py`, carries the table, key, the version sent and the current version, no values). The API bridge maps it to `conflict` (contracts, `docs/contracts/reports.md:1315`); the page shows "Changed by someone else. Reload."
+- **Calling rule:** every service update takes `expected_version`; a missing value is a programming error (static test). The authorization check (`authorize`, rule 10) runs before the version check, so a user without permission never learns the version.
+- **Multi-row saves:** a Save that applies several edits in one transaction (Area 16's Custom fields Save, Area 18's role page) checks every row's version first and refuses the **whole** Save when any is stale (Q8).
+- **Audit:** the stale refusal writes nothing to the audit log (no change was made); the log keeps the successful updates with `row_version` in the changed-field set.
+- **Worked example (integer cents):** invoice draft line price 450000 ($4,500.00), version 3. Dana loads it and saves 475000 ($4,750.00): version 4, a change of +25000. Marcus loaded version 3 and saves 460000 ($4,600.00): refused with `StaleVersionError` (sent 3, current 4); the stored price stays 475000; after Reload he sees 475000 and may save 460000 as version 5 (a change of -15000). No ledger line is written by either refused or accepted save; money stays integer cents.
+- **Not covered:** a read never bumps a version; a `company_settings` row version changes on any setting change; the AI agent's writes use the same helper (and the agent has no write permission).
+
+---
+
+## 4. Scoped policy records (Planning reading, owner may correct, within owner rule X 6)
+
+- **`company_policy` (new):** `policy_id`, `policy_key` (a code-owned registry: unknown keys are refused), `scope_type` ('Company' now; 'Entity' or 'Job' later, one allowed per key in the registry), `scope_id` (NULL for Company), `value_int`, `value_text`, `is_enabled` INTEGER NOT NULL DEFAULT 0 (**controls default OFF**), `row_version`. `UNIQUE (policy_key, scope_type, scope_id)`. Every change is audited with the user; a change to a control-type key needs a reason from the Controls page (Area 18 Q15 A) and is listed on Company Settings > Controls.
+- **First keys:** `open_payments.min_days` 30 and `open_payments.max_days` 180 (Area 12 Q16 A); `idle_lock.minutes` (Area 18; NULL = never lock, the default); `attachments.allowed_types` and `attachments.max_bytes` (Area 18 §3; the 20 MB cap, `20971520`, stays the ceiling); `display.date_format` (Company; COSETUP-02; the default follows the country); the Area 8 forecast thresholds and the Area 3 defaults **may** move here later (Q6).
+- **Reads:** `policy.get(context, key, scope)` returns the value with the key's registered default; services never read `company_policy` directly (one place, easy to cache in hosted).
+- **Example:** open payments limits 30 and 180 days: an unmatched payment of 1250000 ($12,500.00) listed 31 days after its date appears in "Open payments"; one at day 181 is shown as stale with the number 181; changing `max_days` to 365 needs an Admin or the Master and is audited with the old value 180 and the new value 365.
+
+---
+
+## 5. Opening balances and conversion (Planning reading, owner may correct; items 5 and 6 and E4 and R55 are owner rules)
+
+- **Setting:** `company_settings.first_live_date` (DATE, NULL until set). **The conversion date is `first_live_date - 1 day`** (owner item 5): Jan 1, 2027 -> Dec 31, 2026; Mar 15, 2027 -> Mar 14, 2027. The new-company wizard's "Start date" is this field; it can be changed only before the conversion batch is posted.
+- **`import_batch.batch_type` gains 'Opening balances' (Area 19 shares the batch columns).** One batch per company, status Draft -> In review -> Approved -> Posted. **R55 (owner):** typed and imported balances are both held for one human review of the exact items (digest as in Area 19 §5); saving creates an Import-origin draft and posts nothing; a separate reviewer is required only when the Controls setting "separation of duties" is ON (OFF by default).
+- **`conversion_item` (new, staging):** `item_id`, `batch_id`, `item_kind` ('Account balance', 'Open invoice', 'Open bill', 'Fixed asset', 'Asset opening depreciation', 'Loan', 'Job started', 'Bank item'), `source_ref` (the invoice or bill number, asset code, account number), `account_id`, `contact_id`, `document_date`, `due_date`, `amount_cents` (integer; the sign is the account's normal side), `clearing_id` (a clearing identity per open document, owner OPENBAL-02), `entry_id` (set at posting), `row_version`. Open invoices and bills are real documents with their original numbers, contacts, due dates and open cents, flagged `is_opening` (the mockup text: "can be paid, credited or written off like any invoice").
+- **Posting (finalization):** one write transaction, retry-safe by `operation_id` (OPENBAL-04): refuse unless the trial balance debits equal credits and each subledger ties to its control account (AR open items = account 1200; AP = 2000; assets and loans tie to Area 11's schedules); then post **one 'Conversion' entry per item**, dated the conversion date, each against the Opening Balance Equity account (`opening_balance_equity_acct_id`); then post the OBE close (below). The batch shows the actual posted entries, and the page opens the real entry (OPENBAL-03).
+- **OBE close (E4):** after tie-out, one final entry moves the OBE balance to Retained earnings and OBE becomes unpostable to ordinary users (planning reading; Q4). Year-to-date income and expense are either brought as balances (the mockup recommends this mid-year) or rolled into retained earnings (Q5).
+- **Period handling:** the period containing the conversion date closes after posting for a month-end go-live (the mockup text "Period 2026-09 is closed after posting"); a mid-month go-live closes through the conversion date with Area 13's explicit **Special cutoff** (a custom close date with a reason; the period stays open for the days from the first live date).
+- **Assets and loans (Area 11):** an opening asset creates its `fixed_asset` row with the cost and the opening accumulated depreciation; the schedule continues from the first live date. Because item 6 forbids a summary entry, the opening accumulated depreciation posts **as one entry per asset** (this changes Area 11's "one opening entry" proposal; flagged §12, Q3). An opening loan creates its `loan` with the principal at the conversion date and its schedule lines.
+- **Worked example (all integer cents; first live date 01/01/2027, conversion date 12/31/2026):**
+
+  | Item | Entry on 12/31/2026 | Amount |
+  |------|---------------------|--------|
+  | Operating checking | Dr Bank / Cr Opening Balance Equity | 5,000,000 |
+  | Open invoice INV-0381 | Dr Accounts receivable / Cr OBE | 1,200,000 |
+  | Open invoice INV-0380 | Dr Accounts receivable / Cr OBE | 800,000 |
+  | Truck, cost | Dr Fixed assets / Cr OBE | 5,840,000 |
+  | Truck, opening accumulated depreciation | Dr OBE / Cr Accumulated depreciation | 3,114,667 |
+  | Open bill B-1 | Dr OBE / Cr Accounts payable | 900,000 |
+  | Open bill B-2 | Dr OBE / Cr Accounts payable | 400,000 |
+  | Equipment loan | Dr OBE / Cr Loans payable | 3,000,000 |
+
+  Each entry balances (debits = credits) on its own. Eight item entries. OBE credits 5,000,000 + 1,200,000 + 800,000 + 5,840,000 = 12,840,000; OBE debits 3,114,667 + 900,000 + 400,000 + 3,000,000 = 7,414,667; **OBE balance 5,425,333 credit** = assets (5,000,000 + 1,200,000 + 800,000 + 5,840,000 - 3,114,667 = 9,725,333) - liabilities (900,000 + 400,000 + 3,000,000 = 4,300,000). The ninth entry: Dr OBE 5,425,333 / Cr Retained earnings 5,425,333; OBE ends at 0. The truck's book value is 5,840,000 - 3,114,667 = 2,725,333 ($27,253.33), as in Area 11.
+  **Mid-month:** a first live date of 03/15/2027 gives conversion date 03/14/2027, posted into the open March period under Area 13's Special cutoff.
+- **Refusals (tests):** the mockup's "Debits $1,250.00 more than credits" (125,000 cents) blocks Post and names the accounts; an AR tie-out difference names the invoice numbers; a conversion date inside a locked period is refused; a retry with the same `operation_id` returns the first result and adds no entries.
+
+---
+
+## 6. Company setup, creation and switching (Planning reading, owner may correct; the S7, S8, E6 and switch rules are owner rules)
+
+- **Create (`companies.create_company`, one write; the mockup says "created together or not at all. Nothing is posted"):** name, a unique code that "names the company file and never changes" (2 to 8 letters or digits, never reused), legal name, tax id, relationship (stand-alone or subsidiary of a parent), industry, country and currency (one per company, E6), time zone, address, fiscal year start month, adjustment periods (13 and 14) on or off, how starting (brand-new or moving), `first_live_date`, chart (template, copy from the parent, or own CSV), then the starter roles, payment terms, tax rates "No tax" and the system accounts. Failure leaves no file, registry row or access grant (COSETUP-01); the page shows success only from the returned saved result.
+- **Fiscal years:** the first fiscal years are created (2027 and 2028, 24 periods in the mockup); later years are created 60 days ahead; fiscal years are named by the year they end in (July 2026 to June 2027 is FY2027); all twelve start months are tested (COSETUP-02).
+- **Date format** (`display.date_format`, §4) sits beside Country and Time zone; "today" follows the time zone.
+- **Access:** only the Master creates a top-level company; a subsidiary needs `company.create` in the selected parent; the creator becomes the Admin (S8); a subsidiary inherits access from its parent and Deny narrows it. On first run with no parent, Relationship and Copy are hidden; switching to stand-alone clears a stale Copy selection (COSETUP-03).
+- **Copy scope gap (flagged §12):** S7 copies the chart, roles and approval policies; the mockup also names dimensions, cost codes and service types ("No balances or documents"). Q10 asks which.
+- **`setup_task` (new, small):** `task_key` ('Opening balances', 'Bank accounts', 'Invite users', 'Review Company controls', and later Connections), `status` (Not started, Done, Skipped), `done_by`, `done_at`, `row_version`: the "Next steps" list of the wizard's last screen and guided setup. Tasks are never required to use the app.
+- **Switching (owner rules in §2 item 7, plus the tests of COMPANY-01 to 03):** the selected company, dashboard, Area 20 calendar settings, Area 17 report data and export header all follow the active `company_id` after a reload (`test_company_switch_roundtrip_uses_active_company_id_after_reload`); a denied or failed destination leaves the current company usable and writes no successful-open event for the target; every successful open writes master `auth_event` 'Company opened' with the actual company id (Area 18); `ledger_verify.checkpoint_on_close` runs for the outgoing company only when it actually closes.
+- **Worked example (money-free):** moving from another system with start date 01/01/2027 creates 2027 and 2028 (24 periods), sets `first_live_date`, creates no entry, and lists "Enter opening balances: balances as of 12/31/2026" as the first next step (§5).
+
+---
+
+## 7. Entities inside one company file and consolidation (Planning reading, owner may correct; the decision to design it here is owner)
+
+- **Today:** `company_entity` (code, name, `parent_entity_id`, `is_active`, `is_eliminations`) and `journal_line.entity_id` (NULL = the file's own company) exist. Nothing else uses them; Area 17 refuses `entity_mode`; the screens stay hidden until a second entity exists.
+- **Proposals:** (1) **entity balance:** inside one journal entry the debits equal the credits **per entity** (`entity_id` NULL counts as the file's own company), so moving money between entities needs both sides (Q1); (2) **intercompany accounts:** two system roles, `intercompany_receivable` (due from) and `intercompany_payable` (due to), with the counterparty entity on the line (`journal_line.counterparty_entity_id`, NULL otherwise); (3) **Eliminations:** the `is_eliminations` entity holds elimination entries only; a service `consolidation.run_eliminations(context, period)` creates them from the intercompany pairs, reversible and re-runnable for an open period (Q2); (4) **documents:** a job (`project.entity_id`) and its documents and costs belong to one entity; a document without a job belongs to the file's own company unless an entity is chosen; (5) **reports:** a consolidated view sums every entity plus the Eliminations entity, with an entity filter; `entity_mode` is lifted only after approval.
+- **Permissions:** `entity.manage` (sensitive, Admin and Master); entity screens need at least two entities; deactivating an entity with posted lines keeps its history.
+- **Worked example (integer cents):** parent WSB lends its subsidiary WEC 1,000,000 ($10,000.00). One entry, four lines: WSB Dr Due from WEC 1,000,000 / Cr Bank 1,000,000 (entity WSB: debits = credits); WEC Dr Bank 1,000,000 / Cr Due to WSB 1,000,000 (entity WEC: debits = credits). The elimination on the Eliminations entity ELIM: Dr Due to WSB 1,000,000 / Cr Due from WEC 1,000,000 (counterparties WSB and WEC). **Consolidated:** Due from WEC 1,000,000 - 1,000,000 = 0; Due to WSB 1,000,000 - 1,000,000 = 0; Bank 1,000,000 - 1,000,000 = 0 net of the two entities; every entity and the entry balance.
+
+---
+
+## 8. Calendar query and the attention box (Planning reading, owner may correct)
+
+- **`calendar.query(context, date_from, date_to, sources, filters)`:** a read-only service (no table) that merges rows from the sources other areas supply, filtered by what the user may read: job tasks and milestones (Area 8 date columns), activities (`activities.calendar_rows`, Area 15), calendar events (Area 20), close tasks and due dates (Area 13), the open payments and due dates the pages need. It returns a typed row (source, record reference, date, title, owner) and never writes. The withdrawn `calendar_item` (Area 8 §12.5, owner 7:10 PM) is not a source.
+- **Needs-attention items (owner R27: one attention box, alert colours by severity):** each producing area computes its alerts; this area stores only the **per-user state**: `user_alert_state` (`user_id`, `alert_key`, `record_ref`, `content_hash`, `state` 'Closed' or 'Snoozed', `snoozed_until`, `row_version`; `UNIQUE (user_id, alert_key, record_ref)`). The mockup rule "a closed alert comes back by itself if its content changes" is the `content_hash` comparison; "Snoozed for me" is `snoozed_until` (the audit item of 11-14 1:45 PM).
+- **Notification feed: not here.** Area 20 §7 owns the `notification` table, read state, `last_seen_at` and email opt-in; Area 17 Q19 A's "general notification feed (later)" is satisfied there; "Since you were last here" is Area 20.
+- **`saved_view` sharing (Area 17 open item):** not designed here; left open (§13).
+- **Example:** an overdue-close alert for October is Closed by Dana with hash h1; the next day a task is added so the content hash becomes h2; the alert shows again for Dana and not for others who never closed it.
+
+---
+
+## 9. Other whole-app items (Planning reading, owner may correct)
+
+1. **Timestamps (Area 18 O-list; CLAUDE section 4):** `app_user.created_at` and the Admin role seed use `strftime('now')` today; they move to the same UTC ISO 8601 with offset the services write, with the clock from the context (H2).
+2. **Who-and-when columns (O3):** the audit log already records who and when; tables get `created_by`, `created_at`, `updated_by`, `updated_at` **only where a screen shows them** (a list in each area); no blanket columns.
+3. **Export all data (O4):** a service builds a ZIP of CSV files for the active company (Admin only, `company.backup`), audited, files through `storage.py`; the permission choice is Q12.
+4. **Reassigning a deactivated user's open work (decision audit 11-14 1:30 PM):** an Admin tool lists open items by kind (leads, jobs, tasks, approvals, cases) owned by a deactivated user and reassigns them in one audited action (Q13).
+5. **Idle lock:** `idle_lock.minutes` (§4), enforced by the shell; the lock does not log the user out of the service.
+
+---
+
+## 10. Permissions, locks, row version and audit
+
+- **Permissions (Area 18):** `company.create` (Master; Admin for a subsidiary of a company they manage), `company.settings` for policy records and setup tasks, `import.run` and `conversion.post` (sensitive; Admin, Master and the Accountant template) for the opening balances batch, `entity.manage` (sensitive), `company.backup` for Export all data. None is in `AGENT_ALLOWED`.
+- **Locks:** conversion entries respect period and area locks (a conversion date in a locked period is refused); policy records and setup tasks have no lock.
+- **Audit:** every table above is audited by the trigger pattern with the user; the conversion posting, company creation and switch write audit events; the stale refusal writes none (§3).
+
+---
+
+## 11. How it lands in the baselines and code, and tests
+
+- **Baselines (2.9 pass, tests first):** `row_version` on every editable table; `company_policy`; `company_settings.first_live_date`; `import_batch` 'Opening balances' and `conversion_item`; `is_opening` on invoices and bills; `journal_line.counterparty_entity_id`; `project.entity_id`; `setup_task`; `user_alert_state`; the intercompany roles.
+- **Code:** `tx.update_versioned` and `StaleVersionError`; `policy.py`; `conversion.py`; `companies.py` (creation and switch); `consolidation.py`; `calendar.py`; `ledger.py` stays the only journal writer; no UI or HTTP import (H1), no clock (H2), files through `storage.py` (H3), no SQLite-only SQL (H5).
+- **Tests:** `test_stale_save_is_refused_and_stored_value_unchanged` (450000 -> 475000, then 460000 refused), `test_every_editable_table_has_row_version` (static, with the exemption list), `test_update_without_expected_version_is_refused_statically`, `test_stale_version_maps_to_conflict`, `test_multi_row_save_refuses_whole_when_one_is_stale`, `test_policy_unknown_key_refused`, `test_policy_defaults_off_and_change_is_audited`, `test_open_payments_limits_30_and_180_are_policy_records`,
+  `test_conversion_posts_day_before_first_live_date` (Jan 1 -> Dec 31; Mar 15 -> Mar 14), `test_conversion_creates_one_linked_entry_per_item` (eight entries, then the OBE close; OBE 5,425,333 -> 0), `test_conversion_review_required_for_imported_and_typed_balances`, `test_conversion_reviewer_separation_off_and_on`,
+  `test_unresolved_trial_balance_or_subledger_difference_blocks_finalization`, `test_conversion_retry_with_same_operation_id_creates_no_duplicate_entries_or_documents`, `test_opening_invoices_and_bills_keep_number_contact_due_date_and_open_cents`, `test_opening_accumulated_depreciation_posts_one_entry_per_asset`, `test_conversion_into_a_locked_period_is_refused`,
+  `test_create_company_is_atomic_and_leaves_nothing_on_failure`, `test_fiscal_year_named_by_end_year_july_2026_is_fy2027`, `test_top_level_creation_is_master_only`, `test_company_switch_roundtrip_uses_active_company_id_after_reload`, `test_company_switch_access_denial_keeps_current_company_and_logs_no_target_open`, `test_successful_company_open_logs_actual_company_id_for_every_user`, `test_company_switch_continues_when_outgoing_checkpoint_fails_and_reports_it`,
+  `test_entry_balances_per_entity`, `test_elimination_run_is_reversible_and_nets_intercompany_to_zero` (1,000,000), `test_entity_mode_stays_refused_until_approved`, `test_calendar_query_filters_by_permission_and_never_writes`, `test_closed_alert_returns_when_content_hash_changes`, `test_export_all_data_is_admin_only_and_audited`, `test_deactivated_user_work_reassign_is_one_audited_action`.
+
+---
+
+## 12. Conflicts with decisions, the baseline or the mockups (flagged)
+
+1. **Area 11 says the opening accumulated depreciation "posts as one opening entry";** owner item 6 says a separate entry per item and no summary entry. This draft posts one entry per asset (Q3).
+2. **Mockup `opening-balances.html`: opening invoices "post nothing by itself"** and the trial balance is one step; owner item 6 and OPENBAL-02 give each open invoice and bill its own linked posting and clearing identity. The mockup must change (work order); the exact structure is Q3 and Q4.
+3. **S7 copies the chart, roles and approval policies; the mockup's Copy also names dimensions, cost codes and service types** (COSETUP-03's flagged gap): Q10.
+4. **Baseline has no `row_version`, no `first_live_date`, no policy table,** and `app_user.created_at` uses `strftime('now')` (§9).
+5. **Areas 6, 7, 8, 13 and 15 each say "Area 21 adds `row_version` to `company_settings`";** one column, one place (§3).
+6. **Area 15, 6, 7, 10 and Area 17 Q19 A hand the notification feed to Area 21; Area 20 §7 holds it (planning call 12:37 AM).** Pointers already mark the lines; this area keeps only the calendar query and the per-user alert state.
+7. **The mockup `new-company.html` says the Start date makes opening balances "dated the day before, 12/31/2026"** (matches item 5) and "Everything is created together or not at all" (matches §6).
+8. **Entities:** Area 7 does not say which entity a job belongs to; this draft adds `project.entity_id` (planning reading).
+9. **The mockup `first-run.html` and `company.html` were not read for this draft** (the setup wizard is `new-company.html`): work order for the first-run pages.
+
+---
+
+## 13. Handoffs out and open items (not decisions)
+
+- **Handoffs out:** Area 12 (open payments limits read from `company_policy`), Area 18 (policy registry, idle lock, attachment types, `entity.manage`, conversion permissions), Area 11 (opening assets and loans through the conversion batch), Area 13 (Special cutoff for a mid-month conversion; the lock areas), Area 17 (entity filter, `entity_mode`), Area 19 (shared batch columns and review digest), Area 20 (feed and connections at setup), every area (the `row_version` list).
+- **Open:** `saved_view` sharing; chart-of-accounts drawer tests (COA-01 to 04) stay with Area 18; multi-currency consolidation (E6: one currency); closing an entity; migrating the existing `company_settings` control columns to policy records (Q6); the first-run page review (§12 item 9); conversion of bank statement items and "Jobs started" WIP balances (steps 5 and 6 of the opening balances page: items listed in `conversion_item`, their entries not worked here).
+
+---
+
+## 14. Questions for the owner (recommended option first, with an example; not answered here)
+
+- **Q1. How must an entry that spans entities balance?**
+  (A) Per entity: each entity's own debits equal its credits (recommended: each entity's books stay balanced).
+  (B) Per entry only.
+  Example: the $10,000.00 loan from WSB to WEC needs a Due from WEC line in WSB and a Due to WSB line in WEC under A; under B one side could be left out.
+- **Q2. How do eliminations post?**
+  (A) A reversible "Run eliminations" for an open period that creates entries on the Eliminations entity (recommended: repeatable and visible).
+  (B) Only manual journal entries on the Eliminations entity.
+  Example: the 1,000,000 intercompany loan is eliminated by one generated entry under A; under B an accountant types it each month.
+- **Q3. Opening accumulated depreciation for an existing asset?**
+  (A) One entry per asset (recommended: matches owner item 6, no summary entry).
+  (B) One entry for all assets, as Area 11 proposed.
+  Example: the truck's 3,114,667 posts as its own entry under A.
+- **Q4. What happens to Opening Balance Equity after tie-out?**
+  (A) A final conversion entry moves it to Retained earnings and OBE can no longer be posted to (recommended: E4 says lock and close OBE).
+  (B) OBE stays open until the accountant clears it.
+  Example: 5,425,333 moves to Retained earnings on 12/31/2026 under A.
+- **Q5. Year-to-date income and expense for a mid-year start?**
+  (A) Bring year-to-date totals for a mid-year start, roll them into retained earnings for a January start (recommended: the mockup's guidance).
+  (B) Always roll them into retained earnings.
+  Example: a 03/15/2027 start keeps the 2027 profit and loss complete under A.
+- **Q6. Do existing `company_settings` control columns move to policy records now?**
+  (A) No: only new settings and the keys in §4 use policy records (recommended: less rework).
+  (B) Yes, all of them in the 2.9 pass.
+  Example: `open_payments.max_days` 180 is a policy record under both; `lock_documents_after_posting` stays a column under A.
+- **Q7. Which tables get `row_version`?**
+  (A) Every editable table; insert-only and ledger tables are exempt (recommended: owner rule g4).
+  (B) Only tables that have an edit screen.
+  Example: `payment_term` is edited on a settings page, so it has one under both; a table only services touch has one under A.
+- **Q8. When a Save changes several records and one is stale?**
+  (A) Refuse the whole Save and reload (recommended: nothing half-saved).
+  (B) Save the fresh ones and list the stale ones.
+  Example: a Custom fields Save with three edits where the second field changed refuses all three under A.
+- **Q9. A mid-month go-live (03/15/2027)?**
+  (A) Post the conversion on 03/14/2027 and close through that date with Area 13's Special cutoff (recommended: owner item 5).
+  (B) Require a month-end go-live.
+  Example: A lets a business that starts on the 15th bring its 03/14 balances without waiting for April.
+- **Q10. What does a new subsidiary copy?**
+  (A) The chart, roles, approval policies, dimensions, cost codes and service types, with no balances or documents (recommended: what the mockup promises).
+  (B) Only the chart, roles and approval policies (S7).
+  Example: a new WSBS opens with the Roofing service type and cost code 05-200 under A and without them under B.
+- **Q11. Do closed alerts return when their content changes?**
+  (A) Yes, per user (recommended: the mockup's rule).
+  (B) Never; closed means closed.
+  Example: the October close alert comes back for Dana when a task is added under A.
+- **Q12. Permission for Export all data?**
+  (A) Keep `company.backup`, Admin only (recommended).
+  (B) A new `export.all` permission.
+  Example: the Controller template could download a ZIP of every table under B only.
+- **Q13. Reassigning a deactivated user's open work?**
+  (A) One Admin tool lists the open items by kind and reassigns them in one audited action (recommended).
+  (B) Each module handles its own owner field.
+  Example: Dana's 7 open leads and 3 job tasks move to Marcus Webb in one step under A.
