@@ -1,6 +1,8 @@
 # Next step: Phase 2.9, the schema replan (areas 18, 13, 12, 10, 17, 8, 15, 6, 7, 5, 4, 3, 2, 14, 9, 20, 1, 11 and 16 approved)
 
-## Current planning stop (2026-11-25, Area 21 revised)
+## Current planning stop (2026-11-26, Area 18 full caps and template lists cleanup)
+
+**Update 2026-11-26 (full caps and template lists; Area 18 stays approved):** the full current caps (Accountant 80, Sales rep 32, Operations 46), all 15 shipped template lists with the placements marked, the 14 placements and 24 create-and-approve pairs are printed in full in to_design.md ("Full caps and template lists"), counts and cap checks done in Python; with the placements the caps are (99, 34, 51). Still open: Area 20's three codes, `lead.import_approve`, Area 19's other payroll codes, a subcontract create code.
 
 **Update 2026-11-26 (Area 18 cleanup; Area 18 stays approved):** the six stale shipped-template lists are reprinted with every amendment merged and the two union rows are explicit lists (every code checked inside its role cap); the unplaced codes (Area 9's three, Area 14's 11 approve codes) are placed as Planning readings; the missing create-and-approve pairs are added (14 more). Caps re-counted: (80, 32, 46) after the amendments, (99, 34, 51) with the placements. Still open: Area 20's three codes, `lead.import_approve`, a subcontract create code. Lists sent to to_design.md.
 
@@ -531,18 +533,6 @@ Overwritten 2026-11-20 (CLAUDE.md section 8) after the owner approved area 7. St
 - All held schema changes land in the two baselines in one pass, tests first, after the replan is approved. Before any
   baseline edit, list the development databases it blocks (CLAUDE.md section 5.2) and ask before rebuilding (rule 9).
   Nothing in the baselines or code has changed for 2.9 yet.
-
-## Next: an area chosen by the owner
-
-Ask the owner which todo area to draft next (areas 1-5, 9, 11, 14, 16, 19, 20, 21). Draft it in
-`docs/replan_2.9/area_<n>_<name>.md` in the layout of the area 13 doc (0 Summary table; per topic current state with
-file:line, decided with source, proposed schema, how it lands in the baselines, effect on services and tests, tests to
-write later; row version and audit; conflicts flagged; questions for the owner, multiple choice, recommended option
-first; open items), from the area's row and "Inbox inputs" in the working doc. Cite "C21" style codes as sections of
-`CODE_CHANGES_NEEDED.md`, not decision codes. Every area prompt lists "Checked against: <shared_decisions entry
-times>" (owner 2026-11-20 12:56 AM), and the area's report repeats it. A later owner decision that replaces an
-earlier one is added as a dated amendment line, and the replaced items are marked "Withdrawn <date> (owner <time>)"
-beside them, never deleted (area 7 fix 3).
 
 ## Handed to later areas by the approved ones (open items, not decisions)
 

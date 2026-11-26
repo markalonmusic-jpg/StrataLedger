@@ -757,6 +757,8 @@ What changes against the built starter roles:
 - Nobody but Admin held `retainage.release` before. It is now in two caps and in the Controller template (Q22 A).
 - `payroll.import` is in the Accountant cap and in the new Payroll template (Q20 A).
 
+**Updated 2026-11-26 (full caps and template lists; Area 18 stays owner-approved):** the current caps (80, 32, 46) are printed in full under 2.4.1, the 15 shipped template lists (with the Planning-reading placements below) and the 24 create-and-approve pairs are printed in full, grouped by module, in Strata_Teams inbox/to_design.md, heading "Full caps and template lists". Counts re-checked in Python: (80, 32, 46) current; (99, 34, 51) with section 8.2's four codes, Area 1's five proposals and the 14 placements; no template code outside its role's cap. Nothing here is an owner decision beyond what is marked so.
+
 #### 2.4.4 Old roles mapped to the new model
 
 C57's list of 11 (the owner's UI list; spec section 2):
