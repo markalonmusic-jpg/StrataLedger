@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-25 (9:57 PM): A21-Q2f recorded:** each company assigns its own GL codes; Area 21 names accounts by role (Due from clearing, Due to clearing, IC AR, IC AP, AP control, AR control), the stock numbers are template defaults only, and tests look up accounts by role. Area 1/3 do not set up the chart; the existing `system_role` mechanism and Area 18 §8.1 do, so four intercompany roles and a 'System accounts' setup task (per counterparty entity) are added in Area 21; pointers in Areas 1, 3 and 18; design asked to show role names in the mockups. Awaiting owner approval.
+
 **Update 2026-11-25 (9:44 to 9:53 PM): A21-Q13a to Q13d recorded:** the other company's side posts on save for anyone (audit trail names the WSB user); save blocked when either company's period is closed (same for transfer, voids, credit memos); pay run records the full amount, net 400,000 only at settlement ($5,000 example); no split on PO-matched bills. The four intercompany open items are closed; remaining: 'Available after pay run' uses WSB's balance, an approval for the transfer, the OBE lock. Awaiting owner approval.
 
 **Update 2026-11-25 (9:34 PM): A21-Q2e recorded: IC AP is 2220** (the first 22xx number free in both chart templates; Use Tax Payable stays 2210; 1210, 1800, 2800 stay). The account-number open item is closed; AP is 2010 and AR 1110 (design mockups to update). Other open items remain: who creates the mirror bill, other-company period lock, pay-run shares when paying another entity's bill, PO-matched vendors, an approval for the transfer. Awaiting owner approval.

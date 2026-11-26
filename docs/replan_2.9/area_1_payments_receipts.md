@@ -441,3 +441,5 @@ A loan paid to the equipment dealer is the dealer's bill (Area 3) paid by a bank
 - **Amendment 2026-11-25 (pointer, Area 21; owner A21-Q2e): [Updated: the pointer above says Cr 2210 IC AP.]** The automatic transfer credits **2220** IC AP (ICB); Use Tax Payable stays 2210.
 
 - **Amendment 2026-11-25 (pointer, Area 21; owner A21-Q13a to Q13d; Planning reading for the mechanics, owner may correct): payment rules.** The payment transfer is blocked when either company's period for the date is closed; in a pay run, paying another company's bill records the full amount as Due from / Due to with no netting ($5,000 bill: 500,000 each side; WSB already owing WEC 100,000 nets to 400,000 only at settlement) (Area 21 §7).
+
+- **Amendment 2026-11-25 (pointer, Area 21; owner A21-Q2f; Planning reading, owner may correct): accounts are found by role.** The intercompany and control accounts used here are the roles Due from (clearing), Due to (clearing), IC AR, IC AP, AP control and AR control, mapped by each company at setup in its own numbering; 1800, 2800, 1210, 2220, 2010 and 1110 are only the stock defaults (Area 21 §6 and §7). Tests look up accounts by role.
