@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-26 (Area 18 cleanup; Area 18 stays approved):** the six stale shipped-template lists are reprinted with every amendment merged and the two union rows are explicit lists (every code checked inside its role cap); the unplaced codes (Area 9's three, Area 14's 11 approve codes) are placed as Planning readings; the missing create-and-approve pairs are added (14 more). Caps re-counted: (80, 32, 46) after the amendments, (99, 34, 51) with the placements. Still open: Area 20's three codes, `lead.import_approve`, a subcontract create code. Lists sent to to_design.md.
+
 **Update 2026-11-26 (custom-access fixes, CON-Q15):** Area 18 stays approved. (1) The General Manager list was right and the printed caps table (section 2.4.1) was stale; the current caps are now printed (Accountant 80, Sales rep 32, Operations 46). (2) Area 18 defined no create-and-approve pair list; a 10-pair list is added as a Planning reading. (3) Template gaps: two union rows and the View only label have no literal list, and nine printed lists are stale against the amendments. (4) Owner CON-Q15 recorded: deleting a template in use, Admin picks, default keep as personal changes. Sent to to_design.md.
 
 **Update 2026-11-26 (12:08 AM): CON-Q14 recorded in Area 18 section 2.4.4 (Area 18 stays approved):** the General Manager preset = Operations · Manager + Sales rep · Manager + Accountant · View only with three Removes (`period.view`, `ledger.view`, `loan.view`), scope All; `report.job_cost` was already in both caps, `report.financial` (the P&L) is outside them and is the one net-new code (Planning reading). The codes-and-scope open item is closed; cell wording left to design. List sent to to_design.md.
