@@ -1168,3 +1168,5 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-25 Area 21: recorded owner A21-Q13a to Q13d (automatic for anyone with the WSB user in WEC's audit trail; block the save when either company's period is closed, same for transfer, voids and credit memos; pay run full amount, net later, 500,000 less 100,000 = 400,000; no split on PO-matched bills); four section 13 items closed; tests added; design told in to_design.md. Docs only; awaiting owner approval.
 
 - 2026-11-25 Area 21: recorded owner A21-Q2f (companies assign their own GL codes; accounts are found by role, stock numbers are defaults only); checked Area 1/3 (no chart setup there; existing system_role mechanism and Area 18 section 8.1 cover six roles), added the four intercompany roles, a 'System accounts' setup task and per-entity-pair mapping; tests by role; pointers in Areas 1, 3, 18; design told in to_design.md. Docs only; awaiting owner approval.
+
+- 2026-11-25 Area 21: per-counterparty role mapping defaults to one account per role for all partners, separated by the trading-partner tag on each line; pair rows override (planning reading). Docs only.
