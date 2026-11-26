@@ -1176,3 +1176,5 @@ Rotation and key-lost text as it stood before the trim:
 - 2026-11-25 Area 21 (whole-app setup, conversion, entities, intercompany) approved by the owner at 024efb3 (10:18 PM, "Approve Area 21 (Recommended)"); status set to approved in the area file and next_step.md; all 21 areas approved. Docs only.
 
 - 2026-11-26 Area 18: recorded owner CON-Q9 to Q13 in section 2.4.4 (Controller = Accountant · Manager; General Manager preset, updating Q21; Viewer = View only on all 3 roles; preset list = 15 shipped + General Manager + Viewer + saved; preset sets role and level, level editable); Admin row and matrix grouping marked Planning reading; area stays approved. Docs only.
+
+- 2026-11-26 Area 18: recorded owner CON-Q14 (General Manager preset, Defaults + reports): report.job_cost already in both caps, report.financial outside them; preset adds Accountant · View only with three Remove overrides (planning reading), scope All; final code list in section 2.4.4; the codes-and-scope item closed; area stays approved. Docs only.

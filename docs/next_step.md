@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-26 (12:08 AM): CON-Q14 recorded in Area 18 section 2.4.4 (Area 18 stays approved):** the General Manager preset = Operations · Manager + Sales rep · Manager + Accountant · View only with three Removes (`period.view`, `ledger.view`, `loan.view`), scope All; `report.job_cost` was already in both caps, `report.financial` (the P&L) is outside them and is the one net-new code (Planning reading). The codes-and-scope open item is closed; cell wording left to design. List sent to to_design.md.
+
 **Update 2026-11-26 (12:05 AM): CON-Q9 to Q13 recorded in Area 18 section 2.4.4 (Area 18 stays approved):** Controller = Accountant · Manager; General Manager preset = Operations · Manager + Sales rep · Manager (updates Q21); Viewer = View only on all 3 roles; Add user preset list = the 15 shipped templates + General Manager + Viewer + company-saved; a preset sets role and level, level editable. Admin row and matrix grouping are Planning readings. Open: the General Manager preset's codes and scope.
 
 **Update 2026-11-25 (10:18 PM): Area 21 APPROVED by the owner at 024efb3** ("Approve Area 21 (Recommended)"). All 21 areas are now drafted and owner-approved. The Phase 2.9 baseline pass, tests first, is the next step; do not start it without the owner's instruction.
