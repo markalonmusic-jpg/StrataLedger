@@ -2,6 +2,8 @@
 
 ## Current planning stop (2026-11-25, Area 21 revised)
 
+**Update 2026-11-25 (9:44 to 9:53 PM): A21-Q13a to Q13d recorded:** the other company's side posts on save for anyone (audit trail names the WSB user); save blocked when either company's period is closed (same for transfer, voids, credit memos); pay run records the full amount, net 400,000 only at settlement ($5,000 example); no split on PO-matched bills. The four intercompany open items are closed; remaining: 'Available after pay run' uses WSB's balance, an approval for the transfer, the OBE lock. Awaiting owner approval.
+
 **Update 2026-11-25 (9:34 PM): A21-Q2e recorded: IC AP is 2220** (the first 22xx number free in both chart templates; Use Tax Payable stays 2210; 1210, 1800, 2800 stay). The account-number open item is closed; AP is 2010 and AR 1110 (design mockups to update). Other open items remain: who creates the mirror bill, other-company period lock, pay-run shares when paying another entity's bill, PO-matched vendors, an approval for the transfer. Awaiting owner approval.
 
 **Update 2026-11-25 (8:35 PM): A21-Q2d recorded ("design sent to planning inbox"):** Area 21 §7 now follows the design chat's intercompany model (1800/2800 clearing at bill entry, automatic transfer to 1210/2210 at payment, split bills 50/30/20, elimination also nets 1800/2800 for unpaid bills, ICB and ICI created at the payment transfer, memo "Paid by WSB" with no AP posting, split stored per bill). Chart check: 2210 is Use Tax Payable in both templates (clash, not renumbered); AP is 2010 and AR 1110. Open: who creates the mirror bill, other-company period lock, pay-run shares when paying another entity's bill, the account numbers. Awaiting owner approval.
